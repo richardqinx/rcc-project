@@ -1,6 +1,7 @@
 set(LIB_SOURCES
     vec3.cc
     color.cc
+    ray.cc
 )
 
 add_library(RayTracerCore STATIC ${LIB_SOURCES})
