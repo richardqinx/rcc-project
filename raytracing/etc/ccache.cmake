@@ -1,0 +1,5 @@
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    message(STATUS "Found ccache: ${CCACHE_PROGRAM} - Compilation will be cached.")
+endif()
