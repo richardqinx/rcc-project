@@ -15,8 +15,8 @@ public:
   point3 at( double t ) const;
 
 private:
-  point3 orig;
-  vec3 dir;
+  point3 orig {};
+  vec3 dir {};
 };
 
 #endif
