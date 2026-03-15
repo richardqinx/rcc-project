@@ -45,17 +45,17 @@ add_verilator_target(
 #     SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
 #                 ${RTL_CORE_DIR}/decoder.sv
 #     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_decoder.cpp
+#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_decoder.cc
 # )
-#
-# add_verilator_target(
-#     NAME        tb_regfile
-#     TOP_MODULE  regfile
-#     SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
-#                 ${RTL_CORE_DIR}/regfile.sv
-#     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_regfile.cpp
-# )
+
+add_verilator_target(
+    NAME        tb_regfile
+    TOP_MODULE  regfile
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/regfile.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_regfile.cc
+)
 #
 # add_verilator_target(
 #     NAME        tb_csr
@@ -64,7 +64,7 @@ add_verilator_target(
 #                 ${RTL_CORE_DIR}/include/csr_pkg.sv
 #                 ${RTL_CORE_DIR}/csr_unit.sv
 #     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_csr.cpp
+#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_csr.cc
 # )
 
 # ═══════════════════════════════════════════════════════════════════════════════════
@@ -76,7 +76,7 @@ add_verilator_target(
 #     TOP_MODULE  richard_core
 #     SOURCES     ${ALL_RTL_SOURCES}
 #     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/core/tb_core.cpp
+#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/core/tb_core.cc
 # )
 
 # ═══════════════════════════════════════════════════════════════════════════════════
@@ -88,7 +88,7 @@ add_verilator_target(
 #     TOP_MODULE  richard_soc
 #     SOURCES     ${ALL_RTL_SOURCES}
 #     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/soc/tb_soc.cpp
+#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/soc/tb_soc.cc
 #     EXTRA_FLAGS --threads 2
 # )
 
