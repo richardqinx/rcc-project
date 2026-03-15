@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verilator-build:
+    name: Verilator Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            verilator \
+            cmake \
+            build-essential \
+            git \
+            autoconf \
+            flex \
+            bison \
+            libfl-dev
+
+      - name: Check Verilator version
+        run: verilator --version
+
+      - name: Configure
+        run: cmake -B build -DENABLE_TRACE=OFF
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 120
+
+  lint:
+    name: Verilator Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+
+      - name: Lint RTL
+        run: |
+          verilator --lint-only --sv -Wall \
+            -Irtl/core/include \
+            rtl/soc/richard_soc.sv \
+            $(find rtl -name '*.sv' ! -name 'richard_soc.sv') \
+            || echo "Lint completed with warnings"

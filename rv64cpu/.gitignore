@@ -1,0 +1,30 @@
+# Build
+build/
+build_*/
+
+# Waves
+waves/*.vcd
+waves/*.fst
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Verilator
+obj_dir/
+
+# FPGA
+fpga/xilinx/*.bit
+fpga/xilinx/*.ltx
+fpga/xilinx/.Xil/
+fpga/xilinx/*.jou
+fpga/xilinx/*.log
+fpga/xilinx/vivado_proj/
+fpga/gowin/*.fs
+
+# OS
+.DS_Store
+Thumbs.db
