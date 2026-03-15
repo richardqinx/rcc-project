@@ -38,15 +38,15 @@ add_verilator_target(
     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_alu.cc
 )
-#
-# add_verilator_target(
-#     NAME        tb_decoder
-#     TOP_MODULE  decoder
-#     SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
-#                 ${RTL_CORE_DIR}/decoder.sv
-#     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_decoder.cc
-# )
+
+add_verilator_target(
+    NAME        tb_decoder
+    TOP_MODULE  decoder
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/decoder.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_decoder.cc
+)
 
 add_verilator_target(
     NAME        tb_regfile
