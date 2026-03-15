@@ -52,6 +52,9 @@ include(${CMAKE_SOURCE_DIR}/tools/verilator.cmake)
 # ─── Waveform Output Directory ──────────────────────────────────────────────────
 file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/waves)
 
+# ─── Testing ────────────────────────────────────────────────────────────────────
+enable_testing()
+
 # ─── Testbench Subdirectory ─────────────────────────────────────────────────────
 add_subdirectory(tb)
 

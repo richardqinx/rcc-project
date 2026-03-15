@@ -30,14 +30,14 @@ file(GLOB_RECURSE ALL_RTL_SOURCES
 #
 # Uncomment and fill in as you implement each module, for example:
 #
-# add_verilator_target(
-#     NAME        tb_alu
-#     TOP_MODULE  alu
-#     SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
-#                 ${RTL_CORE_DIR}/alu.sv
-#     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_alu.cpp
-# )
+add_verilator_target(
+    NAME        tb_alu
+    TOP_MODULE  alu
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/alu.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_alu.cc
+)
 #
 # add_verilator_target(
 #     NAME        tb_decoder
