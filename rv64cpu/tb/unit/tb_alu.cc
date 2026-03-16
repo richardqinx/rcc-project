@@ -44,13 +44,11 @@ void test_alu(Valu* alu, uint8_t op, uint64_t rs1, uint64_t rs2, uint64_t expect
     if (alu->alu_result == expected) {
         std::cout << "\033[32m";
         std::cout << "[PASS] " << test_name << " | " 
-                  << rs1 << " op " << rs2 << " = " << expected << std::endl;
-        std::cout << "\033[0m";
+                  << rs1 << " op " << rs2 << " = " << expected << "\033[0m" << std::endl;
     } else {
         std::cout << "\033[31m";
         std::cerr << "[FAIL] " << test_name << " | " 
-                  << "Expected: " << expected << ", Got: " << alu->alu_result << std::endl;
-        std::cout << "\033[0m";
+                  << "Expected: " << expected << ", Got: " << alu->alu_result << "\033[0m" << std::endl;
         assert(false);
     }
 }
@@ -59,7 +57,9 @@ int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     Valu* alu = new Valu;
     
-    std::cout << "Running ALU Unit Test ..." << std::endl;
+    std::cout << "----------------------------------" << std::endl;
+    std::cout << "        ALU Unit Test" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
     
     test_alu(alu, ALU_ADD, 100, 50, 150, "ADD_Positive");
     test_alu(alu, ALU_SUB, 100, 50, 50,  "SUB_Positive");
@@ -73,11 +73,40 @@ int main(int argc, char** argv) {
 
     uint64_t minus_one = (uint64_t)-1;
     uint64_t five = 5;
-    
+
     test_alu(alu, ALU_SLTU, minus_one, five, 0, "SLTU (Unsigned: -1 < 5 is False)");
     test_alu(alu, ALU_SLT,  minus_one, five, 1, "SLT  (Signed: -1 < 5 is True)");
 
-    std::cout << "All tests passed!" << std::endl;
+
+    // Missing Basic Operations
+    test_alu(alu, ALU_OR,  0xAAAA, 0x5555, 0xFFFF, "OR_All_Bits");
+    test_alu(alu, ALU_SRL, 0xF000000000000000ULL, 4, 0x0F00000000000000ULL, "SRL_By_4");
+    
+    // Arithmetic Right Shift (SRA)
+    test_alu(alu, ALU_SRA, 0xF000000000000000ULL, 4, 0xFF00000000000000ULL, "SRA_Negative_By_4");
+    test_alu(alu, ALU_SRA, 0x7000000000000000ULL, 4, 0x0700000000000000ULL, "SRA_Positive_By_4");
+
+    // Shift Edge Cases
+    test_alu(alu, ALU_SLL, 1,  0,  1, "SLL_By_0");
+    test_alu(alu, ALU_SLL, 1, 63,  0x8000000000000000ULL, "SLL_By_63");
+    test_alu(alu, ALU_SRL, 0x8000000000000000ULL, 63, 1, "SRL_By_63");
+    test_alu(alu, ALU_SRA, 0x8000000000000000ULL, 63, 0xFFFFFFFFFFFFFFFFULL, "SRA_By_63_SignExt");
+
+    // All 0 / All 1 Cases
+    test_alu(alu, ALU_ADD, 0, 0, 0, "ADD_Zero");
+    test_alu(alu, ALU_ADD, 0xFFFFFFFFFFFFFFFFULL, 1, 0, "ADD_Overflow");
+    test_alu(alu, ALU_XOR, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0, "XOR_Same");
+
+    // SLT / SLTU Same Value
+    test_alu(alu, ALU_SLT,  100, 100, 0, "SLT_Same_Value");
+    test_alu(alu, ALU_SLTU, 100, 100, 0, "SLTU_Same_Value");
+    
+    // SLT Edge Cases
+    test_alu(alu, ALU_SLT, 0x8000000000000000ULL, 0x7FFFFFFFFFFFFFFFULL, 1, "SLT_Min_max");
+    test_alu(alu, ALU_SLT, 0x7FFFFFFFFFFFFFFFULL, 0x8000000000000000ULL, 0, "SLT_Max_Min");
+    std::cout << "----------------------------------" << std::endl;
+    std::cout << "\033[32mAll tests passed!\033[0m" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
 
     delete alu;
     return 0;

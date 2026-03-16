@@ -31,10 +31,10 @@ static int fail_count = 0;
         uint64_t _got = (uint64_t)(dut->signal); \
         uint64_t _exp = (uint64_t)(expected); \
         if (_got != _exp) { \
-            std::cerr << "\033[31m[FAIL]\033[0m " << test_name \
+            std::cerr << "\033[31m[FAIL] " << test_name \
                       << " | " << #signal << " expected: 0x" \
                       << std::hex << _exp << " got: 0x" << _got \
-                      << std::dec << std::endl; \
+                      << std::dec << "\033[0m" << std::endl; \
             fail_count++; \
         } \
     } while(0)
@@ -43,18 +43,18 @@ void decode(Vdecoder* dut, uint32_t instr, const char* name) {
     dut->instr = instr;
     dut->eval();
     test_count++;
-    std::cout << "[TEST " << std::setw(2) << test_count << "] " << name
+    std::cout << "\033[32m[PASS] [TEST " << std::setw(2) << test_count << "] " << name
               << "  (0x" << std::hex << std::setw(8) << std::setfill('0')
-              << instr << std::dec << std::setfill(' ') << ")" << std::endl;
+              << instr << std::dec << std::setfill(' ') << ")\033[0m" << std::endl;
 }
 
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     Vdecoder* dut = new Vdecoder;
 
-    std::cout << "═══════════════════════════════════════════════" << std::endl;
-    std::cout << "        Decoder Unit Test Suite" << std::endl;
-    std::cout << "═══════════════════════════════════════════════" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
+    std::cout << "        Decoder Unit Test" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
 
     // 1. R-type: ADD x1, x2, x3
     //    funct7=0000000 rs2=00011 rs1=00010 funct3=000 rd=00001 op=0110011
@@ -285,13 +285,14 @@ int main(int argc, char** argv) {
     CHECK(dut, reg_write_en, 0,  "Illegal");
 
     //  Results
-    std::cout << "═══════════════════════════════════════════════" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
     if (fail_count == 0) {
         std::cout << "\033[32mAll " << test_count << " tests passed!\033[0m" << std::endl;
     } else {
         std::cout << "\033[31m" << fail_count << " check(s) FAILED out of "
                   << test_count << " tests.\033[0m" << std::endl;
     }
+    std::cout << "----------------------------------" << std::endl;
 
     delete dut;
     return (fail_count > 0) ? 1 : 0;
