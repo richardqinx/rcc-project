@@ -92,4 +92,17 @@ package rv64_pkg;
         ALU_AND  = 4'b0111   // And
     } alu_op_t;
 
+
+    // Branch Operation Encoding
+    // Derived from funct3 of B-type instructions
+    typedef enum logic [2:0] {
+        BRANCH_EQ  = 3'b000,  // BEQ:  Branch if Equal
+        BRANCH_NE  = 3'b001,  // BNE:  Branch if Not Equal
+        BRANCH_LT  = 3'b100,  // BLT:  Branch if Less Than (signed)
+        BRANCH_GE  = 3'b101,  // BGE:  Branch if Greater Than or Equal (signed)
+        BRANCH_LTU = 3'b110,  // BLTU: Branch if Less Than (unsigned)
+        BRANCH_GEU = 3'b111   // BGEU: Branch if Greater Than or Equal (unsigned)
+    } branch_op_t;
+
 endpackage
+
