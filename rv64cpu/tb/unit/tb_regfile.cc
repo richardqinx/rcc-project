@@ -42,7 +42,9 @@ int main(int argc, char** argv) {
     dut->rs1_addr = 0;
     dut->rs2_addr = 0;
     
-    std::cout << "Starting register file unit test" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
+    std::cout << "        Register File Unit Test" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
     
     // Test 1: Reset
     dut->rst = 1;
@@ -180,7 +182,9 @@ int main(int argc, char** argv) {
     assert(sweep_ok);
     std::cout << "\033[32m[PASS] All 31 mutable registers write/read successfully without collision\033[0m" << std::endl;
 
-    std::cout << "Register file unit test complete\033[0m" << std::endl;   
+    std::cout << "----------------------------------" << std::endl;
+    std::cout << "\033[32mAll 8 tests passed!\033[0m" << std::endl;   
+    std::cout << "----------------------------------" << std::endl;
     
     delete dut;
     exit(0);

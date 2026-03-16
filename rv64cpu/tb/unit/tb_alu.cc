@@ -44,13 +44,11 @@ void test_alu(Valu* alu, uint8_t op, uint64_t rs1, uint64_t rs2, uint64_t expect
     if (alu->alu_result == expected) {
         std::cout << "\033[32m";
         std::cout << "[PASS] " << test_name << " | " 
-                  << rs1 << " op " << rs2 << " = " << expected << std::endl;
-        std::cout << "\033[0m";
+                  << rs1 << " op " << rs2 << " = " << expected << "\033[0m" << std::endl;
     } else {
         std::cout << "\033[31m";
         std::cerr << "[FAIL] " << test_name << " | " 
-                  << "Expected: " << expected << ", Got: " << alu->alu_result << std::endl;
-        std::cout << "\033[0m";
+                  << "Expected: " << expected << ", Got: " << alu->alu_result << "\033[0m" << std::endl;
         assert(false);
     }
 }
@@ -59,7 +57,9 @@ int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     Valu* alu = new Valu;
     
-    std::cout << "Running ALU Unit Test ..." << std::endl;
+    std::cout << "----------------------------------" << std::endl;
+    std::cout << "        ALU Unit Test" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
     
     test_alu(alu, ALU_ADD, 100, 50, 150, "ADD_Positive");
     test_alu(alu, ALU_SUB, 100, 50, 50,  "SUB_Positive");
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
 
     uint64_t minus_one = (uint64_t)-1;
     uint64_t five = 5;
-    
+
     test_alu(alu, ALU_SLTU, minus_one, five, 0, "SLTU (Unsigned: -1 < 5 is False)");
     test_alu(alu, ALU_SLT,  minus_one, five, 1, "SLT  (Signed: -1 < 5 is True)");
 
@@ -104,7 +104,9 @@ int main(int argc, char** argv) {
     // SLT Edge Cases
     test_alu(alu, ALU_SLT, 0x8000000000000000ULL, 0x7FFFFFFFFFFFFFFFULL, 1, "SLT_Min_max");
     test_alu(alu, ALU_SLT, 0x7FFFFFFFFFFFFFFFULL, 0x8000000000000000ULL, 0, "SLT_Max_Min");
-    std::cout << "All tests passed!" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
+    std::cout << "\033[32mAll tests passed!\033[0m" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
 
     delete alu;
     return 0;

@@ -52,9 +52,9 @@ int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     Vdecoder* dut = new Vdecoder;
 
-    std::cout << "═══════════════════════════════════════════════" << std::endl;
-    std::cout << "        Decoder Unit Test Suite" << std::endl;
-    std::cout << "═══════════════════════════════════════════════" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
+    std::cout << "        Decoder Unit Test" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
 
     // 1. R-type: ADD x1, x2, x3
     //    funct7=0000000 rs2=00011 rs1=00010 funct3=000 rd=00001 op=0110011
@@ -285,13 +285,14 @@ int main(int argc, char** argv) {
     CHECK(dut, reg_write_en, 0,  "Illegal");
 
     //  Results
-    std::cout << "═══════════════════════════════════════════════" << std::endl;
+    std::cout << "----------------------------------" << std::endl;
     if (fail_count == 0) {
         std::cout << "\033[32mAll " << test_count << " tests passed!\033[0m" << std::endl;
     } else {
         std::cout << "\033[31m" << fail_count << " check(s) FAILED out of "
                   << test_count << " tests.\033[0m" << std::endl;
     }
+    std::cout << "----------------------------------" << std::endl;
 
     delete dut;
     return (fail_count > 0) ? 1 : 0;
