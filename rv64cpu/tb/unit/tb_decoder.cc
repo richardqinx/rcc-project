@@ -31,10 +31,10 @@ static int fail_count = 0;
         uint64_t _got = (uint64_t)(dut->signal); \
         uint64_t _exp = (uint64_t)(expected); \
         if (_got != _exp) { \
-            std::cerr << "\033[31m[FAIL]\033[0m " << test_name \
+            std::cerr << "\033[31m[FAIL] " << test_name \
                       << " | " << #signal << " expected: 0x" \
                       << std::hex << _exp << " got: 0x" << _got \
-                      << std::dec << std::endl; \
+                      << std::dec << "\033[0m" << std::endl; \
             fail_count++; \
         } \
     } while(0)
@@ -43,9 +43,9 @@ void decode(Vdecoder* dut, uint32_t instr, const char* name) {
     dut->instr = instr;
     dut->eval();
     test_count++;
-    std::cout << "[TEST " << std::setw(2) << test_count << "] " << name
+    std::cout << "\033[32m[PASS] [TEST " << std::setw(2) << test_count << "] " << name
               << "  (0x" << std::hex << std::setw(8) << std::setfill('0')
-              << instr << std::dec << std::setfill(' ') << ")" << std::endl;
+              << instr << std::dec << std::setfill(' ') << ")\033[0m" << std::endl;
 }
 
 int main(int argc, char** argv) {

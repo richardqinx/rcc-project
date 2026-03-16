@@ -77,6 +77,33 @@ int main(int argc, char** argv) {
     test_alu(alu, ALU_SLTU, minus_one, five, 0, "SLTU (Unsigned: -1 < 5 is False)");
     test_alu(alu, ALU_SLT,  minus_one, five, 1, "SLT  (Signed: -1 < 5 is True)");
 
+
+    // Missing Basic Operations
+    test_alu(alu, ALU_OR,  0xAAAA, 0x5555, 0xFFFF, "OR_All_Bits");
+    test_alu(alu, ALU_SRL, 0xF000000000000000ULL, 4, 0x0F00000000000000ULL, "SRL_By_4");
+    
+    // Arithmetic Right Shift (SRA)
+    test_alu(alu, ALU_SRA, 0xF000000000000000ULL, 4, 0xFF00000000000000ULL, "SRA_Negative_By_4");
+    test_alu(alu, ALU_SRA, 0x7000000000000000ULL, 4, 0x0700000000000000ULL, "SRA_Positive_By_4");
+
+    // Shift Edge Cases
+    test_alu(alu, ALU_SLL, 1,  0,  1, "SLL_By_0");
+    test_alu(alu, ALU_SLL, 1, 63,  0x8000000000000000ULL, "SLL_By_63");
+    test_alu(alu, ALU_SRL, 0x8000000000000000ULL, 63, 1, "SRL_By_63");
+    test_alu(alu, ALU_SRA, 0x8000000000000000ULL, 63, 0xFFFFFFFFFFFFFFFFULL, "SRA_By_63_SignExt");
+
+    // All 0 / All 1 Cases
+    test_alu(alu, ALU_ADD, 0, 0, 0, "ADD_Zero");
+    test_alu(alu, ALU_ADD, 0xFFFFFFFFFFFFFFFFULL, 1, 0, "ADD_Overflow");
+    test_alu(alu, ALU_XOR, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0, "XOR_Same");
+
+    // SLT / SLTU Same Value
+    test_alu(alu, ALU_SLT,  100, 100, 0, "SLT_Same_Value");
+    test_alu(alu, ALU_SLTU, 100, 100, 0, "SLTU_Same_Value");
+    
+    // SLT Edge Cases
+    test_alu(alu, ALU_SLT, 0x8000000000000000ULL, 0x7FFFFFFFFFFFFFFFULL, 1, "SLT_Min_max");
+    test_alu(alu, ALU_SLT, 0x7FFFFFFFFFFFFFFFULL, 0x8000000000000000ULL, 0, "SLT_Max_Min");
     std::cout << "All tests passed!" << std::endl;
 
     delete alu;
