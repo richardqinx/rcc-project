@@ -21,44 +21,44 @@ module alu
     import rv64_pkg::*;
 (
     input  alu_op_t          alu_op,     // ALU operation select (from decoder)
-    input  logic [XLEN-1:0]  rs1_val,    // Operand 1 (register rs1 value or PC)
-    input  logic [XLEN-1:0]  rs2_val,    // Operand 2 (register rs2 value or immediate)
+    input  logic [XLEN-1:0]  operand_a,    // Operand 1 (register rs1 value or PC)
+    input  logic [XLEN-1:0]  operand_b,    // Operand 2 (register rs2 value or immediate)
 
-    output logic [XLEN-1:0]  alu_res     // ALU result
+    output logic [XLEN-1:0]  alu_result     // ALU result
 );
 
     // Shift amount: RV64I uses lower 6 bits of rs2 (shamt[5:0])
     logic [5:0] shamt;
-    assign shamt = rs2_val[5:0];
+    assign shamt = operand_b[5:0];
 
     always_comb begin
-        alu_res = '0;
+        alu_result = '0;
 
         case (alu_op)
-            ALU_ADD:  alu_res = rs1_val + rs2_val;
-            ALU_SUB:  alu_res = rs1_val - rs2_val;
+            ALU_ADD:  alu_result = operand_a + operand_b;
+            ALU_SUB:  alu_result = operand_a - operand_b;
 
             // Logical left shift: the shift amount is the lower 6 bits of rs2
-            ALU_SLL:  alu_res = rs1_val << shamt;
+            ALU_SLL:  alu_result = operand_a << shamt;
 
             // Set less than (signed)
-            ALU_SLT:  alu_res = {63'b0, $signed(rs1_val) < $signed(rs2_val)};
+            ALU_SLT:  alu_result = {63'b0, $signed(operand_a) < $signed(operand_b)};
 
             // Set less than (unsigned)
-            ALU_SLTU: alu_res = {63'b0, rs1_val < rs2_val};
+            ALU_SLTU: alu_result = {63'b0, operand_a < operand_b};
 
-            ALU_XOR:  alu_res = rs1_val ^ rs2_val;
+            ALU_XOR:  alu_result = operand_a ^ operand_b;
 
             // Logical right shift: the shift amount is the lower 6 bits of rs2
-            ALU_SRL:  alu_res = rs1_val >> shamt;
+            ALU_SRL:  alu_result = operand_a >> shamt;
 
             // Arithmetic right shift: the shift amount is the lower 6 bits of rs2
-            ALU_SRA:  alu_res = $unsigned($signed(rs1_val) >>> shamt);
+            ALU_SRA:  alu_result = $unsigned($signed(operand_a) >>> shamt);
 
-            ALU_OR:   alu_res = rs1_val | rs2_val;
-            ALU_AND:  alu_res = rs1_val & rs2_val;
+            ALU_OR:   alu_result = operand_a | operand_b;
+            ALU_AND:  alu_result = operand_a & operand_b;
 
-            default:  alu_res = '0;
+            default:  alu_result = '0;
         endcase
     end
 

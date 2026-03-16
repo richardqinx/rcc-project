@@ -149,11 +149,4 @@ this convention. These should be renamed during the next refactoring pass.
 
 | File | Current Name | Recommended Name | Reason |
 |---|---|---|---|
-| `alu.sv` | `rs1_val` | `operand_a` | ALU input is muxed, not always rs1 |
-| `alu.sv` | `rs2_val` | `operand_b` | ALU input is muxed, not always rs2 |
-| `alu.sv` | `alu_res` | `alu_result` | Avoid non-approved abbreviation `res` |
-| `regfile.sv` | `rs1_val` | `rs1_rdata` | Use `_rdata` for read data ports |
-| `regfile.sv` | `rs2_val` | `rs2_rdata` | Use `_rdata` for read data ports |
-| `regfile.sv` | `rd_val` | `rd_wdata` | Use `_wdata` for write data ports |
-| `regfile.sv` | `reg_write` | `reg_write_en` | Use `_en` suffix for enable signals |
-| `decoder.sv` | `reg_write` | `reg_write_en` | Use `_en` suffix for enable signals |
+|None|None|None|None|

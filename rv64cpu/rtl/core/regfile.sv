@@ -25,24 +25,24 @@ module regfile
 
     // Read port 1
     input  logic [4:0]                rs1_addr, // Read address 1
-    output logic [XLEN-1:0]           rs1_val,  // Read data 1
+    output logic [XLEN-1:0]           rs1_rdata,  // Read data 1
 
     // Read port 2
     input  logic [4:0]                rs2_addr, // Read address 2
-    output logic [XLEN-1:0]           rs2_val,  // Read data 2
+    output logic [XLEN-1:0]           rs2_rdata,  // Read data 2
 
     // Write port
     input  logic [4:0]                rd_addr,  // Write address
-    input  logic [XLEN-1:0]           rd_val,   // Write data
-    input  logic                      we        // Write enable signal
+    input  logic [XLEN-1:0]           rd_wdata,   // Write data
+    input  logic                      reg_write_en // Write enable signal
 );
 
     // Register file storage
     logic [XLEN-1:0] regs [0:31];
 
     // Read Logic (combinational logic)
-    assign rs1_val = (rs1_addr == 5'b0) ? '0 : regs[rs1_addr];
-    assign rs2_val = (rs2_addr == 5'b0) ? '0 : regs[rs2_addr];
+    assign rs1_rdata = (rs1_addr == 5'b0) ? '0 : regs[rs1_addr];
+    assign rs2_rdata = (rs2_addr == 5'b0) ? '0 : regs[rs2_addr];
 
     // Write Logic (sequential logic)
     always_ff @(posedge clk) begin
@@ -51,8 +51,8 @@ module regfile
                 regs[i] <= '0;
             end
         end else begin
-            if (we && rd_addr != 5'b0) begin
-                regs[rd_addr] <= rd_val;
+            if (reg_write_en && rd_addr != 5'b0) begin
+                regs[rd_addr] <= rd_wdata;
             end
         end
     end

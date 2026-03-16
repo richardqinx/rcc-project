@@ -36,12 +36,12 @@ enum AluOp {
 
 void test_alu(Valu* alu, uint8_t op, uint64_t rs1, uint64_t rs2, uint64_t expected, const char* test_name) {
     alu->alu_op = op;
-    alu->rs1_val = rs1;
-    alu->rs2_val = rs2;
+    alu->operand_a = rs1;
+    alu->operand_b = rs2;
 
     alu->eval();
     
-    if (alu->alu_res == expected) {
+    if (alu->alu_result == expected) {
         std::cout << "\033[32m";
         std::cout << "[PASS] " << test_name << " | " 
                   << rs1 << " op " << rs2 << " = " << expected << std::endl;
@@ -49,7 +49,7 @@ void test_alu(Valu* alu, uint8_t op, uint64_t rs1, uint64_t rs2, uint64_t expect
     } else {
         std::cout << "\033[31m";
         std::cerr << "[FAIL] " << test_name << " | " 
-                  << "Expected: " << expected << ", Got: " << alu->alu_res << std::endl;
+                  << "Expected: " << expected << ", Got: " << alu->alu_result << std::endl;
         std::cout << "\033[0m";
         assert(false);
     }

@@ -28,7 +28,7 @@ module decoder
     output logic [4:0]        rs1_addr,       // Source register 1 address
     output logic [4:0]        rs2_addr,       // Source register 2 address
     output logic [4:0]        rd_addr,        // Destination register address
-    output logic              reg_write,      // Register file write enable
+    output logic              reg_write_en,      // Register file write enable
 
     // ALU Control
     output alu_op_t           alu_op,         // ALU operation select
@@ -112,7 +112,7 @@ module decoder
         alu_op        = ALU_ADD;
         alu_src1_sel  = 1'b0;   // rs1
         alu_src2_sel  = 1'b0;   // rs2
-        reg_write     = 1'b0;
+        reg_write_en  = 1'b0;
         imm           = '0;
         is_load       = 1'b0;
         is_store      = 1'b0;
@@ -139,7 +139,7 @@ module decoder
             // LUI — rd = imm_u
 
             OPCODE_LUI: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 alu_src1_sel = 1'b0;    // doesn't matter,  ALU_ADD(0, imm_u)
                 alu_src2_sel = 1'b1;    // immediate
                 imm          = imm_u;
@@ -153,7 +153,7 @@ module decoder
 
 
             OPCODE_AUIPC: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 alu_src1_sel = 1'b1;    // PC
                 alu_src2_sel = 1'b1;    // immediate
                 imm          = imm_u;
@@ -163,7 +163,7 @@ module decoder
             // -----------------
             // JAL — rd = PC+4;  PC = PC + imm_j
             OPCODE_JAL: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 is_jump      = 1'b1;
                 alu_src1_sel = 1'b1;    // PC
                 alu_src2_sel = 1'b1;    // immediate
@@ -176,7 +176,7 @@ module decoder
             // JALR — rd = PC+4;  PC = (rs1 + imm_i) & ~1
 
             OPCODE_JALR: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 is_jump      = 1'b1;
                 alu_src1_sel = 1'b0;    // rs1
                 alu_src2_sel = 1'b1;    // immediate
@@ -188,7 +188,7 @@ module decoder
             // -----------------
             // Branch — compare rs1, rs2;  if taken, PC = PC + imm_b
             OPCODE_BRANCH: begin
-                reg_write    = 1'b0;    // branches never write rd
+                reg_write_en = 1'b0;    // branches never write rd
                 is_branch    = 1'b1;
                 alu_src1_sel = 1'b1;    // PC  (ALU computes branch target)
                 alu_src2_sel = 1'b1;    // immediate
@@ -200,7 +200,7 @@ module decoder
             // -----------------
             // Load — rd = Mem[rs1 + imm_i]
             OPCODE_LOAD: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 is_load      = 1'b1;
                 alu_src1_sel = 1'b0;    // rs1
                 alu_src2_sel = 1'b1;    // immediate
@@ -213,7 +213,7 @@ module decoder
             // -----------------
             // Store — Mem[rs1 + imm_s] = rs2
             OPCODE_STORE: begin
-                reg_write    = 1'b0;
+                reg_write_en = 1'b0;
                 is_store     = 1'b1;
                 alu_src1_sel = 1'b0;    // rs1
                 alu_src2_sel = 1'b1;    // immediate  (NOT rs2 — rs2 is store data)
@@ -226,7 +226,7 @@ module decoder
             // OP-IMM (I-type ALU) — rd = rs1 OP imm
             // ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI
             OPCODE_OP_IMM: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 alu_src1_sel = 1'b0;    // rs1
                 alu_src2_sel = 1'b1;    // immediate
                 imm          = imm_i;
@@ -248,7 +248,7 @@ module decoder
             // OP-IMM-32 (I-type ALU, 32-bit word variants for RV64)
             // ADDIW, SLLIW, SRLIW, SRAIW
             OPCODE_OP_IMM_32: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 is_word_op   = 1'b1;    // EX stage: operate on lower 32 bits, sext result
                 alu_src1_sel = 1'b0;    // rs1
                 alu_src2_sel = 1'b1;    // immediate
@@ -269,7 +269,7 @@ module decoder
             // OP (R-type ALU) — rd = rs1 OP rs2
             // ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND
             OPCODE_OP: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 alu_src1_sel = 1'b0;    // rs1
                 alu_src2_sel = 1'b0;    // rs2
 
@@ -296,7 +296,7 @@ module decoder
             // OP-32 (R-type ALU, 32-bit word variants for RV64)
             // ADDW, SUBW, SLLW, SRLW, SRAW
             OPCODE_OP_32: begin
-                reg_write    = 1'b1;
+                reg_write_en = 1'b1;
                 is_word_op   = 1'b1;
                 alu_src1_sel = 1'b0;    // rs1
                 alu_src2_sel = 1'b0;    // rs2
@@ -333,7 +333,7 @@ module decoder
             OPCODE_SYSTEM: begin
                 if (funct3 == 3'b000) begin
                     // Privileged instructions (non-CSR)
-                    reg_write = 1'b0;
+                    reg_write_en = 1'b0;
                     case ({funct7, instr[24:20]})    // {funct7, rs2}
                         12'b0000000_00000: is_ecall      = 1'b1;   // ECALL
                         12'b0000000_00001: is_ebreak     = 1'b1;   // EBREAK
@@ -351,7 +351,7 @@ module decoder
                     // CSR instructions
                     // funct3: 001=CSRRW, 010=CSRRS, 011=CSRRC,
                     //         101=CSRRWI, 110=CSRRSI, 111=CSRRCI
-                    reg_write    = 1'b1;
+                    reg_write_en = 1'b1;
                     is_csr       = 1'b1;
                     csr_op       = funct3;
                     imm          = imm_i;   // CSR address = instr[31:20] (reuse imm_i path)

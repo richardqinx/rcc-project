@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
     CHECK(dut, rs1_addr,     2,  "ADD");
     CHECK(dut, rs2_addr,     3,  "ADD");
     CHECK(dut, rd_addr,      1,  "ADD");
-    CHECK(dut, reg_write,    1,  "ADD");       // R-type writes rd
+    CHECK(dut, reg_write_en, 1,  "ADD");       // R-type writes rd
     CHECK(dut, alu_op,       0,  "ADD");       // ALU_ADD = 0b0000
     CHECK(dut, alu_src1_sel, 0,  "ADD");       // operand1 = rs1
     CHECK(dut, alu_src2_sel, 0,  "ADD");       // operand2 = rs2
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     //    Tests: funct7[5] distinguishes ADD vs SUB
     decode(dut, 0x402081B3, "SUB  x3, x1, x2");
     CHECK(dut, alu_op,       8,  "SUB");       // ALU_SUB = 0b1000
-    CHECK(dut, reg_write,    1,  "SUB");
+    CHECK(dut, reg_write_en, 1,  "SUB");
     CHECK(dut, alu_src2_sel, 0,  "SUB");       // operand2 = rs2
 
     // 3. R-type: SRA x1, x2, x3  (vs SRL)
@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
     //    imm=000000101010 rs1=00000 funct3=000 rd=00001 op=0010011
     //    Tests: I-type sets alu_src2_sel=1 (immediate), reg_write=1
     decode(dut, 0x02A00093, "ADDI x1, x0, 42");
-    CHECK(dut, reg_write,    1,  "ADDI");
+    CHECK(dut, reg_write_en, 1,  "ADDI");
     CHECK(dut, alu_op,       0,  "ADDI");      // ALU_ADD
     CHECK(dut, alu_src1_sel, 0,  "ADDI");      // rs1
     CHECK(dut, alu_src2_sel, 1,  "ADDI");      // immediate
@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
     //    Tests: is_load, mem_size, wb_sel=MEM, alu computes address
     decode(dut, 0x00853283, "LD   x5, 8(x10)");
     CHECK(dut, is_load,      1,  "LD");
-    CHECK(dut, reg_write,    1,  "LD");
+    CHECK(dut, reg_write_en, 1,  "LD");
     CHECK(dut, alu_src2_sel, 1,  "LD");        // imm for address calc
     CHECK(dut, imm,          8,  "LD");
     CHECK(dut, mem_size,     3,  "LD");        // funct3=011 → doubleword
@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
     //    Tests: is_store, reg_write=0, S-type immediate extraction
     decode(dut, 0x00553823, "SD   x5, 16(x10)");
     CHECK(dut, is_store,     1,  "SD");
-    CHECK(dut, reg_write,    0,  "SD");        // stores don't write rd
+    CHECK(dut, reg_write_en, 0,  "SD");        // stores don't write rd
     CHECK(dut, alu_src2_sel, 1,  "SD");        // imm for address calc (NOT rs2)
     CHECK(dut, imm,          16, "SD");        // S-type immediate = 16
     CHECK(dut, mem_size,     3,  "SD");        // funct3=011 → doubleword
@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
     //     Tests: is_branch, branch_op=funct3, negative B-type immediate
     decode(dut, 0xFE208EE3, "BEQ  x1, x2, -4");
     CHECK(dut, is_branch,    1,  "BEQ");
-    CHECK(dut, reg_write,    0,  "BEQ");
+    CHECK(dut, reg_write_en, 0,  "BEQ");
     CHECK(dut, alu_src1_sel, 1,  "BEQ");       // PC for target calc
     CHECK(dut, branch_op,    0,  "BEQ");       // funct3=000 → BEQ
     CHECK(dut, imm, (uint64_t)(-4), "BEQ");    // sign-extended -4
@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
     //     imm[31:12]=0x12345 rd=00001 op=0110111
     //     Tests: U-type immediate, reg_write, alu_src2_sel=imm
     decode(dut, 0x123450B7, "LUI  x1, 0x12345");
-    CHECK(dut, reg_write,    1,  "LUI");
+    CHECK(dut, reg_write_en, 1,  "LUI");
     CHECK(dut, alu_src2_sel, 1,  "LUI");       // immediate
     CHECK(dut, imm,  0x12345000ULL, "LUI");    // U-type: imm << 12
     CHECK(dut, wb_sel,       0,  "LUI");       // ALU result
@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
     //     imm[31:12]=0x00001 rd=00010 op=0010111
     //     Tests: alu_src1_sel=PC (distinguishes from LUI)
     decode(dut, 0x00001117, "AUIPC x2, 0x1");
-    CHECK(dut, reg_write,    1,  "AUIPC");
+    CHECK(dut, reg_write_en, 1,  "AUIPC");
     CHECK(dut, alu_src1_sel, 1,  "AUIPC");     // PC  ← key difference from LUI
     CHECK(dut, alu_src2_sel, 1,  "AUIPC");     // immediate
     CHECK(dut, imm,  0x1000ULL,  "AUIPC");     // 0x00001 << 12 = 0x1000
@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
     //     Tests: is_jump, wb_sel=PC+4, alu_src1=PC
     decode(dut, 0x008000EF, "JAL  x1, +8");
     CHECK(dut, is_jump,      1,  "JAL");
-    CHECK(dut, reg_write,    1,  "JAL");
+    CHECK(dut, reg_write_en, 1,  "JAL");
     CHECK(dut, alu_src1_sel, 1,  "JAL");       // PC
     CHECK(dut, alu_src2_sel, 1,  "JAL");       // immediate
     CHECK(dut, wb_sel,       2,  "JAL");       // writeback PC+4
@@ -192,7 +192,7 @@ int main(int argc, char** argv) {
     //     Tests: is_jump, alu_src1=rs1 (distinguishes from JAL)
     decode(dut, 0x004280E7, "JALR x1, x5, 4");
     CHECK(dut, is_jump,      1,  "JALR");
-    CHECK(dut, reg_write,    1,  "JALR");
+    CHECK(dut, reg_write_en, 1,  "JALR");
     CHECK(dut, alu_src1_sel, 0,  "JALR");      // rs1  ← key difference from JAL
     CHECK(dut, alu_src2_sel, 1,  "JALR");      // immediate
     CHECK(dut, wb_sel,       2,  "JALR");      // writeback PC+4
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
     //     imm=000000001010 rs1=00010 funct3=000 rd=00001 op=0011011
     //     Tests: is_word_op flag for 32-bit operation
     decode(dut, 0x00A1009B, "ADDIW x1, x2, 10");
-    CHECK(dut, reg_write,    1,  "ADDIW");
+    CHECK(dut, reg_write_en, 1,  "ADDIW");
     CHECK(dut, is_word_op,   1,  "ADDIW");     // 32-bit + sext
     CHECK(dut, alu_op,       0,  "ADDIW");     // ALU_ADD
     CHECK(dut, alu_src2_sel, 1,  "ADDIW");     // immediate
@@ -213,7 +213,7 @@ int main(int argc, char** argv) {
     //     funct7=0000000 rs2=00010 rs1=00001 funct3=000 rd=00011 op=0111011
     //     Tests: OP_32 path, is_word_op + R-type (alu_src2=rs2)
     decode(dut, 0x002081BB, "ADDW x3, x1, x2");
-    CHECK(dut, reg_write,    1,  "ADDW");
+    CHECK(dut, reg_write_en, 1,  "ADDW");
     CHECK(dut, is_word_op,   1,  "ADDW");
     CHECK(dut, alu_op,       0,  "ADDW");      // ALU_ADD
     CHECK(dut, alu_src2_sel, 0,  "ADDW");      // rs2 (R-type!)
@@ -230,35 +230,35 @@ int main(int argc, char** argv) {
     decode(dut, 0x300110F3, "CSRRW x1, mstatus, x2");
     CHECK(dut, is_csr,       1,  "CSRRW");
     CHECK(dut, csr_op,       1,  "CSRRW");     // funct3=001 → CSRRW
-    CHECK(dut, reg_write,    1,  "CSRRW");
+    CHECK(dut, reg_write_en, 1,  "CSRRW");
     CHECK(dut, illegal_instr,0,  "CSRRW");
 
     // 20. ECALL
     //     all-zero fields + opcode=1110011
     decode(dut, 0x00000073, "ECALL");
     CHECK(dut, is_ecall,     1,  "ECALL");
-    CHECK(dut, reg_write,    0,  "ECALL");
+    CHECK(dut, reg_write_en, 0,  "ECALL");
     CHECK(dut, illegal_instr,0,  "ECALL");
 
     // 21. EBREAK
     //     funct7=0000000 rs2=00001 rs1=00000 funct3=000 rd=00000 op=1110011
     decode(dut, 0x00100073, "EBREAK");
     CHECK(dut, is_ebreak,    1,  "EBREAK");
-    CHECK(dut, reg_write,    0,  "EBREAK");
+    CHECK(dut, reg_write_en, 0,  "EBREAK");
 
     // 22. MRET
     //     funct7=0011000 rs2=00010 rs1=00000 funct3=000 rd=00000 op=1110011
     //     Tests: privileged instruction decode from {funct7, rs2}
     decode(dut, 0x30200073, "MRET");
     CHECK(dut, is_mret,      1,  "MRET");
-    CHECK(dut, reg_write,    0,  "MRET");
+    CHECK(dut, reg_write_en, 0,  "MRET");
     CHECK(dut, illegal_instr,0,  "MRET");
 
     // 23. SRET
     //     funct7=0001000 rs2=00010 rs1=00000 funct3=000 rd=00000 op=1110011
     decode(dut, 0x10200073, "SRET");
     CHECK(dut, is_sret,      1,  "SRET");
-    CHECK(dut, reg_write,    0,  "SRET");
+    CHECK(dut, reg_write_en, 0,  "SRET");
 
     // 24. WFI
     //     funct7=0001000 rs2=00101 rs1=00000 funct3=000 rd=00000 op=1110011
@@ -282,7 +282,7 @@ int main(int argc, char** argv) {
     //     Tests: default case sets illegal_instr, reg_write stays 0
     decode(dut, 0x00000000, "Illegal (all-zero)");
     CHECK(dut, illegal_instr,1,  "Illegal");
-    CHECK(dut, reg_write,    0,  "Illegal");
+    CHECK(dut, reg_write_en, 0,  "Illegal");
 
     //  Results
     std::cout << "═══════════════════════════════════════════════" << std::endl;
