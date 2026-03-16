@@ -65,6 +65,15 @@ add_verilator_target(
     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_branch.cc
 )
+
+add_verilator_target(
+    NAME        tb_if_stage
+    TOP_MODULE  if_stage
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/if_stage.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_if_stage.cc
+)
 #
 # add_verilator_target(
 #     NAME        tb_csr
