@@ -107,7 +107,9 @@ int main(int argc, char** argv) {
     // rs1=x5, rs2=x0, rd=x1
     dut->if_instr = 0x000280B3;
     dut->eval();
-    check(dut->id_rs1_rdata == 0xDEADBEEF, "RegFile_Read_x5");
+    check(dut->id_rs1_addr == 5,            "R_Type_rs1_addr");
+    check(dut->id_rs2_addr == 0,            "R_Type_rs2_addr");
+    check(dut->id_rs1_rdata == 0xDEADBEEF,  "RegFile_Read_x5");
     check(dut->id_rs2_rdata == 0,           "RegFile_Read_x0");
     check(dut->id_alu_src2_sel == 0,        "R_Type_alu_src2_sel");
 

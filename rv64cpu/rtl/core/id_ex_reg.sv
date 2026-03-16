@@ -36,6 +36,8 @@ module id_ex_reg
     input  logic [XLEN-1:0]        id_pc,
     input  logic [XLEN-1:0]        id_rs1_rdata,
     input  logic [XLEN-1:0]        id_rs2_rdata,
+    input  logic [4:0]             id_rs1_addr,
+    input  logic [4:0]             id_rs2_addr,
     input  logic [XLEN-1:0]        id_imm,
 
     // Execution Control
@@ -75,6 +77,8 @@ module id_ex_reg
     output logic [XLEN-1:0]        ex_pc,
     output logic [XLEN-1:0]        ex_rs1_rdata,
     output logic [XLEN-1:0]        ex_rs2_rdata,
+    output logic [4:0]             ex_rs1_addr,
+    output logic [4:0]             ex_rs2_addr,
     output logic [XLEN-1:0]        ex_imm,
 
     // Execution Control
@@ -113,6 +117,8 @@ module id_ex_reg
             ex_pc            <= '0;
             ex_rs1_rdata     <= '0;
             ex_rs2_rdata     <= '0;
+            ex_rs1_addr      <= '0;
+            ex_rs2_addr      <= '0;
             ex_imm           <= '0;
             ex_alu_op        <= ALU_ADD; // NOP is effectively ADD x0, x0, 0
             ex_alu_src1_sel  <= '0;
@@ -142,6 +148,8 @@ module id_ex_reg
             ex_pc            <= id_pc;
             ex_rs1_rdata     <= id_rs1_rdata;
             ex_rs2_rdata     <= id_rs2_rdata;
+            ex_rs1_addr      <= id_rs1_addr;
+            ex_rs2_addr      <= id_rs2_addr;
             ex_imm           <= id_imm;
             ex_alu_op        <= id_alu_op;
             ex_alu_src1_sel  <= id_alu_src1_sel;
