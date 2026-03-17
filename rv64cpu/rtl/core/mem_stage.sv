@@ -31,12 +31,12 @@ module mem_stage
     input  logic [4:0]             mem_rs1_addr,
     input  logic [XLEN-1:0]        mem_pc,
     input  logic [XLEN-1:0]        mem_imm,
-    
+
     // Memory Control
     input  logic                   mem_is_load,
     input  logic                   mem_is_store,
     input  logic [2:0]             mem_mem_size,      // LB/LH/LW/LD/LBU/LHU/LWU
-    
+
     // Writeback Control
     input  logic                   mem_reg_write_en,
     input  logic [4:0]             mem_rd_addr,
@@ -69,7 +69,7 @@ module mem_stage
     output logic [XLEN-1:0]        mem_wb_alu_result,
     output logic [XLEN-1:0]        mem_wb_mem_rdata,
     output logic [XLEN-1:0]        mem_wb_pc,
-    
+
     output logic                   mem_wb_reg_write_en,
     output logic [4:0]             mem_wb_rd_addr,
     output logic [1:0]             mem_wb_wb_sel,
@@ -79,7 +79,7 @@ module mem_stage
     output logic [XLEN-1:0]        mem_wb_rs1_rdata,
     output logic [4:0]             mem_wb_rs1_addr,
     output logic [XLEN-1:0]        mem_wb_imm,
-    
+
     output logic                   mem_wb_illegal_instr,
     output logic                   mem_wb_is_ecall,
     output logic                   mem_wb_is_ebreak,
@@ -119,7 +119,7 @@ module mem_stage
         logic [2:0] align_offset;
         store_data_aligned = '0;
         write_strobe       = 8'b0000_0000;
-        
+
         // Mem address lower 3 bits determine the alignment within the 64-bit word
         align_offset = mem_alu_result[2:0];
 
@@ -152,7 +152,7 @@ module mem_stage
             endcase
         end
     end
-    
+
     assign dmem_wdata = store_data_aligned;
     assign dmem_wstrb = write_strobe;
 
@@ -163,9 +163,9 @@ module mem_stage
         logic [2:0] align_offset;
         logic [XLEN-1:0] shifted_rdata;
         load_data_aligned = '0;
-        
+
         align_offset = mem_alu_result[2:0];
-        
+
         // Shift data down so the target bytes are at the bottom
         shifted_rdata = dmem_rdata >> (align_offset * 8);
 
@@ -194,7 +194,7 @@ module mem_stage
     assign mem_wb_alu_result    = mem_alu_result;
     assign mem_wb_mem_rdata     = load_data_aligned;
     assign mem_wb_pc            = mem_pc;
-    
+
     assign mem_wb_reg_write_en  = mem_reg_write_en;
     assign mem_wb_rd_addr       = mem_rd_addr;
     assign mem_wb_wb_sel        = mem_wb_sel;

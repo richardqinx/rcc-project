@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     // 1. Init / Reset
     dut->stall_en = 0;
     dut->flush_en = 0;
-    
+
     // Set some random dangerous EX inputs
     dut->ex_pc = 0x80001000;
     dut->ex_rs1_rdata = 0x11111111;
@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
     dut->ex_rd_addr = 20;
     dut->ex_reg_write_en = 0;
     dut->ex_is_load = 0;
-    
+
     tick(dut);
 
     check(dut->mem_pc == 0x80002000, "Stall_Maintains_PC");
@@ -147,19 +147,19 @@ int main(int argc, char** argv) {
     dut->ex_branch_taken = 1;
     dut->ex_reg_write_en = 1;
     dut->ex_is_store = 1;
-    
+
     tick(dut);
 
     check(dut->mem_pc == 0x80003000, "Flush_Maintains_PC");
     check(dut->mem_branch_taken == 0, "Flush_Clears_BranchTaken");
-    check(dut->mem_reg_write_en == 0, "Flush_Clears_RegWrite"); 
-    check(dut->mem_is_store == 0, "Flush_Clears_StoreEn");     
+    check(dut->mem_reg_write_en == 0, "Flush_Clears_RegWrite");
+    check(dut->mem_is_store == 0, "Flush_Clears_StoreEn");
 
     // 5. Flush Overrides Stall
     dut->flush_en = 0;
     dut->ex_pc = 0x80005000;
     dut->ex_reg_write_en = 1;
-    tick(dut); 
+    tick(dut);
     check(dut->mem_pc == 0x80005000, "Pre_FlushStall_Setup");
 
     dut->flush_en = 1;

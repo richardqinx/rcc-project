@@ -37,7 +37,7 @@ module ex_mem_reg
 
     // ----------------------
     // Bypassed Inputs from ID/EX Register
-    
+
     // Data/Operands
     input  logic [XLEN-1:0]        ex_rs1_rdata,  // Needed for CSRRW/RS/RC
     input  logic [XLEN-1:0]        ex_rs2_rdata,  // Needed for store data
@@ -116,7 +116,7 @@ module ex_mem_reg
             mem_rs1_addr      <= '0;
             mem_pc            <= '0;
             mem_imm           <= '0;
-            
+
             // Critical control signals must be zeroed out
             mem_is_load       <= '0;
             mem_is_store      <= '0;
@@ -169,14 +169,14 @@ module ex_mem_reg
              mem_rs1_addr      <= ex_rs1_addr;
              mem_pc            <= ex_pc;
              mem_imm           <= ex_imm;
-             
+
              mem_is_load       <= ex_is_load;
              mem_is_store      <= ex_is_store;
              mem_mem_size      <= ex_mem_size;
              mem_reg_write_en  <= ex_reg_write_en;
              mem_rd_addr       <= ex_rd_addr;
              mem_wb_sel        <= ex_wb_sel;
- 
+
              mem_is_csr        <= ex_is_csr;
              mem_csr_op        <= ex_csr_op;
              mem_illegal_instr <= ex_illegal_instr;

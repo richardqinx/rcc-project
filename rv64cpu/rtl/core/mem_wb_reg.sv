@@ -26,7 +26,7 @@ module mem_wb_reg
 
     // -----------------------
     // Control Signals from Hazard Unit
-    input  logic               stall_en,     
+    input  logic               stall_en,
     input  logic               flush_en,
 
     // -----------------------
@@ -53,7 +53,7 @@ module mem_wb_reg
     input  logic                   mem_is_ebreak,
     input  logic                   mem_is_mret,
     input  logic                   mem_is_sret,
-    
+
     // -----------------------
     // Outputs to WB Stage
     // -----------------------
@@ -78,7 +78,7 @@ module mem_wb_reg
     output logic                   wb_is_ebreak,
     output logic                   wb_is_mret,
     output logic                   wb_is_sret
-    
+
 );
     // Sequential Logic: State Update
     always_ff @(posedge clk) begin

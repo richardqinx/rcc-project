@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     // 1. Init / Reset
     dut->stall_en = 0;
     dut->flush_en = 0;
-    
+
     // Set some dangerous inputs
     dut->mem_pc = 0x80001000;
     dut->mem_alu_result = 0x11111111;
@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
     dut->mem_pc = 0x80003000;
     dut->mem_rd_addr = 20;
     dut->mem_reg_write_en = 0;
-    
+
     tick(dut);
 
     check(dut->wb_pc == 0x80002000, "Stall_Maintains_PC");
@@ -133,19 +133,19 @@ int main(int argc, char** argv) {
     dut->mem_alu_result = 0xCCCCCCCC;
     dut->mem_reg_write_en = 1;
     dut->mem_is_csr = 1;
-    
+
     tick(dut);
 
     check(dut->wb_pc == 0x80003000, "Flush_Maintains_PC");
     check(dut->wb_alu_result == 0xAAAAAAAA, "Flush_Maintains_ALU");
-    check(dut->wb_reg_write_en == 0, "Flush_Clears_RegWrite"); 
-    check(dut->wb_is_csr == 0, "Flush_Clears_IsCSR");     
+    check(dut->wb_reg_write_en == 0, "Flush_Clears_RegWrite");
+    check(dut->wb_is_csr == 0, "Flush_Clears_IsCSR");
 
     // 5. Flush Overrides Stall
     dut->flush_en = 0;
     dut->mem_pc = 0x80005000;
     dut->mem_reg_write_en = 1;
-    tick(dut); 
+    tick(dut);
     check(dut->wb_pc == 0x80005000, "Pre_FlushStall_Setup");
 
     dut->flush_en = 1;

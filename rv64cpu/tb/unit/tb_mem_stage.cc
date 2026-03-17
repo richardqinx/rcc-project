@@ -192,7 +192,7 @@ int main(int argc, char** argv) {
     tick(dut);
     check(dut->mem_stall_req == 1, "Stall_On_Req_NotReady");
 
-    dut->dmem_req_ready = 1; 
+    dut->dmem_req_ready = 1;
     dut->dmem_rsp_valid = 0; // Read request accepted, but data not valid yet
     tick(dut);
     check(dut->mem_stall_req == 1, "Stall_On_Rsp_NotValid");
