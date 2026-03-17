@@ -80,7 +80,7 @@ module decoder
     assign opcode   = instr[6:0];
     assign rd_addr  = instr[11:7];
     assign funct3   = instr[14:12];
-    assign rs1_addr = instr[19:15];
+    assign rs1_addr = (opcode == OPCODE_LUI) ? 5'b00000 : instr[19:15];
     assign rs2_addr = instr[24:20];
     assign funct7   = instr[31:25];
 

@@ -64,6 +64,8 @@ int main(int argc, char** argv) {
     dut->id_pc = 0x80001000;
     dut->id_rs1_rdata = 0x11111111;
     dut->id_rs2_rdata = 0x22222222;
+    dut->id_rs1_addr = 31;
+    dut->id_rs2_addr = 15;
     dut->id_imm = 0x1A2B3C;
     dut->id_alu_op = ALU_XOR;
     dut->id_reg_write_en = 1;
@@ -92,6 +94,8 @@ int main(int argc, char** argv) {
     dut->id_pc = 0x80002000;
     dut->id_rs1_rdata = 0xAAAAAAAA;
     dut->id_rs2_rdata = 0xBBBBBBBB;
+    dut->id_rs1_addr = 10;
+    dut->id_rs2_addr = 11;
     dut->id_imm = 42;
     dut->id_alu_op = ALU_ADD;
     dut->id_reg_write_en = 1;
@@ -104,6 +108,8 @@ int main(int argc, char** argv) {
     check(dut->ex_pc == 0x80002000, "Propagate_PC");
     check(dut->ex_rs1_rdata == 0xAAAAAAAA, "Propagate_RS1");
     check(dut->ex_rs2_rdata == 0xBBBBBBBB, "Propagate_RS2");
+    check(dut->ex_rs1_addr == 10, "Propagate_RS1_Addr");
+    check(dut->ex_rs2_addr == 11, "Propagate_RS2_Addr");
     check(dut->ex_imm == 42, "Propagate_IMM");
     check(dut->ex_alu_op == ALU_ADD, "Propagate_ALU_OP");
     check(dut->ex_reg_write_en == 1, "Propagate_RegWriteEn");
@@ -142,7 +148,7 @@ int main(int argc, char** argv) {
     
     tick(dut);
 
-    check(dut->ex_pc == 0x0, "Flush_Clears_PC");
+    check(dut->ex_pc == 0x80003000, "Flush_Maintains_PC");
     check(dut->ex_reg_write_en == 0, "Flush_Clears_RegWrite"); 
     check(dut->ex_is_store == 0, "Flush_Clears_StoreEn");     
     check(dut->ex_is_branch == 0, "Flush_Clears_BranchEn");
@@ -159,7 +165,7 @@ int main(int argc, char** argv) {
     dut->id_pc = 0x80006000;
     tick(dut);
 
-    check(dut->ex_pc == 0x0, "Flush_Overrides_Stall_PC");
+    check(dut->ex_pc == 0x80005000, "Flush_Overrides_Stall_PC");
     check(dut->ex_reg_write_en == 0, "Flush_Overrides_Stall_RegWrite");
 
     std::cout << "----------------------------------" << std::endl;

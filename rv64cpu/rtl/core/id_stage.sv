@@ -38,6 +38,8 @@ module id_stage
     output logic [XLEN-1:0]        id_pc,          // Pass-through PC for branch/jump calculation
     output logic [XLEN-1:0]        id_rs1_rdata,   // Source register 1 data
     output logic [XLEN-1:0]        id_rs2_rdata,   // Source register 2 data
+    output logic [4:0]             id_rs1_addr,    // Rs1 index (for Forwarding & CSR zimm)
+    output logic [4:0]             id_rs2_addr,    // Rs2 index (for Forwarding)
     output logic [XLEN-1:0]        id_imm,         // Sign-extended generic immediate
 
     // Execution Control (ALU & Branch)
@@ -74,8 +76,10 @@ module id_stage
     logic [4:0] rs1_addr;
     logic [4:0] rs2_addr;
 
-    // Pass-through PC directly to next stage
+    // Pass-through PC and reg indices directly to next stage
     assign id_pc = if_pc;
+    assign id_rs1_addr = rs1_addr;
+    assign id_rs2_addr = rs2_addr;
 
     // Instruction Decoder Instantiation
 
