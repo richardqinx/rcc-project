@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
     
     tick(dut);
 
-    check(dut->ex_pc == 0x0, "Flush_Clears_PC");
+    check(dut->ex_pc == 0x80003000, "Flush_Maintains_PC");
     check(dut->ex_reg_write_en == 0, "Flush_Clears_RegWrite"); 
     check(dut->ex_is_store == 0, "Flush_Clears_StoreEn");     
     check(dut->ex_is_branch == 0, "Flush_Clears_BranchEn");
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
     dut->id_pc = 0x80006000;
     tick(dut);
 
-    check(dut->ex_pc == 0x0, "Flush_Overrides_Stall_PC");
+    check(dut->ex_pc == 0x80005000, "Flush_Overrides_Stall_PC");
     check(dut->ex_reg_write_en == 0, "Flush_Overrides_Stall_RegWrite");
 
     std::cout << "----------------------------------" << std::endl;

@@ -107,7 +107,7 @@ module ex_mem_reg
 );
 
     always_ff @(posedge clk) begin
-        if (rst || flush_en) begin
+        if (rst) begin
             mem_alu_result    <= '0;
             mem_branch_taken  <= '0;
             mem_branch_target <= '0;
@@ -138,6 +138,28 @@ module ex_mem_reg
             mem_is_fence      <= '0;
             mem_is_fence_i    <= '0;
 
+        end else if (flush_en) begin
+            // Critical control signals must be zeroed out
+            mem_branch_taken  <= '0;
+            mem_is_load       <= '0;
+            mem_is_store      <= '0;
+            mem_mem_size      <= '0;
+            mem_reg_write_en  <= '0;
+            mem_rd_addr       <= '0;
+            mem_wb_sel        <= '0;
+
+            // Exceptions and system control
+            mem_is_csr        <= '0;
+            mem_csr_op        <= '0;
+            mem_illegal_instr <= '0;
+            mem_is_ecall      <= '0;
+            mem_is_ebreak     <= '0;
+            mem_is_mret       <= '0;
+            mem_is_sret       <= '0;
+            mem_is_wfi        <= '0;
+            mem_is_sfence_vma <= '0;
+            mem_is_fence      <= '0;
+            mem_is_fence_i    <= '0;
         end else if (~stall_en) begin
              mem_alu_result    <= ex_alu_result;
              mem_branch_taken  <= ex_branch_taken;

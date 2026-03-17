@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
     
     tick(dut);
 
-    check(dut->mem_pc == 0x0, "Flush_Clears_PC");
+    check(dut->mem_pc == 0x80003000, "Flush_Maintains_PC");
     check(dut->mem_branch_taken == 0, "Flush_Clears_BranchTaken");
     check(dut->mem_reg_write_en == 0, "Flush_Clears_RegWrite"); 
     check(dut->mem_is_store == 0, "Flush_Clears_StoreEn");     
@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
     dut->ex_branch_taken = 1;
     tick(dut);
 
-    check(dut->mem_pc == 0x0, "Flush_Overrides_Stall_PC");
+    check(dut->mem_pc == 0x80005000, "Flush_Overrides_Stall_PC");
     check(dut->mem_branch_taken == 0, "Flush_Overrides_Stall_BranchTaken");
     check(dut->mem_reg_write_en == 0, "Flush_Overrides_Stall_RegWrite");
     check(dut->mem_is_store == 0, "Flush_Overrides_Stall_Store");

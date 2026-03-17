@@ -113,13 +113,38 @@ module id_ex_reg
 );
 
     always_ff @(posedge clk) begin
-        if (rst || flush_en) begin
+        if (rst) begin
             ex_pc            <= '0;
             ex_rs1_rdata     <= '0;
             ex_rs2_rdata     <= '0;
             ex_rs1_addr      <= '0;
             ex_rs2_addr      <= '0;
             ex_imm           <= '0;
+            ex_alu_op        <= ALU_ADD; // NOP is effectively ADD x0, x0, 0
+            ex_alu_src1_sel  <= '0;
+            ex_alu_src2_sel  <= '0;
+            ex_is_word_op    <= '0;
+            ex_is_branch     <= '0;
+            ex_branch_op     <= BRANCH_EQ;
+            ex_is_jump       <= '0;
+            ex_is_load       <= '0;
+            ex_is_store      <= '0;
+            ex_mem_size      <= '0;
+            ex_reg_write_en  <= '0; // VERY IMPORTANT: Do not write to regfile on NOP
+            ex_rd_addr       <= '0;
+            ex_wb_sel        <= '0;
+            ex_is_csr        <= '0;
+            ex_csr_op        <= '0;
+            ex_illegal_instr <= '0;
+            ex_is_ecall      <= '0;
+            ex_is_ebreak     <= '0;
+            ex_is_mret       <= '0;
+            ex_is_sret       <= '0;
+            ex_is_wfi        <= '0;
+            ex_is_sfence_vma <= '0;
+            ex_is_fence      <= '0;
+            ex_is_fence_i    <= '0;
+        end else if (flush_en) begin
             ex_alu_op        <= ALU_ADD; // NOP is effectively ADD x0, x0, 0
             ex_alu_src1_sel  <= '0;
             ex_alu_src2_sel  <= '0;

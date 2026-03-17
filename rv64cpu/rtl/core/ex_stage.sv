@@ -42,17 +42,17 @@ module ex_stage
     output logic [XLEN-1:0]    ex_branch_target
 );
 
-    logic [XLEN-1:0]    alumux_a;
-    logic [XLEN-1:0]    alumux_b;
+    logic [XLEN-1:0]    alu_mux_a;
+    logic [XLEN-1:0]    alu_mux_b;
     logic [XLEN-1:0]    alu_operand_a;
     logic [XLEN-1:0]    alu_operand_b;
     logic [XLEN-1:0]    alu_raw_result;
-    logic               bu_branch_taken;
+    logic               branch_unit_taken;
 
     // -------------
     // ALU Input Multiplexers (MUX)
-    assign alumux_a = (ex_alu_src1_sel == 1'b1) ? ex_pc : ex_rs1_rdata;
-    assign alumux_b = (ex_alu_src2_sel == 1'b1) ? ex_imm : ex_rs2_rdata;
+    assign alu_mux_a = (ex_alu_src1_sel == 1'b1) ? ex_pc : ex_rs1_rdata;
+    assign alu_mux_b = (ex_alu_src2_sel == 1'b1) ? ex_imm : ex_rs2_rdata;
     
     // -------------
     // RV64 Word Operation (32-bit) Pre-conditioning
@@ -62,21 +62,21 @@ module ex_stage
         if (ex_is_word_op) begin
             // Shift operations require specific 32-bit extension forms
             if (ex_alu_op == ALU_SRA)
-                alu_operand_a = { {32{alumux_a[31]}}, alumux_a[31:0] }; // Sign extend for arithmetic shift
+                alu_operand_a = { {32{alu_mux_a[31]}}, alu_mux_a[31:0] }; // Sign extend for arithmetic shift
             else if (ex_alu_op == ALU_SRL)
-                alu_operand_a = { 32'b0, alumux_a[31:0] };              // Zero extend for logical shift
+                alu_operand_a = { 32'b0, alu_mux_a[31:0] };              // Zero extend for logical shift
             else
-                alu_operand_a = alumux_a;                               // ADDW/SUBW/SLLW don't care about upper bits
+                alu_operand_a = alu_mux_a;                               // ADDW/SUBW/SLLW don't care about upper bits
             
             // RV32 shift amount is strictly 5 bits (0-31), ignoring bit 5 which might be set in 64-bit registers
             if (ex_alu_op == ALU_SLL || ex_alu_op == ALU_SRL || ex_alu_op == ALU_SRA)
-                alu_operand_b = { 59'b0, alumux_b[4:0] };
+                alu_operand_b = { 59'b0, alu_mux_b[4:0] };
             else
-                alu_operand_b = alumux_b;
+                alu_operand_b = alu_mux_b;
         end else begin
             // 64-bit operations pass through unchanged
-            alu_operand_a = alumux_a;
-            alu_operand_b = alumux_b;
+            alu_operand_a = alu_mux_a;
+            alu_operand_b = alu_mux_b;
         end
     end
 
@@ -96,7 +96,7 @@ module ex_stage
         .branch_op    (ex_branch_op),
         .operand_a    (ex_rs1_rdata),
         .operand_b    (ex_rs2_rdata),
-        .branch_taken (bu_branch_taken)
+        .branch_taken (branch_unit_taken)
     );
 
     // ------------- 
@@ -109,6 +109,6 @@ module ex_stage
     // Branch Target Calculation
     assign ex_branch_target = alu_raw_result & ~64'b1;
 
-    assign ex_branch_taken  = ex_is_jump | (ex_is_branch & bu_branch_taken);
+    assign ex_branch_taken  = ex_is_jump | (ex_is_branch & branch_unit_taken);
 
 endmodule
