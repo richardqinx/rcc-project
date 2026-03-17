@@ -25,6 +25,7 @@ module wb_stage
     input  logic [XLEN-1:0]        mem_wb_alu_result,
     input  logic [XLEN-1:0]        mem_wb_mem_rdata,
     input  logic [XLEN-1:0]        mem_wb_pc,
+    input  logic [XLEN-1:0]        mem_wb_pc_plus_4,
     
     input  logic                   mem_wb_reg_write_en,
     input  logic [4:0]             mem_wb_rd_addr,
@@ -46,8 +47,8 @@ module wb_stage
     input  logic [XLEN-1:0]        csr_rdata,         // Data read from CSR unit
 
     // Outputs to Register File
-    output logic [XLEN-1:0]        wb_reg_write_data,
-    output logic [4:0]             wb_reg_write_addr,
+    output logic [XLEN-1:0]        wb_rd_wdata,
+    output logic [4:0]             wb_rd_addr,
     output logic                   wb_reg_write_en,
 
     // Outputs to CSR Unit
@@ -66,9 +67,15 @@ module wb_stage
 );
 
     // --------------------------
+    // Exception/Trap Detection
+    // --------------------------
+    logic has_trap;
+    assign has_trap = mem_wb_illegal_instr | mem_wb_is_ecall | mem_wb_is_ebreak;
+
+    // --------------------------
     // CSR Signal Routing
     // --------------------------
-    assign csr_req  = mem_wb_is_csr;
+    assign csr_req  = mem_wb_is_csr & ~has_trap;
     assign csr_op   = mem_wb_csr_op;
     assign csr_addr = mem_wb_imm[11:0];
     
@@ -83,13 +90,13 @@ module wb_stage
     always_comb begin
         if (mem_wb_is_csr) begin
             // CSR reads write the previous CSR value to the destination register
-            wb_reg_write_data = csr_rdata;
+            wb_rd_wdata = csr_rdata;
         end else begin
             case (mem_wb_wb_sel)
-                2'b00: wb_reg_write_data = mem_wb_alu_result;
-                2'b01: wb_reg_write_data = mem_wb_mem_rdata;
-                2'b10: wb_reg_write_data = mem_wb_pc + 64'd4;
-                default: wb_reg_write_data = '0;
+                2'b00: wb_rd_wdata = mem_wb_alu_result;
+                2'b01: wb_rd_wdata = mem_wb_mem_rdata;
+                2'b10: wb_rd_wdata = mem_wb_pc_plus_4;
+                default: wb_rd_wdata = '0;
             endcase
         end
     end
@@ -98,10 +105,8 @@ module wb_stage
     // Register File Write Control
     // --------------------------
     // We only write back if the instruction didn't trap.
-    // For now, assume pure write-enable propagation.
-    // A future trap controller might kill wb_reg_write_en if taking a trap.
-    assign wb_reg_write_addr  = mem_wb_rd_addr;
-    assign wb_reg_write_en    = mem_wb_reg_write_en;
+    assign wb_rd_addr      = mem_wb_rd_addr;
+    assign wb_reg_write_en = mem_wb_reg_write_en & ~has_trap;
 
     // --------------------------
     // Trap / Exception Signals

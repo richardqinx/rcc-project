@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
     dut->mem_wb_alu_result = 0xAA55AA55;
     dut->mem_wb_mem_rdata = 0x11223344;
     dut->mem_wb_pc = 0x80000000;
+    dut->mem_wb_pc_plus_4 = 0x80000004;
     dut->mem_wb_reg_write_en = 1;
     dut->mem_wb_rd_addr = 5;
     dut->mem_wb_wb_sel = 0; // ALU
@@ -54,20 +55,20 @@ int main(int argc, char** argv) {
 
     tick(dut);
 
-    check(dut->wb_reg_write_data == 0xAA55AA55, "WB_Sel_ALU");
-    check(dut->wb_reg_write_addr == 5, "WB_RdAddr");
+    check(dut->wb_rd_wdata == 0xAA55AA55, "WB_Sel_ALU");
+    check(dut->wb_rd_addr == 5, "WB_RdAddr");
     check(dut->wb_reg_write_en == 1, "WB_RegWriteEn");
     check(dut->csr_req == 0, "CSR_Req_0");
 
     // 2. Memory read writeback
     dut->mem_wb_wb_sel = 1; // MEM
     tick(dut);
-    check(dut->wb_reg_write_data == 0x11223344, "WB_Sel_MEM");
+    check(dut->wb_rd_wdata == 0x11223344, "WB_Sel_MEM");
 
     // 3. PC+4 writeback (JAL/JALR)
     dut->mem_wb_wb_sel = 2; // PC+4
     tick(dut);
-    check(dut->wb_reg_write_data == 0x80000004, "WB_Sel_PC_Plus_4");
+    check(dut->wb_rd_wdata == 0x80000004, "WB_Sel_PC_Plus_4");
 
     // 4. CSR Read/Write (e.g. CSRRS)
     dut->mem_wb_is_csr = 1;
@@ -80,7 +81,7 @@ int main(int argc, char** argv) {
 
     tick(dut);
 
-    check(dut->wb_reg_write_data == 0x00001800, "CSR_Read_To_Reg");
+    check(dut->wb_rd_wdata == 0x00001800, "CSR_Read_To_Reg");
     check(dut->csr_req == 1, "CSR_Req_1");
     check(dut->csr_op == 2, "CSR_Op_Propagated");
     check(dut->csr_addr == 0x300, "CSR_Addr_Extracted");
@@ -105,6 +106,8 @@ int main(int argc, char** argv) {
     check(dut->trap_is_mret == 1, "Trap_MRET");
     check(dut->trap_is_sret == 1, "Trap_SRET");
     check(dut->trap_epc == 0x80000000, "Trap_EPC");
+    check(dut->wb_reg_write_en == 0, "Trap_Gates_RegWriteEn");
+    check(dut->csr_req == 0, "Trap_Gates_CSR_Req");
 
     std::cout << "----------------------------------" << std::endl;
     std::cout << "\033[32mAll " << pass_count << " tests passed!\033[0m" << std::endl;
