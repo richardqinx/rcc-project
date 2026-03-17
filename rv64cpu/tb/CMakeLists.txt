@@ -173,14 +173,30 @@ add_verilator_target(
 # ═══════════════════════════════════════════════════════════════════════════════════
 # Core Integration Test
 # ═══════════════════════════════════════════════════════════════════════════════════
-#
-# add_verilator_target(
-#     NAME        tb_core
-#     TOP_MODULE  richard_core
-#     SOURCES     ${ALL_RTL_SOURCES}
-#     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/core/tb_core.cc
-# )
+
+add_verilator_target(
+    NAME        tb_core
+    TOP_MODULE  richard_core
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/alu.sv
+                ${RTL_CORE_DIR}/branch_unit.sv
+                ${RTL_CORE_DIR}/decoder.sv
+                ${RTL_CORE_DIR}/regfile.sv
+                ${RTL_CORE_DIR}/if_stage.sv
+                ${RTL_CORE_DIR}/if_id_reg.sv
+                ${RTL_CORE_DIR}/id_stage.sv
+                ${RTL_CORE_DIR}/id_ex_reg.sv
+                ${RTL_CORE_DIR}/ex_stage.sv
+                ${RTL_CORE_DIR}/ex_mem_reg.sv
+                ${RTL_CORE_DIR}/mem_stage.sv
+                ${RTL_CORE_DIR}/mem_wb_reg.sv
+                ${RTL_CORE_DIR}/wb_stage.sv
+                ${RTL_CORE_DIR}/hazard_unit.sv
+                ${RTL_CORE_DIR}/richard_core.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/core/tb_core.cc
+    EXTRA_FLAGS -Wno-PINCONNECTEMPTY
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # SoC Integration Test
