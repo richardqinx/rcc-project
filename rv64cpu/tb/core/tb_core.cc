@@ -28,7 +28,7 @@
 #include <verilated.h>
 #include "Vrichard_core.h"
 
-#ifdef VM_TRACE
+#if VM_TRACE
 #include <verilated_vcd_c.h>
 #endif
 
@@ -149,13 +149,13 @@ public:
     Vrichard_core* top;
     MemoryModel mem;
     uint64_t sim_time;
-#ifdef VM_TRACE
+#if VM_TRACE
     VerilatedVcdC* tfp;
 #endif
 
     CoreSim() : sim_time(0) {
         top = new Vrichard_core;
-#ifdef VM_TRACE
+#if VM_TRACE
         Verilated::traceEverOn(true);
         tfp = new VerilatedVcdC;
         top->trace(tfp, 99);
@@ -164,7 +164,7 @@ public:
     }
 
     ~CoreSim() {
-#ifdef VM_TRACE
+#if VM_TRACE
         if (tfp) { tfp->close(); delete tfp; }
 #endif
         delete top;
@@ -194,13 +194,13 @@ public:
         // Rising edge
         top->clk = 0;
         top->eval();
-#ifdef VM_TRACE
+#if VM_TRACE
         tfp->dump(sim_time++);
 #endif
 
         top->clk = 1;
         top->eval();
-#ifdef VM_TRACE
+#if VM_TRACE
         tfp->dump(sim_time++);
 #endif
 
