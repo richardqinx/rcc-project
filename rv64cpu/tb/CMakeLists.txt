@@ -141,6 +141,15 @@ add_verilator_target(
     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_mem_wb_reg.cc
 )
+
+add_verilator_target(
+    NAME        tb_wb_stage
+    TOP_MODULE  wb_stage
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/wb_stage.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_wb_stage.cc
+)
 #
 # add_verilator_target(
 #     NAME        tb_csr
