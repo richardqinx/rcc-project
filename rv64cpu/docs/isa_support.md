@@ -14,14 +14,22 @@ Equivalent to `RV64IMAFDCZicsr_Zifencei`
 
 | Extension | Full Name | Status | Description |
 |---|---|---|---|
-| **I** | Base Integer (RV64I) | 🔴 Not implemented | 64-bit base integer instruction set |
+| **I** | Base Integer (RV64I) | 🟡 In progress | Five-stage RV64I pipeline, ALU, and branch unit implemented and covered by unit tests ([rtl/core/alu.sv](rtl/core/alu.sv), [tb/unit/tb_alu.cc](tb/unit/tb_alu.cc), [tb/unit/tb_branch.cc](tb/unit/tb_branch.cc)) |
 | **M** | Multiply/Divide | 🔴 Not implemented | Multiply, divide, remainder |
 | **A** | Atomic | 🔴 Not implemented | LR/SC, AMO atomic instructions |
 | **F** | Single-Precision Float | 🔴 Not implemented | 32-bit IEEE 754 floating-point |
 | **D** | Double-Precision Float | 🔴 Not implemented | 64-bit IEEE 754 floating-point |
 | **C** | Compressed | 🔴 Not implemented | 16-bit compressed instructions |
-| **Zicsr** | CSR Instructions | 🔴 Not implemented | CSRRW/CSRRS/CSRRC/CSRRWI/CSRRSI/CSRRCI |
-| **Zifencei** | Instruction Fence | 🔴 Not implemented | FENCE.I instruction |
+| **Zicsr** | CSR Instructions | 🟢 Implemented | Full CSR unit with delegation, FCSR, and dedicated testbench ([rtl/core/csr_unit.sv](rtl/core/csr_unit.sv), [tb/unit/tb_csr.cc](tb/unit/tb_csr.cc)) |
+| **Zifencei** | Instruction Fence | 🟡 Decoding only | Decoder recognizes FENCE.I; cache invalidation hookup pending |
+
+---
+
+## Recent Progress Highlights (2026-03)
+
+- **CSR subsystem**: `csr_unit` now handles delegation, privilege transitions, and floating-point CSRs, verified by [tb/unit/tb_csr.cc](tb/unit/tb_csr.cc).
+- **Integer execution path**: ALU, branch, and decode paths for RV64I arithmetic/logic instructions are implemented with passing unit tests ([tb/unit/tb_alu.cc](tb/unit/tb_alu.cc), [tb/unit/tb_branch.cc](tb/unit/tb_branch.cc)).
+- **Decoder coverage**: Load/store, immediate, and system opcode paths exist with clear TODO markers for upcoming M/A/F extensions, see [rtl/core/decoder.sv](rtl/core/decoder.sv).
 
 ---
 
