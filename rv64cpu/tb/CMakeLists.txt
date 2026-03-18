@@ -159,6 +159,16 @@ add_verilator_target(
     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_hazard_unit.cc
 )
+
+add_verilator_target(
+    NAME        tb_trap_ctrl
+    TOP_MODULE  trap_ctrl
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/include/csr_pkg.sv
+                ${RTL_CORE_DIR}/trap_ctrl.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_trap_ctrl.cc
+)
 #
 add_verilator_target(
     NAME        tb_csr
