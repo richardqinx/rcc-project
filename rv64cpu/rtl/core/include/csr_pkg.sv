@@ -28,6 +28,13 @@ package csr_pkg;
     } csr_op_t;
 
     // ---------------------------------
+    // Floating-Point CSRs
+    // ---------------------------------
+    localparam logic [11:0]     CSR_FFLAGS   = 12'h001;    // Floating-Point accrued exception flags
+    localparam logic [11:0]     CSR_FRM      = 12'h002;    // Floating-Point dynamic rounding mode
+    localparam logic [11:0]     CSR_FCSR     = 12'h003;    // Combined fflags/frm register
+
+    // ---------------------------------
     // Machine Mode CSRs (M-Mode)
     // ---------------------------------
     localparam logic [11:0]     CSR_MVENDORID = 12'hF11;    // Vendor ID

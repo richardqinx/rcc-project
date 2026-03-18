@@ -154,6 +154,19 @@ module richard_core
     logic [11:0]       csr_addr;
     logic [XLEN-1:0]   csr_rs1_data;
     logic [XLEN-1:0]   csr_rdata; // Result from CSR unit
+    logic [1:0]        csr_priv_mode_cur;
+    logic [XLEN-1:0]   csr_mtvec_base;
+    logic [XLEN-1:0]   csr_stvec_base;
+    logic [XLEN-1:0]   csr_mstatus_value;
+    logic [XLEN-1:0]   csr_sstatus_value;
+    logic [XLEN-1:0]   csr_medeleg_value;
+    logic [XLEN-1:0]   csr_mideleg_value;
+    logic [XLEN-1:0]   csr_mepc_value;
+    logic [XLEN-1:0]   csr_sepc_value;
+    logic [XLEN-1:0]   csr_satp_value;
+    logic [XLEN-1:0]   csr_trap_vector_value;
+    logic              csr_trap_to_s_mode_flag;
+    logic              csr_illegal_access_flag;
 
     // (11) Exception / Trap bus
     logic              trap_illegal_instr, trap_is_ecall, trap_is_ebreak, trap_is_mret, trap_is_sret;
@@ -551,6 +564,33 @@ module richard_core
         .trap_epc           (trap_epc)
     );
 
-    assign csr_rdata = 64'b0;
+    csr_unit u_csr_unit (
+        .clk                (clk),
+        .rst                (rst),
+        .csr_req            (csr_req),
+        .csr_op             (csr_op),
+        .csr_addr           (csr_addr),
+        .csr_rs1_data       (csr_rs1_data),
+        .trap_illegal_instr (trap_illegal_instr),
+        .trap_is_ecall      (trap_is_ecall),
+        .trap_is_ebreak     (trap_is_ebreak),
+        .trap_is_mret       (trap_is_mret),
+        .trap_is_sret       (trap_is_sret),
+        .trap_epc           (trap_epc),
+        .csr_rdata          (csr_rdata),
+        .csr_mstatus        (csr_mstatus_value),
+        .csr_sstatus        (csr_sstatus_value),
+        .csr_medeleg        (csr_medeleg_value),
+        .csr_mideleg        (csr_mideleg_value),
+        .csr_mtvec          (csr_mtvec_base),
+        .csr_stvec          (csr_stvec_base),
+        .csr_mepc           (csr_mepc_value),
+        .csr_sepc           (csr_sepc_value),
+        .csr_satp           (csr_satp_value),
+        .csr_priv_mode      (csr_priv_mode_cur),
+        .csr_trap_vector    (csr_trap_vector_value),
+        .csr_trap_to_s_mode (csr_trap_to_s_mode_flag),
+        .csr_illegal_access (csr_illegal_access_flag)
+    );
 
 endmodule

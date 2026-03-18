@@ -160,15 +160,15 @@ add_verilator_target(
     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_hazard_unit.cc
 )
 #
-# add_verilator_target(
-#     NAME        tb_csr
-#     TOP_MODULE  csr_unit
-#     SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
-#                 ${RTL_CORE_DIR}/include/csr_pkg.sv
-#                 ${RTL_CORE_DIR}/csr_unit.sv
-#     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_csr.cc
-# )
+add_verilator_target(
+    NAME        tb_csr
+    TOP_MODULE  csr_unit
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/include/csr_pkg.sv
+                ${RTL_CORE_DIR}/csr_unit.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_csr.cc
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # Core Integration Test
@@ -192,6 +192,8 @@ add_verilator_target(
                 ${RTL_CORE_DIR}/mem_wb_reg.sv
                 ${RTL_CORE_DIR}/wb_stage.sv
                 ${RTL_CORE_DIR}/hazard_unit.sv
+                ${RTL_CORE_DIR}/include/csr_pkg.sv
+                ${RTL_CORE_DIR}/csr_unit.sv
                 ${RTL_CORE_DIR}/richard_core.sv
     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/core/tb_core.cc
