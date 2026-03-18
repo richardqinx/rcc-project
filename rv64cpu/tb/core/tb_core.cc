@@ -53,6 +53,21 @@ static uint32_t rv_s_type(uint32_t imm12, uint32_t rs2, uint32_t rs1, uint32_t f
     return (imm_hi << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm_lo << 7) | opcode;
 }
 
+// U-type: imm[31:12] | rd[4:0] | opcode[6:0]
+static uint32_t rv_u_type(uint32_t imm20, uint32_t rd, uint32_t opcode) {
+    return ((imm20 & 0xFFFFF) << 12) | (rd << 7) | opcode;
+}
+
+// J-type: imm[20] | imm[10:1] | imm[11] | imm[19:12] | rd[4:0] | opcode[6:0]
+static uint32_t rv_j_type(int32_t offset, uint32_t rd, uint32_t opcode) {
+    uint32_t imm = static_cast<uint32_t>(offset);
+    uint32_t bit20    = (imm >> 20) & 0x1;
+    uint32_t bit10_1  = (imm >> 1)  & 0x3FF;
+    uint32_t bit11    = (imm >> 11) & 0x1;
+    uint32_t bit19_12 = (imm >> 12) & 0xFF;
+    return (bit20 << 31) | (bit10_1 << 21) | (bit11 << 20) | (bit19_12 << 12) | (rd << 7) | opcode;
+}
+
 // B-type: imm[12|10:5] | rs2[4:0] | rs1[4:0] | funct3[2:0] | imm[4:1|11] | opcode[6:0]
 static uint32_t rv_b_type(int32_t offset, uint32_t rs2, uint32_t rs1, uint32_t funct3, uint32_t opcode) {
     uint32_t imm = static_cast<uint32_t>(offset);
@@ -86,6 +101,12 @@ static uint32_t BEQ(uint32_t rs1, uint32_t rs2, int32_t offset) {
 }
 static uint32_t BNE(uint32_t rs1, uint32_t rs2, int32_t offset) {
     return rv_b_type(offset, rs2, rs1, 0x1, 0x63);
+}
+static uint32_t LUI(uint32_t rd, uint32_t imm) {
+    return rv_u_type(imm, rd, 0x37);
+}
+static uint32_t JAL(uint32_t rd, int32_t offset) {
+    return rv_j_type(offset, rd, 0x6f);
 }
 
 // -----------------------
@@ -574,6 +595,41 @@ void test_reset_mid_execution(CoreSim& sim) {
     ASSERT_EQ(sim.top->dmem_write_en, 0, "Mid-reset: no dmem write");
 }
 
+// Test 13: RV64 Fibonacci Sequence Integration Test
+void test_fibonacci(CoreSim& sim) {
+    std::cout << "Test 13: RV64 Fibonacci Sequence..." << std::endl;
+
+    std::vector<uint32_t> program = {
+        ADDI(5, 0, 10),      // addi x5, x0, 10
+        LUI(6, 0x10000),     // lui  x6, 0x10000
+        ADDI(7, 0, 0),       // addi x7, x0, 0
+        ADDI(8, 0, 1),       // addi x8, x0, 1
+        BEQ(5, 0, 32),       // beq  x5, x0, 32
+        SD(7, 6, 0),         // sd   x7, 0(x6)
+        ADD(9, 7, 8),        // add  x9, x7, x8
+        ADDI(7, 8, 0),       // addi x7, x8, 0
+        ADDI(8, 9, 0),       // addi x8, x9, 0
+        ADDI(6, 6, 8),       // addi x6, x6, 8
+        ADDI(5, 5, -1),      // addi x5, x5, -1
+        JAL(0, -28),         // jal  x0, -28      
+        JAL(0, 0)            // jal  x0, 0        
+    };
+    
+    sim.mem.load_program(0x80000000ULL, program);
+    sim.reset();
+
+    sim.run(200);
+
+    uint64_t expected_fib[10] = {0, 1, 1, 2, 3, 5, 8, 13, 21, 34};
+    
+    for (int i = 0; i < 10; i++) {
+        uint64_t addr = 0x10000000ULL + (i * 8);
+        uint64_t actual_val = sim.mem.read_data(addr); 
+        
+        ASSERT_EQ(actual_val, expected_fib[i], "Fibonacci value mismatch");
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Main
 // ═══════════════════════════════════════════════════════════════
@@ -632,6 +688,11 @@ int main(int argc, char** argv) {
     {
         CoreSim sim;
         test_reset_mid_execution(sim);
+    }
+
+    {
+        CoreSim sim;
+        test_fibonacci(sim);
     }
 
     std::cout << "================================================================" << std::endl;

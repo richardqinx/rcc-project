@@ -122,6 +122,7 @@ int main(int argc, char** argv) {
     
     // Apply reset
     dut->rst = 1;
+    dut->reg_write_en = 0; // Clear write enable from previous test
     tick(dut);
     dut->rst = 0;
 
@@ -139,21 +140,21 @@ int main(int argc, char** argv) {
     std::cout << "\033[32m[PASS] Full memory reset verified\033[0m" << std::endl;
 
     // Test 7: Read-After-Write (Same cycle collision check)
-    // Combinational read should return the OLD value on the cycle WE is asserted
-    // NOTE: Verilator handles combinational loops. Before the clock edge, it evaluates.
-    dut->reg_write_en = 1;
+    // With internal bypass added, combinational read should return the NEW bypassed value immediately.
+    dut->reg_write_en = 0;
     dut->rd_addr = 15;
-    dut->rd_wdata = 0x55555555; // Pseudo
+    dut->rd_wdata = 0x55555555; 
+    tick(dut); // Write 0x55555555 to x15 to set old value
     
     // Setup for RAW
     dut->reg_write_en = 1;
     dut->rd_addr = 15;
     dut->rd_wdata = 0x99999999;
     
-    // Before tick, read should be 0 (from previous reset)
+    // Before tick, read should be the new bypassed value (0x99999999)
     dut->rs1_addr = 15;
     dut->eval();
-    assert(dut->rs1_rdata == 0); 
+    assert(dut->rs1_rdata == 0x99999999); 
     
     tick(dut); // Clock edge happens
     

@@ -41,8 +41,15 @@ module regfile
     logic [XLEN-1:0] regs [0:31];
 
     // Read Logic (combinational logic)
-    assign rs1_rdata = (rs1_addr == 5'b0) ? '0 : regs[rs1_addr];
-    assign rs2_rdata = (rs2_addr == 5'b0) ? '0 : regs[rs2_addr];
+    // Internal bypass: If reading the same register as currently being written, 
+    // forward the write data immediately.
+    assign rs1_rdata = (rs1_addr == 5'b0) ? '0 : 
+                       ((rs1_addr == rd_addr) && reg_write_en) ? rd_wdata : 
+                       regs[rs1_addr];
+                       
+    assign rs2_rdata = (rs2_addr == 5'b0) ? '0 : 
+                       ((rs2_addr == rd_addr) && reg_write_en) ? rd_wdata : 
+                       regs[rs2_addr];
 
     // Write Logic (sequential logic)
     always_ff @(posedge clk) begin
