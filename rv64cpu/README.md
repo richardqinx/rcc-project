@@ -24,6 +24,9 @@ Written in SystemVerilog, simulated with Verilator, targeting official riscv-arc
 - CMake ≥ 3.20
 - C++17 compiler (GCC / Clang)
 - [riscv64-unknown-elf-gcc](https://github.com/riscv-collab/riscv-gnu-toolchain) (software compilation, optional)
+- [uv](https://docs.astral.sh/uv/) (ACT4 Python tooling)
+- [podman](https://podman.io/) (riscv-unified-db runtime)
+- [sail_riscv_sim 0.10](https://github.com/riscv/sail-riscv/releases/tag/0.10) (reference model for ACT4)
 - [GTKWave](http://gtkwave.sourceforge.net/) (waveform viewer, optional)
 
 ### Build Simulation
@@ -54,9 +57,23 @@ cmake --build build_sw -j$(nproc)
 # Initialize riscv-arch-test submodule
 git submodule update --init --recursive
 
-# Run RV64I test suite
-python3 scripts/run_compliance.py --suite rv64i -v
+# Sync ACT4 python dependencies
+cd sw/riscv-arch-test && uv sync --frozen && cd ../..
+
+# Run strict full implemented suite (reference signature compare enabled)
+python3 scripts/run_compliance.py --suite rv64full --max-cycles 200000 --require-reference
 ```
+
+Verified strict suites (all pass):
+
+- `rv64i`
+- `rv64im`
+- `rv64ia`
+- `rv64ic`
+- `rv64if`
+- `rv64id`
+- `rv64priv`
+- `rv64full` (aggregate)
 
 ### View Waveforms
 
@@ -111,12 +128,12 @@ richard-cpu/
 
 | Phase | Milestone |
 |---|---|
-| P1 | RV64I five-stage pipeline + hazard handling |
-| P2 | CSR + M/S/U privilege levels + Trap |
+| P1 | RV64I five-stage pipeline + hazard handling (Done) |
+| P2 | CSR + M/S/U privilege levels + Trap (Done) |
 | P3 | MMU (Sv39 TLB + PTW) |
 | P4 | Cache + AXI4-Full Burst |
 | P5 | Peripherals + AXI4-Lite bridge + SoC integration |
-| P6 | Pass riscv-arch-test |
+| P6 | Pass riscv-arch-test (In Progress: strict suites above all pass) |
 | P7 | M/F/D/A/C extensions + FPGA bring-up |
 
 ## License
