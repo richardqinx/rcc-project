@@ -28,6 +28,7 @@ namespace {
 constexpr uint64_t EXC_INST_ILLEGAL   = 2ULL;
 constexpr uint64_t EXC_ECALL_FROM_S   = 9ULL;
 constexpr uint64_t EXC_LOAD_PAGE_FAULT= 13ULL;
+constexpr uint64_t EXC_STORE_PAGE_FAULT= 15ULL;
 constexpr uint64_t EXC_LOAD_FAULT     = 5ULL;
 constexpr uint64_t EXC_STORE_FAULT    = 7ULL;
 
@@ -124,8 +125,15 @@ int main(int argc, char** argv) {
     dut->trap_load_page_fault = 1;
     dut->trap_bad_addr = 0xBADC0FFEE0ULL;
     dut->eval();
-    check(dut->trap_mcause == EXC_LOAD_PAGE_FAULT, "PageFault_Mcause");
-    check(dut->trap_mtval == 0xBADC0FFEE0ULL, "PageFault_Mtval");
+    check(dut->trap_mcause == EXC_LOAD_PAGE_FAULT, "LoadPageFault_Mcause");
+    check(dut->trap_mtval == 0xBADC0FFEE0ULL, "LoadPageFault_Mtval");
+
+    drive_defaults(dut);
+    dut->trap_store_page_fault = 1;
+    dut->trap_bad_addr = 0xDEADBEEF00ULL;
+    dut->eval();
+    check(dut->trap_mcause == EXC_STORE_PAGE_FAULT, "StorePageFault_Mcause");
+    check(dut->trap_mtval == 0xDEADBEEF00ULL, "StorePageFault_Mtval");
 
     drive_defaults(dut);
     dut->trap_load_fault = 1;
