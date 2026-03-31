@@ -4,18 +4,35 @@
 #
 # ─────────────────────────────────────────────────────────────────────────────────
 
-# The compliance runner needs the SoC sim binary
-# Uncomment when both the SoC and compliance_runner are implemented:
-#
-# add_verilator_target(
-#     NAME        compliance_runner
-#     TOP_MODULE  richard_soc
-#     SOURCES     ${ALL_RTL_SOURCES}
-#     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
-#     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/compliance_runner.cpp
-#     EXTRA_FLAGS --threads 2
-# )
-#
+# Minimal compliance runner target (core-only for bootstrap stage).
+# NOTE: This uses richard_core until SoC top and memory/peripheral harness are ready.
+add_verilator_target(
+	NAME        compliance_runner
+	TOP_MODULE  richard_core
+	SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+				${RTL_CORE_DIR}/alu.sv
+				${RTL_CORE_DIR}/branch_unit.sv
+				${RTL_CORE_DIR}/decoder.sv
+				${RTL_CORE_DIR}/regfile.sv
+				${RTL_CORE_DIR}/if_stage.sv
+				${RTL_CORE_DIR}/if_id_reg.sv
+				${RTL_CORE_DIR}/id_stage.sv
+				${RTL_CORE_DIR}/id_ex_reg.sv
+				${RTL_CORE_DIR}/ex_stage.sv
+				${RTL_CORE_DIR}/ex_mem_reg.sv
+				${RTL_CORE_DIR}/mem_stage.sv
+				${RTL_CORE_DIR}/mem_wb_reg.sv
+				${RTL_CORE_DIR}/wb_stage.sv
+				${RTL_CORE_DIR}/hazard_unit.sv
+				${RTL_CORE_DIR}/include/csr_pkg.sv
+				${RTL_CORE_DIR}/csr_unit.sv
+				${RTL_CORE_DIR}/trap_ctrl.sv
+				${RTL_CORE_DIR}/richard_core.sv
+	INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+	TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/compliance_runner.cc
+	EXTRA_FLAGS -Wno-PINCONNECTEMPTY
+)
+
 # ─── Register individual compliance tests via CTest ──────────────────────────────
 # This is done dynamically by the compliance_runner binary and run_compliance.py.
 # You can also manually register tests like:

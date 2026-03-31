@@ -233,5 +233,5 @@ add_test(NAME tb_core_mie_masking COMMAND $<TARGET_FILE:tb_core> --case mie_mask
 # ═══════════════════════════════════════════════════════════════════════════════════
 # Compliance Tests
 # ═══════════════════════════════════════════════════════════════════════════════════
-#
-# add_subdirectory(compliance)
+
+add_subdirectory(compliance)
