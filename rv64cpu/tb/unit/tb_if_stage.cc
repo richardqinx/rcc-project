@@ -51,8 +51,9 @@ int main(int argc, char** argv) {
 
     // --- 1. Init / Reset ---
     dut->stall_en = 0;
-    dut->ex_branch_taken = 0;
-    dut->ex_branch_target = 0;
+    dut->pc_redirect_sel = 0;
+    dut->pc_redirect_target = 0;
+    dut->pc_redirect_is_trap = 0;
     
     dut->rst = 1;
     tick(dut);
@@ -78,13 +79,14 @@ int main(int argc, char** argv) {
     check_pc(0x8000000CULL, dut->if_pc, "Release_Stall_Normal_Increment");
 
     // --- 4. Branch Taken ---
-    dut->ex_branch_taken = 1;
-    dut->ex_branch_target = 0x80000100ULL;
+    dut->pc_redirect_sel = 1;
+    dut->pc_redirect_is_trap = 0;
+    dut->pc_redirect_target = 0x80000100ULL;
     tick(dut);
     check_pc(0x80000100ULL, dut->if_pc, "Branch_Taken_Updates_PC");
 
     // Return to normal
-    dut->ex_branch_taken = 0;
+    dut->pc_redirect_sel = 0;
     tick(dut);
     check_pc(0x80000104ULL, dut->if_pc, "Post_Branch_Normal_Increment");
 
@@ -92,8 +94,9 @@ int main(int argc, char** argv) {
     // If a branch is taken but the pipeline is stalled, the PC should freeze.
     // However, if the stall clears later, the branch target should theoretically be taken. 
     // In our RV64 simple pipeline design, stall_en freezes the PC reg completely. 
-    dut->ex_branch_taken = 1;
-    dut->ex_branch_target = 0x80000200ULL;
+    dut->pc_redirect_sel = 1;
+    dut->pc_redirect_is_trap = 0;
+    dut->pc_redirect_target = 0x80000200ULL;
     dut->stall_en = 1;
     tick(dut);
     check_pc(0x80000104ULL, dut->if_pc, "Stall_Overrides_Branch_Target_Load");
@@ -101,6 +104,24 @@ int main(int argc, char** argv) {
     dut->stall_en = 0;
     tick(dut);
     check_pc(0x80000200ULL, dut->if_pc, "Branch_Target_Loaded_After_Stall_Clears");
+
+    // --- 6. Trap redirect overrides stall ---
+    dut->pc_redirect_sel = 0;
+    dut->pc_redirect_is_trap = 0;
+    dut->pc_redirect_target = 0;
+
+    dut->stall_en = 1;
+    dut->pc_redirect_sel = 1;
+    dut->pc_redirect_is_trap = 1;
+    dut->pc_redirect_target = 0x80000300ULL;
+    tick(dut);
+    check_pc(0x80000300ULL, dut->if_pc, "Trap_Overrides_Stall");
+
+    dut->stall_en = 0;
+    dut->pc_redirect_sel = 0;
+    dut->pc_redirect_is_trap = 0;
+    tick(dut);
+    check_pc(0x80000304ULL, dut->if_pc, "Resume_After_Trap");
 
     std::cout << "----------------------------------" << std::endl;
     std::cout << "\033[32mAll tests passed!\033[0m" << std::endl;

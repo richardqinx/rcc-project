@@ -34,8 +34,15 @@ module richard_core
     output logic [63:0] dmem_addr,
     output logic [63:0] dmem_wdata,
     output logic [2:0]  dmem_size,
-    input  logic [63:0] dmem_rdata
+    input  logic [63:0] dmem_rdata,
+
+    // Interface 3: External Interrupt Sources
+    input  logic        ext_timer_int,
+    input  logic        ext_software_int,
+    input  logic        ext_external_int
 );
+    localparam int CSR_MSTATUS_MIE_BIT = 3;
+
     // -----------------------
     // Internal Wire Declarations
     // -----------------------
@@ -44,6 +51,8 @@ module richard_core
     logic [1:0]        hu_forward_a_sel, hu_forward_b_sel;
     logic              hu_if_stall_en, hu_if_id_stall_en, hu_id_ex_stall_en, hu_ex_mem_stall_en;
     logic              hu_if_id_flush_en, hu_id_ex_flush_en;
+    logic              hu_pc_redirect_sel, hu_pc_redirect_is_trap;
+    logic [XLEN-1:0]   hu_pc_redirect_target;
 
     // (2) IF Stage Outputs
     logic [XLEN-1:0]   if_pc_out;
@@ -74,6 +83,7 @@ module richard_core
 
     // (5) ID/EX Pipeline Register Outputs
     logic [XLEN-1:0]   ex_pc_in;
+    logic [INST_WIDTH-1:0] ex_instr_in;
     logic [XLEN-1:0]   ex_rs1_rdata_in, ex_rs2_rdata_in;
     logic [4:0]        ex_rs1_addr_in, ex_rs2_addr_in;
     logic [XLEN-1:0]   ex_imm_in;
@@ -99,6 +109,7 @@ module richard_core
 
     // (7) EX/MEM Pipeline Register Outputs
     logic [XLEN-1:0]   mem_pc_in;
+    logic [INST_WIDTH-1:0] mem_instr_in;
     logic [XLEN-1:0]   mem_alu_result_in;
     logic              mem_branch_taken_in;
     logic [XLEN-1:0]   mem_branch_target_in;
@@ -119,6 +130,7 @@ module richard_core
     logic [XLEN-1:0]   mw_reg_alu_result_in;
     logic [XLEN-1:0]   mw_reg_mem_rdata_in;
     logic [XLEN-1:0]   mw_reg_pc_in;
+    logic [INST_WIDTH-1:0] mw_reg_instr_in;
     logic [7:0]        mw_reg_dmem_wstrb_in;
     logic              mw_reg_reg_write_en_in;
     logic [4:0]        mw_reg_rd_addr_in;
@@ -129,12 +141,15 @@ module richard_core
     logic [4:0]        mw_reg_rs1_addr_in;
     logic [XLEN-1:0]   mw_reg_imm_in;
     logic              mw_reg_illegal_instr_in, mw_reg_is_ecall_in, mw_reg_is_ebreak_in, mw_reg_is_mret_in, mw_reg_is_sret_in;
+    logic              mw_reg_load_fault_in, mw_reg_store_fault_in;
+    logic [XLEN-1:0]   mw_reg_fault_addr_in;
     logic              mem_stall_req;
 
     // (9) MEM/WB Pipeline Register Outputs
     logic [XLEN-1:0]   wb_pc_in;
     logic [XLEN-1:0]   wb_alu_result_in;
     logic [XLEN-1:0]   wb_mem_rdata_in;
+    logic [INST_WIDTH-1:0] wb_instr_in;
     logic              wb_reg_write_en_in;
     logic [4:0]        wb_rd_addr_in;
     logic [1:0]        wb_wb_sel_in;
@@ -144,6 +159,8 @@ module richard_core
     logic [4:0]        wb_rs1_addr_in;
     logic [XLEN-1:0]   wb_imm_in;
     logic              wb_illegal_instr_in, wb_is_ecall_in, wb_is_ebreak_in, wb_is_mret_in, wb_is_sret_in;
+    logic              wb_load_fault_flag, wb_store_fault_flag;
+    logic [XLEN-1:0]   wb_fault_addr_in;
 
     // (10) WB Stage Outputs (to RegFile & CSR Unit)
     logic [XLEN-1:0]   wb_rd_wdata;
@@ -172,6 +189,32 @@ module richard_core
     logic              trap_illegal_instr, trap_is_ecall, trap_is_ebreak, trap_is_mret, trap_is_sret;
     logic [XLEN-1:0]   trap_epc;
 
+    // (12) Trap Controller + interrupt wiring
+    logic              trap_load_fault, trap_store_fault;
+    logic              trap_instr_page_fault, trap_load_page_fault, trap_store_page_fault;
+    logic [XLEN-1:0]   trap_bad_addr;
+    logic [INST_WIDTH-1:0] trap_bad_instr;
+    logic              trap_flush_req;
+    logic              trap_pc_sel;
+    logic [XLEN-1:0]   trap_next_pc;
+    logic              trap_pc_sel_raw;
+    logic [XLEN-1:0]   trap_next_pc_raw;
+    logic              trap_ctrl_trigger;
+    logic [XLEN-1:0]   trap_ctrl_mepc;
+    logic [XLEN-1:0]   trap_ctrl_mcause;
+    logic [XLEN-1:0]   trap_ctrl_mtval;
+    logic              trap_ctrl_to_s_mode_flag;
+    logic              trap_ctrl_mret_en;
+    logic              trap_ctrl_sret_en;
+    logic              csr_mstatus_mie;
+
+    // Page-fault paths remain stubbed until the MMU surfaces violations.
+    assign trap_instr_page_fault  = 1'b0;
+    assign trap_load_page_fault   = 1'b0;
+    assign trap_store_page_fault  = 1'b0;
+
+    assign csr_mstatus_mie        = csr_mstatus_value[CSR_MSTATUS_MIE_BIT];
+
     // ---------------------------------------------------------
     // (A) Hazard Unit Implementation
     // ---------------------------------------------------------
@@ -184,9 +227,13 @@ module richard_core
         .ex_reg_write_en    (ex_reg_write_en_in),
         .ex_is_load         (ex_is_load_in),
         .ex_branch_taken    (ex_branch_taken_out),
+        .ex_branch_target   (ex_branch_target_out),
         .mem_rd_addr        (mem_rd_addr_in),
         .mem_reg_write_en   (mem_reg_write_en_in),
         .mem_stall_req      (mem_stall_req),
+        .trap_flush_req     (trap_flush_req),
+        .trap_pc_sel        (trap_pc_sel),
+        .trap_target_pc     (trap_next_pc),
         .wb_rd_addr         (wb_rd_addr_in),
         .wb_reg_write_en    (wb_reg_write_en_out),
         .forward_a_sel      (hu_forward_a_sel),
@@ -196,7 +243,10 @@ module richard_core
         .id_ex_stall_en     (hu_id_ex_stall_en),
         .ex_mem_stall_en    (hu_ex_mem_stall_en),
         .if_id_flush_en     (hu_if_id_flush_en),
-        .id_ex_flush_en     (hu_id_ex_flush_en)
+        .id_ex_flush_en     (hu_id_ex_flush_en),
+        .pc_redirect_sel    (hu_pc_redirect_sel),
+        .pc_redirect_target (hu_pc_redirect_target),
+        .pc_redirect_is_trap(hu_pc_redirect_is_trap)
     );
 
     // ---------------------------------------------------------
@@ -206,8 +256,9 @@ module richard_core
         .clk                (clk),
         .rst                (rst),
         .stall_en           (hu_if_stall_en),
-        .ex_branch_taken    (ex_branch_taken_out),
-        .ex_branch_target   (ex_branch_target_out),
+        .pc_redirect_sel    (hu_pc_redirect_sel),
+        .pc_redirect_target (hu_pc_redirect_target),
+        .pc_redirect_is_trap(hu_pc_redirect_is_trap),
         .if_pc              (if_pc_out)
     );
 
@@ -232,6 +283,7 @@ module richard_core
         .rst                (rst),
         .if_pc              (if_id_pc),
         .if_instr           (if_id_instr),
+        .csr_priv_mode      (csr_priv_mode_cur),
         .wb_reg_write_en    (wb_reg_write_en_out),
         .wb_rd_addr         (wb_rd_addr),
         .wb_rd_wdata        (wb_rd_wdata),
@@ -272,6 +324,7 @@ module richard_core
         .rst                (rst),
         .stall_en           (hu_id_ex_stall_en),
         .flush_en           (hu_id_ex_flush_en),
+        .id_instr           (if_id_instr),
         .id_pc              (id_pc_out),
         .id_rs1_rdata       (id_rs1_rdata),
         .id_rs2_rdata       (id_rs2_rdata),
@@ -303,6 +356,7 @@ module richard_core
         .id_is_fence        (id_is_fence),
         .id_is_fence_i      (id_is_fence_i),
         .ex_pc              (ex_pc_in),
+        .ex_instr           (ex_instr_in),
         .ex_rs1_rdata       (ex_rs1_rdata_in),
         .ex_rs2_rdata       (ex_rs2_rdata_in),
         .ex_rs1_addr        (ex_rs1_addr_in),
@@ -386,6 +440,7 @@ module richard_core
         .ex_rs1_addr        (ex_rs1_addr_in),
         .ex_pc              (ex_pc_in),
         .ex_imm             (ex_imm_in),
+        .ex_instr           (ex_instr_in),
         .ex_is_load         (ex_is_load_in),
         .ex_is_store        (ex_is_store_in),
         .ex_mem_size        (ex_mem_size_in),
@@ -411,6 +466,7 @@ module richard_core
         .mem_rs1_addr        (mem_rs1_addr_in),
         .mem_pc              (mem_pc_in),
         .mem_imm             (mem_imm_in),
+        .mem_instr           (mem_instr_in),
         .mem_is_load         (mem_is_load_in),
         .mem_is_store        (mem_is_store_in),
         .mem_mem_size        (mem_mem_size_in),
@@ -442,6 +498,7 @@ module richard_core
         .mem_rs1_addr        (mem_rs1_addr_in),
         .mem_pc              (mem_pc_in),
         .mem_imm             (mem_imm_in),
+        .mem_instr           (mem_instr_in),
         .mem_is_load         (mem_is_load_in),
         .mem_is_store        (mem_is_store_in),
         .mem_mem_size        (mem_mem_size_in),
@@ -470,6 +527,7 @@ module richard_core
         .mem_wb_alu_result   (mw_reg_alu_result_in),
         .mem_wb_mem_rdata    (mw_reg_mem_rdata_in),
         .mem_wb_pc           (mw_reg_pc_in),
+        .mem_wb_instr        (mw_reg_instr_in),
         .mem_wb_reg_write_en (mw_reg_reg_write_en_in),
         .mem_wb_rd_addr      (mw_reg_rd_addr_in),
         .mem_wb_wb_sel       (mw_reg_wb_sel_in),
@@ -483,19 +541,23 @@ module richard_core
         .mem_wb_is_ebreak    (mw_reg_is_ebreak_in),
         .mem_wb_is_mret      (mw_reg_is_mret_in),
         .mem_wb_is_sret      (mw_reg_is_sret_in),
+        .mem_wb_load_fault   (mw_reg_load_fault_in),
+        .mem_wb_store_fault  (mw_reg_store_fault_in),
+        .mem_wb_fault_addr   (mw_reg_fault_addr_in),
         .mem_stall_req       (mem_stall_req)
     );
 
     assign dmem_size = mem_mem_size_in;
 
     mem_wb_reg u_mem_wb_reg (
-        .clk                (clk),
-        .rst                (rst),
-        .stall_en           (1'b0),
-        .flush_en           (1'b0),
+        .clk                 (clk),
+        .rst                 (rst),
+        .stall_en            (1'b0),
+        .flush_en            (trap_flush_req),
         .mem_pc              (mw_reg_pc_in),
         .mem_alu_result      (mw_reg_alu_result_in),
         .mem_mem_rdata       (mw_reg_mem_rdata_in),
+        .mem_instr           (mw_reg_instr_in),
         .mem_reg_write_en    (mw_reg_reg_write_en_in),
         .mem_rd_addr         (mw_reg_rd_addr_in),
         .mem_wb_sel          (mw_reg_wb_sel_in),
@@ -509,9 +571,13 @@ module richard_core
         .mem_is_ebreak       (mw_reg_is_ebreak_in),
         .mem_is_mret         (mw_reg_is_mret_in),
         .mem_is_sret         (mw_reg_is_sret_in),
+        .mem_load_fault      (mw_reg_load_fault_in),
+        .mem_store_fault     (mw_reg_store_fault_in),
+        .mem_fault_addr      (mw_reg_fault_addr_in),
         .wb_pc               (wb_pc_in),
         .wb_alu_result       (wb_alu_result_in),
         .wb_mem_rdata        (wb_mem_rdata_in),
+        .wb_instr            (wb_instr_in),
         .wb_reg_write_en     (wb_reg_write_en_in),
         .wb_rd_addr          (wb_rd_addr_in),
         .wb_wb_sel           (wb_wb_sel_in),
@@ -524,7 +590,10 @@ module richard_core
         .wb_is_ecall         (wb_is_ecall_in),
         .wb_is_ebreak        (wb_is_ebreak_in),
         .wb_is_mret          (wb_is_mret_in),
-        .wb_is_sret          (wb_is_sret_in)
+        .wb_is_sret          (wb_is_sret_in),
+        .wb_load_fault       (wb_load_fault_flag),
+        .wb_store_fault      (wb_store_fault_flag),
+        .wb_fault_addr       (wb_fault_addr_in)
     );
 
     // ---------------------------------------------------------
@@ -543,12 +612,17 @@ module richard_core
         .mem_wb_rs1_rdata   (wb_rs1_rdata_in),
         .mem_wb_rs1_addr    (wb_rs1_addr_in),
         .mem_wb_imm         (wb_imm_in),
+        .mem_wb_instr       (wb_instr_in),
         .mem_wb_illegal_instr(wb_illegal_instr_in),
         .mem_wb_is_ecall    (wb_is_ecall_in),
         .mem_wb_is_ebreak   (wb_is_ebreak_in),
         .mem_wb_is_mret     (wb_is_mret_in),
         .mem_wb_is_sret     (wb_is_sret_in),
+        .mem_wb_load_fault  (wb_load_fault_flag),
+        .mem_wb_store_fault (wb_store_fault_flag),
+        .mem_wb_fault_addr  (wb_fault_addr_in),
         .csr_rdata          (csr_rdata),
+        .csr_illegal_access (csr_illegal_access_flag),
         .wb_rd_wdata        (wb_rd_wdata),
         .wb_rd_addr         (wb_rd_addr),
         .wb_reg_write_en    (wb_reg_write_en_out),
@@ -561,7 +635,11 @@ module richard_core
         .trap_is_ebreak     (trap_is_ebreak),
         .trap_is_mret       (trap_is_mret),
         .trap_is_sret       (trap_is_sret),
-        .trap_epc           (trap_epc)
+        .trap_epc           (trap_epc),
+        .trap_load_fault    (trap_load_fault),
+        .trap_store_fault   (trap_store_fault),
+        .trap_bad_addr      (trap_bad_addr),
+        .trap_bad_instr     (trap_bad_instr)
     );
 
     csr_unit u_csr_unit (
@@ -571,12 +649,13 @@ module richard_core
         .csr_op             (csr_op),
         .csr_addr           (csr_addr),
         .csr_rs1_data       (csr_rs1_data),
-        .trap_illegal_instr (trap_illegal_instr),
-        .trap_is_ecall      (trap_is_ecall),
-        .trap_is_ebreak     (trap_is_ebreak),
-        .trap_is_mret       (trap_is_mret),
-        .trap_is_sret       (trap_is_sret),
-        .trap_epc           (trap_epc),
+        .trap_ctrl_trigger  (trap_ctrl_trigger),
+        .trap_ctrl_to_s_mode(trap_ctrl_to_s_mode_flag),
+        .trap_ctrl_mepc     (trap_ctrl_mepc),
+        .trap_ctrl_mcause   (trap_ctrl_mcause),
+        .trap_ctrl_mtval    (trap_ctrl_mtval),
+        .trap_ctrl_mret_en  (trap_ctrl_mret_en),
+        .trap_ctrl_sret_en  (trap_ctrl_sret_en),
         .csr_rdata          (csr_rdata),
         .csr_mstatus        (csr_mstatus_value),
         .csr_sstatus        (csr_sstatus_value),
@@ -587,10 +666,52 @@ module richard_core
         .csr_mepc           (csr_mepc_value),
         .csr_sepc           (csr_sepc_value),
         .csr_satp           (csr_satp_value),
-        .csr_priv_mode      (csr_priv_mode_cur),
-        .csr_trap_vector    (csr_trap_vector_value),
-        .csr_trap_to_s_mode (csr_trap_to_s_mode_flag),
-        .csr_illegal_access (csr_illegal_access_flag)
+        .csr_priv_mode          (csr_priv_mode_cur),
+        .csr_trap_vector        (),
+        .csr_trap_to_s_mode     (),
+        .csr_trap_vector_next   (csr_trap_vector_value),
+        .csr_trap_to_s_mode_next(csr_trap_to_s_mode_flag),
+        .csr_illegal_access     (csr_illegal_access_flag)
     );
+
+    trap_ctrl u_trap_ctrl (
+        .wb_pc               (wb_pc_in),
+        .trap_illegal_instr  (trap_illegal_instr),
+        .trap_is_ecall       (trap_is_ecall),
+        .trap_is_ebreak      (trap_is_ebreak),
+        .trap_is_mret        (trap_is_mret),
+        .trap_is_sret        (trap_is_sret),
+        .trap_load_fault     (trap_load_fault),
+        .trap_store_fault    (trap_store_fault),
+        .trap_instr_page_fault(trap_instr_page_fault),
+        .trap_load_page_fault(trap_load_page_fault),
+        .trap_store_page_fault(trap_store_page_fault),
+        .trap_bad_addr       (trap_bad_addr),
+        .trap_bad_instr      (trap_bad_instr),
+        .ext_timer_int       (ext_timer_int),
+        .ext_software_int    (ext_software_int),
+        .ext_external_int    (ext_external_int),
+        .csr_mstatus_mie     (csr_mstatus_mie),
+        .csr_mtvec           (csr_mtvec_base),
+        .csr_stvec           (csr_stvec_base),
+        .csr_mepc            (csr_mepc_value),
+        .csr_sepc            (csr_sepc_value),
+        .csr_medeleg         (csr_medeleg_value),
+        .csr_mideleg         (csr_mideleg_value),
+        .csr_priv_mode       (csr_priv_mode_cur),
+        .trap_trigger        (trap_ctrl_trigger),
+        .trap_mepc           (trap_ctrl_mepc),
+        .trap_mcause         (trap_ctrl_mcause),
+        .trap_mtval          (trap_ctrl_mtval),
+        .trap_to_s_mode      (trap_ctrl_to_s_mode_flag),
+        .mret_en             (trap_ctrl_mret_en),
+        .sret_en             (trap_ctrl_sret_en),
+        .trap_flush_req      (trap_flush_req),
+        .trap_pc_sel         (trap_pc_sel_raw),
+        .trap_next_pc        (trap_next_pc_raw)
+    );
+
+    assign trap_pc_sel = trap_pc_sel_raw;
+    assign trap_next_pc = trap_next_pc_raw;
 
 endmodule

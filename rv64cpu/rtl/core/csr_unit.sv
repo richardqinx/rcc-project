@@ -32,12 +32,13 @@ module csr_unit
 	input  logic [2:0]        csr_op,
 	input  logic [11:0]       csr_addr,
 	input  logic [XLEN-1:0]   csr_rs1_data,
-	input  logic              trap_illegal_instr,
-	input  logic              trap_is_ecall,
-	input  logic              trap_is_ebreak,
-	input  logic              trap_is_mret,
-	input  logic              trap_is_sret,
-	input  logic [XLEN-1:0]   trap_epc,
+	input  logic              trap_ctrl_trigger,
+	input  logic              trap_ctrl_to_s_mode,
+	input  logic [XLEN-1:0]   trap_ctrl_mepc,
+	input  logic [XLEN-1:0]   trap_ctrl_mcause,
+	input  logic [XLEN-1:0]   trap_ctrl_mtval,
+	input  logic              trap_ctrl_mret_en,
+	input  logic              trap_ctrl_sret_en,
 	output logic [XLEN-1:0]   csr_rdata,
 	output logic [XLEN-1:0]   csr_mstatus,
 	output logic [XLEN-1:0]   csr_sstatus,
@@ -51,6 +52,8 @@ module csr_unit
 	output logic [1:0]        csr_priv_mode,
 	output logic [XLEN-1:0]   csr_trap_vector,
 	output logic              csr_trap_to_s_mode,
+	output logic [XLEN-1:0]   csr_trap_vector_next,
+	output logic              csr_trap_to_s_mode_next,
 	output logic              csr_illegal_access
 );
 
@@ -110,16 +113,17 @@ module csr_unit
 	logic            is_clear_cmd;
 	logic            has_non_zero_data;
 	logic            csr_write_en;
-	logic            trap_event;
-	logic [5:0]      trap_cause_index;
-	logic            trap_delegated_to_s;
-	logic [XLEN-1:0] trap_cause_value;
 	logic [XLEN-1:0] trap_vector_target;
-	logic [XLEN-1:0] trap_vector_q;
 	logic            csr_addr_supported;
 	logic            csr_write_illegal;
 	logic [XLEN-1:0] csr_read_data;
+	logic [XLEN-1:0] trap_vector_q;
 	logic            trap_to_s_q;
+	logic            trap_taken;
+	logic            trap_taken_to_s_mode;
+	logic [XLEN-1:0] trap_taken_mepc;
+	logic [XLEN-1:0] trap_taken_mcause;
+	logic [XLEN-1:0] trap_taken_mtval;
 
 	// Canonicalize addresses, decode operations, and prepare CSR/trap metadata.
 	assign csr_addr_canonical = canonical_addr(csr_addr);
@@ -129,27 +133,31 @@ module csr_unit
 	assign has_non_zero_data  = |csr_rs1_data;
 	assign csr_addr_supported = csr_is_supported(csr_addr_canonical);
 	assign csr_write_en       = csr_req & csr_addr_supported & (is_write_cmd | ((is_set_cmd | is_clear_cmd) & has_non_zero_data));
-	assign trap_event         = trap_illegal_instr | trap_is_ecall | trap_is_ebreak;
-	assign trap_cause_value   = compute_trap_cause(priv_mode_q, trap_illegal_instr, trap_is_ecall, trap_is_ebreak);
-	assign trap_cause_index   = trap_cause_value[5:0];
-	assign trap_delegated_to_s = trap_event && (priv_mode_q != PRIV_MODE_M) && medeleg_reg[trap_cause_index];
-	assign trap_vector_target = trap_delegated_to_s ? stvec_reg : mtvec_reg;
-	assign csr_read_data      = read_csr(csr_addr_canonical);
-	assign csr_rdata          = csr_read_data;
-	assign csr_mstatus        = mstatus_reg;
-	assign csr_sstatus        = sstatus_reg;
-	assign csr_medeleg        = medeleg_reg;
-	assign csr_mideleg        = mideleg_reg;
-	assign csr_mtvec          = mtvec_reg;
-	assign csr_stvec          = stvec_reg;
-	assign csr_mepc           = mepc_reg;
-	assign csr_sepc           = sepc_reg;
-	assign csr_satp           = satp_reg;
-	assign csr_priv_mode      = priv_mode_q;
-	assign csr_trap_vector    = trap_vector_q;
-	assign csr_trap_to_s_mode = trap_to_s_q;
-	assign csr_write_illegal  = (csr_req && (is_write_cmd || is_set_cmd || is_clear_cmd) && !csr_is_writable(csr_addr_canonical));
-	assign csr_illegal_access = csr_req && (!csr_addr_supported || csr_write_illegal);
+	assign trap_taken               = trap_ctrl_trigger;
+	assign trap_taken_to_s_mode     = trap_ctrl_to_s_mode;
+	assign trap_taken_mepc          = trap_ctrl_mepc;
+	assign trap_taken_mcause        = trap_ctrl_mcause;
+	assign trap_taken_mtval         = trap_ctrl_mtval;
+
+	assign trap_vector_target      = trap_taken_to_s_mode ? stvec_reg : mtvec_reg;
+	assign csr_read_data           = read_csr(csr_addr_canonical);
+	assign csr_rdata               = csr_read_data;
+	assign csr_mstatus             = mstatus_reg;
+	assign csr_sstatus             = sstatus_reg;
+	assign csr_medeleg             = medeleg_reg;
+	assign csr_mideleg             = mideleg_reg;
+	assign csr_mtvec               = mtvec_reg;
+	assign csr_stvec               = stvec_reg;
+	assign csr_mepc                = mepc_reg;
+	assign csr_sepc                = sepc_reg;
+	assign csr_satp                = satp_reg;
+	assign csr_priv_mode           = priv_mode_q;
+	assign csr_trap_vector         = trap_vector_q;
+	assign csr_trap_to_s_mode      = trap_to_s_q;
+	assign csr_trap_vector_next    = trap_vector_target;
+	assign csr_trap_to_s_mode_next = trap_taken_to_s_mode;
+	assign csr_write_illegal       = (csr_req && (is_write_cmd || is_set_cmd || is_clear_cmd) && !csr_is_writable(csr_addr_canonical));
+	assign csr_illegal_access      = csr_req && (!csr_addr_supported || csr_write_illegal);
 
 	// Main CSR state machine: counts cycles, processes CSR writes, and reacts to traps/returns.
 	always_ff @(posedge clk) begin
@@ -186,7 +194,7 @@ module csr_unit
 		end else begin
 			mcycle_reg <= mcycle_reg + 64'd1;
 			time_reg   <= time_reg + 64'd1;
-			if (!trap_event) begin
+			if (!trap_taken) begin
 				minstret_reg <= minstret_reg + 64'd1;
 			end
 
@@ -245,11 +253,11 @@ module csr_unit
 				endcase
 			end
 
-			if (trap_event) begin
+			if (trap_taken) begin
 				trap_vector_q <= trap_vector_target;
-				trap_to_s_q   <= trap_delegated_to_s;
+				trap_to_s_q   <= trap_taken_to_s_mode;
 				// Update privilege-specific CSRs based on whether the trap was delegated.
-				if (trap_delegated_to_s) begin
+				if (trap_taken_to_s_mode) begin
 					logic [XLEN-1:0] next_sstatus;
 					next_sstatus = sstatus_reg;
 					next_sstatus[SSTATUS_SPIE_BIT] = sstatus_reg[SSTATUS_SIE_BIT];
@@ -257,9 +265,9 @@ module csr_unit
 					next_sstatus[SSTATUS_SPP_BIT]  = (priv_mode_q == PRIV_MODE_S);
 					sstatus_reg <= next_sstatus;
 					mstatus_reg <= apply_sstatus_to_mstatus(mstatus_reg, next_sstatus);
-					sepc_reg    <= trap_epc;
-					scause_reg  <= trap_cause_value;
-					stval_reg   <= trap_illegal_instr ? trap_epc : '0;
+					sepc_reg    <= trap_taken_mepc;
+					scause_reg  <= trap_taken_mcause;
+					stval_reg   <= trap_taken_mtval;
 					priv_mode_q <= PRIV_MODE_S;
 				end else begin
 					logic [XLEN-1:0] next_mstatus;
@@ -269,13 +277,13 @@ module csr_unit
 					next_mstatus[MSTATUS_MPP_HI:MSTATUS_MPP_LO] = encode_priv_mode(priv_mode_q);
 					mstatus_reg <= next_mstatus;
 					sstatus_reg <= mirror_mstatus_to_sstatus(sstatus_reg, next_mstatus);
-					mepc_reg    <= trap_epc;
-					mcause_reg  <= trap_cause_value;
-					mtval_reg   <= trap_illegal_instr ? trap_epc : '0;
+					mepc_reg    <= trap_taken_mepc;
+					mcause_reg  <= trap_taken_mcause;
+					mtval_reg   <= trap_taken_mtval;
 					priv_mode_q <= PRIV_MODE_M;
 				end
 			end else begin
-				if (trap_is_mret) begin
+				if (trap_ctrl_mret_en) begin
 					priv_mode_t return_mode;
 					logic [XLEN-1:0] next_mstatus;
 					return_mode  = decode_priv_mode(mstatus_reg[MSTATUS_MPP_HI:MSTATUS_MPP_LO]);
@@ -288,7 +296,7 @@ module csr_unit
 					priv_mode_q <= return_mode;
 				end
 
-				if (trap_is_sret) begin
+				if (trap_ctrl_sret_en) begin
 					logic [XLEN-1:0] next_sstatus;
 					next_sstatus = sstatus_reg;
 					next_sstatus[SSTATUS_SIE_BIT]  = sstatus_reg[SSTATUS_SPIE_BIT];
@@ -430,28 +438,6 @@ module csr_unit
 			PRIV_MODE_S: encode_priv_mode = 2'b01;
 			default:     encode_priv_mode = 2'b11;
 		endcase
-	endfunction
-
-	function automatic logic [XLEN-1:0] compute_trap_cause(
-		input priv_mode_t mode,
-		input logic       illegal_instr,
-		input logic       is_ecall,
-		input logic       is_ebreak
-	);
-		logic [XLEN-1:0] cause_val;
-		cause_val = '0;
-		if (illegal_instr) begin
-			cause_val = EXC_INST_ILLEGAL;
-		end else if (is_ebreak) begin
-			cause_val = EXC_BREAKPOINT;
-		end else if (is_ecall) begin
-			case (mode)
-				PRIV_MODE_U: cause_val = EXC_ECALL_FROM_U;
-				PRIV_MODE_S: cause_val = EXC_ECALL_FROM_S;
-				default:     cause_val = EXC_ECALL_FROM_M;
-			endcase
-		end
-		return cause_val;
 	endfunction
 
 	function automatic logic [XLEN-1:0] read_csr(input logic [11:0] addr);

@@ -44,6 +44,7 @@ module ex_mem_reg
     input  logic [4:0]             ex_rs1_addr,   // Serves as zimm for CSRRWI/SI/CI
     input  logic [XLEN-1:0]        ex_pc,         // PC passed along for exceptions/CSRs
     input  logic [XLEN-1:0]        ex_imm,        // Imm passed for CSR writes
+    input  logic [INST_WIDTH-1:0]  ex_instr,
 
     // Memory Control
     input  logic                   ex_is_load,
@@ -81,6 +82,7 @@ module ex_mem_reg
     output logic [4:0]             mem_rs1_addr,
     output logic [XLEN-1:0]        mem_pc,
     output logic [XLEN-1:0]        mem_imm,
+    output logic [INST_WIDTH-1:0]  mem_instr,
 
     // Memory Control
     output logic                   mem_is_load,
@@ -108,6 +110,7 @@ module ex_mem_reg
 
     always_ff @(posedge clk) begin
         if (rst) begin
+            mem_instr        <= '0;
             mem_alu_result    <= '0;
             mem_branch_taken  <= '0;
             mem_branch_target <= '0;
@@ -139,6 +142,7 @@ module ex_mem_reg
             mem_is_fence_i    <= '0;
 
         end else if (flush_en) begin
+            mem_instr        <= '0;
             // Critical control signals must be zeroed out
             mem_branch_taken  <= '0;
             mem_is_load       <= '0;
@@ -169,6 +173,7 @@ module ex_mem_reg
              mem_rs1_addr      <= ex_rs1_addr;
              mem_pc            <= ex_pc;
              mem_imm           <= ex_imm;
+             mem_instr         <= ex_instr;
 
              mem_is_load       <= ex_is_load;
              mem_is_store      <= ex_is_store;

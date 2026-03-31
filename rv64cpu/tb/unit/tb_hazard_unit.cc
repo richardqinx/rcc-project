@@ -42,9 +42,13 @@ void reset(Vhazard_unit* dut) {
     dut->ex_reg_write_en = 0;
     dut->ex_is_load = 0;
     dut->ex_branch_taken = 0;
+    dut->ex_branch_target = 0;
     dut->mem_rd_addr = 0;
     dut->mem_reg_write_en = 0;
     dut->mem_stall_req = 0;
+    dut->trap_flush_req = 0;
+    dut->trap_pc_sel = 0;
+    dut->trap_target_pc = 0;
     dut->wb_rd_addr = 0;
     dut->wb_reg_write_en = 0;
     dut->eval();
@@ -69,6 +73,8 @@ int main(int argc, char** argv) {
     check(dut->id_ex_flush_en == 0, "NoHazard_NoIDEXFlush");
     check(dut->id_ex_stall_en == 0, "NoHazard_NoIDEXStall");
     check(dut->ex_mem_stall_en == 0, "NoHazard_NoEXMEMStall");
+    check(dut->pc_redirect_sel == 0, "NoHazard_NoRedirect");
+    check(dut->pc_redirect_is_trap == 0, "NoHazard_NoTrapRedirect");
 
     // -----------------------
     // 2. Forward A from MEM stage
@@ -231,11 +237,15 @@ int main(int argc, char** argv) {
     // -----------------------
     reset(dut);
     dut->ex_branch_taken = 1;
+    dut->ex_branch_target = 0x400;
     dut->eval();
     check(dut->if_id_flush_en == 1, "Branch_IFID_Flush");
     check(dut->id_ex_flush_en == 1, "Branch_IDEX_Flush");
     check(dut->if_stall_en == 0, "Branch_IF_NoStall");
     check(dut->if_id_stall_en == 0, "Branch_IFID_NoStall");
+    check(dut->pc_redirect_sel == 1, "Branch_Redirect_Valid");
+    check(dut->pc_redirect_is_trap == 0, "Branch_Redirect_NotTrap");
+    check(dut->pc_redirect_target == 0x400, "Branch_Redirect_Target");
 
     // -----------------------
     // 15. Branch overrides load-use stall
@@ -282,11 +292,47 @@ int main(int argc, char** argv) {
     // -----------------------
     reset(dut);
     dut->ex_branch_taken = 1;
+    dut->ex_branch_target = 0x410;
     dut->mem_stall_req = 1;
     dut->eval();
     check(dut->if_id_flush_en == 1, "Branch_MemStall_IFID_Flush");
     check(dut->id_ex_flush_en == 1, "Branch_MemStall_IDEX_Flush");
     check(dut->if_stall_en == 0, "Branch_MemStall_IF_NoStall");
+
+    // -----------------------
+    // 19. Trap redirect overrides branch and stalls
+    // -----------------------
+    reset(dut);
+    dut->trap_pc_sel = 1;
+    dut->trap_flush_req = 1;
+    dut->trap_target_pc = 0x800;
+    dut->ex_branch_taken = 1;
+    dut->ex_branch_target = 0x900;
+    dut->mem_stall_req = 1;
+    dut->eval();
+    check(dut->pc_redirect_sel == 1, "Trap_Redirect_Valid");
+    check(dut->pc_redirect_is_trap == 1, "Trap_Redirect_IsTrap");
+    check(dut->pc_redirect_target == 0x800, "Trap_Redirect_Target");
+    check(dut->if_id_flush_en == 1, "Trap_Flush_IFID");
+    check(dut->id_ex_flush_en == 1, "Trap_Flush_IDEX");
+    check(dut->if_stall_en == 0, "Trap_Clears_IF_Stall");
+    check(dut->if_id_stall_en == 0, "Trap_Clears_IFID_Stall");
+    check(dut->id_ex_stall_en == 0, "Trap_Clears_IDEX_Stall");
+    check(dut->ex_mem_stall_en == 0, "Trap_Clears_EXMEM_Stall");
+
+    // -----------------------
+    // 20. Trap flush overrides load-use stall even without redirect
+    // -----------------------
+    reset(dut);
+    dut->trap_flush_req = 1;
+    dut->ex_is_load = 1;
+    dut->ex_rd_addr = 4;
+    dut->id_rs1_addr = 4;
+    dut->eval();
+    check(dut->if_id_flush_en == 1, "TrapFlush_IFID");
+    check(dut->id_ex_flush_en == 1, "TrapFlush_IDEX");
+    check(dut->if_stall_en == 0, "TrapFlush_NoIFStall");
+    check(dut->if_id_stall_en == 0, "TrapFlush_NoIFIDStall");
 
     std::cout << "----------------------------------" << std::endl;
     std::cout << "\033[32mAll " << pass_count << " tests passed!\033[0m" << std::endl;

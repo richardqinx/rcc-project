@@ -36,6 +36,7 @@ module mem_wb_reg
     input  logic [XLEN-1:0]        mem_pc,
     input  logic [XLEN-1:0]        mem_alu_result,
     input  logic [XLEN-1:0]        mem_mem_rdata,
+    input  logic [INST_WIDTH-1:0]  mem_instr,
 
     // Write back control
     input  logic                   mem_reg_write_en,
@@ -53,6 +54,9 @@ module mem_wb_reg
     input  logic                   mem_is_ebreak,
     input  logic                   mem_is_mret,
     input  logic                   mem_is_sret,
+    input  logic                   mem_load_fault,
+    input  logic                   mem_store_fault,
+    input  logic [XLEN-1:0]        mem_fault_addr,
 
     // -----------------------
     // Outputs to WB Stage
@@ -61,6 +65,7 @@ module mem_wb_reg
     output logic [XLEN-1:0]        wb_pc,
     output logic [XLEN-1:0]        wb_alu_result,
     output logic [XLEN-1:0]        wb_mem_rdata,
+    output logic [INST_WIDTH-1:0]  wb_instr,
 
     // Write back control
     output logic                   wb_reg_write_en,
@@ -77,7 +82,10 @@ module mem_wb_reg
     output logic                   wb_is_ecall,
     output logic                   wb_is_ebreak,
     output logic                   wb_is_mret,
-    output logic                   wb_is_sret
+    output logic                   wb_is_sret,
+    output logic                   wb_load_fault,
+    output logic                   wb_store_fault,
+    output logic [XLEN-1:0]        wb_fault_addr
 
 );
     // Sequential Logic: State Update
@@ -86,6 +94,7 @@ module mem_wb_reg
             wb_pc            <= '0;
             wb_alu_result    <= '0;
             wb_mem_rdata     <= '0;
+            wb_instr         <= '0;
             wb_reg_write_en  <= '0;
             wb_rd_addr       <= '0;
             wb_wb_sel        <= '0;
@@ -99,6 +108,9 @@ module mem_wb_reg
             wb_is_ebreak     <= '0;
             wb_is_mret       <= '0;
             wb_is_sret       <= '0;
+            wb_load_fault    <= '0;
+            wb_store_fault   <= '0;
+            wb_fault_addr    <= '0;
         end else if (flush_en) begin
             // Target specific control signals to clear. Leave datapath elements intact
             // to avoid extreme power consumption from massive flip-flop state changes array.
@@ -109,10 +121,14 @@ module mem_wb_reg
             wb_is_ebreak     <= '0;
             wb_is_mret       <= '0;
             wb_is_sret       <= '0;
+            wb_load_fault    <= '0;
+            wb_store_fault   <= '0;
+            wb_fault_addr    <= '0;
         end else if (!stall_en) begin
             wb_pc            <= mem_pc;
             wb_alu_result    <= mem_alu_result;
             wb_mem_rdata     <= mem_mem_rdata;
+            wb_instr         <= mem_instr;
             wb_reg_write_en  <= mem_reg_write_en;
             wb_rd_addr       <= mem_rd_addr;
             wb_wb_sel        <= mem_wb_sel;
@@ -126,6 +142,9 @@ module mem_wb_reg
             wb_is_ebreak     <= mem_is_ebreak;
             wb_is_mret       <= mem_is_mret;
             wb_is_sret       <= mem_is_sret;
+            wb_load_fault    <= mem_load_fault;
+            wb_store_fault   <= mem_store_fault;
+            wb_fault_addr    <= mem_fault_addr;
         end
     end
 

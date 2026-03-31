@@ -20,17 +20,67 @@
 // (instruction memory + data memory) to verify multi-cycle pipeline behavior.
 // It acts as a simple memory model, feeding instructions and returning data.
 
+#include <algorithm>
 #include <iostream>
 #include <iomanip>
 #include <cstdint>
+#include <iterator>
 #include <vector>
 #include <map>
+#include <string>
 #include <verilated.h>
 #include "Vrichard_core.h"
 
 #if VM_TRACE
 #include <verilated_vcd_c.h>
 #endif
+
+// ---------------------------------
+// CSR addresses & cause codes used in tests
+// ---------------------------------
+constexpr uint16_t CSR_MSTATUS  = 0x300;
+constexpr uint16_t CSR_MISA     = 0x301;
+constexpr uint16_t CSR_MEDELEG  = 0x302;
+constexpr uint16_t CSR_MIDELEG  = 0x303;
+constexpr uint16_t CSR_MIE      = 0x304;
+constexpr uint16_t CSR_MTVEC    = 0x305;
+constexpr uint16_t CSR_MEPC     = 0x341;
+constexpr uint16_t CSR_MSCRATCH = 0x340;
+constexpr uint16_t CSR_MCAUSE   = 0x342;
+constexpr uint16_t CSR_MTVAL    = 0x343;
+constexpr uint16_t CSR_SSTATUS  = 0x100;
+constexpr uint16_t CSR_STVEC    = 0x105;
+constexpr uint16_t CSR_SSCRATCH = 0x140;
+constexpr uint16_t CSR_SEPC     = 0x141;
+constexpr uint16_t CSR_SCAUSE   = 0x142;
+constexpr uint16_t CSR_STVAL    = 0x143;
+
+constexpr int MSTATUS_MIE_BIT  = 3;
+constexpr int MSTATUS_MPIE_BIT = 7;
+constexpr int MSTATUS_MPP_LO   = 11;
+constexpr int SSTATUS_SIE_BIT  = 1;
+constexpr int SSTATUS_SPIE_BIT = 5;
+constexpr int SSTATUS_SPP_BIT  = 8;
+
+constexpr uint64_t EXC_INST_ILLEGAL = 2ULL;
+constexpr uint64_t EXC_BREAKPOINT   = 3ULL;
+constexpr uint64_t EXC_LOAD_FAULT   = 5ULL;
+constexpr uint64_t EXC_STORE_FAULT  = 7ULL;
+constexpr uint64_t EXC_ECALL_FROM_U = 8ULL;
+constexpr uint64_t EXC_ECALL_FROM_M = 11ULL;
+constexpr uint64_t INTERRUPT_BIT    = 1ULL << 63;
+constexpr uint64_t INT_M_EXTERNAL   = 11ULL;
+constexpr uint64_t INT_M_TIMER      = 7ULL;
+
+constexpr uint64_t LOG_ENTRY_STRIDE = 24ULL;
+constexpr uint64_t MACHINE_TRAP_VECTOR = 0x00000000ULL;
+constexpr uint64_t SUPERVISOR_TRAP_VECTOR = 0x00000100ULL;
+constexpr uint64_t MACHINE_LOG_PTR_ADDR = 0x000000000000FFF0ULL;
+constexpr uint64_t SUPERVISOR_LOG_PTR_ADDR = 0x000000000000FFE0ULL;
+
+constexpr uint64_t PRIV_MODE_U = 0ULL;
+constexpr uint64_t PRIV_MODE_S = 1ULL;
+constexpr uint64_t PRIV_MODE_M = 3ULL;
 
 // -----------------------
 // RISC-V Instruction Encoding Helpers
@@ -81,6 +131,7 @@ static uint32_t rv_b_type(int32_t offset, uint32_t rs2, uint32_t rs1, uint32_t f
 
 // Common instruction shorthands
 static uint32_t NOP()                          { return 0x00000013; }   // addi x0, x0, 0
+static uint32_t ILLEGAL()                      { return 0xFFFFFFFF; }
 static uint32_t ADDI(uint32_t rd, uint32_t rs1, int32_t imm) {
     return rv_i_type(static_cast<uint32_t>(imm) & 0xFFF, rs1, 0x0, rd, 0x13);
 }
@@ -107,6 +158,51 @@ static uint32_t LUI(uint32_t rd, uint32_t imm) {
 }
 static uint32_t JAL(uint32_t rd, int32_t offset) {
     return rv_j_type(offset, rd, 0x6f);
+}
+static uint32_t JALR(uint32_t rd, uint32_t rs1, int32_t imm) {
+    return rv_i_type(static_cast<uint32_t>(imm) & 0xFFF, rs1, 0x0, rd, 0x67);
+}
+static uint32_t SYSTEM(uint32_t funct12, uint32_t rs1, uint32_t funct3, uint32_t rd) {
+    return ((funct12 & 0xFFF) << 20) | ((rs1 & 0x1F) << 15) | ((funct3 & 0x7) << 12) | ((rd & 0x1F) << 7) | 0x73;
+}
+static uint32_t ECALL()  { return SYSTEM(0x000, 0, 0x0, 0); }
+static uint32_t EBREAK() { return SYSTEM(0x001, 0, 0x0, 0); }
+static uint32_t MRET()   { return SYSTEM(0x302, 0, 0x0, 0); }
+static uint32_t SRET()   { return SYSTEM(0x102, 0, 0x0, 0); }
+static uint32_t CSRInstrReg(uint32_t csr, uint32_t funct3, uint32_t rd, uint32_t rs1) {
+    return ((csr & 0xFFF) << 20) | ((rs1 & 0x1F) << 15) | ((funct3 & 0x7) << 12) | ((rd & 0x1F) << 7) | 0x73;
+}
+static uint32_t CSRRW(uint32_t rd, uint32_t csr, uint32_t rs1) {
+    return CSRInstrReg(csr, 0b001, rd, rs1);
+}
+static uint32_t CSRRS(uint32_t rd, uint32_t csr, uint32_t rs1) {
+    return CSRInstrReg(csr, 0b010, rd, rs1);
+}
+static uint32_t CSRRWI(uint32_t rd, uint32_t csr, uint32_t zimm) {
+    return CSRInstrReg(csr, 0b101, rd, zimm & 0x1F);
+}
+
+static void emit_load_imm64(std::vector<uint32_t>& prog, uint32_t rd, uint64_t imm) {
+    const uint64_t upper = (imm + 0x800ULL) >> 12;
+    int32_t lower = static_cast<int32_t>(imm & 0xFFFULL);
+    if (lower >= 2048) {
+        lower -= 4096;
+    }
+    prog.push_back(LUI(rd, static_cast<uint32_t>(upper)));
+    prog.push_back(ADDI(rd, rd, lower));
+}
+
+static void emit_nops(std::vector<uint32_t>& prog, int count) {
+    for (int i = 0; i < count; ++i) {
+        prog.push_back(NOP());
+    }
+}
+
+static void emit_csrrw_imm64(std::vector<uint32_t>& prog, uint32_t tmp_reg, uint32_t csr, uint64_t value) {
+    // CSR source operand is read in ID stage, so we need a short drain window after loading tmp_reg.
+    emit_load_imm64(prog, tmp_reg, value);
+    emit_nops(prog, 6);
+    prog.push_back(CSRRW(0, csr, tmp_reg));
 }
 
 // -----------------------
@@ -148,7 +244,7 @@ public:
         return NOP(); // Return NOP for unmapped addresses
     }
 
-    uint64_t read_data(uint64_t addr) {
+    uint64_t read_data(uint64_t addr) const {
         // Align to doubleword
         uint64_t aligned = addr & ~0x7ULL;
         auto it = dmem.find(aligned);
@@ -162,6 +258,92 @@ public:
     }
 };
 
+static std::vector<uint32_t> make_machine_trap_handler_program() {
+    constexpr uint32_t REG_PTR = 5;
+    constexpr uint32_t REG_MCAUSE = 6;
+    constexpr uint32_t REG_MEPC   = 7;
+    constexpr uint32_t REG_MTVAL  = 28;
+    constexpr uint32_t REG_TMP    = 29;
+    constexpr uint32_t REG_SLOT_ADDR = 30;
+
+    std::vector<uint32_t> prog;
+    emit_load_imm64(prog, REG_SLOT_ADDR, MACHINE_LOG_PTR_ADDR);
+    prog.push_back(LD(REG_PTR, REG_SLOT_ADDR, 0));
+    emit_nops(prog, 12);
+    prog.push_back(CSRRS(REG_MCAUSE, CSR_MCAUSE, 0));
+    emit_nops(prog, 4);
+    prog.push_back(SD(REG_MCAUSE, REG_PTR, 0));
+    prog.push_back(CSRRS(REG_MEPC, CSR_MEPC, 0));
+    emit_nops(prog, 4);
+    prog.push_back(SD(REG_MEPC, REG_PTR, 8));
+    prog.push_back(CSRRS(REG_MTVAL, CSR_MTVAL, 0));
+    emit_nops(prog, 4);
+    prog.push_back(SD(REG_MTVAL, REG_PTR, 16));
+    prog.push_back(ADDI(REG_PTR, REG_PTR, static_cast<int32_t>(LOG_ENTRY_STRIDE)));
+    prog.push_back(SD(REG_PTR, REG_SLOT_ADDR, 0));
+    prog.push_back(CSRRS(REG_TMP, CSR_MEPC, 0));
+    prog.push_back(ADDI(REG_TMP, REG_TMP, 4));
+    emit_nops(prog, 12);
+    prog.push_back(CSRRW(0, CSR_MEPC, REG_TMP));
+    prog.push_back(MRET());
+    prog.push_back(NOP());
+    prog.push_back(NOP());
+    return prog;
+}
+
+static std::vector<uint32_t> make_supervisor_trap_handler_program() {
+    constexpr uint32_t REG_PTR = 5;
+    constexpr uint32_t REG_SCAUSE = 6;
+    constexpr uint32_t REG_SEPC   = 7;
+    constexpr uint32_t REG_STVAL  = 28;
+    constexpr uint32_t REG_TMP    = 29;
+    constexpr uint32_t REG_SLOT_ADDR = 30;
+
+    std::vector<uint32_t> prog;
+    emit_load_imm64(prog, REG_SLOT_ADDR, SUPERVISOR_LOG_PTR_ADDR);
+    prog.push_back(LD(REG_PTR, REG_SLOT_ADDR, 0));
+    emit_nops(prog, 12);
+    prog.push_back(CSRRS(REG_SCAUSE, CSR_SCAUSE, 0));
+    emit_nops(prog, 4);
+    prog.push_back(SD(REG_SCAUSE, REG_PTR, 0));
+    prog.push_back(CSRRS(REG_SEPC, CSR_SEPC, 0));
+    emit_nops(prog, 4);
+    prog.push_back(SD(REG_SEPC, REG_PTR, 8));
+    prog.push_back(CSRRS(REG_STVAL, CSR_STVAL, 0));
+    emit_nops(prog, 4);
+    prog.push_back(SD(REG_STVAL, REG_PTR, 16));
+    prog.push_back(ADDI(REG_PTR, REG_PTR, static_cast<int32_t>(LOG_ENTRY_STRIDE)));
+    prog.push_back(SD(REG_PTR, REG_SLOT_ADDR, 0));
+    prog.push_back(CSRRS(REG_TMP, CSR_SEPC, 0));
+    prog.push_back(ADDI(REG_TMP, REG_TMP, 4));
+    emit_nops(prog, 12);
+    prog.push_back(CSRRW(0, CSR_SEPC, REG_TMP));
+    prog.push_back(SRET());
+    prog.push_back(NOP());
+    prog.push_back(NOP());
+    return prog;
+}
+
+static void install_trap_handlers(MemoryModel& mem) {
+    mem.load_program(MACHINE_TRAP_VECTOR, make_machine_trap_handler_program());
+    mem.load_program(SUPERVISOR_TRAP_VECTOR, make_supervisor_trap_handler_program());
+}
+
+struct TrapRecord {
+    uint64_t mcause;
+    uint64_t mepc;
+    uint64_t mtval;
+};
+
+static TrapRecord fetch_trap_record(const MemoryModel& mem, uint64_t base, int index) {
+    const uint64_t addr = base + static_cast<uint64_t>(index) * LOG_ENTRY_STRIDE;
+    TrapRecord rec;
+    rec.mcause = mem.read_data(addr + 0);
+    rec.mepc   = mem.read_data(addr + 8);
+    rec.mtval  = mem.read_data(addr + 16);
+    return rec;
+}
+
 // -----------------------
 // Core Simulation Wrapper
 // -----------------------
@@ -170,11 +352,17 @@ public:
     Vrichard_core* top;
     MemoryModel mem;
     uint64_t sim_time;
+    bool ext_timer_int_level;
+    bool ext_software_int_level;
+    bool ext_external_int_level;
 #if VM_TRACE
     VerilatedVcdC* tfp;
 #endif
 
-    CoreSim() : sim_time(0) {
+    CoreSim() : sim_time(0),
+                ext_timer_int_level(false),
+                ext_software_int_level(false),
+                ext_external_int_level(false) {
         top = new Vrichard_core;
 #if VM_TRACE
         Verilated::traceEverOn(true);
@@ -195,6 +383,7 @@ public:
         top->rst = 1;
         top->imem_rdata = NOP();
         top->dmem_rdata = 0;
+        clear_interrupts();
         for (int i = 0; i < cycles; i++) {
             tick();
         }
@@ -211,6 +400,10 @@ public:
         } else {
             top->dmem_rdata = 0;
         }
+
+        top->ext_timer_int = ext_timer_int_level;
+        top->ext_software_int = ext_software_int_level;
+        top->ext_external_int = ext_external_int_level;
 
         // Rising edge
         top->clk = 0;
@@ -237,7 +430,27 @@ public:
             tick();
         }
     }
+
+    void set_interrupt_lines(bool timer, bool software, bool external) {
+        ext_timer_int_level = timer;
+        ext_software_int_level = software;
+        ext_external_int_level = external;
+    }
+
+    void clear_interrupts() {
+        set_interrupt_lines(false, false, false);
+    }
 };
+
+static std::vector<uint64_t> collect_pc_trace(CoreSim& sim, int cycles) {
+    std::vector<uint64_t> trace;
+    trace.reserve(static_cast<size_t>(cycles));
+    for (int i = 0; i < cycles; ++i) {
+        sim.tick();
+        trace.push_back(sim.top->imem_addr);
+    }
+    return trace;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // Test Cases
@@ -631,16 +844,209 @@ void test_fibonacci(CoreSim& sim) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Targeted Trap/Interrupt Scenarios (ctest-selectable)
+// ═══════════════════════════════════════════════════════════════
+
+static void run_mem_fault_pipeline_case() {
+    std::cout << "[CASE] mem_fault_pipeline" << std::endl;
+    CoreSim sim;
+    install_trap_handlers(sim.mem);
+
+    const uint64_t boot_pc = 0x80000000ULL;
+    const uint64_t load_addr = 0x0000000000001003ULL;
+    const uint64_t store_addr = 0x0000000000002005ULL;
+    const uint64_t log_base = 0x0000000000009000ULL;
+    sim.mem.write_data(MACHINE_LOG_PTR_ADDR, log_base);
+    ASSERT_EQ(sim.mem.read_data(MACHINE_LOG_PTR_ADDR), log_base, "machine log pointer seeded");
+
+    std::vector<uint32_t> program;
+    emit_nops(program, 8);
+    emit_csrrw_imm64(program, 1, CSR_MTVEC, MACHINE_TRAP_VECTOR);
+    emit_nops(program, 8);
+    emit_load_imm64(program, 3, load_addr);
+    program.push_back(LD(5, 3, 0));
+    program.push_back(JAL(0, -4));
+
+    sim.mem.load_program(boot_pc, program);
+    sim.reset();
+    sim.run(80);
+    ASSERT_EQ(sim.mem.read_data(MACHINE_LOG_PTR_ADDR), log_base + LOG_ENTRY_STRIDE, "machine log pointer advanced");
+
+    const TrapRecord load_trap  = fetch_trap_record(sim.mem, log_base, 0);
+    ASSERT_EQ(load_trap.mcause, EXC_LOAD_FAULT, "load fault cause code");
+    ASSERT_EQ(load_trap.mtval, load_addr, "load fault address latched");
+    ASSERT_EQ(sim.mem.read_data(store_addr & ~0x7ULL), 0ULL, "misaligned store suppressed");
+}
+
+static void run_double_exception_flush_case() {
+    std::cout << "[CASE] double_exception_flush" << std::endl;
+    CoreSim sim;
+    install_trap_handlers(sim.mem);
+
+    const uint64_t boot_pc = 0x80000000ULL;
+    const uint64_t log_base = 0x0000000000009100ULL;
+    sim.mem.write_data(MACHINE_LOG_PTR_ADDR, log_base);
+    std::vector<uint32_t> program;
+    emit_nops(program, 8);
+    emit_csrrw_imm64(program, 1, CSR_MTVEC, MACHINE_TRAP_VECTOR);
+    emit_nops(program, 8);
+    program.push_back(ILLEGAL());
+    program.push_back(NOP());
+    program.push_back(JAL(0, -4));
+
+    sim.mem.load_program(boot_pc, program);
+    sim.reset();
+    sim.run(80);
+
+    const TrapRecord illegal_trap = fetch_trap_record(sim.mem, log_base, 0);
+    ASSERT_EQ(illegal_trap.mcause, EXC_INST_ILLEGAL, "first cause illegal");
+    ASSERT_EQ(sim.mem.read_data(MACHINE_LOG_PTR_ADDR), log_base + LOG_ENTRY_STRIDE, "single trap logged");
+}
+
+static void run_mret_sret_redirect_case() {
+    std::cout << "[CASE] mret_sret_redirect" << std::endl;
+    CoreSim sim;
+    install_trap_handlers(sim.mem);
+
+    const uint64_t boot_pc = 0x80000000ULL;
+    const uint64_t m_log_base = 0x0000000000009200ULL;
+    const uint64_t post_store_addr = 0x0000000000009400ULL;
+    const uint64_t post_trap_addr = 0x0000000000009408ULL;
+    sim.mem.write_data(MACHINE_LOG_PTR_ADDR, m_log_base);
+
+    std::vector<uint32_t> boot;
+    emit_nops(boot, 8);
+    emit_csrrw_imm64(boot, 1, CSR_MTVEC, MACHINE_TRAP_VECTOR);
+    emit_nops(boot, 8);
+    emit_load_imm64(boot, 11, post_store_addr);
+    emit_load_imm64(boot, 12, 0xCAFECAFEULL);
+    boot.push_back(SD(12, 11, 0));
+    boot.push_back(ECALL());
+    emit_load_imm64(boot, 13, post_trap_addr);
+    emit_load_imm64(boot, 14, 0xBEEFBEEFULL);
+    boot.push_back(SD(14, 13, 0));
+    boot.push_back(JAL(0, 0));
+    sim.mem.load_program(boot_pc, boot);
+
+    sim.reset();
+    sim.run(300);
+
+    const TrapRecord m_trap = fetch_trap_record(sim.mem, m_log_base, 0);
+    ASSERT_EQ(m_trap.mcause, EXC_ECALL_FROM_M, "ecall from machine traps to machine");
+    ASSERT_EQ(sim.mem.read_data(post_store_addr), 0xFFFFFFFFCAFECAFEULL, "post-trap store committed once");
+}
+
+static void run_branch_interrupt_priority_case() {
+    std::cout << "[CASE] branch_interrupt_priority" << std::endl;
+    CoreSim sim;
+    install_trap_handlers(sim.mem);
+
+    const uint64_t boot_pc = 0x80000000ULL;
+    const uint64_t log_base = 0x0000000000009600ULL;
+    sim.mem.write_data(MACHINE_LOG_PTR_ADDR, log_base);
+
+    std::vector<uint32_t> boot;
+    emit_nops(boot, 8);
+    emit_csrrw_imm64(boot, 1, CSR_MTVEC, MACHINE_TRAP_VECTOR);
+    emit_csrrw_imm64(boot, 2, CSR_MSTATUS, (1ULL << MSTATUS_MIE_BIT));
+    emit_csrrw_imm64(boot, 3, CSR_MIE, (1ULL << INT_M_EXTERNAL));
+    boot.push_back(JAL(0, 0));
+    sim.mem.load_program(boot_pc, boot);
+
+    sim.reset();
+    sim.run(10);
+    sim.set_interrupt_lines(false, false, true);
+    sim.run(40);
+    sim.clear_interrupts();
+    sim.run(20);
+
+    const TrapRecord interrupt_trap = fetch_trap_record(sim.mem, log_base, 0);
+    ASSERT_EQ(interrupt_trap.mcause, INTERRUPT_BIT | INT_M_EXTERNAL, "external interrupt cause");
+    ASSERT_EQ(interrupt_trap.mtval, 0ULL, "interrupt mtval should be zero");
+}
+
+static void run_mie_masking_case() {
+    std::cout << "[CASE] mie_masking_response" << std::endl;
+    CoreSim sim;
+    install_trap_handlers(sim.mem);
+
+    const uint64_t boot_pc = 0x80000000ULL;
+    const uint64_t log_base = 0x0000000000009700ULL;
+    sim.mem.write_data(MACHINE_LOG_PTR_ADDR, log_base);
+    for (int i = 0; i < 3; ++i) {
+        sim.mem.write_data(log_base + static_cast<uint64_t>(i) * 8ULL, 0ULL);
+    }
+
+    std::vector<uint32_t> program;
+    emit_nops(program, 8);
+    emit_csrrw_imm64(program, 1, CSR_MTVEC, MACHINE_TRAP_VECTOR);
+    emit_csrrw_imm64(program, 2, CSR_MIE, (1ULL << INT_M_EXTERNAL));
+    program.push_back(CSRRW(0, CSR_MSTATUS, 0));
+    emit_nops(program, 8);
+    emit_nops(program, 48);
+    emit_csrrw_imm64(program, 4, CSR_MSTATUS, (1ULL << MSTATUS_MIE_BIT));
+    program.push_back(JAL(0, 0));
+
+    sim.mem.load_program(boot_pc, program);
+    sim.reset();
+
+    sim.set_interrupt_lines(false, false, true);
+    sim.run(20);
+    ASSERT_EQ(sim.mem.read_data(log_base), 0ULL, "no trap while MIE=0");
+    sim.run(100);
+    const TrapRecord int_trap = fetch_trap_record(sim.mem, log_base, 0);
+    ASSERT_EQ(int_trap.mcause, INTERRUPT_BIT | INT_M_EXTERNAL, "external interrupt cause");
+}
+
+// TODO: Add EXPECT_FAIL once trap_load_page_fault/trap_store_page_fault are driven by the MMU.
+
+struct CaseDispatchEntry {
+    const char* name;
+    void (*fn)();
+};
+
+static const CaseDispatchEntry kCaseDispatchTable[] = {
+    {"mem_fault_pipeline", run_mem_fault_pipeline_case},
+    {"double_exception_flush", run_double_exception_flush_case},
+    {"mret_sret_redirect", run_mret_sret_redirect_case},
+    {"branch_interrupt_priority", run_branch_interrupt_priority_case},
+    {"mie_masking_response", run_mie_masking_case}
+};
+
+// ═══════════════════════════════════════════════════════════════
 // Main
 // ═══════════════════════════════════════════════════════════════
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
 
+    std::string requested_case;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--case" && (i + 1) < argc) {
+            requested_case = argv[++i];
+        }
+    }
+
+    if (!requested_case.empty()) {
+        const auto* entry = std::find_if(
+            std::begin(kCaseDispatchTable),
+            std::end(kCaseDispatchTable),
+            [&](const CaseDispatchEntry& item) { return requested_case == item.name; }
+        );
+        if (entry == std::end(kCaseDispatchTable)) {
+            std::cerr << "Unknown --case value: " << requested_case << std::endl;
+            return 2;
+        }
+        entry->fn();
+        std::cout << "================================================================" << std::endl;
+        std::cout << "  Results: " << g_pass_count << "/" << g_test_count << " assertions passed" << std::endl;
+        std::cout << "================================================================" << std::endl;
+        return (g_pass_count == g_test_count) ? 0 : 1;
+    }
+
     std::cout << "================================================================" << std::endl;
     std::cout << "  Richard CPU Core Integration Test" << std::endl;
     std::cout << "================================================================" << std::endl;
 
-    // Each test gets a fresh instance
     {
         CoreSim sim;
         test_reset(sim);
@@ -689,11 +1095,16 @@ int main(int argc, char** argv) {
         CoreSim sim;
         test_reset_mid_execution(sim);
     }
-
     {
         CoreSim sim;
         test_fibonacci(sim);
     }
+
+    run_mem_fault_pipeline_case();
+    run_double_exception_flush_case();
+    run_mret_sret_redirect_case();
+    run_branch_interrupt_priority_case();
+    run_mie_masking_case();
 
     std::cout << "================================================================" << std::endl;
     std::cout << "  Results: " << g_pass_count << "/" << g_test_count << " assertions passed" << std::endl;
@@ -702,8 +1113,8 @@ int main(int argc, char** argv) {
     if (g_pass_count == g_test_count) {
         std::cout << "  ALL TESTS PASSED" << std::endl;
         return 0;
-    } else {
-        std::cout << "  SOME TESTS FAILED" << std::endl;
-        return 1;
     }
+
+    std::cout << "  SOME TESTS FAILED" << std::endl;
+    return 1;
 }

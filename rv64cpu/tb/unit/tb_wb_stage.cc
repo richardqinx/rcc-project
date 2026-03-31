@@ -58,12 +58,17 @@ int main(int argc, char** argv) {
     dut->mem_wb_rs1_rdata = 0x99;
     dut->mem_wb_rs1_addr = 1;
     dut->mem_wb_imm = 0x123;
+    dut->mem_wb_instr = 0xDEADBEEFu;
     dut->mem_wb_illegal_instr = 0;
     dut->mem_wb_is_ecall = 0;
     dut->mem_wb_is_ebreak = 0;
     dut->mem_wb_is_mret = 0;
     dut->mem_wb_is_sret = 0;
+    dut->mem_wb_load_fault = 0;
+    dut->mem_wb_store_fault = 0;
+    dut->mem_wb_fault_addr = 0;
     dut->csr_rdata = 0x0;
+    dut->csr_illegal_access = 0;
 
     tick(dut);
 
@@ -118,8 +123,36 @@ int main(int argc, char** argv) {
     check(dut->trap_is_mret == 1, "Trap_MRET");
     check(dut->trap_is_sret == 1, "Trap_SRET");
     check(dut->trap_epc == 0x80000000, "Trap_EPC");
+    check(dut->trap_bad_instr == 0xDEADBEEFu, "Trap_BadInstr_Payload");
     check(dut->wb_reg_write_en == 0, "Trap_Gates_RegWriteEn");
     check(dut->csr_req == 0, "Trap_Gates_CSR_Req");
+
+    // 7. CSR illegal access should raise an illegal-instr trap
+    dut->mem_wb_illegal_instr = 0;
+    dut->mem_wb_is_ecall = 0;
+    dut->mem_wb_is_ebreak = 0;
+    dut->csr_illegal_access = 1;
+    tick(dut);
+    check(dut->trap_illegal_instr == 1, "CSR_Illegal_Raises_Trap");
+    check(dut->wb_reg_write_en == 0, "CSR_Illegal_Kills_Write");
+
+    // 8. Load/store faults propagate to trap outputs and block writeback
+    dut->csr_illegal_access = 0;
+    dut->mem_wb_load_fault = 1;
+    dut->mem_wb_fault_addr = 0x80000010ULL;
+    tick(dut);
+    check(dut->trap_load_fault == 1, "LoadFault_AssertsTrap");
+    check(dut->trap_bad_addr == 0x80000010ULL, "LoadFault_PassesAddress");
+    check(dut->wb_reg_write_en == 0, "LoadFault_KillsWrite");
+
+    dut->mem_wb_load_fault = 0;
+    dut->mem_wb_store_fault = 1;
+    dut->mem_wb_fault_addr = 0x80000020ULL;
+    tick(dut);
+    check(dut->trap_store_fault == 1, "StoreFault_AssertsTrap");
+    check(dut->trap_bad_addr == 0x80000020ULL, "StoreFault_PassesAddress");
+
+    dut->mem_wb_store_fault = 0;
 
     std::cout << "----------------------------------" << std::endl;
     std::cout << "\033[32mAll " << pass_count << " tests passed!\033[0m" << std::endl;

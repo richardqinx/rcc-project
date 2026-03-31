@@ -31,6 +31,7 @@ module mem_stage
     input  logic [4:0]             mem_rs1_addr,
     input  logic [XLEN-1:0]        mem_pc,
     input  logic [XLEN-1:0]        mem_imm,
+    input  logic [INST_WIDTH-1:0]  mem_instr,
 
     // Memory Control
     input  logic                   mem_is_load,
@@ -69,6 +70,7 @@ module mem_stage
     output logic [XLEN-1:0]        mem_wb_alu_result,
     output logic [XLEN-1:0]        mem_wb_mem_rdata,
     output logic [XLEN-1:0]        mem_wb_pc,
+    output logic [INST_WIDTH-1:0]  mem_wb_instr,
 
     output logic                   mem_wb_reg_write_en,
     output logic [4:0]             mem_wb_rd_addr,
@@ -85,6 +87,9 @@ module mem_stage
     output logic                   mem_wb_is_ebreak,
     output logic                   mem_wb_is_mret,
     output logic                   mem_wb_is_sret,
+    output logic                   mem_wb_load_fault,
+    output logic                   mem_wb_store_fault,
+    output logic [XLEN-1:0]        mem_wb_fault_addr,
 
     // Control to Hazard Unit / Stall Logic
     output logic                   mem_stall_req      // Stall pipeline if D-Cache doesn't respond
@@ -93,11 +98,31 @@ module mem_stage
     logic [XLEN-1:0] load_data_aligned;
     logic [XLEN-1:0] store_data_aligned;
     logic [7:0]      write_strobe;
+    logic            load_addr_misaligned;
+    logic            store_addr_misaligned;
+
+    function automatic logic addr_misaligned(
+        input logic [2:0]      size,
+        input logic [XLEN-1:0] addr
+    );
+        logic result;
+        case (size)
+            3'b000, 3'b100: result = 1'b0;         // Byte L/S
+            3'b001, 3'b101: result = addr[0];      // Halfword requires bit0 = 0
+            3'b010, 3'b110: result = |addr[1:0];   // Word requires bits[1:0] = 0
+            3'b011:          result = |addr[2:0];   // Doubleword requires bits[2:0] = 0
+            default:         result = 1'b0;
+        endcase
+        return result;
+    endfunction
+
+    assign load_addr_misaligned  = mem_is_load  && addr_misaligned(mem_mem_size, mem_alu_result);
+    assign store_addr_misaligned = mem_is_store && addr_misaligned(mem_mem_size, mem_alu_result);
 
     // --------------------------
     // Memory Request Logic
-    assign dmem_read_req  = mem_is_load;
-    assign dmem_write_req = mem_is_store;
+    assign dmem_read_req  = mem_is_load  & ~load_addr_misaligned;
+    assign dmem_write_req = mem_is_store & ~store_addr_misaligned;
     assign dmem_addr      = mem_alu_result; // ALU result is the computed address
 
     // --------------------------
@@ -194,6 +219,7 @@ module mem_stage
     assign mem_wb_alu_result    = mem_alu_result;
     assign mem_wb_mem_rdata     = load_data_aligned;
     assign mem_wb_pc            = mem_pc;
+    assign mem_wb_instr         = mem_instr;
 
     assign mem_wb_reg_write_en  = mem_reg_write_en;
     assign mem_wb_rd_addr       = mem_rd_addr;
@@ -210,5 +236,8 @@ module mem_stage
     assign mem_wb_is_ebreak     = mem_is_ebreak;
     assign mem_wb_is_mret       = mem_is_mret;
     assign mem_wb_is_sret       = mem_is_sret;
+    assign mem_wb_load_fault    = load_addr_misaligned;
+    assign mem_wb_store_fault   = store_addr_misaligned;
+    assign mem_wb_fault_addr    = (load_addr_misaligned | store_addr_misaligned) ? mem_alu_result : '0;
 
 endmodule

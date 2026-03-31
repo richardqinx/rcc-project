@@ -39,7 +39,8 @@ static int fail_count = 0;
         } \
     } while(0)
 
-void decode(Vdecoder* dut, uint32_t instr, const char* name) {
+void decode(Vdecoder* dut, uint32_t instr, const char* name, uint8_t priv_mode = 3) {
+    dut->priv_mode = priv_mode & 0x3;
     dut->instr = instr;
     dut->eval();
     test_count++;
@@ -233,6 +234,10 @@ int main(int argc, char** argv) {
     CHECK(dut, reg_write_en, 1,  "CSRRW");
     CHECK(dut, illegal_instr,0,  "CSRRW");
 
+    decode(dut, 0x300110F3, "CSRRW x1, mstatus, x2 (U-mode)", 0);
+    CHECK(dut, illegal_instr,1,  "CSRRW U-mode illegal");
+    CHECK(dut, is_csr,       0,  "CSRRW U-mode is_csr cleared");
+
     // 20. ECALL
     //     all-zero fields + opcode=1110011
     decode(dut, 0x00000073, "ECALL");
@@ -256,7 +261,7 @@ int main(int argc, char** argv) {
 
     // 23. SRET
     //     funct7=0001000 rs2=00010 rs1=00000 funct3=000 rd=00000 op=1110011
-    decode(dut, 0x10200073, "SRET");
+    decode(dut, 0x10200073, "SRET", 1);
     CHECK(dut, is_sret,      1,  "SRET");
     CHECK(dut, reg_write_en, 0,  "SRET");
 

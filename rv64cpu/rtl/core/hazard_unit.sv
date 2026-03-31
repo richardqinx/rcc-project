@@ -37,6 +37,7 @@ module hazard_unit
     input  logic        ex_reg_write_en,
     input  logic        ex_is_load,
     input  logic        ex_branch_taken,
+    input  logic [XLEN-1:0] ex_branch_target,
 
     // -----------------------
     // Inputs from MEM Stage (EX/MEM register outputs)
@@ -44,6 +45,13 @@ module hazard_unit
     input  logic [4:0]  mem_rd_addr,
     input  logic        mem_reg_write_en,
     input  logic        mem_stall_req,       // D-Cache miss or memory busy
+
+    // -----------------------
+    // Trap Controller Inputs
+    // -----------------------
+    input  logic        trap_flush_req,
+    input  logic        trap_pc_sel,
+    input  logic [XLEN-1:0] trap_target_pc,
 
     // -----------------------
     // Inputs from WB Stage (MEM/WB register outputs)
@@ -66,7 +74,14 @@ module hazard_unit
     output logic        id_ex_stall_en,
     output logic        ex_mem_stall_en,
     output logic        if_id_flush_en,
-    output logic        id_ex_flush_en
+    output logic        id_ex_flush_en,
+
+    // -----------------------
+    // Outputs: IF-stage PC redirect controls
+    // -----------------------
+    output logic        pc_redirect_sel,
+    output logic [XLEN-1:0] pc_redirect_target,
+    output logic        pc_redirect_is_trap
 );
 
     // -----------------------
@@ -112,40 +127,63 @@ module hazard_unit
                             ((ex_rd_addr == id_rs1_addr) || (ex_rd_addr == id_rs2_addr));
 
     // -----------------------
+    // PC Redirect Selection (Trap has top priority)
+    // -----------------------
+    always_comb begin
+        pc_redirect_sel      = 1'b0;
+        pc_redirect_target   = '0;
+        pc_redirect_is_trap  = 1'b0;
+
+        if (trap_pc_sel) begin
+            pc_redirect_sel     = 1'b1;
+            pc_redirect_target  = trap_target_pc;
+            pc_redirect_is_trap = 1'b1;
+        end else if (ex_branch_taken) begin
+            pc_redirect_sel     = 1'b1;
+            pc_redirect_target  = ex_branch_target;
+        end
+    end
+
+    // -----------------------
     // Stall and Flush Signal Generation
     // -----------------------
     always_comb begin
         // Defaults: no stalls, no flushes
-        if_stall_en    = 1'b0;
-        if_id_stall_en = 1'b0;
-        id_ex_stall_en = 1'b0;
+        if_stall_en     = 1'b0;
+        if_id_stall_en  = 1'b0;
+        id_ex_stall_en  = 1'b0;
         ex_mem_stall_en = 1'b0;
-        if_id_flush_en = 1'b0;
-        id_ex_flush_en = 1'b0;
+        if_id_flush_en  = 1'b0;
+        id_ex_flush_en  = 1'b0;
 
-        // (1) Memory stall (D-Cache miss): freeze the entire pipeline
-        if (mem_stall_req) begin
-            if_stall_en    = 1'b1;
-            if_id_stall_en = 1'b1;
-            id_ex_stall_en = 1'b1;
-            ex_mem_stall_en = 1'b1;
-        end
-
-        // (2) Load-Use stall: freeze IF and IF/ID, insert bubble into ID/EX
-        if (load_use_stall && !mem_stall_req) begin
-            if_stall_en    = 1'b1;
-            if_id_stall_en = 1'b1;
-            id_ex_flush_en = 1'b1;
-        end
-
-        // (3) Branch/jump misprediction: flush IF/ID and ID/EX
-        // Branch flush overrides load-use stall (the stalled instruction is invalid anyway)
-        if (ex_branch_taken) begin
+        if (trap_flush_req) begin
             if_id_flush_en = 1'b1;
             id_ex_flush_en = 1'b1;
-            // Cancel load-use stall if branch is also taken
-            if_stall_en    = 1'b0;
-            if_id_stall_en = 1'b0;
+        end else begin
+            // (1) Memory stall (D-Cache miss): freeze the entire pipeline
+            if (mem_stall_req) begin
+                if_stall_en     = 1'b1;
+                if_id_stall_en  = 1'b1;
+                id_ex_stall_en  = 1'b1;
+                ex_mem_stall_en = 1'b1;
+            end
+
+            // (2) Load-Use stall: freeze IF and IF/ID, insert bubble into ID/EX
+            if (load_use_stall && !mem_stall_req) begin
+                if_stall_en    = 1'b1;
+                if_id_stall_en = 1'b1;
+                id_ex_flush_en = 1'b1;
+            end
+
+            // (3) Branch/jump misprediction: flush IF/ID and ID/EX
+            // Branch flush overrides load-use stall (the stalled instruction is invalid anyway)
+            if (ex_branch_taken) begin
+                if_id_flush_en = 1'b1;
+                id_ex_flush_en = 1'b1;
+                // Cancel load-use stall if branch is also taken
+                if_stall_en    = 1'b0;
+                if_id_stall_en = 1'b0;
+            end
         end
     end
 

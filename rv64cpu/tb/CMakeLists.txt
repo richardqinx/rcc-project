@@ -204,11 +204,18 @@ add_verilator_target(
                 ${RTL_CORE_DIR}/hazard_unit.sv
                 ${RTL_CORE_DIR}/include/csr_pkg.sv
                 ${RTL_CORE_DIR}/csr_unit.sv
+                ${RTL_CORE_DIR}/trap_ctrl.sv
                 ${RTL_CORE_DIR}/richard_core.sv
     INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/core/tb_core.cc
     EXTRA_FLAGS -Wno-PINCONNECTEMPTY
 )
+
+add_test(NAME tb_core_delegation COMMAND $<TARGET_FILE:tb_core> --case mret_sret_redirect)
+add_test(NAME tb_core_interrupt_priority COMMAND $<TARGET_FILE:tb_core> --case branch_interrupt_priority)
+add_test(NAME tb_core_double_exception COMMAND $<TARGET_FILE:tb_core> --case double_exception_flush)
+add_test(NAME tb_core_mem_fault COMMAND $<TARGET_FILE:tb_core> --case mem_fault_pipeline)
+add_test(NAME tb_core_mie_masking COMMAND $<TARGET_FILE:tb_core> --case mie_masking_response)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # SoC Integration Test

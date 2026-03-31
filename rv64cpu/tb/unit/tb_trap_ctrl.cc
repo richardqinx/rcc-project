@@ -28,6 +28,8 @@ namespace {
 constexpr uint64_t EXC_INST_ILLEGAL   = 2ULL;
 constexpr uint64_t EXC_ECALL_FROM_S   = 9ULL;
 constexpr uint64_t EXC_LOAD_PAGE_FAULT= 13ULL;
+constexpr uint64_t EXC_LOAD_FAULT     = 5ULL;
+constexpr uint64_t EXC_STORE_FAULT    = 7ULL;
 
 constexpr uint64_t INT_M_SOFTWARE     = 3ULL;
 constexpr uint64_t INT_M_TIMER        = 7ULL;
@@ -124,6 +126,20 @@ int main(int argc, char** argv) {
     dut->eval();
     check(dut->trap_mcause == EXC_LOAD_PAGE_FAULT, "PageFault_Mcause");
     check(dut->trap_mtval == 0xBADC0FFEE0ULL, "PageFault_Mtval");
+
+    drive_defaults(dut);
+    dut->trap_load_fault = 1;
+    dut->trap_bad_addr = 0xABCDEF0010ULL;
+    dut->eval();
+    check(dut->trap_mcause == EXC_LOAD_FAULT, "LoadFault_Mcause");
+    check(dut->trap_mtval == 0xABCDEF0010ULL, "LoadFault_Mtval");
+
+    drive_defaults(dut);
+    dut->trap_store_fault = 1;
+    dut->trap_bad_addr = 0xABCDEF0020ULL;
+    dut->eval();
+    check(dut->trap_mcause == EXC_STORE_FAULT, "StoreFault_Mcause");
+    check(dut->trap_mtval == 0xABCDEF0020ULL, "StoreFault_Mtval");
 
     // ---------------------------------------------------------------------
     // 2) Interrupt priority + delegation to supervisor

@@ -17,6 +17,7 @@
 // File path: tb/unit/tb_csr.cc
 // Description: CSR unit testbench
 
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -61,6 +62,13 @@ constexpr uint16_t CSR_FCSR      = 0x003;
 constexpr uint64_t EXC_INST_ILLEGAL = 2ULL;
 constexpr uint64_t EXC_ECALL_FROM_U = 8ULL;
 constexpr uint64_t EXC_ECALL_FROM_S = 9ULL;
+constexpr uint64_t EXC_LOAD_FAULT   = 5ULL;
+constexpr uint64_t EXC_STORE_FAULT  = 7ULL;
+
+constexpr uint64_t INTERRUPT_BIT    = 1ULL << 63;
+constexpr uint64_t INT_M_SOFTWARE   = 3ULL;
+constexpr uint64_t INT_M_TIMER      = 7ULL;
+constexpr uint64_t INT_M_EXTERNAL   = 11ULL;
 
 constexpr int MSTATUS_MIE_BIT  = 3;
 constexpr int MSTATUS_MPIE_BIT = 7;
@@ -91,12 +99,13 @@ void drive_defaults(Vcsr_unit* dut) {
     dut->csr_op = 0;
     dut->csr_addr = 0;
     dut->csr_rs1_data = 0;
-    dut->trap_illegal_instr = 0;
-    dut->trap_is_ecall = 0;
-    dut->trap_is_ebreak = 0;
-    dut->trap_is_mret = 0;
-    dut->trap_is_sret = 0;
-    dut->trap_epc = 0;
+    dut->trap_ctrl_trigger = 0;
+    dut->trap_ctrl_to_s_mode = 0;
+    dut->trap_ctrl_mepc = 0;
+    dut->trap_ctrl_mcause = 0;
+    dut->trap_ctrl_mtval = 0;
+    dut->trap_ctrl_mret_en = 0;
+    dut->trap_ctrl_sret_en = 0;
 }
 
 void apply_reset(Vcsr_unit* dut) {
@@ -107,12 +116,45 @@ void apply_reset(Vcsr_unit* dut) {
 }
 
 void clear_trap_lines(Vcsr_unit* dut) {
-    dut->trap_illegal_instr = 0;
-    dut->trap_is_ecall = 0;
-    dut->trap_is_ebreak = 0;
-    dut->trap_is_mret = 0;
-    dut->trap_is_sret = 0;
-    dut->trap_epc = 0;
+    dut->trap_ctrl_trigger = 0;
+    dut->trap_ctrl_to_s_mode = 0;
+    dut->trap_ctrl_mepc = 0;
+    dut->trap_ctrl_mcause = 0;
+    dut->trap_ctrl_mtval = 0;
+    dut->trap_ctrl_mret_en = 0;
+    dut->trap_ctrl_sret_en = 0;
+}
+
+void trigger_trap(
+    Vcsr_unit* dut,
+    uint64_t mepc,
+    uint64_t mcause,
+    uint64_t mtval,
+    bool to_s_mode
+) {
+    dut->trap_ctrl_trigger = 1;
+    dut->trap_ctrl_mepc = mepc;
+    dut->trap_ctrl_mcause = mcause;
+    dut->trap_ctrl_mtval = mtval;
+    dut->trap_ctrl_to_s_mode = to_s_mode ? 1 : 0;
+    tick(dut);
+    dut->trap_ctrl_trigger = 0;
+    dut->trap_ctrl_mepc = 0;
+    dut->trap_ctrl_mcause = 0;
+    dut->trap_ctrl_mtval = 0;
+    dut->trap_ctrl_to_s_mode = 0;
+}
+
+void trigger_interrupt(Vcsr_unit* dut, uint64_t mepc, uint64_t int_cause) {
+    trigger_trap(dut, mepc, (INTERRUPT_BIT | int_cause), 0ULL, false);
+}
+
+template <typename Fn>
+void run_csr_scenario(Vcsr_unit* dut, const char* name, Fn&& body) {
+    clear_trap_lines(dut);
+    std::cout << "[RUN] CSR scenario: " << name << std::endl;
+    body(dut);
+    std::cout << "[PASS] CSR scenario: " << name << std::endl;
 }
 
 uint64_t read_csr(Vcsr_unit* dut, uint16_t addr) {
@@ -147,9 +189,33 @@ void force_priv_mode_via_mret(Vcsr_unit* dut, uint64_t encoded_mode) {
     mstatus &= ~(0x3ULL << MSTATUS_MPP_LO);
     mstatus |= (encoded_mode << MSTATUS_MPP_LO);
     csr_op(dut, CSR_MSTATUS, CSR_OP_WRITE, mstatus);
-    dut->trap_is_mret = 1;
+    dut->trap_ctrl_mret_en = 1;
     tick(dut);
-    dut->trap_is_mret = 0;
+    dut->trap_ctrl_mret_en = 0;
+}
+
+uint64_t arbitrate_trap_priority(
+    bool ext_external,
+    bool ext_software,
+    bool ext_timer,
+    bool has_sync_exception,
+    uint64_t sync_cause,
+    bool& chose_interrupt
+) {
+    if (ext_external) {
+        chose_interrupt = true;
+        return INTERRUPT_BIT | INT_M_EXTERNAL;
+    }
+    if (ext_software) {
+        chose_interrupt = true;
+        return INTERRUPT_BIT | INT_M_SOFTWARE;
+    }
+    if (ext_timer) {
+        chose_interrupt = true;
+        return INTERRUPT_BIT | INT_M_TIMER;
+    }
+    chose_interrupt = false;
+    return has_sync_exception ? sync_cause : 0ULL;
 }
 
 int main(int argc, char** argv) {
@@ -190,9 +256,9 @@ int main(int argc, char** argv) {
     std::cout << "[PASS] CSRRS/CSRRC honor masks and ignore zero data" << std::endl;
 
     // Read-only CSRs ignore write attempts
-    const uint64_t misa_before = read_csr(dut, CSR_MISA);
+    const uint64_t misa_ro_snapshot = read_csr(dut, CSR_MISA);
     csr_op(dut, CSR_MISA, CSR_OP_WRITE, 0ULL);
-    assert(read_csr(dut, CSR_MISA) == misa_before);
+    assert(read_csr(dut, CSR_MISA) == misa_ro_snapshot);
     std::cout << "[PASS] Read-only CSRs reject writes" << std::endl;
 
     // Canonical aliases for cycle/minstret
@@ -209,11 +275,7 @@ int main(int argc, char** argv) {
     uint64_t mstatus_cfg = read_csr(dut, CSR_MSTATUS) | (1ULL << MSTATUS_MIE_BIT);
     csr_op(dut, CSR_MSTATUS, CSR_OP_WRITE, mstatus_cfg);
     const uint64_t instret_pre_trap = read_csr(dut, CSR_MINSTRET);
-    dut->trap_illegal_instr = 1;
-    dut->trap_epc = 0xDEADULL;
-    tick(dut);
-    dut->trap_illegal_instr = 0;
-    dut->trap_epc = 0;
+    trigger_trap(dut, 0xDEADULL, EXC_INST_ILLEGAL, 0xDEADULL, false);
     assert(read_csr(dut, CSR_MINSTRET) == instret_pre_trap);
     advance_cycles(dut, 1);
     assert(read_csr(dut, CSR_MINSTRET) == instret_pre_trap + 1);
@@ -230,45 +292,37 @@ int main(int argc, char** argv) {
     std::cout << "[PASS] Illegal trap updates mepc/mcause/mtval/mstatus" << std::endl;
 
     // mret restore flow
-    dut->trap_is_mret = 1;
+    dut->trap_ctrl_mret_en = 1;
     tick(dut);
-    dut->trap_is_mret = 0;
-    const uint64_t mstatus_after_mret = read_csr(dut, CSR_MSTATUS);
-    assert(((mstatus_after_mret >> MSTATUS_MIE_BIT) & 1ULL) == 1ULL);
-    assert(((mstatus_after_mret >> MSTATUS_MPIE_BIT) & 1ULL) == 1ULL);
-    assert(((mstatus_after_mret >> MSTATUS_MPP_LO) & 0x3ULL) == PRIV_ENCODE_U);
+    dut->trap_ctrl_mret_en = 0;
+    const uint64_t mstatus_after_mret_reset = read_csr(dut, CSR_MSTATUS);
+    assert(((mstatus_after_mret_reset >> MSTATUS_MIE_BIT) & 1ULL) == 1ULL);
+    assert(((mstatus_after_mret_reset >> MSTATUS_MPIE_BIT) & 1ULL) == 1ULL);
+    assert(((mstatus_after_mret_reset >> MSTATUS_MPP_LO) & 0x3ULL) == PRIV_ENCODE_U);
     std::cout << "[PASS] mret restores interrupt enable bits" << std::endl;
 
     // sret restore flow
     uint64_t sstatus_cfg = (1ULL << SSTATUS_SIE_BIT) | (1ULL << SSTATUS_SPP_BIT);
     csr_op(dut, CSR_SSTATUS, CSR_OP_WRITE, sstatus_cfg);
-    dut->trap_is_sret = 1;
+    dut->trap_ctrl_sret_en = 1;
     tick(dut);
-    dut->trap_is_sret = 0;
-    const uint64_t sstatus_after_sret = read_csr(dut, CSR_SSTATUS);
-    assert(((sstatus_after_sret >> SSTATUS_SIE_BIT) & 1ULL) == 0ULL);
-    assert(((sstatus_after_sret >> SSTATUS_SPIE_BIT) & 1ULL) == 1ULL);
-    assert(((sstatus_after_sret >> SSTATUS_SPP_BIT) & 1ULL) == 0ULL);
+    dut->trap_ctrl_sret_en = 0;
+    const uint64_t sstatus_after_sret_reset = read_csr(dut, CSR_SSTATUS);
+    assert(((sstatus_after_sret_reset >> SSTATUS_SIE_BIT) & 1ULL) == 0ULL);
+    assert(((sstatus_after_sret_reset >> SSTATUS_SPIE_BIT) & 1ULL) == 1ULL);
+    assert(((sstatus_after_sret_reset >> SSTATUS_SPP_BIT) & 1ULL) == 0ULL);
     std::cout << "[PASS] sret updates supervisor status bits" << std::endl;
 
     // Ecall causes depend on current privilege mode
     force_priv_mode_via_mret(dut, PRIV_ENCODE_S);
-    dut->trap_is_ecall = 1;
-    dut->trap_epc = 0x600ULL;
-    tick(dut);
-    dut->trap_is_ecall = 0;
-    dut->trap_epc = 0;
+    trigger_trap(dut, 0x600ULL, EXC_ECALL_FROM_S, 0ULL, false);
     assert(read_csr(dut, CSR_MCAUSE) == EXC_ECALL_FROM_S);
     assert(read_csr(dut, CSR_MTVAL) == 0ULL);
     assert(read_csr(dut, CSR_MEPC) == 0x600ULL);
     assert(((read_csr(dut, CSR_MSTATUS) >> MSTATUS_MPP_LO) & 0x3ULL) == PRIV_ENCODE_S);
 
     force_priv_mode_via_mret(dut, PRIV_ENCODE_U);
-    dut->trap_is_ecall = 1;
-    dut->trap_epc = 0x700ULL;
-    tick(dut);
-    dut->trap_is_ecall = 0;
-    dut->trap_epc = 0;
+    trigger_trap(dut, 0x700ULL, EXC_ECALL_FROM_U, 0ULL, false);
     assert(read_csr(dut, CSR_MCAUSE) == EXC_ECALL_FROM_U);
     assert(read_csr(dut, CSR_MTVAL) == 0ULL);
     assert(read_csr(dut, CSR_MEPC) == 0x700ULL);
@@ -279,18 +333,16 @@ int main(int argc, char** argv) {
     csr_op(dut, CSR_MEDELEG, CSR_OP_WRITE, 0ULL);
     csr_op(dut, CSR_MEDELEG, CSR_OP_SET, (1ULL << EXC_ECALL_FROM_U));
     csr_op(dut, CSR_STVEC, CSR_OP_WRITE, 0x4000ULL);
+    assert(read_csr(dut, CSR_MEDELEG) & (1ULL << EXC_ECALL_FROM_U));
     force_priv_mode_via_mret(dut, PRIV_ENCODE_U);
-    dut->trap_is_ecall = 1;
-    dut->trap_epc = 0x900ULL;
-    tick(dut);
-    dut->trap_is_ecall = 0;
-    dut->trap_epc = 0;
+    assert(dut->csr_priv_mode == PRIV_ENCODE_U);
+    trigger_trap(dut, 0x900ULL, EXC_ECALL_FROM_U, 0ULL, true);
+    assert(dut->csr_trap_to_s_mode);
+    assert(dut->csr_trap_vector == 0x4000ULL);
     assert(read_csr(dut, CSR_SEPC) == 0x900ULL);
     assert(read_csr(dut, CSR_SCAUSE) == EXC_ECALL_FROM_U);
     assert(read_csr(dut, CSR_STVAL) == 0ULL);
     assert(dut->csr_priv_mode == PRIV_ENCODE_S);
-    assert(dut->csr_trap_to_s_mode);
-    assert(dut->csr_trap_vector == 0x4000ULL);
     std::cout << "[PASS] medeleg routes ecall to supervisor" << std::endl;
     force_priv_mode_via_mret(dut, PRIV_ENCODE_M);
 
@@ -325,6 +377,208 @@ int main(int argc, char** argv) {
     assert((read_csr(dut, CSR_FFLAGS) & 0x1FULL) == (0xABULL & 0x1FULL));
     assert((read_csr(dut, CSR_FRM) & 0x7ULL) == ((0xABULL >> 5) & 0x7ULL));
     std::cout << "[PASS] FCSR/FM/FFLAGS read/write" << std::endl;
+
+    std::cout << "[INFO] Extending CSR trap coverage" << std::endl;
+
+    run_csr_scenario(dut, "interrupt_priority_matrix", [&](Vcsr_unit* target) {
+        struct PriorityScenario {
+            const char* name;
+            bool ext_external;
+            bool ext_software;
+            bool ext_timer;
+            bool sync_illegal;
+            uint64_t mepc;
+            uint64_t mtval;
+            uint64_t expected_cause;
+        };
+
+        const std::array<PriorityScenario, 5> suite = {{
+            {"external_over_others", true,  true,  true,  true,  0xA000ULL, 0x1111ULL, INTERRUPT_BIT | INT_M_EXTERNAL},
+            {"software_over_timer",  false, true,  true,  true,  0xA040ULL, 0x2222ULL, INTERRUPT_BIT | INT_M_SOFTWARE},
+            {"timer_over_sync",      false, false, true,  true,  0xA080ULL, 0x3333ULL, INTERRUPT_BIT | INT_M_TIMER},
+            {"interrupt_only",       true,  false, false, false, 0xA0C0ULL, 0x0ULL,     INTERRUPT_BIT | INT_M_EXTERNAL},
+            {"sync_fallback",        false, false, false, true,  0xA100ULL, 0x4444ULL, EXC_INST_ILLEGAL}
+        }};
+
+        for (const auto& scenario : suite) {
+            bool chose_interrupt = false;
+            const uint64_t chosen_cause = arbitrate_trap_priority(
+                scenario.ext_external,
+                scenario.ext_software,
+                scenario.ext_timer,
+                scenario.sync_illegal,
+                EXC_INST_ILLEGAL,
+                chose_interrupt
+            );
+            assert(chosen_cause == scenario.expected_cause);
+            trigger_trap(
+                target,
+                scenario.mepc,
+                chosen_cause,
+                scenario.sync_illegal ? scenario.mtval : 0ULL,
+                false
+            );
+            const uint64_t mcause = read_csr(target, CSR_MCAUSE);
+            assert(mcause == scenario.expected_cause);
+            assert(read_csr(target, CSR_MEPC) == scenario.mepc);
+            const bool mcause_is_interrupt = (mcause & INTERRUPT_BIT) != 0ULL;
+            assert(mcause_is_interrupt == chose_interrupt);
+            if (scenario.sync_illegal && !mcause_is_interrupt) {
+                assert(read_csr(target, CSR_MTVAL) == scenario.mtval);
+            }
+            assert(target->csr_priv_mode == PRIV_ENCODE_M);
+        }
+    });
+
+    run_csr_scenario(dut, "delegated_multitrap_context", [&](Vcsr_unit* target) {
+        csr_op(target, CSR_MEDELEG, CSR_OP_WRITE, 0ULL);
+        csr_op(target, CSR_MEDELEG, CSR_OP_SET, (1ULL << EXC_ECALL_FROM_U));
+        csr_op(target, CSR_STVEC, CSR_OP_WRITE, 0x4000ULL);
+        csr_op(target, CSR_MTVEC, CSR_OP_WRITE, 0x8000ULL);
+
+        force_priv_mode_via_mret(target, PRIV_ENCODE_S);
+        assert(target->csr_priv_mode == PRIV_ENCODE_S);
+
+        const uint64_t delegated_pc = 0x900ULL;
+        trigger_trap(target, delegated_pc, EXC_ECALL_FROM_U, 0ULL, true);
+        assert(target->csr_trap_to_s_mode);
+        assert(target->csr_trap_vector == 0x4000ULL);
+        assert(read_csr(target, CSR_SEPC) == delegated_pc);
+        assert(read_csr(target, CSR_SCAUSE) == EXC_ECALL_FROM_U);
+        assert(target->csr_priv_mode == PRIV_ENCODE_S);
+
+        const uint64_t machine_pc = 0xA00ULL;
+        trigger_trap(target, machine_pc, EXC_INST_ILLEGAL, 0ULL, false);
+        assert(!target->csr_trap_to_s_mode);
+        assert(target->csr_trap_vector == 0x8000ULL);
+        assert(read_csr(target, CSR_MEPC) == machine_pc);
+        assert(read_csr(target, CSR_SEPC) == delegated_pc);
+        assert(target->csr_priv_mode == PRIV_ENCODE_M);
+    });
+
+    run_csr_scenario(dut, "nested_return_sequence", [&](Vcsr_unit* target) {
+        force_priv_mode_via_mret(target, PRIV_ENCODE_U);
+        csr_op(target, CSR_SSTATUS, CSR_OP_WRITE, (1ULL << SSTATUS_SIE_BIT));
+
+        const uint64_t first_trap_pc = 0xB00ULL;
+        trigger_trap(target, first_trap_pc, EXC_ECALL_FROM_U, 0ULL, true);
+        uint64_t sstatus_snapshot = read_csr(target, CSR_SSTATUS);
+        assert(((sstatus_snapshot >> SSTATUS_SIE_BIT) & 1ULL) == 0ULL);
+        assert(((sstatus_snapshot >> SSTATUS_SPIE_BIT) & 1ULL) == 1ULL);
+        assert(((sstatus_snapshot >> SSTATUS_SPP_BIT) & 1ULL) == 0ULL);
+        assert(read_csr(target, CSR_SEPC) == first_trap_pc);
+
+        target->trap_ctrl_sret_en = 1;
+        tick(target);
+        target->trap_ctrl_sret_en = 0;
+        uint64_t sstatus_after_sret = read_csr(target, CSR_SSTATUS);
+        assert(((sstatus_after_sret >> SSTATUS_SIE_BIT) & 1ULL) == 1ULL);
+        assert(((sstatus_after_sret >> SSTATUS_SPIE_BIT) & 1ULL) == 1ULL);
+        assert(target->csr_priv_mode == PRIV_ENCODE_U);
+
+        // Enable machine interrupts so the subsequent machine trap captures pre-trap MIE=1
+        csr_op(target, CSR_MSTATUS, CSR_OP_SET, (1ULL << MSTATUS_MIE_BIT));
+        const uint64_t second_trap_pc = 0xB80ULL;
+        trigger_trap(target, second_trap_pc, EXC_INST_ILLEGAL, 0ULL, false);
+        uint64_t mstatus_snapshot = read_csr(target, CSR_MSTATUS);
+        assert(((mstatus_snapshot >> MSTATUS_MIE_BIT) & 1ULL) == 0ULL);
+        assert(((mstatus_snapshot >> MSTATUS_MPIE_BIT) & 1ULL) == 1ULL);
+        assert(((mstatus_snapshot >> MSTATUS_MPP_LO) & 0x3ULL) == PRIV_ENCODE_U);
+        assert(read_csr(target, CSR_MEPC) == second_trap_pc);
+
+        target->trap_ctrl_mret_en = 1;
+        tick(target);
+        target->trap_ctrl_mret_en = 0;
+        uint64_t mstatus_after_mret = read_csr(target, CSR_MSTATUS);
+        assert(((mstatus_after_mret >> MSTATUS_MIE_BIT) & 1ULL) == 1ULL);
+        assert(((mstatus_after_mret >> MSTATUS_MPIE_BIT) & 1ULL) == 1ULL);
+        assert(((mstatus_after_mret >> MSTATUS_MPP_LO) & 0x3ULL) == PRIV_ENCODE_U);
+        assert(target->csr_priv_mode == PRIV_ENCODE_U);
+    });
+
+    run_csr_scenario(dut, "illegal_csr_access_guard", [&](Vcsr_unit* target) {
+        force_priv_mode_via_mret(target, PRIV_ENCODE_M);
+        assert(target->csr_priv_mode == PRIV_ENCODE_M);
+        const uint64_t misa_snapshot = read_csr(target, CSR_MISA);
+        target->csr_addr = CSR_MISA;
+        target->csr_op = CSR_OP_WRITE;
+        target->csr_rs1_data = 0x1234ULL;
+        target->csr_req = 1;
+        tick(target);
+        target->csr_req = 0;
+        target->csr_op = 0;
+        target->csr_rs1_data = 0;
+        target->csr_addr = 0;
+        assert(target->csr_illegal_access);
+        assert(read_csr(target, CSR_MISA) == misa_snapshot);
+        assert(!target->csr_trap_to_s_mode);
+        assert(target->csr_priv_mode == PRIV_ENCODE_M);
+        assert(target->csr_trap_vector_next == read_csr(target, CSR_MTVEC));
+        tick(target);
+        assert(!target->csr_illegal_access);
+    });
+
+    run_csr_scenario(dut, "delegation_cross_over", [&](Vcsr_unit* target) {
+        csr_op(target, CSR_MTVEC, CSR_OP_WRITE, 0x1000ULL);
+        csr_op(target, CSR_STVEC, CSR_OP_WRITE, 0x2000ULL);
+        csr_op(target, CSR_MEDELEG, CSR_OP_WRITE, 0ULL);
+        csr_op(target, CSR_MIDELEG, CSR_OP_WRITE, 0ULL);
+
+        struct DelegationProbe {
+            const char* name;
+            bool is_interrupt;
+            uint64_t cause;
+            bool delegate_to_s;
+            uint64_t pc;
+        };
+
+        const std::array<DelegationProbe, 4> probes = {{
+            {"medeleg_set",   false, EXC_ECALL_FROM_U, true,  0xD000ULL},
+            {"medeleg_clear", false, EXC_ECALL_FROM_U, false, 0xD040ULL},
+            {"mideleg_set",   true,  INT_M_TIMER,      true,  0xD080ULL},
+            {"mideleg_clear", true,  INT_M_TIMER,      false, 0xD0C0ULL}
+        }};
+
+        for (const auto& probe : probes) {
+            if (probe.is_interrupt) {
+                const uint64_t mask = (1ULL << probe.cause);
+                if (probe.delegate_to_s) {
+                    csr_op(target, CSR_MIDELEG, CSR_OP_SET, mask);
+                } else {
+                    csr_op(target, CSR_MIDELEG, CSR_OP_CLEAR, mask);
+                }
+                force_priv_mode_via_mret(target, PRIV_ENCODE_S);
+                trigger_trap(target, probe.pc, (INTERRUPT_BIT | probe.cause), 0ULL, probe.delegate_to_s);
+                if (probe.delegate_to_s) {
+                    assert(target->csr_trap_to_s_mode);
+                    assert(read_csr(target, CSR_SEPC) == probe.pc);
+                } else {
+                    assert(!target->csr_trap_to_s_mode);
+                    assert(read_csr(target, CSR_MEPC) == probe.pc);
+                }
+            } else {
+                const uint64_t mask = (1ULL << probe.cause);
+                if (probe.delegate_to_s) {
+                    csr_op(target, CSR_MEDELEG, CSR_OP_SET, mask);
+                } else {
+                    csr_op(target, CSR_MEDELEG, CSR_OP_CLEAR, mask);
+                }
+                force_priv_mode_via_mret(target, PRIV_ENCODE_U);
+                trigger_trap(target, probe.pc, probe.cause, 0ULL, probe.delegate_to_s);
+                if (probe.delegate_to_s) {
+                    assert(target->csr_trap_to_s_mode);
+                    assert(read_csr(target, CSR_SEPC) == probe.pc);
+                } else {
+                    assert(!target->csr_trap_to_s_mode);
+                    assert(read_csr(target, CSR_MEPC) == probe.pc);
+                }
+            }
+
+            const uint64_t expected_vector = probe.delegate_to_s ? read_csr(target, CSR_STVEC)
+                                                                  : read_csr(target, CSR_MTVEC);
+            assert(target->csr_trap_vector == expected_vector);
+        }
+    });
 
     std::cout << "----------------------------------\n";
     std::cout << "All CSR unit tests passed!\n";

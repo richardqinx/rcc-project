@@ -32,6 +32,9 @@ module id_ex_reg
 
     // Inputs from ID Stage
 
+    // Instruction payload
+    input  logic [INST_WIDTH-1:0]  id_instr,
+
     // Data/Operands
     input  logic [XLEN-1:0]        id_pc,
     input  logic [XLEN-1:0]        id_rs1_rdata,
@@ -72,6 +75,9 @@ module id_ex_reg
 
 
     // Outputs to EX Stage
+
+    // Instruction payload
+    output logic [INST_WIDTH-1:0]  ex_instr,
 
     // Data/Operands
     output logic [XLEN-1:0]        ex_pc,
@@ -114,6 +120,7 @@ module id_ex_reg
 
     always_ff @(posedge clk) begin
         if (rst) begin
+            ex_instr         <= '0;
             ex_pc            <= '0;
             ex_rs1_rdata     <= '0;
             ex_rs2_rdata     <= '0;
@@ -145,6 +152,7 @@ module id_ex_reg
             ex_is_fence      <= '0;
             ex_is_fence_i    <= '0;
         end else if (flush_en) begin
+            ex_instr         <= '0;
             ex_alu_op        <= ALU_ADD; // NOP is effectively ADD x0, x0, 0
             ex_alu_src1_sel  <= '0;
             ex_alu_src2_sel  <= '0;
@@ -170,6 +178,7 @@ module id_ex_reg
             ex_is_fence      <= '0;
             ex_is_fence_i    <= '0;
         end else if (~stall_en) begin
+            ex_instr         <= id_instr;
             ex_pc            <= id_pc;
             ex_rs1_rdata     <= id_rs1_rdata;
             ex_rs2_rdata     <= id_rs2_rdata;

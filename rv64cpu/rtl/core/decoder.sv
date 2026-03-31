@@ -23,6 +23,7 @@ module decoder
     import rv64_pkg::*;
 (
     input  logic [31:0]       instr,          // 32-bit instruction
+    input  logic [1:0]        priv_mode,      // Current privilege mode from CSR
 
     // Register File
     output logic [4:0]        rs1_addr,       // Source register 1 address
@@ -73,6 +74,12 @@ module decoder
     // ============================
     // Instruction Field Extraction
     // ============================
+    typedef enum logic [1:0] {
+        PRIV_MODE_U = 2'b00,
+        PRIV_MODE_S = 2'b01,
+        PRIV_MODE_M = 2'b11
+    } priv_mode_t;
+
     logic [6:0] opcode;
     logic [2:0] funct3;
     logic [6:0] funct7;
@@ -88,6 +95,7 @@ module decoder
     // Immediate Generation
     // ============================
     logic [XLEN-1:0] imm_i, imm_s, imm_b, imm_u, imm_j;
+    logic [11:0]     csr_addr_field;
 
     // I-type:  instr[31:20]
     assign imm_i = {{52{instr[31]}}, instr[31:20]};
@@ -103,6 +111,26 @@ module decoder
 
     // J-type:  {instr[31], instr[19:12], instr[20], instr[30:21], 1'b0}
     assign imm_j = {{43{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
+    assign csr_addr_field = instr[31:20];
+
+    function automatic int priv_rank(logic [1:0] mode);
+        case (mode)
+            PRIV_MODE_U: return 0;
+            PRIV_MODE_S: return 1;
+            2'b10:       return 2; // Reserved/H-mode, treat as higher than S
+            default:     return 3; // Machine mode (or anything else) highest
+        endcase
+    endfunction
+
+    function automatic logic priv_ge(logic [1:0] cur, logic [1:0] req);
+        return priv_rank(cur) >= priv_rank(req);
+    endfunction
+
+    function automatic logic csr_access_allowed(logic [1:0] cur, logic [11:0] addr);
+        logic [1:0] req_priv;
+        req_priv = addr[9:8];
+        return priv_ge(cur, req_priv);
+    endfunction
 
     // ============================
     // Main Decode Logic
@@ -337,14 +365,28 @@ module decoder
                     case ({funct7, instr[24:20]})    // {funct7, rs2}
                         12'b0000000_00000: is_ecall      = 1'b1;   // ECALL
                         12'b0000000_00001: is_ebreak     = 1'b1;   // EBREAK
-                        12'b0011000_00010: is_mret       = 1'b1;   // MRET
-                        12'b0001000_00010: is_sret       = 1'b1;   // SRET
-                        12'b0001000_00101: is_wfi        = 1'b1;   // WFI
-                        default: begin
-                            if (funct7 == 7'b0001001)
-                                is_sfence_vma = 1'b1;              // SFENCE.VMA
+                        12'b0011000_00010: begin                  // MRET
+                            if (priv_mode == PRIV_MODE_M)
+                                is_mret = 1'b1;
                             else
                                 illegal_instr = 1'b1;
+                        end
+                        12'b0001000_00010: begin                  // SRET
+                            if (priv_ge(priv_mode, PRIV_MODE_S))
+                                is_sret = 1'b1;
+                            else
+                                illegal_instr = 1'b1;
+                        end
+                        12'b0001000_00101: is_wfi        = 1'b1;   // WFI
+                        default: begin
+                            if (funct7 == 7'b0001001) begin
+                                if (priv_ge(priv_mode, PRIV_MODE_S))
+                                    is_sfence_vma = 1'b1;           // SFENCE.VMA
+                                else
+                                    illegal_instr = 1'b1;
+                            end else begin
+                                illegal_instr = 1'b1;
+                            end
                         end
                     endcase
                 end else begin
@@ -355,6 +397,11 @@ module decoder
                     is_csr       = 1'b1;
                     csr_op       = funct3;
                     imm          = imm_i;   // CSR address = instr[31:20] (reuse imm_i path)
+                    if (!csr_access_allowed(priv_mode, csr_addr_field)) begin
+                        reg_write_en  = 1'b0;
+                        is_csr        = 1'b0;
+                        illegal_instr = 1'b1;
+                    end
                 end
             end
 

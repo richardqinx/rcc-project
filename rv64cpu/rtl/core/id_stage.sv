@@ -26,6 +26,7 @@ module id_stage
     // Inputs from IF Stage (via IF/ID Pipeline Register)
     input  logic [XLEN-1:0]        if_pc,        // PC of the current instruction
     input  logic [INST_WIDTH-1:0]  if_instr,     // The 32-bit instruction fetched
+    input  logic [1:0]             csr_priv_mode, // Current privilege mode from CSR
 
     // Write-back Inputs from WB Stage (to RegFile)
     input  logic                   wb_reg_write_en, // Register write enable from WB stage
@@ -85,6 +86,7 @@ module id_stage
 
     decoder u_decoder (
         .instr          (if_instr),
+        .priv_mode      (csr_priv_mode),
 
         // Outputs to RegFile read ports
         .rs1_addr       (rs1_addr),
