@@ -180,6 +180,15 @@ add_verilator_target(
     TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_csr.cc
 )
 
+add_verilator_target(
+    NAME        tb_tlb
+    TOP_MODULE  tlb
+    SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
+                ${RTL_CORE_DIR}/mmu/tlb.sv
+    INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
+    TB_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/unit/tb_tlb.cc
+)
+
 # ═══════════════════════════════════════════════════════════════════════════════════
 # Core Integration Test
 # ═══════════════════════════════════════════════════════════════════════════════════
