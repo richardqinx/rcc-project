@@ -16,15 +16,20 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file clausifier.h
 /// @brief Converts FOL formulas to Clause Normal Form (CNF).
 ///
+/// Clausifier is a stateful object because:
+///   1. Skolem function counter must be shared across all formulas in a problem
+///      (otherwise different formulas generate conflicting Skolem names).
+///   2. Variable renaming counter must be shared for the same reason.
+///
 /// Pipeline: eliminate ↔/→  →  NNF  →  Skolemize  →  distribute ∨ over ∧  →  flatten.
 
 #include "atp/core/clause.h"
+#include "atp/core/symbol_table.h"
 #include "atp/core/term_bank.h"
 #include "atp/normalize/formula.h"
 
@@ -32,7 +37,33 @@
 
 namespace atp {
 
-/// Convert a first-order formula into a set of clauses (CNF).
-std::vector<Clause> clausify(const Formula& formula, TermBank& bank);
+/// Stateful clausifier. Create one per proof problem.
+///
+/// Usage:
+///   Clausifier clausifier(bank, symbols);
+///   auto clauses1 = clausifier.clausify(formula1);
+///   auto clauses2 = clausifier.clausify(formula2);
+///   // Skolem IDs are unique across both calls.
+class Clausifier {
+  public:
+    Clausifier(TermBank& bank, SymbolTable& symbols);
+
+    /// Convert a single formula to CNF clauses.
+    /// Skolem functions generated here are globally unique (counter persists).
+    [[nodiscard]] std::vector<Clause> clausify(const Formula& formula);
+
+    /// Negate a formula: wraps it in ¬(...)
+    /// Used to negate the conjecture before clausification.
+    [[nodiscard]] static std::unique_ptr<Formula> negate(std::unique_ptr<Formula> formula);
+
+    /// Number of Skolem functions generated so far.
+    [[nodiscard]] uint32_t skolemCount() const { return next_skolem_id_; }
+
+  private:
+    TermBank& bank_;
+    SymbolTable& symbols_;
+    uint32_t next_skolem_id_ = 0;
+    uint32_t next_var_id_ = 0;  ///< For variable standardization apart
+};
 
 }  // namespace atp

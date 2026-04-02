@@ -32,7 +32,7 @@ struct Literal {
     bool is_positive;    ///< true = positive, false = negated
 
     /// Complement: flip polarity, same atom.
-    [[nodiscard]] Literal complement() const { return {atom, !is_positive}; }
+    [[nodiscard]] Literal complement() const { return {.atom = atom, .is_positive = !is_positive}; }
 
     bool operator==(const Literal& other) const = default;
 };

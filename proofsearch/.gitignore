@@ -1,6 +1,7 @@
 # Build
 build/
 cmake-build-*/
+.cache/
 compile_commands.json
 
 # IDE
