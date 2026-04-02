@@ -23,8 +23,10 @@
 /// @brief Bidirectional mapping between symbol names and SymbolIds,
 ///        with kind and sort metadata.
 
+#include <deque>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "atp/core/types.h"
 
@@ -63,6 +65,8 @@ class SymbolTable {
 
   private:
     // TODO: Phase 1 implementation
+    std::deque<SymbolInfo> infos_;
+    std::unordered_map<std::string_view, SymbolId> name_to_id_;
 };
 
 }  // namespace atp

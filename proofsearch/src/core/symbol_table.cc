@@ -16,4 +16,47 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "atp/core/symbol_table.h"
+#include "atp/core/types.h"
+#include <cstddef>
+#include <stdexcept>
+#include <string_view>
+
+namespace atp {
+
+SymbolId SymbolTable::intern(std::string_view name, SymbolKind kind, uint16_t arity,
+                    SortId sort) {
+    auto it = name_to_id_.find(name);
+    if (it != name_to_id_.end()) {
+        SymbolId id = it->second;
+        SymbolInfo& info = infos_[id];
+        if (info.kind != kind || info.arity != arity) {
+            throw std::runtime_error("Symbol kind or arity mismatch for: " + std::string(name));
+        }
+        return id;
+    }
+    auto new_id = static_cast<SymbolId>(infos_.size());
+    infos_.push_back({.name = std::string(name), .kind = kind, .arity = arity, .sort = sort});
+    std::string_view stable_name_view = infos_.back().name;
+    name_to_id_.emplace(stable_name_view, new_id);
+    return new_id;
+}
+
+std::string_view SymbolTable::getName(SymbolId id) const {
+    return infos_[id].name;
+}
+
+const SymbolInfo& SymbolTable::getInfo(SymbolId id) const {
+    return infos_[id];
+}
+
+bool SymbolTable::isVariable(SymbolId id) const {
+    return infos_[id].kind == SymbolKind::kVariable;
+}
+
+size_t SymbolTable::size() const {
+    return infos_.size();
+}
+
+} // namespace atp
 

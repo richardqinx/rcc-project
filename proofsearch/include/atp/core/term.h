@@ -16,28 +16,30 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file term.h
 /// @brief Core Term data structure — hash-consed, immutable.
+///
+/// V1 uses vector<TermId> for args.
+/// Future: flat arena with contiguous arg storage for cache locality.
 
-#include <span>
+#include <vector>
 
 #include "atp/core/types.h"
 
 namespace atp {
 
 /// A term is a function/predicate application: f(t1, t2, ..., tn).
-/// Stored in a flat arena; args are contiguous TermIds following the header.
-/// Variables are represented as terms with a special symbol range.
+/// Variables are 0-arity terms whose symbol has SymbolKind::kVariable.
 struct Term {
-    SymbolId symbol_id;  ///< Index into the SymbolTable
-    uint16_t arity;      ///< Number of arguments
+    SymbolId symbol_id;          ///< Index into the SymbolTable
+    std::vector<TermId> args;    ///< Argument sub-term IDs
 
-    /// Access the argument TermIds (stored immediately after this struct in the arena).
-    [[nodiscard]] std::span<const TermId> args() const;
-    [[nodiscard]] std::span<TermId> mutableArgs();
+    /// Number of arguments.
+    [[nodiscard]] uint16_t arity() const {
+        return static_cast<uint16_t>(args.size());
+    }
 };
 
 }  // namespace atp

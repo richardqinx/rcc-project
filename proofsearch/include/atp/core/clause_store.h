@@ -54,6 +54,9 @@ class ClauseStore {
 
     /// Iterate over all clauses with a visitor.
     void forEach(const std::function<void(const Clause&)>& visitor) const;
+    // function may have type erasure overhead, consider using a template
+    // template <typename Visitor>
+    // void forEach(Visitor&& visitor) const;
 
   private:
     std::vector<Clause> clauses_;

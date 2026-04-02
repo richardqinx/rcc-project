@@ -16,4 +16,38 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "atp/core/clause_store.h"
+#include <cassert>
+#include <utility>
 
+namespace atp {
+
+ClauseId ClauseStore::addClause(Clause clause) {
+    auto new_id = static_cast<ClauseId>(clauses_.size());
+    clause.id = new_id;
+    clauses_.push_back(std::move(clause));
+    return new_id;
+}
+
+const Clause& ClauseStore::getClause(ClauseId id) const {
+    assert(id < clauses_.size() && "ClauseId out of bounds!");
+    return clauses_[id];
+}
+
+Clause& ClauseStore::getMutableClause(ClauseId id) {
+    assert(id < clauses_.size() && "ClauseId out of bounds!");
+    return clauses_[id];
+}
+
+size_t ClauseStore::size() const {
+    return clauses_.size();
+}
+
+void ClauseStore::forEach(const std::function<void(const Clause&)>& visitor) const {
+    for (const auto& clause : clauses_) {
+        // TODO: Tombstone mechanism
+        visitor(clause);
+    }
+}
+
+}  // namespace atp
