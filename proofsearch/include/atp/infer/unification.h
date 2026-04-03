@@ -37,4 +37,8 @@ struct UnificationConfig {
 bool unify(const TermBank& bank, TermId t1, TermId t2, Substitution& subst,
            const UnificationConfig& config = {});
 
+/// Apply a substitution to a term recursively, creating new terms in the bank.
+/// Free (unbound) variables are left unchanged.
+TermId applySubstitution(const Substitution& subst, TermId term, TermBank& bank);
+
 }  // namespace atp

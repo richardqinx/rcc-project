@@ -72,6 +72,7 @@ set(ATP_SOURCES
     src/core/term_bank.cc
     src/core/clause_store.cc
     src/normalize/clausifier.cc
+    src/infer/substitution.cc
     src/infer/unification.cc
     src/infer/resolution.cc
     src/index/discrim_tree.cc
