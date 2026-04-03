@@ -32,6 +32,7 @@
 #include "atp/search/clause_queue.h"
 
 #include <optional>
+#include <queue>
 #include <vector>
 
 namespace atp {
@@ -75,7 +76,9 @@ class Prover {
     TermBank& bank_;
     ClauseStore& store_;
     ProverConfig config_;
-    // TODO: Phase 5 implementation — Unprocessed queue + Processed set
+    std::priority_queue<Clause, std::vector<Clause>, ClauseComparator> unprocessed_;
+    std::vector<ClauseId> processed_;
+    std::optional<ClauseId> empty_clause_id_;
 };
 
 }  // namespace atp

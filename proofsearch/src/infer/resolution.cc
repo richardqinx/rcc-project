@@ -85,7 +85,8 @@ Clause renameVariables(const Clause& c, TermBank& bank, SymbolTable& symbols,
 }
 
 std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
-                              const Clause& c2, size_t lit_idx2) {
+                              const Clause& c2, size_t lit_idx2,
+                              const UnificationConfig& uconfig) {
     // Must have opposite polarity
     if (c1.literals[lit_idx1].is_positive == c2.literals[lit_idx2].is_positive) {
         return std::nullopt;
@@ -99,7 +100,7 @@ std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
 
     // Unify the complementary atoms
     Substitution subst;
-    if (!unify(bank, c1.literals[lit_idx1].atom, c2r.literals[lit_idx2].atom, subst)) {
+    if (!unify(bank, c1.literals[lit_idx1].atom, c2r.literals[lit_idx2].atom, subst, uconfig)) {
         return std::nullopt;
     }
 
@@ -126,12 +127,13 @@ std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
     return resolvent;
 }
 
-std::vector<Clause> allResolvents(TermBank& bank, const Clause& c1, const Clause& c2) {
+std::vector<Clause> allResolvents(TermBank& bank, const Clause& c1, const Clause& c2,
+                                  const UnificationConfig& uconfig) {
     std::vector<Clause> results;
     for (size_t i = 0; i < c1.literals.size(); ++i) {
         for (size_t j = 0; j < c2.literals.size(); ++j) {
             if (c1.literals[i].is_positive != c2.literals[j].is_positive) {
-                if (auto r = resolve(bank, c1, i, c2, j)) {
+                if (auto r = resolve(bank, c1, i, c2, j, uconfig)) {
                     results.push_back(std::move(*r));
                 }
             }
@@ -140,7 +142,8 @@ std::vector<Clause> allResolvents(TermBank& bank, const Clause& c1, const Clause
     return results;
 }
 
-std::vector<Clause> factor(TermBank& bank, const Clause& c) {
+std::vector<Clause> factor(TermBank& bank, const Clause& c,
+                           const UnificationConfig& uconfig) {
     std::vector<Clause> results;
     for (size_t i = 0; i < c.literals.size(); ++i) {
         for (size_t j = i + 1; j < c.literals.size(); ++j) {
@@ -148,7 +151,7 @@ std::vector<Clause> factor(TermBank& bank, const Clause& c) {
                 continue;  // Must have same polarity
             }
             Substitution subst;
-            if (!unify(bank, c.literals[i].atom, c.literals[j].atom, subst)) {
+            if (!unify(bank, c.literals[i].atom, c.literals[j].atom, subst, uconfig)) {
                 continue;
             }
             // Build factored clause: drop literal j, apply subst to all
