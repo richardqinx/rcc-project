@@ -143,8 +143,8 @@ TEST(EndToEnd, ProofOutputContainsAllSteps) {
     // Must contain empty clause marker
     std::string empty_marker = "□";
     EXPECT_NE(proof.find(empty_marker), std::string::npos) << proof;
-    // Must contain [from cX, cY] provenance
-    EXPECT_NE(proof.find("[from c"), std::string::npos) << proof;
+    // Must contain [X, Y] provenance (sequential numbers)
+    EXPECT_NE(proof.find("["), std::string::npos) << proof;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

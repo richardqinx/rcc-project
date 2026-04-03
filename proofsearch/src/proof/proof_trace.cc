@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <stack>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -71,7 +72,7 @@ std::vector<ProofStep> extractProof(const ClauseStore& store, ClauseId empty_cla
     return steps;
 }
 
-// ─── termToString 
+// ─── termToString (public — raw names) ──────────────────────────────────
 
 std::string termToString(TermId id, const TermBank& bank) {
     const Term& t = bank.getTerm(id);
@@ -92,12 +93,67 @@ std::string termToString(TermId id, const TermBank& bank) {
     return result;
 }
 
-// ─── clauseToString 
+// ─── Pretty variable names ──────────────────────────────────────────────
+
+namespace {
+
+/// Generate a human-readable variable name from an index.
+/// 0→X, 1→Y, 2→Z, 3→W, 4→V, 5→U, 6→X1, 7→Y1, ...
+std::string prettyVarName(size_t index) {
+    static const char kBaseNames[] = {'X', 'Y', 'Z', 'W', 'V', 'U'};
+    static constexpr size_t kBaseCount = sizeof(kBaseNames);
+
+    char base = kBaseNames[index % kBaseCount];
+    size_t suffix = index / kBaseCount;
+    if (suffix == 0) {
+        return std::string(1, base);
+    }
+    return std::string(1, base) + std::to_string(suffix);
+}
+
+/// Pretty-print a term, renaming variables to readable names.
+/// `var_map` is built incrementally: each new variable gets the next name.
+std::string termToPretty(TermId id, const TermBank& bank,
+                         std::unordered_map<TermId, std::string>& var_map) {
+    if (bank.isVariable(id)) {
+        auto it = var_map.find(id);
+        if (it != var_map.end()) {
+            return it->second;
+        }
+        std::string name = prettyVarName(var_map.size());
+        var_map[id] = name;
+        return name;
+    }
+
+    const Term& t = bank.getTerm(id);
+    std::string name(bank.symbols().getName(t.symbol_id));
+
+    if (t.args.empty()) {
+        return name;
+    }
+
+    std::string result = name + "(";
+    for (size_t i = 0; i < t.args.size(); ++i) {
+        if (i > 0) {
+            result += ",";
+        }
+        result += termToPretty(t.args[i], bank, var_map);
+    }
+    result += ")";
+    return result;
+}
+
+}  // namespace
+
+// ─── clauseToString ─────────────────────────────────────────────────────
 
 std::string clauseToString(const Clause& clause, const TermBank& bank) {
     if (clause.isEmpty()) {
         return "□";
     }
+
+    // Per-clause variable renaming: _R109 → X, _R286 → Y, etc.
+    std::unordered_map<TermId, std::string> var_map;
 
     std::string result;
     for (size_t i = 0; i < clause.literals.size(); ++i) {
@@ -107,7 +163,7 @@ std::string clauseToString(const Clause& clause, const TermBank& bank) {
         if (!clause.literals[i].is_positive) {
             result += "¬";
         }
-        result += termToString(clause.literals[i].atom, bank);
+        result += termToPretty(clause.literals[i].atom, bank, var_map);
     }
     return result;
 }
@@ -127,6 +183,21 @@ static std::string ruleToString(InferenceRule rule) {
 
 std::string formatProof(const std::vector<ProofStep>& proof,
                         const ClauseStore& store, const TermBank& bank) {
+    // Build a local renumbering: internal ClauseId → sequential proof step number
+    std::unordered_map<ClauseId, size_t> id_to_step;
+    for (size_t i = 0; i < proof.size(); ++i) {
+        id_to_step[proof[i].clause_id] = i + 1;  // 1-based
+    }
+
+    auto localName = [&](ClauseId cid) -> std::string {
+        auto it = id_to_step.find(cid);
+        if (it != id_to_step.end()) {
+            return std::to_string(it->second);
+        }
+        // Fallback: shouldn't happen in a valid proof
+        return "?" + std::to_string(cid);
+    };
+
     std::string result;
     for (size_t i = 0; i < proof.size(); ++i) {
         const auto& step = proof[i];
@@ -134,14 +205,13 @@ std::string formatProof(const std::vector<ProofStep>& proof,
 
         result += std::to_string(i + 1) + ". ";
         result += "[" + ruleToString(step.rule) + "] ";
-        result += "c" + std::to_string(step.clause_id) + ": ";
         result += clauseToString(c, bank);
 
         // Show parents for derived clauses
         if (step.parent1 != kInvalidId) {
-            result += "  [from c" + std::to_string(step.parent1);
+            result += "  [" + localName(step.parent1);
             if (step.parent2 != kInvalidId) {
-                result += ", c" + std::to_string(step.parent2);
+                result += ", " + localName(step.parent2);
             }
             result += "]";
         }
