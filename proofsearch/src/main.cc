@@ -31,6 +31,11 @@
 #include <string>
 
 int main(int argc, char* argv[]) {
+    std::cerr << "richard-atp-engine  Copyright (C) 2026  Richard Qin\n"
+              << "This program comes with ABSOLUTELY NO WARRANTY.\n"
+              << "This is free software, and you are welcome to redistribute it\n"
+              << "under certain conditions; see LICENSE for details.\n\n";
+
     if (argc < 2) {
         std::cerr << "Usage: atp <file.p>\n";
         return EXIT_FAILURE;
