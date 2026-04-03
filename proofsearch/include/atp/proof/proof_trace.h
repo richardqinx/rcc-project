@@ -16,14 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file proof_trace.h
 /// @brief Proof reconstruction from the empty clause back to axioms.
-///
-/// This module depends only on ClauseStore (not Prover), so it can be
-/// reused with any search strategy.
 
 #include "atp/core/clause.h"
 #include "atp/core/clause_store.h"
@@ -40,15 +36,20 @@ struct ProofStep {
     InferenceRule rule;
     ClauseId parent1;
     ClauseId parent2;
-    std::string description;  ///< Human-readable description
 };
 
 /// Reconstruct the proof trace from the empty clause.
-/// Walks parent pointers via ClauseStore, independent of search strategy.
-std::vector<ProofStep> extractProof(const ClauseStore& store, ClauseId empty_clause_id,
-                                    const TermBank& bank);
+/// Returns steps in topological order: axioms first, empty clause last.
+std::vector<ProofStep> extractProof(const ClauseStore& store, ClauseId empty_clause_id);
+
+/// Convert a TermId back to a human-readable string.
+std::string termToString(TermId id, const TermBank& bank);
+
+/// Convert a Clause to a human-readable string.
+std::string clauseToString(const Clause& clause, const TermBank& bank);
 
 /// Format a proof as a human-readable string.
-std::string formatProof(const std::vector<ProofStep>& proof, const TermBank& bank);
+std::string formatProof(const std::vector<ProofStep>& proof,
+                        const ClauseStore& store, const TermBank& bank);
 
 }  // namespace atp
