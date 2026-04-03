@@ -16,8 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
-
 #include "atp/core/clause.h"
 #include "atp/core/clause_store.h"
 #include "atp/core/literal.h"
@@ -25,6 +23,8 @@
 #include "atp/core/term_bank.h"
 #include "atp/core/types.h"
 #include "atp/search/prover.h"
+
+#include <gtest/gtest.h>
 
 namespace atp {
 namespace {
@@ -79,10 +79,7 @@ class ProverTest : public ::testing::Test {
 
 TEST_F(ProverTest, TrivialRefutation) {
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({pos(P(a))}),
-        makeClause({neg(P(a))})
-    });
+    prover.addClauses({makeClause({pos(P(a))}), makeClause({neg(P(a))})});
 
     ProverResult result = prover.prove();
     EXPECT_EQ(result, ProverResult::kTheorem);
@@ -95,10 +92,7 @@ TEST_F(ProverTest, TrivialRefutation) {
 
 TEST_F(ProverTest, RefutationWithUnification) {
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({pos(P(X))}),
-        makeClause({neg(P(a))})
-    });
+    prover.addClauses({makeClause({pos(P(X))}), makeClause({neg(P(a))})});
 
     ProverResult result = prover.prove();
     EXPECT_EQ(result, ProverResult::kTheorem);
@@ -112,11 +106,8 @@ TEST_F(ProverTest, RefutationWithUnification) {
 
 TEST_F(ProverTest, TwoStepRefutation) {
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({pos(P(a))}),
-        makeClause({neg(P(X)), pos(Q(X))}),
-        makeClause({neg(Q(a))})
-    });
+    prover.addClauses(
+        {makeClause({pos(P(a))}), makeClause({neg(P(X)), pos(Q(X))}), makeClause({neg(Q(a))})});
 
     ProverResult result = prover.prove();
     EXPECT_EQ(result, ProverResult::kTheorem);
@@ -128,10 +119,7 @@ TEST_F(ProverTest, TwoStepRefutation) {
 
 TEST_F(ProverTest, Saturation) {
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({pos(P(a))}),
-        makeClause({pos(Q(b))})
-    });
+    prover.addClauses({makeClause({pos(P(a))}), makeClause({pos(Q(b))})});
 
     ProverResult result = prover.prove();
     EXPECT_EQ(result, ProverResult::kSaturation);
@@ -147,12 +135,8 @@ TEST_F(ProverTest, Timeout) {
 
     // Need enough clauses to not saturate in 1 iteration
     Prover prover(bank, store, config);
-    prover.addClauses({
-        makeClause({pos(P(X)), pos(Q(X))}),
-        makeClause({neg(P(a)), pos(Q(a))}),
-        makeClause({neg(Q(X)), pos(P(f(X)))}),
-        makeClause({neg(P(X)), neg(Q(X))})
-    });
+    prover.addClauses({makeClause({pos(P(X)), pos(Q(X))}), makeClause({neg(P(a)), pos(Q(a))}),
+                       makeClause({neg(Q(X)), pos(P(f(X)))}), makeClause({neg(P(X)), neg(Q(X))})});
 
     ProverResult result = prover.prove();
     EXPECT_EQ(result, ProverResult::kTimeout);
@@ -168,10 +152,10 @@ TEST_F(ProverTest, ThreeStepChain) {
 
     Prover prover(bank, store);
     prover.addClauses({
-        makeClause({pos(P(a))}),                     // P(a)
-        makeClause({neg(P(X)), pos(Q(X))}),           // ¬P(X) ∨ Q(X)
-        makeClause({neg(Q(X)), pos(S(X))}),           // ¬Q(X) ∨ S(X)
-        makeClause({neg(S(a))})                       // ¬S(a)
+        makeClause({pos(P(a))}),             // P(a)
+        makeClause({neg(P(X)), pos(Q(X))}),  // ¬P(X) ∨ Q(X)
+        makeClause({neg(Q(X)), pos(S(X))}),  // ¬Q(X) ∨ S(X)
+        makeClause({neg(S(a))})              // ¬S(a)
     });
 
     ProverResult result = prover.prove();
@@ -184,10 +168,8 @@ TEST_F(ProverTest, ThreeStepChain) {
 
 TEST_F(ProverTest, EmptyClauseInInput) {
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({}),  // empty clause directly
-        makeClause({pos(P(a))})
-    });
+    prover.addClauses({makeClause({}),  // empty clause directly
+                       makeClause({pos(P(a))})});
 
     // Empty clause should be detected immediately when selected from queue
     ProverResult result = prover.prove();

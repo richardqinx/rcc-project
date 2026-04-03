@@ -17,7 +17,9 @@
  */
 
 #include "atp/core/term_bank.h"
+
 #include "atp/core/types.h"
+
 #include <cassert>
 
 namespace atp {

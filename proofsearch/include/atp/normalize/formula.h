@@ -35,15 +35,15 @@ namespace atp {
 
 /// AST node types for first-order logic formulas.
 enum class FormulaKind : uint8_t {
-    kAtom,       ///< Predicate application: P(t1, ..., tn)
-    kEquality,   ///< Equality atom: t1 = t2 (distinguished for equality reasoning)
-    kNot,        ///< Negation: ¬F
-    kAnd,        ///< Conjunction: F ∧ G
-    kOr,         ///< Disjunction: F ∨ G
-    kImplies,    ///< Implication: F → G
-    kIff,        ///< Biconditional: F ↔ G
-    kForall,     ///< Universal: ∀x. F
-    kExists,     ///< Existential: ∃x. F
+    kAtom,      ///< Predicate application: P(t1, ..., tn)
+    kEquality,  ///< Equality atom: t1 = t2 (distinguished for equality reasoning)
+    kNot,       ///< Negation: ¬F
+    kAnd,       ///< Conjunction: F ∧ G
+    kOr,        ///< Disjunction: F ∨ G
+    kImplies,   ///< Implication: F → G
+    kIff,       ///< Biconditional: F ↔ G
+    kForall,    ///< Universal: ∀x. F
+    kExists,    ///< Existential: ∃x. F
 };
 
 /// A first-order logic formula node.
@@ -77,10 +77,8 @@ struct Formula {
                                                 std::unique_ptr<Formula> rhs);
     static std::unique_ptr<Formula> makeIff(std::unique_ptr<Formula> lhs,
                                             std::unique_ptr<Formula> rhs);
-    static std::unique_ptr<Formula> makeForall(SymbolId var,
-                                               std::unique_ptr<Formula> body);
-    static std::unique_ptr<Formula> makeExists(SymbolId var,
-                                               std::unique_ptr<Formula> body);
+    static std::unique_ptr<Formula> makeForall(SymbolId var, std::unique_ptr<Formula> body);
+    static std::unique_ptr<Formula> makeExists(SymbolId var, std::unique_ptr<Formula> body);
 };
 
 }  // namespace atp

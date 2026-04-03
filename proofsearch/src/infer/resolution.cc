@@ -17,6 +17,7 @@
  */
 
 #include "atp/infer/resolution.h"
+
 #include "atp/core/clause.h"
 #include "atp/core/symbol_table.h"
 #include "atp/core/term.h"
@@ -34,8 +35,7 @@ namespace atp {
 namespace {
 
 /// Recursively collect all variable TermIds appearing in a term.
-void collectVariables(TermId term, const TermBank& bank,
-                      std::unordered_map<TermId, bool>& seen) {
+void collectVariables(TermId term, const TermBank& bank, std::unordered_map<TermId, bool>& seen) {
     if (bank.isVariable(term)) {
         seen[term] = true;
         return;
@@ -84,9 +84,8 @@ Clause renameVariables(const Clause& c, TermBank& bank, SymbolTable& symbols,
     return renamed;
 }
 
-std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
-                              const Clause& c2, size_t lit_idx2,
-                              const UnificationConfig& uconfig) {
+std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1, const Clause& c2,
+                              size_t lit_idx2, const UnificationConfig& uconfig) {
     // Must have opposite polarity
     if (c1.literals[lit_idx1].is_positive == c2.literals[lit_idx2].is_positive) {
         return std::nullopt;
@@ -142,8 +141,7 @@ std::vector<Clause> allResolvents(TermBank& bank, const Clause& c1, const Clause
     return results;
 }
 
-std::vector<Clause> factor(TermBank& bank, const Clause& c,
-                           const UnificationConfig& uconfig) {
+std::vector<Clause> factor(TermBank& bank, const Clause& c, const UnificationConfig& uconfig) {
     std::vector<Clause> results;
     for (size_t i = 0; i < c.literals.size(); ++i) {
         for (size_t j = i + 1; j < c.literals.size(); ++j) {

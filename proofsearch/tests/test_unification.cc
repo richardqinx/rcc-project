@@ -16,13 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
-
 #include "atp/core/symbol_table.h"
 #include "atp/core/term_bank.h"
 #include "atp/core/types.h"
 #include "atp/infer/substitution.h"
 #include "atp/infer/unification.h"
+
+#include <gtest/gtest.h>
 
 namespace atp {
 namespace {
@@ -348,8 +348,7 @@ TEST_F(UnificationTest, UnifyThenApply) {
     EXPECT_EQ(applySubstitution(subst, lhs, bank), P(a, f(b)));
     EXPECT_EQ(applySubstitution(subst, rhs, bank), P(a, f(b)));
     // Both sides should produce the same term after applying the MGU
-    EXPECT_EQ(applySubstitution(subst, lhs, bank),
-              applySubstitution(subst, rhs, bank));
+    EXPECT_EQ(applySubstitution(subst, lhs, bank), applySubstitution(subst, rhs, bank));
 }
 
 }  // namespace

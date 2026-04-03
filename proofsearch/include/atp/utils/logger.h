@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file logger.h
@@ -28,16 +27,15 @@
 #define ATP_LOG_LEVEL 2  // 0=TRACE, 1=DEBUG, 2=INFO, 3=WARN, 4=ERROR
 #endif
 
-#define ATP_LOG(level, level_str, fmt, ...)                        \
-    do {                                                           \
-        if constexpr (level >= ATP_LOG_LEVEL) {                    \
-            std::fprintf(stderr, "[%s] " fmt "\n", level_str,     \
-                         ##__VA_ARGS__);                           \
-        }                                                          \
+#define ATP_LOG(level, level_str, fmt, ...)                                   \
+    do {                                                                      \
+        if constexpr (level >= ATP_LOG_LEVEL) {                               \
+            std::fprintf(stderr, "[%s] " fmt "\n", level_str, ##__VA_ARGS__); \
+        }                                                                     \
     } while (0)
 
 #define ATP_TRACE(fmt, ...) ATP_LOG(0, "TRACE", fmt, ##__VA_ARGS__)
 #define ATP_DEBUG(fmt, ...) ATP_LOG(1, "DEBUG", fmt, ##__VA_ARGS__)
-#define ATP_INFO(fmt, ...)  ATP_LOG(2, "INFO",  fmt, ##__VA_ARGS__)
-#define ATP_WARN(fmt, ...)  ATP_LOG(3, "WARN",  fmt, ##__VA_ARGS__)
+#define ATP_INFO(fmt, ...) ATP_LOG(2, "INFO", fmt, ##__VA_ARGS__)
+#define ATP_WARN(fmt, ...) ATP_LOG(3, "WARN", fmt, ##__VA_ARGS__)
 #define ATP_ERROR(fmt, ...) ATP_LOG(4, "ERROR", fmt, ##__VA_ARGS__)

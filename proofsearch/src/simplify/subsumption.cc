@@ -18,25 +18,24 @@
 
 #include "atp/simplify/subsumption.h"
 
-
 namespace atp {
 
-    bool subsumes(const Clause& general, const Clause& specific) {
-        if (general.size() > specific.size()) {
+bool subsumes(const Clause& general, const Clause& specific) {
+    if (general.size() > specific.size()) {
+        return false;
+    }
+    for (const auto& lit_g : general.literals) {
+        bool found = false;
+        for (const auto& lit_s : specific.literals) {
+            if (lit_g.atom == lit_s.atom && lit_g.is_positive == lit_s.is_positive) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
             return false;
         }
-        for (const auto& lit_g : general.literals) {
-            bool found = false;
-            for (const auto& lit_s : specific.literals) {
-                if (lit_g.atom == lit_s.atom && lit_g.is_positive == lit_s.is_positive) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                return false;
-            }
-        }
-        return true;
     }
+    return true;
 }
+}  // namespace atp

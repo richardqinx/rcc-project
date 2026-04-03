@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file prover.h
@@ -39,9 +38,9 @@ namespace atp {
 
 /// Result of a proof attempt.
 enum class ProverResult : uint8_t {
-    kTheorem,       ///< Empty clause derived — conjecture is a theorem
-    kSaturation,    ///< Search space saturated — cannot prove
-    kTimeout,       ///< Resource limit exceeded
+    kTheorem,     ///< Empty clause derived — conjecture is a theorem
+    kSaturation,  ///< Search space saturated — cannot prove
+    kTimeout,     ///< Resource limit exceeded
 };
 
 /// V1 configuration — simple and direct.

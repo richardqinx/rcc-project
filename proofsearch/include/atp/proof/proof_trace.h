@@ -49,7 +49,7 @@ std::string termToString(TermId id, const TermBank& bank);
 std::string clauseToString(const Clause& clause, const TermBank& bank);
 
 /// Format a proof as a human-readable string.
-std::string formatProof(const std::vector<ProofStep>& proof,
-                        const ClauseStore& store, const TermBank& bank);
+std::string formatProof(const std::vector<ProofStep>& proof, const ClauseStore& store,
+                        const TermBank& bank);
 
 }  // namespace atp

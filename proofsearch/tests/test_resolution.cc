@@ -16,8 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
-
 #include "atp/core/clause.h"
 #include "atp/core/literal.h"
 #include "atp/core/symbol_table.h"
@@ -26,6 +24,8 @@
 #include "atp/infer/resolution.h"
 #include "atp/infer/substitution.h"
 #include "atp/infer/unification.h"
+
+#include <gtest/gtest.h>
 
 namespace atp {
 namespace {

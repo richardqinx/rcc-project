@@ -42,15 +42,15 @@ namespace atp {
 /// Role of a TPTP formula.
 /// See TPTP spec: https://www.tptp.org/TPTP/SyntaxBNF.html
 enum class FormulaRole : uint8_t {
-    kAxiom,                ///< Background truth
-    kHypothesis,           ///< Problem-specific assumption
-    kDefinition,           ///< Symbol definition (can be unfolded)
-    kAssumption,           ///< Assumed for this proof attempt
-    kLemma,                ///< Derived intermediate result
-    kTheorem,              ///< Previously proved statement (used as axiom)
-    kConjecture,           ///< The statement to prove
-    kNegatedConjecture,    ///< Already negated conjecture (input was cnf)
-    kPlain,                ///< No semantic role specified
+    kAxiom,              ///< Background truth
+    kHypothesis,         ///< Problem-specific assumption
+    kDefinition,         ///< Symbol definition (can be unfolded)
+    kAssumption,         ///< Assumed for this proof attempt
+    kLemma,              ///< Derived intermediate result
+    kTheorem,            ///< Previously proved statement (used as axiom)
+    kConjecture,         ///< The statement to prove
+    kNegatedConjecture,  ///< Already negated conjecture (input was cnf)
+    kPlain,              ///< No semantic role specified
 };
 
 /// Map a TPTP role string to enum. Returns kPlain for unknown roles.
@@ -82,12 +82,10 @@ struct ParsedProblem {
 /// For `fof(...)` entries: Formula AST is built (clausification happens later).
 ///
 /// All symbols are interned into `symbols` and terms into `bank` during parsing.
-ParsedProblem parseTptpFile(const std::string& filepath,
-                            TermBank& bank, SymbolTable& symbols);
+ParsedProblem parseTptpFile(const std::string& filepath, TermBank& bank, SymbolTable& symbols);
 
 /// Parse a TPTP string (for testing).
-ParsedProblem parseTptpString(const std::string& input,
-                              TermBank& bank, SymbolTable& symbols);
+ParsedProblem parseTptpString(const std::string& input, TermBank& bank, SymbolTable& symbols);
 
 /// Prepare a parsed problem for proving:
 ///   1. Negate conjecture formulas.
@@ -96,7 +94,6 @@ ParsedProblem parseTptpString(const std::string& input,
 ///   4. Assign ClauseIds and set provenance to kInput.
 ///
 /// Returns the final clause set ready for the Prover.
-std::vector<Clause> prepareForProving(ParsedProblem& problem,
-                                      TermBank& bank, SymbolTable& symbols);
+std::vector<Clause> prepareForProving(ParsedProblem& problem, TermBank& bank, SymbolTable& symbols);
 
 }  // namespace atp

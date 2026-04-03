@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file inference_rule.h
@@ -62,9 +61,10 @@ class GeneratingRule : public InferenceRuleBase {
     /// @param processed All previously processed clauses (accessed via store).
     /// @param bank      The global term bank.
     /// @return Newly generated clauses (not yet added to the store).
-    [[nodiscard]] virtual std::vector<Clause> generate(
-        const Clause& given, const std::vector<ClauseId>& processed,
-        const ClauseStore& store, TermBank& bank) const = 0;
+    [[nodiscard]] virtual std::vector<Clause> generate(const Clause& given,
+                                                       const std::vector<ClauseId>& processed,
+                                                       const ClauseStore& store,
+                                                       TermBank& bank) const = 0;
 };
 
 /// Simplifying inference rule: rewrite or delete a clause in-place.
@@ -74,8 +74,7 @@ class SimplifyingRule : public InferenceRuleBase {
 
     /// Attempt to simplify a clause. Returns true if the clause was modified.
     /// If the clause should be deleted entirely, clear its literals.
-    virtual bool simplify(Clause& clause, const ClauseStore& store,
-                          TermBank& bank) const = 0;
+    virtual bool simplify(Clause& clause, const ClauseStore& store, TermBank& bank) const = 0;
 };
 
 }  // namespace atp

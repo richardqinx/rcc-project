@@ -16,19 +16,18 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file symbol_table.h
 /// @brief Bidirectional mapping between symbol names and SymbolIds,
 ///        with kind and sort metadata.
 
+#include "atp/core/types.h"
+
 #include <deque>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-
-#include "atp/core/types.h"
 
 namespace atp {
 

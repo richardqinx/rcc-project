@@ -16,8 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
-
 #include "atp/core/clause.h"
 #include "atp/core/clause_store.h"
 #include "atp/core/literal.h"
@@ -27,6 +25,7 @@
 #include "atp/proof/proof_trace.h"
 #include "atp/search/prover.h"
 
+#include <gtest/gtest.h>
 #include <string>
 
 namespace atp {
@@ -125,10 +124,7 @@ TEST_F(ProofTraceTest, ClauseToStringMultipleLiterals) {
 TEST_F(ProofTraceTest, ExtractProofTrivial) {
     // Run a trivial proof: {P(a)} + {¬P(a)} → □
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({pos(P(a_term))}),
-        makeClause({neg(P(a_term))})
-    });
+    prover.addClauses({makeClause({pos(P(a_term))}), makeClause({neg(P(a_term))})});
     ProverResult result = prover.prove();
     ASSERT_EQ(result, ProverResult::kTheorem);
 
@@ -149,11 +145,8 @@ TEST_F(ProofTraceTest, ExtractProofTrivial) {
 TEST_F(ProofTraceTest, ExtractProofTwoStep) {
     // {P(a)}, {¬P(X), Q(X)}, {¬Q(a)} → □ in 2 resolution steps
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({pos(P(a_term))}),
-        makeClause({neg(P(X_term)), pos(Q(X_term))}),
-        makeClause({neg(Q(a_term))})
-    });
+    prover.addClauses({makeClause({pos(P(a_term))}), makeClause({neg(P(X_term)), pos(Q(X_term))}),
+                       makeClause({neg(Q(a_term))})});
     ProverResult result = prover.prove();
     ASSERT_EQ(result, ProverResult::kTheorem);
 
@@ -174,10 +167,7 @@ TEST_F(ProofTraceTest, ExtractProofTwoStep) {
 
 TEST_F(ProofTraceTest, FormatProofContainsExpectedElements) {
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({pos(P(a_term))}),
-        makeClause({neg(P(a_term))})
-    });
+    prover.addClauses({makeClause({pos(P(a_term))}), makeClause({neg(P(a_term))})});
     prover.prove();
 
     auto eid = prover.getEmptyClauseId();
@@ -197,10 +187,7 @@ TEST_F(ProofTraceTest, FormatProofContainsExpectedElements) {
 
 TEST_F(ProofTraceTest, FormatProofNoParentsForAxioms) {
     Prover prover(bank, store);
-    prover.addClauses({
-        makeClause({pos(P(a_term))}),
-        makeClause({neg(P(a_term))})
-    });
+    prover.addClauses({makeClause({pos(P(a_term))}), makeClause({neg(P(a_term))})});
     prover.prove();
 
     auto eid = prover.getEmptyClauseId();

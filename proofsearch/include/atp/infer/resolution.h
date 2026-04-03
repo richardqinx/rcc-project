@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file resolution.h
@@ -24,32 +23,28 @@
 
 #include "atp/core/clause.h"
 #include "atp/core/term_bank.h"
+#include "atp/infer/unification.h"
 
 #include <optional>
 #include <vector>
-
-#include "atp/infer/unification.h"
 
 namespace atp {
 
 /// Attempt binary resolution between two clauses on the specified literal indices.
 /// @return The resolvent clause if resolution succeeds, std::nullopt otherwise.
-std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
-                              const Clause& c2, size_t lit_idx2,
-                              const UnificationConfig& uconfig = {});
+std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1, const Clause& c2,
+                              size_t lit_idx2, const UnificationConfig& uconfig = {});
 
 /// Generate all possible resolvents between two clauses.
 std::vector<Clause> allResolvents(TermBank& bank, const Clause& c1, const Clause& c2,
                                   const UnificationConfig& uconfig = {});
 
 /// Attempt factoring on a single clause (merge two unifiable literals).
-std::vector<Clause> factor(TermBank& bank, const Clause& c,
-                           const UnificationConfig& uconfig = {});
+std::vector<Clause> factor(TermBank& bank, const Clause& c, const UnificationConfig& uconfig = {});
 
 /// Rename all variables in a clause to fresh ones, avoiding conflicts
 /// with variables already in the bank.
 Clause renameVariables(const Clause& c, TermBank& bank, SymbolTable& symbols,
                        uint32_t& next_var_id);
-
 
 }  // namespace atp

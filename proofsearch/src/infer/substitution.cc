@@ -17,6 +17,7 @@
  */
 
 #include "atp/infer/substitution.h"
+
 #include "atp/core/term.h"
 #include "atp/core/term_bank.h"
 #include "atp/core/types.h"

@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file literal.h
@@ -28,8 +27,8 @@ namespace atp {
 
 /// A literal: a polarity flag plus the TermId of the atom.
 struct Literal {
-    TermId atom;         ///< TermId of the predicate application
-    bool is_positive;    ///< true = positive, false = negated
+    TermId atom;       ///< TermId of the predicate application
+    bool is_positive;  ///< true = positive, false = negated
 
     /// Complement: flip polarity, same atom.
     [[nodiscard]] Literal complement() const { return {.atom = atom, .is_positive = !is_positive}; }

@@ -19,8 +19,6 @@
 /// @file test_end_to_end.cc
 /// @brief End-to-end tests: TPTP string → parse → prove → verify result.
 
-#include <gtest/gtest.h>
-
 #include "atp/core/clause_store.h"
 #include "atp/core/symbol_table.h"
 #include "atp/core/term_bank.h"
@@ -28,6 +26,7 @@
 #include "atp/proof/proof_trace.h"
 #include "atp/search/prover.h"
 
+#include <gtest/gtest.h>
 #include <string>
 
 namespace atp {
@@ -175,9 +174,9 @@ TEST(EndToEnd, MonkeyBanana) {
         cnf(negated_goal, negated_conjecture, ~goal_reached(S)).
     )");
 
-    EXPECT_EQ(result, ProverResult::kTheorem)
-        << "ATP should prove the monkey can get the banana!\n"
-        << "Proof output:\n" << proof;
+    EXPECT_EQ(result, ProverResult::kTheorem) << "ATP should prove the monkey can get the banana!\n"
+                                              << "Proof output:\n"
+                                              << proof;
 }
 
 }  // namespace

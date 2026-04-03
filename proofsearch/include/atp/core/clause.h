@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file clause.h
@@ -25,10 +24,10 @@
 /// NOTE: V1 uses std::vector<Literal> for simplicity.
 /// Future optimization: migrate to a Clause Arena with contiguous storage.
 
-#include <vector>
-
 #include "atp/core/literal.h"
 #include "atp/core/types.h"
+
+#include <vector>
 
 namespace atp {
 

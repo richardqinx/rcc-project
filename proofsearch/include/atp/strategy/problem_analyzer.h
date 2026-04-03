@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file problem_analyzer.h
@@ -41,10 +40,10 @@ namespace atp {
 
 /// Features detected in the input problem.
 struct ProblemFeatures {
-    bool has_equality = false;        ///< Contains '=' predicate
+    bool has_equality = false;             ///< Contains '=' predicate
     bool is_purely_propositional = false;  ///< No function symbols, no variables
-    bool is_horn = false;             ///< All clauses are Horn clauses
-    bool has_existential = false;     ///< Had existential quantifiers (Skolemized)
+    bool is_horn = false;                  ///< All clauses are Horn clauses
+    bool has_existential = false;          ///< Had existential quantifiers (Skolemized)
     size_t num_clauses = 0;
     size_t num_predicates = 0;
     size_t num_functions = 0;

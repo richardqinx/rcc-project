@@ -24,22 +24,20 @@
 /// V1 uses vector<TermId> for args.
 /// Future: flat arena with contiguous arg storage for cache locality.
 
-#include <vector>
-
 #include "atp/core/types.h"
+
+#include <vector>
 
 namespace atp {
 
 /// A term is a function/predicate application: f(t1, t2, ..., tn).
 /// Variables are 0-arity terms whose symbol has SymbolKind::kVariable.
 struct Term {
-    SymbolId symbol_id;          ///< Index into the SymbolTable
-    std::vector<TermId> args;    ///< Argument sub-term IDs
+    SymbolId symbol_id;        ///< Index into the SymbolTable
+    std::vector<TermId> args;  ///< Argument sub-term IDs
 
     /// Number of arguments.
-    [[nodiscard]] uint16_t arity() const {
-        return static_cast<uint16_t>(args.size());
-    }
+    [[nodiscard]] uint16_t arity() const { return static_cast<uint16_t>(args.size()); }
 };
 
 }  // namespace atp

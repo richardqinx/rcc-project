@@ -16,8 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <gtest/gtest.h>
-
 #include "atp/core/clause.h"
 #include "atp/core/clause_store.h"
 #include "atp/core/literal.h"
@@ -25,6 +23,8 @@
 #include "atp/core/term.h"
 #include "atp/core/term_bank.h"
 #include "atp/core/types.h"
+
+#include <gtest/gtest.h>
 
 namespace atp {
 namespace {

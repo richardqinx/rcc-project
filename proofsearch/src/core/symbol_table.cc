@@ -17,15 +17,16 @@
  */
 
 #include "atp/core/symbol_table.h"
+
 #include "atp/core/types.h"
+
 #include <cstddef>
 #include <stdexcept>
 #include <string_view>
 
 namespace atp {
 
-SymbolId SymbolTable::intern(std::string_view name, SymbolKind kind, uint16_t arity,
-                    SortId sort) {
+SymbolId SymbolTable::intern(std::string_view name, SymbolKind kind, uint16_t arity, SortId sort) {
     auto it = name_to_id_.find(name);
     if (it != name_to_id_.end()) {
         SymbolId id = it->second;
@@ -58,5 +59,4 @@ size_t SymbolTable::size() const {
     return infos_.size();
 }
 
-} // namespace atp
-
+}  // namespace atp

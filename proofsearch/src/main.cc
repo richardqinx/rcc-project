@@ -52,8 +52,8 @@ int main(int argc, char* argv[]) {
         // 2. Parse TPTP input
         auto problem = atp::parseTptpFile(filepath, bank, symbols);
 
-        std::cerr << "% Parsed " << problem.formulas.size()
-                  << " formulas from " << filepath << "\n";
+        std::cerr << "% Parsed " << problem.formulas.size() << " formulas from " << filepath
+                  << "\n";
 
         // 3. Prepare clauses for proving
         auto clauses = atp::prepareForProving(problem, bank, symbols);

@@ -17,10 +17,12 @@
  */
 
 #include "atp/frontend/tptp_parser.h"
+
 #include "atp/core/clause.h"
 #include "atp/core/literal.h"
 #include "atp/core/term_bank.h"
 #include "atp/core/types.h"
+
 #include <cctype>
 #include <fstream>
 #include <stdexcept>
@@ -31,31 +33,29 @@
 
 namespace atp {
 
-FormulaRole parseRole(std::string_view role_str){
-    if (role_str == "axiom") return FormulaRole::kAxiom;
-    if (role_str == "hypothesis") return FormulaRole::kHypothesis;
-    if (role_str == "definition") return FormulaRole::kDefinition;
-    if (role_str == "assumption") return FormulaRole::kAssumption;
-    if (role_str == "lemma") return FormulaRole::kLemma;
-    if (role_str == "theorem") return FormulaRole::kTheorem;
-    if (role_str == "conjecture") return FormulaRole::kConjecture;
-    if (role_str == "negated_conjecture") return FormulaRole::kNegatedConjecture;
-    if (role_str == "plain") return FormulaRole::kPlain;
+FormulaRole parseRole(std::string_view role_str) {
+    if (role_str == "axiom")
+        return FormulaRole::kAxiom;
+    if (role_str == "hypothesis")
+        return FormulaRole::kHypothesis;
+    if (role_str == "definition")
+        return FormulaRole::kDefinition;
+    if (role_str == "assumption")
+        return FormulaRole::kAssumption;
+    if (role_str == "lemma")
+        return FormulaRole::kLemma;
+    if (role_str == "theorem")
+        return FormulaRole::kTheorem;
+    if (role_str == "conjecture")
+        return FormulaRole::kConjecture;
+    if (role_str == "negated_conjecture")
+        return FormulaRole::kNegatedConjecture;
+    if (role_str == "plain")
+        return FormulaRole::kPlain;
     return FormulaRole::kPlain;
 }
 
-
-enum class TokenType {
-    kWord,
-    kLParen,
-    kRParen,
-    kOr,
-    kNot,
-    kDot,
-    kComma,
-    kEOF,
-    kUnkown
-};
+enum class TokenType { kWord, kLParen, kRParen, kOr, kNot, kDot, kComma, kEOF, kUnkown };
 
 struct Token {
     TokenType type;
@@ -65,7 +65,7 @@ struct Token {
 };
 
 class TptpLexer {
-public:
+  public:
     explicit TptpLexer(std::string_view input) : source_(input) {}
 
     Token next_token() {
@@ -80,25 +80,40 @@ public:
         char c = source_[pos_];
 
         if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
-            while (pos_ < source_.size() && (std::isalnum(static_cast<unsigned char>(source_[pos_])) || source_[pos_] == '_')) {
+            while (
+                pos_ < source_.size() &&
+                (std::isalnum(static_cast<unsigned char>(source_[pos_])) || source_[pos_] == '_')) {
                 advance_char();
             }
-            return {.type = TokenType::kWord, .value = source_.substr(start_pos, pos_ - start_pos), .line = line_, .column = column_};
+            return {.type = TokenType::kWord,
+                    .value = source_.substr(start_pos, pos_ - start_pos),
+                    .line = line_,
+                    .column = column_};
         }
 
         advance_char();
         switch (c) {
-            case '(': return {.type = TokenType::kLParen, .value = "(", .line = line_, .column = column_};
-            case ')': return {.type = TokenType::kRParen, .value = ")", .line = line_, .column = column_};
-            case ',': return {.type = TokenType::kComma, .value = ",", .line = line_, .column = column_};
-            case '.': return {.type = TokenType::kDot, .value = ".", .line = line_, .column = column_};
-            case '~': return {.type = TokenType::kNot, .value = "~", .line = line_, .column = column_};
-            case '|': return {.type = TokenType::kOr, .value = "|", .line = line_, .column = column_};
-            default: return {.type = TokenType::kUnkown, .value = source_.substr(start_pos, 1), .line = line_, .column = column_};
+            case '(':
+                return {.type = TokenType::kLParen, .value = "(", .line = line_, .column = column_};
+            case ')':
+                return {.type = TokenType::kRParen, .value = ")", .line = line_, .column = column_};
+            case ',':
+                return {.type = TokenType::kComma, .value = ",", .line = line_, .column = column_};
+            case '.':
+                return {.type = TokenType::kDot, .value = ".", .line = line_, .column = column_};
+            case '~':
+                return {.type = TokenType::kNot, .value = "~", .line = line_, .column = column_};
+            case '|':
+                return {.type = TokenType::kOr, .value = "|", .line = line_, .column = column_};
+            default:
+                return {.type = TokenType::kUnkown,
+                        .value = source_.substr(start_pos, 1),
+                        .line = line_,
+                        .column = column_};
         }
     }
 
-private:
+  private:
     std::string_view source_;
     size_t pos_ = 0;
     size_t line_ = 1;
@@ -133,8 +148,9 @@ private:
 };
 
 class TptpParser {
-public:
-    explicit TptpParser(std::string_view input, TermBank& bank, SymbolTable& symbols) : lexer_(input), bank_(bank), symbols_(symbols) {
+  public:
+    explicit TptpParser(std::string_view input, TermBank& bank, SymbolTable& symbols)
+        : lexer_(input), bank_(bank), symbols_(symbols) {
         advance();
     }
 
@@ -146,11 +162,11 @@ public:
 
                 AnnotatedFormula af;
                 af.is_cnf = true;
-                
+
                 af.name = std::string(current_token_.value);
                 expect(TokenType::kWord);
                 expect(TokenType::kComma);
-                
+
                 af.role = parseRole(current_token_.value);
                 expect(TokenType::kWord);
                 expect(TokenType::kComma);
@@ -169,14 +185,16 @@ public:
 
                 variable_cache_.clear();
             } else if (current_token_.value == "fof") {
-                throw std::runtime_error("FOF parsing not implemented. Line " + std::to_string(current_token_.line));
+                throw std::runtime_error("FOF parsing not implemented. Line " +
+                                         std::to_string(current_token_.line));
             } else {
-                throw std::runtime_error("Unknown declaration: '" + std::string(current_token_.value) + "'");
+                throw std::runtime_error("Unknown declaration: '" +
+                                         std::string(current_token_.value) + "'");
             }
         }
     }
 
-private:
+  private:
     TptpLexer lexer_;
     TermBank& bank_;
     SymbolTable& symbols_;
@@ -184,24 +202,25 @@ private:
 
     std::unordered_map<std::string_view, TermId> variable_cache_;
 
-    void advance() {
-        current_token_ = lexer_.next_token();
-    }
+    void advance() { current_token_ = lexer_.next_token(); }
 
     void expect(TokenType type) {
         if (current_token_.type != type) {
-            throw std::runtime_error("Parse error at line " + std::to_string(current_token_.line) + 
-                                     ", col " + std::to_string(current_token_.column) + 
-                                     ": unexpected token '" + std::string(current_token_.value) + "'");
+            throw std::runtime_error("Parse error at line " + std::to_string(current_token_.line) +
+                                     ", col " + std::to_string(current_token_.column) +
+                                     ": unexpected token '" + std::string(current_token_.value) +
+                                     "'");
         }
         advance();
     }
 
     TermId parseTerm() {
         if (current_token_.type != TokenType::kWord) {
-            throw std::runtime_error("Expected variable or function name at line " + std::to_string(current_token_.line) + 
-                                     ", col " + std::to_string(current_token_.column) + 
-                                     ": unexpected token '" + std::string(current_token_.value) + "'");
+            throw std::runtime_error("Expected variable or function name at line " +
+                                     std::to_string(current_token_.line) + ", col " +
+                                     std::to_string(current_token_.column) +
+                                     ": unexpected token '" + std::string(current_token_.value) +
+                                     "'");
         }
 
         std::string_view name = current_token_.value;
@@ -253,14 +272,14 @@ private:
     }
 };
 
-ParsedProblem parseTptpString(const std::string &input, TermBank &bank, SymbolTable &symbols){
+ParsedProblem parseTptpString(const std::string& input, TermBank& bank, SymbolTable& symbols) {
     ParsedProblem problem;
     TptpParser parser(input, bank, symbols);
     parser.parseProblem(problem);
     return problem;
 }
 
-ParsedProblem parseTptpFile(const std::string &filename, TermBank &bank, SymbolTable &symbols){
+ParsedProblem parseTptpFile(const std::string& filename, TermBank& bank, SymbolTable& symbols) {
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open file: " + filename);
@@ -271,12 +290,13 @@ ParsedProblem parseTptpFile(const std::string &filename, TermBank &bank, SymbolT
     return problem;
 }
 
-std::vector<Clause> prepareForProving(ParsedProblem &problem, TermBank &bank, SymbolTable &symbols){
+std::vector<Clause> prepareForProving(ParsedProblem& problem, TermBank& bank,
+                                      SymbolTable& symbols) {
     std::vector<Clause> final_clauses;
 
-    for (auto& af : problem.formulas){
-        if (af.is_cnf){
-            for (auto& clause : af.clauses){
+    for (auto& af : problem.formulas) {
+        if (af.is_cnf) {
+            for (auto& clause : af.clauses) {
                 clause.rule = InferenceRule::kInput;
                 clause.parent1 = kInvalidId;
                 clause.parent2 = kInvalidId;
@@ -287,4 +307,4 @@ std::vector<Clause> prepareForProving(ParsedProblem &problem, TermBank &bank, Sy
     return final_clauses;
 }
 
-} // namespace atp
+}  // namespace atp

@@ -17,6 +17,7 @@
  */
 
 #include "atp/search/prover.h"
+
 #include "atp/core/types.h"
 #include "atp/infer/resolution.h"
 #include "atp/infer/unification.h"
@@ -28,10 +29,7 @@
 namespace atp {
 
 Prover::Prover(TermBank& bank, ClauseStore& store, ProverConfig config)
-    : bank_(bank),
-      store_(store),
-      config_(std::move(config)),
-      unprocessed_(config_.comparator) {}
+    : bank_(bank), store_(store), config_(std::move(config)), unprocessed_(config_.comparator) {}
 
 void Prover::addClauses(std::vector<Clause> clauses) {
     for (auto& clause : clauses) {
@@ -46,8 +44,7 @@ ProverResult Prover::prove() {
 
     while (!unprocessed_.empty()) {
         // Resource limits
-        if (iterations >= config_.max_iterations ||
-            store_.size() >= config_.max_clauses) {
+        if (iterations >= config_.max_iterations || store_.size() >= config_.max_clauses) {
             return ProverResult::kTimeout;
         }
         ++iterations;
@@ -81,9 +78,8 @@ ProverResult Prover::prove() {
         // 4. Backward subsumption
         // Remove from processed all clauses that are subsumed by given.
         // Use erase-remove idiom for O(n) scan instead of repeated erase.
-        std::erase_if(processed_, [&](ClauseId pid) {
-            return subsumes(given, store_.getClause(pid));
-        });
+        std::erase_if(processed_,
+                      [&](ClauseId pid) { return subsumes(given, store_.getClause(pid)); });
 
         // 5. Generate new clauses
         // Inference BEFORE adding given to processed — matches doc §4.6.
@@ -129,12 +125,8 @@ ProverResult Prover::prove() {
             }
 
             // 7c. Set depth
-            uint32_t d1 = (nc.parent1 != kInvalidId)
-                              ? store_.getClause(nc.parent1).depth
-                              : 0;
-            uint32_t d2 = (nc.parent2 != kInvalidId)
-                              ? store_.getClause(nc.parent2).depth
-                              : 0;
+            uint32_t d1 = (nc.parent1 != kInvalidId) ? store_.getClause(nc.parent1).depth : 0;
+            uint32_t d2 = (nc.parent2 != kInvalidId) ? store_.getClause(nc.parent2).depth : 0;
             nc.depth = static_cast<uint16_t>(std::max(d1, d2) + 1);
 
             // 7d. Store the clause (needed for forward subsumption check)

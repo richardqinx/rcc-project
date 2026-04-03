@@ -17,18 +17,19 @@
  */
 
 #include "atp/simplify/tautology.h"
+
 #include <cstddef>
 
- namespace atp {
-    bool isTautology(const Clause& clause) {
-        for (size_t i = 0; i < clause.size(); ++i) {
-            for (size_t j = i + 1; j < clause.size(); ++j) {
-                if (clause.literals[i].atom == clause.literals[j].atom && 
-                    clause.literals[i].is_positive != clause.literals[j].is_positive) {
-                    return true;
-                }
+namespace atp {
+bool isTautology(const Clause& clause) {
+    for (size_t i = 0; i < clause.size(); ++i) {
+        for (size_t j = i + 1; j < clause.size(); ++j) {
+            if (clause.literals[i].atom == clause.literals[j].atom &&
+                clause.literals[i].is_positive != clause.literals[j].is_positive) {
+                return true;
             }
         }
-        return false;
     }
+    return false;
 }
+}  // namespace atp

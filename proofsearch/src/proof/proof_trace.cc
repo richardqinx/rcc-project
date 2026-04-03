@@ -17,6 +17,7 @@
  */
 
 #include "atp/proof/proof_trace.h"
+
 #include "atp/core/clause.h"
 #include "atp/core/symbol_table.h"
 #include "atp/core/term.h"
@@ -31,7 +32,7 @@
 
 namespace atp {
 
-// ─── extractProof 
+// extractProof
 // DFS from empty clause back to axioms, collect all participating clauses,
 // then reverse for topological order (axioms first).
 
@@ -72,7 +73,7 @@ std::vector<ProofStep> extractProof(const ClauseStore& store, ClauseId empty_cla
     return steps;
 }
 
-// ─── termToString (public — raw names) ──────────────────────────────────
+// termToString
 
 std::string termToString(TermId id, const TermBank& bank) {
     const Term& t = bank.getTerm(id);
@@ -93,7 +94,7 @@ std::string termToString(TermId id, const TermBank& bank) {
     return result;
 }
 
-// ─── Pretty variable names ──────────────────────────────────────────────
+// Pretty variable names
 
 namespace {
 
@@ -145,7 +146,7 @@ std::string termToPretty(TermId id, const TermBank& bank,
 
 }  // namespace
 
-// ─── clauseToString ─────────────────────────────────────────────────────
+// clauseToString
 
 std::string clauseToString(const Clause& clause, const TermBank& bank) {
     if (clause.isEmpty()) {
@@ -168,21 +169,25 @@ std::string clauseToString(const Clause& clause, const TermBank& bank) {
     return result;
 }
 
-// ─── ruleToString 
+// ruleToString
 
 static std::string ruleToString(InferenceRule rule) {
     switch (rule) {
-        case InferenceRule::kInput:      return "input";
-        case InferenceRule::kResolution: return "resolution";
-        case InferenceRule::kFactoring:  return "factoring";
-        default:                         return "unknown";
+        case InferenceRule::kInput:
+            return "input";
+        case InferenceRule::kResolution:
+            return "resolution";
+        case InferenceRule::kFactoring:
+            return "factoring";
+        default:
+            return "unknown";
     }
 }
 
-// ─── formatProof 
+// formatProof
 
-std::string formatProof(const std::vector<ProofStep>& proof,
-                        const ClauseStore& store, const TermBank& bank) {
+std::string formatProof(const std::vector<ProofStep>& proof, const ClauseStore& store,
+                        const TermBank& bank) {
     // Build a local renumbering: internal ClauseId → sequential proof step number
     std::unordered_map<ClauseId, size_t> id_to_step;
     for (size_t i = 0; i < proof.size(); ++i) {

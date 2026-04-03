@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file ordering.h
@@ -34,10 +33,10 @@ namespace atp {
 
 /// Ordering comparison result.
 enum class OrderResult : uint8_t {
-    kLessThan,       ///< t1 < t2
-    kEqual,          ///< t1 = t2
-    kGreaterThan,    ///< t1 > t2
-    kIncomparable,   ///< t1 and t2 are incomparable
+    kLessThan,      ///< t1 < t2
+    kEqual,         ///< t1 = t2
+    kGreaterThan,   ///< t1 > t2
+    kIncomparable,  ///< t1 and t2 are incomparable
 };
 
 /// Abstract base for term orderings.
@@ -47,8 +46,7 @@ class TermOrdering {
     virtual ~TermOrdering() = default;
 
     /// Compare two terms under the ordering.
-    [[nodiscard]] virtual OrderResult compare(const TermBank& bank, TermId t1,
-                                              TermId t2) const = 0;
+    [[nodiscard]] virtual OrderResult compare(const TermBank& bank, TermId t1, TermId t2) const = 0;
 };
 
 }  // namespace atp

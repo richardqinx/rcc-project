@@ -17,6 +17,7 @@
  */
 
 #include "atp/core/clause_store.h"
+
 #include <cassert>
 #include <utility>
 

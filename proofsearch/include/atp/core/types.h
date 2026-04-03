@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #pragma once
 
 /// @file types.h
@@ -57,24 +56,24 @@ enum class SymbolKind : uint8_t {
 /// Deliberately uses uint16_t for extensibility toward algebra/analysis rules.
 enum class InferenceRule : uint16_t {
     // ── Core resolution rules ──
-    kInput            = 0,    ///< Original input clause (axiom / negated conjecture)
-    kResolution       = 1,    ///< Binary resolution
-    kFactoring        = 2,    ///< Factoring
+    kInput = 0,       ///< Original input clause (axiom / negated conjecture)
+    kResolution = 1,  ///< Binary resolution
+    kFactoring = 2,   ///< Factoring
 
     // ── Equality rules (algebra) ──
-    kParamodulation   = 100,  ///< Paramodulation (equality resolution)
-    kDemodulation     = 101,  ///< Demodulation (simplification by rewriting)
-    kEqualityResolution = 102, ///< s != t resolved with unifier
-    kEqualityFactoring  = 103, ///< Factoring with equality
+    kParamodulation = 100,      ///< Paramodulation (equality resolution)
+    kDemodulation = 101,        ///< Demodulation (simplification by rewriting)
+    kEqualityResolution = 102,  ///< s != t resolved with unifier
+    kEqualityFactoring = 103,   ///< Factoring with equality
 
     // ── Simplification rules ──
-    kSubsumption      = 200,  ///< Removed by subsumption
-    kTautologyElim    = 201,  ///< Removed as tautology
-    kPureLiteralElim  = 202,  ///< Pure literal elimination
+    kSubsumption = 200,      ///< Removed by subsumption
+    kTautologyElim = 201,    ///< Removed as tautology
+    kPureLiteralElim = 202,  ///< Pure literal elimination
 
     // ── Theory rules (analysis, arithmetic) ──
     kTheoryResolution = 300,  ///< Theory-specific resolution
-    kTheoryRewrite    = 301,  ///< Theory-driven rewriting
+    kTheoryRewrite = 301,     ///< Theory-driven rewriting
 };
 
 }  // namespace atp
