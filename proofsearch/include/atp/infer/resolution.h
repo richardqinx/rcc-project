@@ -32,13 +32,19 @@ namespace atp {
 
 /// Attempt binary resolution between two clauses on the specified literal indices.
 /// @return The resolvent clause if resolution succeeds, std::nullopt otherwise.
-std::optional<Clause> resolve(const TermBank& bank, const Clause& c1, size_t lit_idx1,
+std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
                               const Clause& c2, size_t lit_idx2);
 
 /// Generate all possible resolvents between two clauses.
-std::vector<Clause> allResolvents(const TermBank& bank, const Clause& c1, const Clause& c2);
+std::vector<Clause> allResolvents(TermBank& bank, const Clause& c1, const Clause& c2);
 
 /// Attempt factoring on a single clause (merge two unifiable literals).
-std::vector<Clause> factor(const TermBank& bank, const Clause& c);
+std::vector<Clause> factor(TermBank& bank, const Clause& c);
+
+/// Rename all variables in a clause to fresh ones, avoiding conflicts
+/// with variables already in the bank.
+Clause renameVariables(const Clause& c, TermBank& bank, SymbolTable& symbols,
+                       uint32_t& next_var_id);
+
 
 }  // namespace atp
