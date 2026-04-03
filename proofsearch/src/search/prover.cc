@@ -45,24 +45,24 @@ ProverResult Prover::prove() {
     size_t iterations = 0;
 
     while (!unprocessed_.empty()) {
-        // ─── Resource limits ──────────────────────────────────────────
+        // Resource limits
         if (iterations >= config_.max_iterations ||
             store_.size() >= config_.max_clauses) {
             return ProverResult::kTimeout;
         }
         ++iterations;
 
-        // ─── 1. Select the best clause from unprocessed ──────────────
+        // 1. Select the best clause from unprocessed
         Clause given = unprocessed_.top();
         unprocessed_.pop();
 
-        // ─── 2. Check if given is itself the empty clause ────────────
+        // 2. Check if given is itself the empty clause
         if (given.isEmpty()) {
             empty_clause_id_ = given.id;
             return ProverResult::kTheorem;
         }
 
-        // ─── 3. Forward redundancy checks ────────────────────────────
+        // 3. Forward redundancy checks
         if (isTautology(given)) {
             continue;
         }
@@ -78,14 +78,14 @@ ProverResult Prover::prove() {
             continue;
         }
 
-        // ─── 4. Backward subsumption ─────────────────────────────────
+        // 4. Backward subsumption
         // Remove from processed all clauses that are subsumed by given.
         // Use erase-remove idiom for O(n) scan instead of repeated erase.
         std::erase_if(processed_, [&](ClauseId pid) {
             return subsumes(given, store_.getClause(pid));
         });
 
-        // ─── 5. Generate new clauses ─────────────────────────────────
+        // 5. Generate new clauses
         // Inference BEFORE adding given to processed — matches doc §4.6.
         std::vector<Clause> new_clauses;
         const UnificationConfig uconfig{.enable_occurs_check = config_.enable_occurs_check};
@@ -111,10 +111,10 @@ ProverResult Prover::prove() {
             new_clauses.push_back(std::move(f));
         }
 
-        // ─── 6. Add given to processed AFTER inference ───────────────
+        // 6. Add given to processed AFTER inference
         processed_.push_back(given.id);
 
-        // ─── 7. Process new clauses ──────────────────────────────────
+        // 7. Process new clauses
         for (auto& nc : new_clauses) {
             // 7a. Check for empty clause → proof found!
             if (nc.isEmpty()) {
