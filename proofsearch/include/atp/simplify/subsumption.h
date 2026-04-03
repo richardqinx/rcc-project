@@ -52,4 +52,6 @@ class SubsumptionEngine {
     // TODO: Phase 5 implementation
 };
 
+bool subsumes(const Clause& general, const Clause& specific);
+
 }  // namespace atp

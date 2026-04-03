@@ -77,6 +77,7 @@ set(ATP_SOURCES
     src/infer/resolution.cc
     src/index/discrim_tree.cc
     src/simplify/subsumption.cc
+    src/simplify/tautology.cc
     src/search/prover.cc
     src/proof/proof_trace.cc
     src/rewrite/ordering.cc
