@@ -28,14 +28,15 @@
 
 #include <gtest/gtest.h>
 #include <string>
+#include <utility>
 
 namespace atp {
 namespace {
 
 /// Helper: parse a TPTP string and run the prover, return the result.
 struct E2EResult {
-    ProverResult result;
-    std::string proof_output;
+    ProverResult result_;
+    std::string proof_output_;
 };
 
 E2EResult runProver(const std::string& tptp_input) {
@@ -48,7 +49,7 @@ E2EResult runProver(const std::string& tptp_input) {
 
     Prover prover(bank, store);
     prover.addClauses(std::move(clauses));
-    ProverResult result = prover.prove();
+    ProverResult const result = prover.prove();
 
     std::string proof_output;
     if (result == ProverResult::kTheorem) {
@@ -140,10 +141,10 @@ TEST(EndToEnd, ProofOutputContainsAllSteps) {
     // Must contain [resolution] for derived clauses
     EXPECT_NE(proof.find("[resolution]"), std::string::npos) << proof;
     // Must contain empty clause marker
-    std::string empty_marker = "□";
+    std::string const empty_marker = "□";
     EXPECT_NE(proof.find(empty_marker), std::string::npos) << proof;
     // Must contain [X, Y] provenance (sequential numbers)
-    EXPECT_NE(proof.find("["), std::string::npos) << proof;
+    EXPECT_NE(proof.find('['), std::string::npos) << proof;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

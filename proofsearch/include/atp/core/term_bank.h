@@ -61,17 +61,17 @@ class TermBank {
 
   private:
     struct TermKey {
-        SymbolId symbol;
-        std::vector<TermId> args;
+        SymbolId symbol_;
+        std::vector<TermId> args_;
 
         bool operator==(const TermKey& other) const = default;
     };
 
     struct TermKeyHash {
         size_t operator()(const TermKey& key) const {
-            size_t seed = std::hash<uint32_t>{}(key.symbol);
-            for (TermId arg : key.args) {
-                seed ^= std::hash<uint32_t>{}(arg) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            size_t seed = std::hash<uint32_t>{}(key.symbol_);
+            for (const TermId kArg : key.args_) {
+                seed ^= std::hash<TermId>{}(kArg) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             return seed;
         }

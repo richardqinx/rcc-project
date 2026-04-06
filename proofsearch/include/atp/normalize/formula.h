@@ -51,18 +51,18 @@ enum class FormulaKind : uint8_t {
 /// All identifiers are interned: atoms as TermIds, quantifier variables as
 /// SymbolIds. No raw strings survive past the parser.
 struct Formula {
-    FormulaKind kind;
+    FormulaKind kind_;
 
     /// For kAtom / kEquality: the predicate/equality term, already interned.
-    TermId atom = kInvalidId;
+    TermId atom_ = kInvalidId;
 
     /// For kForall / kExists: the bound variable, as an interned SymbolId.
     /// Using SymbolId (not string) so the clausifier can map bound variables
     /// back to term-bank variables without string lookups.
-    SymbolId bound_var = kInvalidId;
+    SymbolId bound_var_ = kInvalidId;
 
     /// Sub-formulas (1 for Not/Quantifiers, 2 for binary connectives).
-    std::vector<std::unique_ptr<Formula>> children;
+    std::vector<std::unique_ptr<Formula>> children_;
 
     // ── Factory methods ──
 

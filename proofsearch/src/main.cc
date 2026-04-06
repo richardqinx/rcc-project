@@ -27,8 +27,10 @@
 #include "atp/search/prover.h"
 
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <string>
+#include <utility>
 
 int main(int argc, char* argv[]) {
     std::cerr << "richard-atp-engine  Copyright (C) 2026  Richard Qin\n"
@@ -41,7 +43,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    const std::string filepath = argv[1];
+    const std::string kFilepath = argv[1];
 
     try {
         // 1. Initialize core modules
@@ -50,9 +52,9 @@ int main(int argc, char* argv[]) {
         atp::ClauseStore store;
 
         // 2. Parse TPTP input
-        auto problem = atp::parseTptpFile(filepath, bank, symbols);
+        auto problem = atp::parseTptpFile(kFilepath, bank, symbols);
 
-        std::cerr << "% Parsed " << problem.formulas.size() << " formulas from " << filepath
+        std::cerr << "% Parsed " << problem.formulas_.size() << " formulas from " << kFilepath
                   << "\n";
 
         // 3. Prepare clauses for proving
@@ -63,28 +65,28 @@ int main(int argc, char* argv[]) {
         // 4. Run the prover
         atp::Prover prover(bank, store);
         prover.addClauses(std::move(clauses));
-        atp::ProverResult result = prover.prove();
+        atp::ProverResult const result = prover.prove();
 
         // 5. Output result (SZS format)
         switch (result) {
             case atp::ProverResult::kTheorem: {
-                std::cout << "% SZS status Theorem for " << filepath << "\n\n";
+                std::cout << "% SZS status Theorem for " << kFilepath << "\n\n";
 
                 // Extract and print proof
                 auto eid = prover.getEmptyClauseId();
                 if (eid.has_value()) {
                     auto proof = atp::extractProof(store, *eid);
-                    std::cout << "% SZS output start Proof for " << filepath << "\n";
+                    std::cout << "% SZS output start Proof for " << kFilepath << "\n";
                     std::cout << atp::formatProof(proof, store, bank);
-                    std::cout << "% SZS output end Proof for " << filepath << "\n";
+                    std::cout << "% SZS output end Proof for " << kFilepath << "\n";
                 }
                 break;
             }
             case atp::ProverResult::kSaturation:
-                std::cout << "% SZS status Satisfiable for " << filepath << "\n";
+                std::cout << "% SZS status Satisfiable for " << kFilepath << "\n";
                 break;
             case atp::ProverResult::kTimeout:
-                std::cout << "% SZS status Timeout for " << filepath << "\n";
+                std::cout << "% SZS status Timeout for " << kFilepath << "\n";
                 break;
         }
 

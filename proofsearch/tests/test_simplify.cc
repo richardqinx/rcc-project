@@ -25,46 +25,48 @@
 #include "atp/simplify/tautology.h"
 
 #include <gtest/gtest.h>
+#include <utility>
+#include <vector>
 
 namespace atp {
 namespace {
 
 class SimplifyTest : public ::testing::Test {
   protected:
-    SymbolTable symbols;
-    TermBank bank{symbols};
+    SymbolTable symbols_;
+    TermBank bank_{symbols_};
 
-    SymbolId sym_a{}, sym_b{}, sym_c{};
-    SymbolId sym_P{}, sym_Q{}, sym_R{};
-    SymbolId sym_X{};
+    SymbolId sym_a_{}, sym_b_{}, sym_c_{};
+    SymbolId sym_p_{}, sym_q_{}, sym_r_{};
+    SymbolId sym_x_{};
 
-    TermId a{}, b{}, c{}, X{};
+    TermId a_{}, b_{}, c_{}, x_{};
 
     void SetUp() override {
-        sym_a = symbols.intern("a", SymbolKind::kConstant);
-        sym_b = symbols.intern("b", SymbolKind::kConstant);
-        sym_c = symbols.intern("c", SymbolKind::kConstant);
-        sym_P = symbols.intern("P", SymbolKind::kPredicate, 1);
-        sym_Q = symbols.intern("Q", SymbolKind::kPredicate, 1);
-        sym_R = symbols.intern("R", SymbolKind::kPredicate, 2);
-        sym_X = symbols.intern("X", SymbolKind::kVariable);
+        sym_a_ = symbols_.intern("a", SymbolKind::kConstant);
+        sym_b_ = symbols_.intern("b", SymbolKind::kConstant);
+        sym_c_ = symbols_.intern("c", SymbolKind::kConstant);
+        sym_p_ = symbols_.intern("P", SymbolKind::kPredicate, 1);
+        sym_q_ = symbols_.intern("Q", SymbolKind::kPredicate, 1);
+        sym_r_ = symbols_.intern("R", SymbolKind::kPredicate, 2);
+        sym_x_ = symbols_.intern("X", SymbolKind::kVariable);
 
-        a = bank.makeTerm(sym_a, {});
-        b = bank.makeTerm(sym_b, {});
-        c = bank.makeTerm(sym_c, {});
-        X = bank.makeVar(sym_X);
+        a_ = bank_.makeTerm(sym_a_, {});
+        b_ = bank_.makeTerm(sym_b_, {});
+        c_ = bank_.makeTerm(sym_c_, {});
+        x_ = bank_.makeVar(sym_x_);
     }
 
-    TermId P(TermId arg) { return bank.makeTerm(sym_P, {{arg}}); }
-    TermId Q(TermId arg) { return bank.makeTerm(sym_Q, {{arg}}); }
-    TermId R(TermId a1, TermId a2) { return bank.makeTerm(sym_R, {{a1, a2}}); }
+    TermId p(TermId arg) { return bank_.makeTerm(sym_p_, {{arg}}); }
+    TermId q(TermId arg) { return bank_.makeTerm(sym_q_, {{arg}}); }
+    TermId r(TermId a1, TermId a2) { return bank_.makeTerm(sym_r_, {{a1, a2}}); }
 
-    Literal pos(TermId atom) { return {.atom = atom, .is_positive = true}; }
-    Literal neg(TermId atom) { return {.atom = atom, .is_positive = false}; }
+    static Literal pos(TermId atom) { return {.atom_ = atom, .is_positive_ = true}; }
+    static Literal neg(TermId atom) { return {.atom_ = atom, .is_positive_ = false}; }
 
-    Clause makeClause(std::vector<Literal> lits) {
+    static Clause makeClause(std::vector<Literal> lits) {
         Clause cl;
-        cl.literals = std::move(lits);
+        cl.literals_ = std::move(lits);
         return cl;
     }
 };
@@ -75,53 +77,53 @@ class SimplifyTest : public ::testing::Test {
 
 TEST_F(SimplifyTest, TautologyComplementaryLiterals) {
     // {P(a), ¬P(a)} → tautology
-    Clause cl = makeClause({pos(P(a)), neg(P(a))});
+    Clause const cl = makeClause({pos(p(a_)), neg(p(a_))});
     EXPECT_TRUE(isTautology(cl));
 }
 
 TEST_F(SimplifyTest, TautologyWithExtraLiterals) {
     // {Q(b), P(a), ¬P(a)} → tautology
-    Clause cl = makeClause({pos(Q(b)), pos(P(a)), neg(P(a))});
+    Clause const cl = makeClause({pos(q(b_)), pos(p(a_)), neg(p(a_))});
     EXPECT_TRUE(isTautology(cl));
 }
 
 TEST_F(SimplifyTest, NotTautologySamePolarity) {
     // {P(a), P(a)} → NOT tautology (same polarity)
-    Clause cl = makeClause({pos(P(a)), pos(P(a))});
+    Clause const cl = makeClause({pos(p(a_)), pos(p(a_))});
     EXPECT_FALSE(isTautology(cl));
 }
 
 TEST_F(SimplifyTest, NotTautologyDifferentAtoms) {
     // {P(a), ¬P(b)} → NOT tautology (different atoms)
-    Clause cl = makeClause({pos(P(a)), neg(P(b))});
+    Clause const cl = makeClause({pos(p(a_)), neg(p(b_))});
     EXPECT_FALSE(isTautology(cl));
 }
 
 TEST_F(SimplifyTest, NotTautologyDifferentPredicates) {
     // {P(a), ¬Q(a)} → NOT tautology (different predicates)
-    Clause cl = makeClause({pos(P(a)), neg(Q(a))});
+    Clause const cl = makeClause({pos(p(a_)), neg(q(a_))});
     EXPECT_FALSE(isTautology(cl));
 }
 
 TEST_F(SimplifyTest, NotTautologyEmptyClause) {
-    Clause cl = makeClause({});
+    Clause const cl = makeClause({});
     EXPECT_FALSE(isTautology(cl));
 }
 
 TEST_F(SimplifyTest, NotTautologySingleLiteral) {
-    Clause cl = makeClause({pos(P(a))});
+    Clause const cl = makeClause({pos(p(a_))});
     EXPECT_FALSE(isTautology(cl));
 }
 
 TEST_F(SimplifyTest, TautologyVariableAtom) {
     // {P(X), ¬P(X)} → tautology (same variable term)
-    Clause cl = makeClause({pos(P(X)), neg(P(X))});
+    Clause const cl = makeClause({pos(p(x_)), neg(p(x_))});
     EXPECT_TRUE(isTautology(cl));
 }
 
 TEST_F(SimplifyTest, NotTautologyVarVsConst) {
     // {P(X), ¬P(a)} → NOT tautology (syntactically different)
-    Clause cl = makeClause({pos(P(X)), neg(P(a))});
+    Clause const cl = makeClause({pos(p(x_)), neg(p(a_))});
     EXPECT_FALSE(isTautology(cl));
 }
 
@@ -131,57 +133,57 @@ TEST_F(SimplifyTest, NotTautologyVarVsConst) {
 
 TEST_F(SimplifyTest, SubsumesSubset) {
     // {P(a)} subsumes {P(a), Q(b)}
-    Clause gen = makeClause({pos(P(a))});
-    Clause spec = makeClause({pos(P(a)), pos(Q(b))});
+    Clause const gen = makeClause({pos(p(a_))});
+    Clause const spec = makeClause({pos(p(a_)), pos(q(b_))});
     EXPECT_TRUE(subsumes(gen, spec));
 }
 
 TEST_F(SimplifyTest, SubsumesIdentical) {
     // {P(a), Q(b)} subsumes {P(a), Q(b)}
-    Clause c1 = makeClause({pos(P(a)), pos(Q(b))});
-    Clause c2 = makeClause({pos(P(a)), pos(Q(b))});
+    Clause const c1 = makeClause({pos(p(a_)), pos(q(b_))});
+    Clause const c2 = makeClause({pos(p(a_)), pos(q(b_))});
     EXPECT_TRUE(subsumes(c1, c2));
 }
 
 TEST_F(SimplifyTest, SubsumesEmptyClause) {
     // {} subsumes everything
-    Clause empty = makeClause({});
-    Clause cl = makeClause({pos(P(a)), neg(Q(b))});
+    Clause const empty = makeClause({});
+    Clause const cl = makeClause({pos(p(a_)), neg(q(b_))});
     EXPECT_TRUE(subsumes(empty, cl));
 }
 
 TEST_F(SimplifyTest, SubsumesNotLarger) {
     // {P(a), Q(b)} does NOT subsume {P(a)}
-    Clause gen = makeClause({pos(P(a)), pos(Q(b))});
-    Clause spec = makeClause({pos(P(a))});
+    Clause const gen = makeClause({pos(p(a_)), pos(q(b_))});
+    Clause const spec = makeClause({pos(p(a_))});
     EXPECT_FALSE(subsumes(gen, spec));
 }
 
 TEST_F(SimplifyTest, SubsumesRequiresSamePolarity) {
     // {P(a)} does NOT subsume {¬P(a)}
-    Clause gen = makeClause({pos(P(a))});
-    Clause spec = makeClause({neg(P(a))});
+    Clause const gen = makeClause({pos(p(a_))});
+    Clause const spec = makeClause({neg(p(a_))});
     EXPECT_FALSE(subsumes(gen, spec));
 }
 
 TEST_F(SimplifyTest, SubsumesRequiresSameAtom) {
     // {P(a)} does NOT subsume {P(b)}
-    Clause gen = makeClause({pos(P(a))});
-    Clause spec = makeClause({pos(P(b))});
+    Clause const gen = makeClause({pos(p(a_))});
+    Clause const spec = makeClause({pos(p(b_))});
     EXPECT_FALSE(subsumes(gen, spec));
 }
 
 TEST_F(SimplifyTest, SubsumesNegativeLiterals) {
     // {¬P(a)} subsumes {¬P(a), Q(b)}
-    Clause gen = makeClause({neg(P(a))});
-    Clause spec = makeClause({neg(P(a)), pos(Q(b))});
+    Clause const gen = makeClause({neg(p(a_))});
+    Clause const spec = makeClause({neg(p(a_)), pos(q(b_))});
     EXPECT_TRUE(subsumes(gen, spec));
 }
 
 TEST_F(SimplifyTest, SubsumesOrderIndependent) {
     // {Q(b), P(a)} subsumes {P(a), Q(b), R(a,b)} regardless of order
-    Clause gen = makeClause({pos(Q(b)), pos(P(a))});
-    Clause spec = makeClause({pos(P(a)), pos(Q(b)), pos(R(a, b))});
+    Clause const gen = makeClause({pos(q(b_)), pos(p(a_))});
+    Clause const spec = makeClause({pos(p(a_)), pos(q(b_)), pos(r(a_, b_))});
     EXPECT_TRUE(subsumes(gen, spec));
 }
 

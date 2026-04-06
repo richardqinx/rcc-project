@@ -37,8 +37,8 @@ namespace atp {
 
 /// A match result from the discrimination tree.
 struct IndexMatch {
-    ClauseId clause_id;
-    size_t lit_index;
+    ClauseId clause_id_;
+    size_t lit_index_;
 };
 
 /// A discrimination tree index over terms.

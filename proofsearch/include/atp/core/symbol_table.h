@@ -33,10 +33,10 @@ namespace atp {
 
 /// Metadata associated with an interned symbol.
 struct SymbolInfo {
-    std::string name;
-    SymbolKind kind = SymbolKind::kFunction;
-    uint16_t arity = 0;
-    SortId sort = kUnsorted;  ///< Result sort (for sorted logic)
+    std::string name_;
+    SymbolKind kind_ = SymbolKind::kFunction;
+    uint16_t arity_ = 0;
+    SortId sort_ = kUnsorted;  ///< Result sort (for sorted logic)
 };
 
 /// Interns symbol names so that each unique string is stored exactly once.

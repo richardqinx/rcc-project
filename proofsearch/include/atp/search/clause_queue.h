@@ -32,12 +32,12 @@ using ClauseComparator = std::function<bool(const Clause& a, const Clause& b)>;
 
 /// BFS comparator: prioritize shallower derivation depth.
 inline bool bfsCompare(const Clause& a, const Clause& b) {
-    return a.depth > b.depth;  // min-heap by depth
+    return a.depth_ > b.depth_;  // min-heap by depth
 }
 
 /// Weight comparator: prioritize shorter (fewer literals) clauses.
 inline bool weightCompare(const Clause& a, const Clause& b) {
-    return a.literals.size() > b.literals.size();  // min-heap by literal count
+    return a.literals_.size() > b.literals_.size();  // min-heap by literal count
 }
 
 }  // namespace atp

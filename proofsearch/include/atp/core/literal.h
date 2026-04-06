@@ -27,11 +27,11 @@ namespace atp {
 
 /// A literal: a polarity flag plus the TermId of the atom.
 struct Literal {
-    TermId atom;       ///< TermId of the predicate application
-    bool is_positive;  ///< true = positive, false = negated
+    TermId atom_;       ///< TermId of the predicate application
+    bool is_positive_;  ///< true = positive, false = negated
 
     /// Complement: flip polarity, same atom.
-    [[nodiscard]] Literal complement() const { return {.atom = atom, .is_positive = !is_positive}; }
+    [[nodiscard]] Literal complement() const { return {.atom_ = atom_, .is_positive_ = !is_positive_}; }
 
     bool operator==(const Literal& other) const = default;
 };

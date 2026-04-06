@@ -28,7 +28,7 @@ namespace atp {
 
 /// Configuration for the unification algorithm.
 struct UnificationConfig {
-    bool enable_occurs_check = false;  ///< Set true for sound but slower unification
+    bool enable_occurs_check_ = false;  ///< Set true for sound but slower unification
 };
 
 /// Attempt to unify two terms, producing a most general unifier.

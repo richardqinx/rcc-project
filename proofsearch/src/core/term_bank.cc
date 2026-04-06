@@ -18,20 +18,25 @@
 
 #include "atp/core/term_bank.h"
 
+#include "atp/core/term.h"
 #include "atp/core/types.h"
 
 #include <cassert>
+#include <cstddef>
+#include <span>
+#include <utility>
+#include <vector>
 
 namespace atp {
 
 TermId TermBank::makeTerm(SymbolId symbol, std::span<const TermId> args) {
-    TermKey key{.symbol = symbol, .args = {args.begin(), args.end()}};
+    TermKey key{.symbol_ = symbol, .args_ = {args.begin(), args.end()}};
     auto it = term_to_id_.find(key);
     if (it != term_to_id_.end()) {
         return it->second;
     }
     auto new_id = static_cast<TermId>(terms_.size());
-    Term new_term{.symbol_id = symbol, .args = {args.begin(), args.end()}};
+    Term new_term{.symbol_id_ = symbol, .args_ = key.args_};
     terms_.push_back(std::move(new_term));
     term_to_id_.emplace(std::move(key), new_id);
     return new_id;
@@ -48,7 +53,7 @@ const Term& TermBank::getTerm(TermId id) const {
 
 bool TermBank::isVariable(TermId id) const {
     assert(id < terms_.size() && "TermId out of bounds!");
-    return symbols_.isVariable(terms_[id].symbol_id);
+    return symbols_.isVariable(terms_[id].symbol_id_);
 }
 
 size_t TermBank::size() const {

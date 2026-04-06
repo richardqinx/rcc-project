@@ -22,6 +22,8 @@
 #include "atp/core/term_bank.h"
 #include "atp/core/types.h"
 
+#include <vector>
+
 namespace atp {
 
 bool Substitution::bind(TermId var, TermId term) {
@@ -66,8 +68,8 @@ TermId Substitution::apply(TermId term, TermBank& bank) const {
     // IMPORTANT: Copy symbol_id and args BEFORE recursing.
     // Recursive apply() calls may trigger bank.makeTerm() → realloc → dangling ref.
     const Term& t = bank.getTerm(term);
-    SymbolId sym = t.symbol_id;
-    std::vector<TermId> old_args(t.args);  // copy!
+    SymbolId const sym = t.symbol_id_;
+    std::vector<TermId> const old_args(t.args_);  // copy!
 
     if (old_args.empty()) {
         // Constant or 0-arity — no substitution needed
@@ -78,8 +80,8 @@ TermId Substitution::apply(TermId term, TermBank& bank) const {
     std::vector<TermId> new_args;
     new_args.reserve(old_args.size());
     bool changed = false;
-    for (TermId arg : old_args) {
-        TermId new_arg = apply(arg, bank);
+    for (TermId const arg : old_args) {
+        TermId const new_arg = apply(arg, bank);
         new_args.push_back(new_arg);
         if (new_arg != arg) {
             changed = true;
@@ -105,7 +107,7 @@ bool Substitution::occursIn(TermId var, TermId term, const TermBank& bank) const
     }
 
     const Term& t = bank.getTerm(term);
-    for (TermId arg : t.args) {
+    for (TermId const arg : t.args_) {
         if (occursIn(var, arg, bank)) {
             return true;
         }

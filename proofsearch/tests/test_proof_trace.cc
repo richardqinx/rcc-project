@@ -27,43 +27,45 @@
 
 #include <gtest/gtest.h>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace atp {
 namespace {
 
 class ProofTraceTest : public ::testing::Test {
   protected:
-    SymbolTable symbols;
-    TermBank bank{symbols};
-    ClauseStore store;
+    SymbolTable symbols_;
+    TermBank bank_{symbols_};
+    ClauseStore store_;
 
-    SymbolId sym_a{}, sym_b{};
-    SymbolId sym_P{}, sym_Q{};
-    SymbolId sym_X{};
+    SymbolId sym_a_{}, sym_b_{};
+    SymbolId sym_p_{}, sym_q_{};
+    SymbolId sym_x_{};
 
-    TermId a_term{}, b_term{}, X_term{};
+    TermId a_term_{}, b_term_{}, x_term_{};
 
     void SetUp() override {
-        sym_a = symbols.intern("a", SymbolKind::kConstant);
-        sym_b = symbols.intern("b", SymbolKind::kConstant);
-        sym_P = symbols.intern("P", SymbolKind::kPredicate, 1);
-        sym_Q = symbols.intern("Q", SymbolKind::kPredicate, 1);
-        sym_X = symbols.intern("X", SymbolKind::kVariable);
+        sym_a_ = symbols_.intern("a", SymbolKind::kConstant);
+        sym_b_ = symbols_.intern("b", SymbolKind::kConstant);
+        sym_p_ = symbols_.intern("P", SymbolKind::kPredicate, 1);
+        sym_q_ = symbols_.intern("Q", SymbolKind::kPredicate, 1);
+        sym_x_ = symbols_.intern("X", SymbolKind::kVariable);
 
-        a_term = bank.makeTerm(sym_a, {});
-        b_term = bank.makeTerm(sym_b, {});
-        X_term = bank.makeVar(sym_X);
+        a_term_ = bank_.makeTerm(sym_a_, {});
+        b_term_ = bank_.makeTerm(sym_b_, {});
+        x_term_ = bank_.makeVar(sym_x_);
     }
 
-    TermId P(TermId arg) { return bank.makeTerm(sym_P, {{arg}}); }
-    TermId Q(TermId arg) { return bank.makeTerm(sym_Q, {{arg}}); }
+    TermId p(TermId arg) { return bank_.makeTerm(sym_p_, {{arg}}); }
+    TermId q(TermId arg) { return bank_.makeTerm(sym_q_, {{arg}}); }
 
-    Literal pos(TermId atom) { return {.atom = atom, .is_positive = true}; }
-    Literal neg(TermId atom) { return {.atom = atom, .is_positive = false}; }
+    static Literal pos(TermId atom) { return {.atom_ = atom, .is_positive_ = true}; }
+    static Literal neg(TermId atom) { return {.atom_ = atom, .is_positive_ = false}; }
 
-    Clause makeClause(std::vector<Literal> lits) {
+    static Clause makeClause(std::vector<Literal> lits) {
         Clause cl;
-        cl.literals = std::move(lits);
+        cl.literals_ = std::move(lits);
         return cl;
     }
 };
@@ -73,23 +75,23 @@ class ProofTraceTest : public ::testing::Test {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProofTraceTest, TermToStringConstant) {
-    EXPECT_EQ(termToString(a_term, bank), "a");
+    EXPECT_EQ(termToString(a_term_, bank_), "a");
 }
 
 TEST_F(ProofTraceTest, TermToStringVariable) {
-    EXPECT_EQ(termToString(X_term, bank), "X");
+    EXPECT_EQ(termToString(x_term_, bank_), "X");
 }
 
 TEST_F(ProofTraceTest, TermToStringCompound) {
-    TermId pa = P(a_term);
-    EXPECT_EQ(termToString(pa, bank), "P(a)");
+    TermId const pa = p(a_term_);
+    EXPECT_EQ(termToString(pa, bank_), "P(a)");
 }
 
 TEST_F(ProofTraceTest, TermToStringNested) {
-    SymbolId sym_f = symbols.intern("f", SymbolKind::kFunction, 1);
-    TermId fa = bank.makeTerm(sym_f, {{a_term}});
-    TermId pfa = P(fa);
-    EXPECT_EQ(termToString(pfa, bank), "P(f(a))");
+    SymbolId const sym_f = symbols_.intern("f", SymbolKind::kFunction, 1);
+    TermId const fa = bank_.makeTerm(sym_f, {{a_term_}});
+    TermId const pfa = p(fa);
+    EXPECT_EQ(termToString(pfa, bank_), "P(f(a))");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -97,23 +99,23 @@ TEST_F(ProofTraceTest, TermToStringNested) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProofTraceTest, ClauseToStringEmpty) {
-    Clause empty = makeClause({});
-    EXPECT_EQ(clauseToString(empty, bank), "□");
+    Clause const empty = makeClause({});
+    EXPECT_EQ(clauseToString(empty, bank_), "□");
 }
 
 TEST_F(ProofTraceTest, ClauseToStringSinglePositive) {
-    Clause c = makeClause({pos(P(a_term))});
-    EXPECT_EQ(clauseToString(c, bank), "P(a)");
+    Clause const c = makeClause({pos(p(a_term_))});
+    EXPECT_EQ(clauseToString(c, bank_), "P(a)");
 }
 
 TEST_F(ProofTraceTest, ClauseToStringSingleNegative) {
-    Clause c = makeClause({neg(P(a_term))});
-    EXPECT_EQ(clauseToString(c, bank), "¬P(a)");
+    Clause const c = makeClause({neg(p(a_term_))});
+    EXPECT_EQ(clauseToString(c, bank_), "¬P(a)");
 }
 
 TEST_F(ProofTraceTest, ClauseToStringMultipleLiterals) {
-    Clause c = makeClause({neg(P(X_term)), pos(Q(X_term))});
-    std::string s = clauseToString(c, bank);
+    Clause const c = makeClause({neg(p(x_term_)), pos(q(x_term_))});
+    std::string const s = clauseToString(c, bank_);
     EXPECT_EQ(s, "¬P(X) ∨ Q(X)");
 }
 
@@ -123,42 +125,42 @@ TEST_F(ProofTraceTest, ClauseToStringMultipleLiterals) {
 
 TEST_F(ProofTraceTest, ExtractProofTrivial) {
     // Run a trivial proof: {P(a)} + {¬P(a)} → □
-    Prover prover(bank, store);
-    prover.addClauses({makeClause({pos(P(a_term))}), makeClause({neg(P(a_term))})});
-    ProverResult result = prover.prove();
+    Prover prover(bank_, store_);
+    prover.addClauses({makeClause({pos(p(a_term_))}), makeClause({neg(p(a_term_))})});
+    ProverResult const result = prover.prove();
     ASSERT_EQ(result, ProverResult::kTheorem);
 
     auto eid = prover.getEmptyClauseId();
     ASSERT_TRUE(eid.has_value());
 
-    auto proof = extractProof(store, *eid);
-    ASSERT_GE(proof.size(), 3u);  // At least: 2 axioms + 1 empty clause
+    auto proof = extractProof(store_, *eid);
+    ASSERT_GE(proof.size(), 3U);  // At least: 2 axioms + 1 empty clause
 
     // First steps should be axioms (kInput)
-    EXPECT_EQ(proof.front().rule, InferenceRule::kInput);
+    EXPECT_EQ(proof.front().rule_, InferenceRule::kInput);
     // Last step should be the empty clause
-    EXPECT_EQ(proof.back().clause_id, *eid);
+    EXPECT_EQ(proof.back().clause_id_, *eid);
     // Last step should be resolution
-    EXPECT_EQ(proof.back().rule, InferenceRule::kResolution);
+    EXPECT_EQ(proof.back().rule_, InferenceRule::kResolution);
 }
 
 TEST_F(ProofTraceTest, ExtractProofTwoStep) {
     // {P(a)}, {¬P(X), Q(X)}, {¬Q(a)} → □ in 2 resolution steps
-    Prover prover(bank, store);
-    prover.addClauses({makeClause({pos(P(a_term))}), makeClause({neg(P(X_term)), pos(Q(X_term))}),
-                       makeClause({neg(Q(a_term))})});
-    ProverResult result = prover.prove();
+    Prover prover(bank_, store_);
+    prover.addClauses({makeClause({pos(p(a_term_))}), makeClause({neg(p(x_term_)), pos(q(x_term_))}),
+                       makeClause({neg(q(a_term_))})});
+    ProverResult const result = prover.prove();
     ASSERT_EQ(result, ProverResult::kTheorem);
 
     auto eid = prover.getEmptyClauseId();
     ASSERT_TRUE(eid.has_value());
 
-    auto proof = extractProof(store, *eid);
+    auto proof = extractProof(store_, *eid);
     // Should have axioms + intermediate + empty clause
-    ASSERT_GE(proof.size(), 4u);  // 3 axioms + at least 1 intermediate + empty
+    ASSERT_GE(proof.size(), 4U);  // 3 axioms + at least 1 intermediate + empty
 
     // Last step is the empty clause
-    EXPECT_EQ(proof.back().clause_id, *eid);
+    EXPECT_EQ(proof.back().clause_id_, *eid);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -166,33 +168,33 @@ TEST_F(ProofTraceTest, ExtractProofTwoStep) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProofTraceTest, FormatProofContainsExpectedElements) {
-    Prover prover(bank, store);
-    prover.addClauses({makeClause({pos(P(a_term))}), makeClause({neg(P(a_term))})});
+    Prover prover(bank_, store_);
+    prover.addClauses({makeClause({pos(p(a_term_))}), makeClause({neg(p(a_term_))})});
     prover.prove();
 
     auto eid = prover.getEmptyClauseId();
     ASSERT_TRUE(eid.has_value());
 
-    auto proof = extractProof(store, *eid);
-    std::string output = formatProof(proof, store, bank);
+    auto proof = extractProof(store_, *eid);
+    std::string const output = formatProof(proof, store_, bank_);
 
     // Should contain key elements
     EXPECT_NE(output.find("input"), std::string::npos) << output;
     EXPECT_NE(output.find("resolution"), std::string::npos) << output;
     EXPECT_NE(output.find("P(a)"), std::string::npos) << output;
     // Empty clause should appear
-    std::string empty_marker = "□";
+    std::string const empty_marker = "□";
     EXPECT_NE(output.find(empty_marker), std::string::npos) << output;
 }
 
 TEST_F(ProofTraceTest, FormatProofNoParentsForAxioms) {
-    Prover prover(bank, store);
-    prover.addClauses({makeClause({pos(P(a_term))}), makeClause({neg(P(a_term))})});
+    Prover prover(bank_, store_);
+    prover.addClauses({makeClause({pos(p(a_term_))}), makeClause({neg(p(a_term_))})});
     prover.prove();
 
     auto eid = prover.getEmptyClauseId();
-    auto proof = extractProof(store, *eid);
-    std::string output = formatProof(proof, store, bank);
+    auto proof = extractProof(store_, *eid);
+    std::string const output = formatProof(proof, store_, bank_);
 
     // The first line (an axiom) should NOT have "[from ...]"
     // Find the first newline

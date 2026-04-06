@@ -19,11 +19,15 @@
 #include "atp/proof/proof_trace.h"
 
 #include "atp/core/clause.h"
+#include "atp/core/clause_store.h"
 #include "atp/core/symbol_table.h"
 #include "atp/core/term.h"
+#include "atp/core/term_bank.h"
 #include "atp/core/types.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <stack>
 #include <string>
 #include <unordered_map>
@@ -43,29 +47,29 @@ std::vector<ProofStep> extractProof(const ClauseStore& store, ClauseId empty_cla
     worklist.push(empty_clause_id);
 
     while (!worklist.empty()) {
-        ClauseId cid = worklist.top();
+        const ClauseId kCid = worklist.top();
         worklist.pop();
 
-        if (cid == kInvalidId) {
+        if (kCid == kInvalidId) {
             continue;
         }
-        if (visited.count(cid) > 0) {
+        if (visited.contains(kCid)) {
             continue;
         }
-        visited.insert(cid);
+        visited.insert(kCid);
 
-        const Clause& c = store.getClause(cid);
+        const Clause& c = store.getClause(kCid);
         steps.push_back({
-            .clause_id = cid,
-            .rule = c.rule,
-            .parent1 = c.parent1,
-            .parent2 = c.parent2,
+            .clause_id_ = kCid,
+            .rule_ = c.rule_,
+            .parent1_ = c.parent1_,
+            .parent2_ = c.parent2_,
         });
 
         // Recurse into parents (axioms have kInvalidId parents, which are
         // filtered by the check at the top of the loop)
-        worklist.push(c.parent1);
-        worklist.push(c.parent2);
+        worklist.push(c.parent1_);
+        worklist.push(c.parent2_);
     }
 
     // Reverse: axioms (leaves) first → empty clause (root) last
@@ -77,18 +81,18 @@ std::vector<ProofStep> extractProof(const ClauseStore& store, ClauseId empty_cla
 
 std::string termToString(TermId id, const TermBank& bank) {
     const Term& t = bank.getTerm(id);
-    std::string name(bank.symbols().getName(t.symbol_id));
+    std::string name(bank.symbols().getName(t.symbol_id_));
 
-    if (t.args.empty()) {
+    if (t.args_.empty()) {
         return name;
     }
 
     std::string result = name + "(";
-    for (size_t i = 0; i < t.args.size(); ++i) {
+    for (size_t i = 0; i < t.args_.size(); ++i) {
         if (i > 0) {
             result += ",";
         }
-        result += termToString(t.args[i], bank);
+        result += termToString(t.args_[i], bank);
     }
     result += ")";
     return result;
@@ -101,15 +105,15 @@ namespace {
 /// Generate a human-readable variable name from an index.
 /// 0→X, 1→Y, 2→Z, 3→W, 4→V, 5→U, 6→X1, 7→Y1, ...
 std::string prettyVarName(size_t index) {
-    static const char kBaseNames[] = {'X', 'Y', 'Z', 'W', 'V', 'U'};
-    static constexpr size_t kBaseCount = sizeof(kBaseNames);
+    static constexpr std::array<char, 6> kBaseNames = {'X', 'Y', 'Z', 'W', 'V', 'U'};
+    static constexpr size_t kBaseCount = kBaseNames.size();
 
-    char base = kBaseNames[index % kBaseCount];
-    size_t suffix = index / kBaseCount;
-    if (suffix == 0) {
-        return std::string(1, base);
+    const char kBase = kBaseNames[index % kBaseCount];
+    const size_t kSuffix = index / kBaseCount;
+    if (kSuffix == 0) {
+        return std::string{kBase};
     }
-    return std::string(1, base) + std::to_string(suffix);
+    return std::string{kBase} + std::to_string(kSuffix);
 }
 
 /// Pretty-print a term, renaming variables to readable names.
@@ -121,27 +125,42 @@ std::string termToPretty(TermId id, const TermBank& bank,
         if (it != var_map.end()) {
             return it->second;
         }
-        std::string name = prettyVarName(var_map.size());
-        var_map[id] = name;
-        return name;
+        const std::string kName = prettyVarName(var_map.size());
+        var_map[id] = kName;
+        return kName;
     }
 
     const Term& t = bank.getTerm(id);
-    std::string name(bank.symbols().getName(t.symbol_id));
+    std::string name(bank.symbols().getName(t.symbol_id_));
 
-    if (t.args.empty()) {
+    if (t.args_.empty()) {
         return name;
     }
 
     std::string result = name + "(";
-    for (size_t i = 0; i < t.args.size(); ++i) {
+    for (size_t i = 0; i < t.args_.size(); ++i) {
         if (i > 0) {
             result += ",";
         }
-        result += termToPretty(t.args[i], bank, var_map);
+        result += termToPretty(t.args_[i], bank, var_map);
     }
     result += ")";
     return result;
+}
+
+// ruleToString
+
+std::string ruleToString(InferenceRule rule) {
+    switch (rule) {
+        case InferenceRule::kInput:
+            return "input";
+        case InferenceRule::kResolution:
+            return "resolution";
+        case InferenceRule::kFactoring:
+            return "factoring";
+        default:
+            return "unknown";
+    }
 }
 
 }  // namespace
@@ -157,31 +176,16 @@ std::string clauseToString(const Clause& clause, const TermBank& bank) {
     std::unordered_map<TermId, std::string> var_map;
 
     std::string result;
-    for (size_t i = 0; i < clause.literals.size(); ++i) {
+    for (size_t i = 0; i < clause.literals_.size(); ++i) {
         if (i > 0) {
             result += " ∨ ";
         }
-        if (!clause.literals[i].is_positive) {
+        if (!clause.literals_[i].is_positive_) {
             result += "¬";
         }
-        result += termToPretty(clause.literals[i].atom, bank, var_map);
+        result += termToPretty(clause.literals_[i].atom_, bank, var_map);
     }
     return result;
-}
-
-// ruleToString
-
-static std::string ruleToString(InferenceRule rule) {
-    switch (rule) {
-        case InferenceRule::kInput:
-            return "input";
-        case InferenceRule::kResolution:
-            return "resolution";
-        case InferenceRule::kFactoring:
-            return "factoring";
-        default:
-            return "unknown";
-    }
 }
 
 // formatProof
@@ -191,10 +195,10 @@ std::string formatProof(const std::vector<ProofStep>& proof, const ClauseStore& 
     // Build a local renumbering: internal ClauseId → sequential proof step number
     std::unordered_map<ClauseId, size_t> id_to_step;
     for (size_t i = 0; i < proof.size(); ++i) {
-        id_to_step[proof[i].clause_id] = i + 1;  // 1-based
+        id_to_step[proof[i].clause_id_] = i + 1;  // 1-based
     }
 
-    auto localName = [&](ClauseId cid) -> std::string {
+    auto local_name = [&](ClauseId cid) -> std::string {
         auto it = id_to_step.find(cid);
         if (it != id_to_step.end()) {
             return std::to_string(it->second);
@@ -206,17 +210,17 @@ std::string formatProof(const std::vector<ProofStep>& proof, const ClauseStore& 
     std::string result;
     for (size_t i = 0; i < proof.size(); ++i) {
         const auto& step = proof[i];
-        const Clause& c = store.getClause(step.clause_id);
+        const Clause& c = store.getClause(step.clause_id_);
 
         result += std::to_string(i + 1) + ". ";
-        result += "[" + ruleToString(step.rule) + "] ";
+        result += "[" + ruleToString(step.rule_) + "] ";
         result += clauseToString(c, bank);
 
         // Show parents for derived clauses
-        if (step.parent1 != kInvalidId) {
-            result += "  [" + localName(step.parent1);
-            if (step.parent2 != kInvalidId) {
-                result += ", " + localName(step.parent2);
+        if (step.parent1_ != kInvalidId) {
+            result += "  [" + local_name(step.parent1_);
+            if (step.parent2_ != kInvalidId) {
+                result += ", " + local_name(step.parent2_);
             }
             result += "]";
         }

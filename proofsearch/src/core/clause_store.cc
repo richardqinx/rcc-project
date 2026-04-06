@@ -18,14 +18,19 @@
 
 #include "atp/core/clause_store.h"
 
+#include "atp/core/clause.h"
+#include "atp/core/types.h"
+
 #include <cassert>
+#include <cstddef>
+#include <functional>
 #include <utility>
 
 namespace atp {
 
 ClauseId ClauseStore::addClause(Clause clause) {
     auto new_id = static_cast<ClauseId>(clauses_.size());
-    clause.id = new_id;
+    clause.id_ = new_id;
     clauses_.push_back(std::move(clause));
     return new_id;
 }

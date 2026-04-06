@@ -33,20 +33,20 @@ namespace atp {
 
 /// A clause: a disjunction of literals plus provenance for proof reconstruction.
 struct Clause {
-    ClauseId id = kInvalidId;
-    std::vector<Literal> literals;
+    ClauseId id_ = kInvalidId;
+    std::vector<Literal> literals_;
 
     // Provenance (for proof trace)
-    InferenceRule rule = InferenceRule::kInput;
-    ClauseId parent1 = kInvalidId;
-    ClauseId parent2 = kInvalidId;
-    uint16_t depth = 0;  ///< Derivation depth (for BFS scheduling)
+    InferenceRule rule_ = InferenceRule::kInput;
+    ClauseId parent1_ = kInvalidId;
+    ClauseId parent2_ = kInvalidId;
+    uint16_t depth_ = 0;  ///< Derivation depth (for BFS scheduling)
 
     /// True if the clause has no literals (contradiction).
-    [[nodiscard]] bool isEmpty() const { return literals.empty(); }
+    [[nodiscard]] bool isEmpty() const { return literals_.empty(); }
 
     /// Number of literals.
-    [[nodiscard]] size_t size() const { return literals.size(); }
+    [[nodiscard]] size_t size() const { return literals_.size(); }
 };
 
 }  // namespace atp

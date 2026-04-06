@@ -26,8 +26,12 @@
 #include "atp/infer/substitution.h"
 #include "atp/infer/unification.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace atp {
@@ -42,7 +46,7 @@ void collectVariables(TermId term, const TermBank& bank, std::unordered_map<Term
     }
     // Copy args to avoid dangling ref (bank is const here, but be safe)
     const Term& t = bank.getTerm(term);
-    for (TermId arg : t.args) {
+    for (TermId const arg : t.args_) {
         collectVariables(arg, bank, seen);
     }
 }
@@ -53,8 +57,8 @@ Clause renameVariables(const Clause& c, TermBank& bank, SymbolTable& symbols,
                        uint32_t& next_var_id) {
     // 1. Collect all variables in the clause
     std::unordered_map<TermId, bool> var_set;
-    for (const auto& lit : c.literals) {
-        collectVariables(lit.atom, bank, var_set);
+    for (const auto& lit : c.literals_) {
+        collectVariables(lit.atom_, bank, var_set);
     }
 
     if (var_set.empty()) {
@@ -64,22 +68,22 @@ Clause renameVariables(const Clause& c, TermBank& bank, SymbolTable& symbols,
     // 2. Create fresh variables and build a substitution
     Substitution rename_subst;
     for (auto& [old_var_id, _] : var_set) {
-        std::string fresh_name = "_R" + std::to_string(next_var_id++);
-        SymbolId fresh_sym = symbols.intern(fresh_name, SymbolKind::kVariable);
-        TermId fresh_var = bank.makeVar(fresh_sym);
+        std::string const fresh_name = "_R" + std::to_string(next_var_id++);
+        SymbolId const fresh_sym = symbols.intern(fresh_name, SymbolKind::kVariable);
+        TermId const fresh_var = bank.makeVar(fresh_sym);
         rename_subst.bind(old_var_id, fresh_var);
     }
 
     // 3. Apply the renaming substitution to all literals
     Clause renamed;
-    renamed.id = c.id;
-    renamed.rule = c.rule;
-    renamed.parent1 = c.parent1;
-    renamed.parent2 = c.parent2;
-    renamed.depth = c.depth;
-    for (const auto& lit : c.literals) {
-        TermId new_atom = applySubstitution(rename_subst, lit.atom, bank);
-        renamed.literals.push_back({.atom = new_atom, .is_positive = lit.is_positive});
+    renamed.id_ = c.id_;
+    renamed.rule_ = c.rule_;
+    renamed.parent1_ = c.parent1_;
+    renamed.parent2_ = c.parent2_;
+    renamed.depth_ = c.depth_;
+    for (const auto& lit : c.literals_) {
+        TermId const new_atom = applySubstitution(rename_subst, lit.atom_, bank);
+        renamed.literals_.push_back({.atom_ = new_atom, .is_positive_ = lit.is_positive_});
     }
     return renamed;
 }
@@ -87,7 +91,7 @@ Clause renameVariables(const Clause& c, TermBank& bank, SymbolTable& symbols,
 std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1, const Clause& c2,
                               size_t lit_idx2, const UnificationConfig& uconfig) {
     // Must have opposite polarity
-    if (c1.literals[lit_idx1].is_positive == c2.literals[lit_idx2].is_positive) {
+    if (c1.literals_[lit_idx1].is_positive_ == c2.literals_[lit_idx2].is_positive_) {
         return std::nullopt;
     }
 
@@ -99,28 +103,28 @@ std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
 
     // Unify the complementary atoms
     Substitution subst;
-    if (!unify(bank, c1.literals[lit_idx1].atom, c2r.literals[lit_idx2].atom, subst, uconfig)) {
+    if (!unify(bank, c1.literals_[lit_idx1].atom_, c2r.literals_[lit_idx2].atom_, subst, uconfig)) {
         return std::nullopt;
     }
 
     // Build the resolvent: all literals except the resolved pair, with subst applied
     Clause resolvent;
-    resolvent.rule = InferenceRule::kResolution;
-    resolvent.parent1 = c1.id;
-    resolvent.parent2 = c2.id;
+    resolvent.rule_ = InferenceRule::kResolution;
+    resolvent.parent1_ = c1.id_;
+    resolvent.parent2_ = c2.id_;
 
-    for (size_t i = 0; i < c1.literals.size(); ++i) {
+    for (size_t i = 0; i < c1.literals_.size(); ++i) {
         if (i != lit_idx1) {
-            TermId new_atom = applySubstitution(subst, c1.literals[i].atom, bank);
-            resolvent.literals.push_back(
-                {.atom = new_atom, .is_positive = c1.literals[i].is_positive});
+            TermId const new_atom = applySubstitution(subst, c1.literals_[i].atom_, bank);
+            resolvent.literals_.push_back(
+                {.atom_ = new_atom, .is_positive_ = c1.literals_[i].is_positive_});
         }
     }
-    for (size_t i = 0; i < c2r.literals.size(); ++i) {
+    for (size_t i = 0; i < c2r.literals_.size(); ++i) {
         if (i != lit_idx2) {
-            TermId new_atom = applySubstitution(subst, c2r.literals[i].atom, bank);
-            resolvent.literals.push_back(
-                {.atom = new_atom, .is_positive = c2r.literals[i].is_positive});
+            TermId const new_atom = applySubstitution(subst, c2r.literals_[i].atom_, bank);
+            resolvent.literals_.push_back(
+                {.atom_ = new_atom, .is_positive_ = c2r.literals_[i].is_positive_});
         }
     }
     return resolvent;
@@ -129,9 +133,9 @@ std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
 std::vector<Clause> allResolvents(TermBank& bank, const Clause& c1, const Clause& c2,
                                   const UnificationConfig& uconfig) {
     std::vector<Clause> results;
-    for (size_t i = 0; i < c1.literals.size(); ++i) {
-        for (size_t j = 0; j < c2.literals.size(); ++j) {
-            if (c1.literals[i].is_positive != c2.literals[j].is_positive) {
+    for (size_t i = 0; i < c1.literals_.size(); ++i) {
+        for (size_t j = 0; j < c2.literals_.size(); ++j) {
+            if (c1.literals_[i].is_positive_ != c2.literals_[j].is_positive_) {
                 if (auto r = resolve(bank, c1, i, c2, j, uconfig)) {
                     results.push_back(std::move(*r));
                 }
@@ -143,24 +147,24 @@ std::vector<Clause> allResolvents(TermBank& bank, const Clause& c1, const Clause
 
 std::vector<Clause> factor(TermBank& bank, const Clause& c, const UnificationConfig& uconfig) {
     std::vector<Clause> results;
-    for (size_t i = 0; i < c.literals.size(); ++i) {
-        for (size_t j = i + 1; j < c.literals.size(); ++j) {
-            if (c.literals[i].is_positive != c.literals[j].is_positive) {
+    for (size_t i = 0; i < c.literals_.size(); ++i) {
+        for (size_t j = i + 1; j < c.literals_.size(); ++j) {
+            if (c.literals_[i].is_positive_ != c.literals_[j].is_positive_) {
                 continue;  // Must have same polarity
             }
             Substitution subst;
-            if (!unify(bank, c.literals[i].atom, c.literals[j].atom, subst, uconfig)) {
+            if (!unify(bank, c.literals_[i].atom_, c.literals_[j].atom_, subst, uconfig)) {
                 continue;
             }
             // Build factored clause: drop literal j, apply subst to all
             Clause factored;
-            factored.rule = InferenceRule::kFactoring;
-            factored.parent1 = c.id;
-            for (size_t k = 0; k < c.literals.size(); ++k) {
+            factored.rule_ = InferenceRule::kFactoring;
+            factored.parent1_ = c.id_;
+            for (size_t k = 0; k < c.literals_.size(); ++k) {
                 if (k != j) {
-                    TermId new_atom = applySubstitution(subst, c.literals[k].atom, bank);
-                    factored.literals.push_back(
-                        {.atom = new_atom, .is_positive = c.literals[k].is_positive});
+                    TermId const new_atom = applySubstitution(subst, c.literals_[k].atom_, bank);
+                    factored.literals_.push_back(
+                        {.atom_ = new_atom, .is_positive_ = c.literals_[k].is_positive_});
                 }
             }
             results.push_back(std::move(factored));

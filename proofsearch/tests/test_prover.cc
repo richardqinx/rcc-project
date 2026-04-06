@@ -25,50 +25,53 @@
 #include "atp/search/prover.h"
 
 #include <gtest/gtest.h>
+#include <utility>
+#include <vector>
 
 namespace atp {
 namespace {
 
 class ProverTest : public ::testing::Test {
   protected:
-    SymbolTable symbols;
-    TermBank bank{symbols};
-    ClauseStore store;
+    SymbolTable symbols_;
+    TermBank bank_{symbols_};
+    ClauseStore store_;
 
-    SymbolId sym_a{}, sym_b{};
-    SymbolId sym_f{};
-    SymbolId sym_P{}, sym_Q{}, sym_R{};
-    SymbolId sym_X{}, sym_Y{};
+    SymbolId sym_a_{}, sym_b_{};
+    SymbolId sym_f_{};
+    SymbolId sym_p_{}, sym_q_{}, sym_r_{};
+    SymbolId sym_x_{}, sym_y_{};
 
-    TermId a{}, b{}, X{}, Y{};
+    TermId a_{}, b_{}, x_{}, y_{};
+
 
     void SetUp() override {
-        sym_a = symbols.intern("a", SymbolKind::kConstant);
-        sym_b = symbols.intern("b", SymbolKind::kConstant);
-        sym_f = symbols.intern("f", SymbolKind::kFunction, 1);
-        sym_P = symbols.intern("P", SymbolKind::kPredicate, 1);
-        sym_Q = symbols.intern("Q", SymbolKind::kPredicate, 1);
-        sym_R = symbols.intern("R", SymbolKind::kPredicate, 2);
-        sym_X = symbols.intern("X", SymbolKind::kVariable);
-        sym_Y = symbols.intern("Y", SymbolKind::kVariable);
+        sym_a_ = symbols_.intern("a", SymbolKind::kConstant);
+        sym_b_ = symbols_.intern("b", SymbolKind::kConstant);
+        sym_f_ = symbols_.intern("f", SymbolKind::kFunction, 1);
+        sym_p_ = symbols_.intern("P", SymbolKind::kPredicate, 1);
+        sym_q_ = symbols_.intern("Q", SymbolKind::kPredicate, 1);
+        sym_r_ = symbols_.intern("R", SymbolKind::kPredicate, 2);
+        sym_x_ = symbols_.intern("X", SymbolKind::kVariable);
+        sym_y_ = symbols_.intern("Y", SymbolKind::kVariable);
 
-        a = bank.makeTerm(sym_a, {});
-        b = bank.makeTerm(sym_b, {});
-        X = bank.makeVar(sym_X);
-        Y = bank.makeVar(sym_Y);
+        a_ = bank_.makeTerm(sym_a_, {});
+        b_ = bank_.makeTerm(sym_b_, {});
+        x_ = bank_.makeVar(sym_x_);
+        y_ = bank_.makeVar(sym_y_);
     }
 
-    TermId P(TermId arg) { return bank.makeTerm(sym_P, {{arg}}); }
-    TermId Q(TermId arg) { return bank.makeTerm(sym_Q, {{arg}}); }
-    TermId R(TermId a1, TermId a2) { return bank.makeTerm(sym_R, {{a1, a2}}); }
-    TermId f(TermId arg) { return bank.makeTerm(sym_f, {{arg}}); }
+    TermId p(TermId arg) { return bank_.makeTerm(sym_p_, {{arg}}); }
+    TermId q(TermId arg) { return bank_.makeTerm(sym_q_, {{arg}}); }
+    TermId r(TermId a1, TermId a2) { return bank_.makeTerm(sym_r_, {{a1, a2}}); }
+    TermId f(TermId arg) { return bank_.makeTerm(sym_f_, {{arg}}); }
 
-    Literal pos(TermId atom) { return {.atom = atom, .is_positive = true}; }
-    Literal neg(TermId atom) { return {.atom = atom, .is_positive = false}; }
+    static Literal pos(TermId atom) { return {.atom_ = atom, .is_positive_ = true}; }
+    static Literal neg(TermId atom) { return {.atom_ = atom, .is_positive_ = false}; }
 
-    Clause makeClause(std::vector<Literal> lits) {
+    static Clause makeClause(std::vector<Literal> lits) {
         Clause cl;
-        cl.literals = std::move(lits);
+        cl.literals_ = std::move(lits);
         return cl;
     }
 };
@@ -78,11 +81,11 @@ class ProverTest : public ::testing::Test {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProverTest, TrivialRefutation) {
-    Prover prover(bank, store);
-    prover.addClauses({makeClause({pos(P(a))}), makeClause({neg(P(a))})});
+    Prover prover(bank_, store_);
+    prover.addClauses({makeClause({pos(p(a_))}), makeClause({neg(p(a_))})});
 
-    ProverResult result = prover.prove();
-    EXPECT_EQ(result, ProverResult::kTheorem);
+    const ProverResult kResult = prover.prove();
+    EXPECT_EQ(kResult, ProverResult::kTheorem);
     EXPECT_TRUE(prover.getEmptyClauseId().has_value());
 }
 
@@ -91,11 +94,11 @@ TEST_F(ProverTest, TrivialRefutation) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProverTest, RefutationWithUnification) {
-    Prover prover(bank, store);
-    prover.addClauses({makeClause({pos(P(X))}), makeClause({neg(P(a))})});
+    Prover prover(bank_, store_);
+    prover.addClauses({makeClause({pos(p(x_))}), makeClause({neg(p(a_))})});
 
-    ProverResult result = prover.prove();
-    EXPECT_EQ(result, ProverResult::kTheorem);
+    const ProverResult kResult = prover.prove();
+    EXPECT_EQ(kResult, ProverResult::kTheorem);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -105,12 +108,12 @@ TEST_F(ProverTest, RefutationWithUnification) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProverTest, TwoStepRefutation) {
-    Prover prover(bank, store);
+    Prover prover(bank_, store_);
     prover.addClauses(
-        {makeClause({pos(P(a))}), makeClause({neg(P(X)), pos(Q(X))}), makeClause({neg(Q(a))})});
+        {makeClause({pos(p(a_))}), makeClause({neg(p(x_)), pos(q(x_))}), makeClause({neg(q(a_))})});
 
-    ProverResult result = prover.prove();
-    EXPECT_EQ(result, ProverResult::kTheorem);
+    const ProverResult kResult = prover.prove();
+    EXPECT_EQ(kResult, ProverResult::kTheorem);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -118,11 +121,11 @@ TEST_F(ProverTest, TwoStepRefutation) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProverTest, Saturation) {
-    Prover prover(bank, store);
-    prover.addClauses({makeClause({pos(P(a))}), makeClause({pos(Q(b))})});
+    Prover prover(bank_, store_);
+    prover.addClauses({makeClause({pos(p(a_))}), makeClause({pos(q(b_))})});
 
-    ProverResult result = prover.prove();
-    EXPECT_EQ(result, ProverResult::kSaturation);
+    const ProverResult kResult = prover.prove();
+    EXPECT_EQ(kResult, ProverResult::kSaturation);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -131,15 +134,15 @@ TEST_F(ProverTest, Saturation) {
 
 TEST_F(ProverTest, Timeout) {
     ProverConfig config;
-    config.max_iterations = 1;
+    config.max_iterations_ = 1;
 
     // Need enough clauses to not saturate in 1 iteration
-    Prover prover(bank, store, config);
-    prover.addClauses({makeClause({pos(P(X)), pos(Q(X))}), makeClause({neg(P(a)), pos(Q(a))}),
-                       makeClause({neg(Q(X)), pos(P(f(X)))}), makeClause({neg(P(X)), neg(Q(X))})});
+    Prover prover(bank_, store_, config);
+    prover.addClauses({makeClause({pos(p(x_)), pos(q(x_))}), makeClause({neg(p(a_)), pos(q(a_))}),
+                       makeClause({neg(q(x_)), pos(p(f(x_)))}), makeClause({neg(p(x_)), neg(q(x_))})});
 
-    ProverResult result = prover.prove();
-    EXPECT_EQ(result, ProverResult::kTimeout);
+    const ProverResult kResult = prover.prove();
+    EXPECT_EQ(kResult, ProverResult::kTimeout);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -147,19 +150,19 @@ TEST_F(ProverTest, Timeout) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProverTest, ThreeStepChain) {
-    SymbolId sym_S = symbols.intern("S", SymbolKind::kPredicate, 1);
-    auto S = [&](TermId arg) { return bank.makeTerm(sym_S, {{arg}}); };
+    const SymbolId kSymS = symbols_.intern("S", SymbolKind::kPredicate, 1);
+    auto s = [&](TermId arg) { return bank_.makeTerm(kSymS, {{arg}}); };
 
-    Prover prover(bank, store);
+    Prover prover(bank_, store_);
     prover.addClauses({
-        makeClause({pos(P(a))}),             // P(a)
-        makeClause({neg(P(X)), pos(Q(X))}),  // ¬P(X) ∨ Q(X)
-        makeClause({neg(Q(X)), pos(S(X))}),  // ¬Q(X) ∨ S(X)
-        makeClause({neg(S(a))})              // ¬S(a)
+        makeClause({pos(p(a_))}),             // P(a)
+        makeClause({neg(p(x_)), pos(q(x_))}),  // ¬P(X) ∨ Q(X)
+        makeClause({neg(q(x_)), pos(s(x_))}),  // ¬Q(X) ∨ S(X)
+        makeClause({neg(s(a_))})              // ¬S(a)
     });
 
-    ProverResult result = prover.prove();
-    EXPECT_EQ(result, ProverResult::kTheorem);
+    const ProverResult kResult = prover.prove();
+    EXPECT_EQ(kResult, ProverResult::kTheorem);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -167,13 +170,13 @@ TEST_F(ProverTest, ThreeStepChain) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(ProverTest, EmptyClauseInInput) {
-    Prover prover(bank, store);
+    Prover prover(bank_, store_);
     prover.addClauses({makeClause({}),  // empty clause directly
-                       makeClause({pos(P(a))})});
+                       makeClause({pos(p(a_))})});
 
     // Empty clause should be detected immediately when selected from queue
-    ProverResult result = prover.prove();
-    EXPECT_EQ(result, ProverResult::kTheorem);
+    const ProverResult kResult = prover.prove();
+    EXPECT_EQ(kResult, ProverResult::kTheorem);
 }
 
 }  // namespace

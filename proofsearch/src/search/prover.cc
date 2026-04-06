@@ -18,6 +18,9 @@
 
 #include "atp/search/prover.h"
 
+#include "atp/core/clause.h"
+#include "atp/core/clause_store.h"
+#include "atp/core/term_bank.h"
 #include "atp/core/types.h"
 #include "atp/infer/resolution.h"
 #include "atp/infer/unification.h"
@@ -25,16 +28,21 @@
 #include "atp/simplify/tautology.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <utility>
+#include <vector>
 
 namespace atp {
 
 Prover::Prover(TermBank& bank, ClauseStore& store, ProverConfig config)
-    : bank_(bank), store_(store), config_(std::move(config)), unprocessed_(config_.comparator) {}
+    : bank_(bank), store_(store), config_(std::move(config)), unprocessed_(config_.comparator_) {}
 
 void Prover::addClauses(std::vector<Clause> clauses) {
     for (auto& clause : clauses) {
-        clause.depth = 0;
-        ClauseId id = store_.addClause(clause);
+        clause.depth_ = 0;
+        ClauseId const id = store_.addClause(clause);
         unprocessed_.push(store_.getClause(id));
     }
 }
@@ -44,7 +52,7 @@ ProverResult Prover::prove() {
 
     while (!unprocessed_.empty()) {
         // Resource limits
-        if (iterations >= config_.max_iterations || store_.size() >= config_.max_clauses) {
+        if (iterations >= config_.max_iterations_ || store_.size() >= config_.max_clauses_) {
             return ProverResult::kTimeout;
         }
         ++iterations;
@@ -55,7 +63,7 @@ ProverResult Prover::prove() {
 
         // 2. Check if given is itself the empty clause
         if (given.isEmpty()) {
-            empty_clause_id_ = given.id;
+            empty_clause_id_ = given.id_;
             return ProverResult::kTheorem;
         }
 
@@ -65,7 +73,7 @@ ProverResult Prover::prove() {
         }
 
         bool forward_subsumed = false;
-        for (ClauseId pid : processed_) {
+        for (ClauseId const pid : processed_) {
             if (subsumes(store_.getClause(pid), given)) {
                 forward_subsumed = true;
                 break;
@@ -84,14 +92,14 @@ ProverResult Prover::prove() {
         // 5. Generate new clauses
         // Inference BEFORE adding given to processed — matches doc §4.6.
         std::vector<Clause> new_clauses;
-        const UnificationConfig uconfig{.enable_occurs_check = config_.enable_occurs_check};
+        const UnificationConfig kUconfig{.enable_occurs_check_ = config_.enable_occurs_check_};
 
         // 5a. Resolve given with every processed clause (both directions)
-        for (ClauseId pid : processed_) {
+        for (ClauseId const pid : processed_) {
             const Clause& pc = store_.getClause(pid);
 
-            auto resolvents1 = allResolvents(bank_, given, pc, uconfig);
-            auto resolvents2 = allResolvents(bank_, pc, given, uconfig);
+            auto resolvents1 = allResolvents(bank_, given, pc, kUconfig);
+            auto resolvents2 = allResolvents(bank_, pc, given, kUconfig);
 
             for (auto& r : resolvents1) {
                 new_clauses.push_back(std::move(r));
@@ -102,13 +110,13 @@ ProverResult Prover::prove() {
         }
 
         // 5b. Factor given (only once)
-        auto factors = factor(bank_, given, uconfig);
+        auto factors = factor(bank_, given, kUconfig);
         for (auto& f : factors) {
             new_clauses.push_back(std::move(f));
         }
 
         // 6. Add given to processed AFTER inference
-        processed_.push_back(given.id);
+        processed_.push_back(given.id_);
 
         // 7. Process new clauses
         for (auto& nc : new_clauses) {
@@ -125,17 +133,17 @@ ProverResult Prover::prove() {
             }
 
             // 7c. Set depth
-            uint32_t d1 = (nc.parent1 != kInvalidId) ? store_.getClause(nc.parent1).depth : 0;
-            uint32_t d2 = (nc.parent2 != kInvalidId) ? store_.getClause(nc.parent2).depth : 0;
-            nc.depth = static_cast<uint16_t>(std::max(d1, d2) + 1);
+            uint32_t const d1 = (nc.parent1_ != kInvalidId) ? store_.getClause(nc.parent1_).depth_ : 0;
+            uint32_t const d2 = (nc.parent2_ != kInvalidId) ? store_.getClause(nc.parent2_).depth_ : 0;
+            nc.depth_ = static_cast<uint16_t>(std::max(d1, d2) + 1);
 
             // 7d. Store the clause (needed for forward subsumption check)
-            ClauseId nid = store_.addClause(nc);
+            ClauseId const nid = store_.addClause(nc);
             const Clause& stored_nc = store_.getClause(nid);
 
             // 7e. Forward subsumption on new clause
             bool new_subsumed = false;
-            for (ClauseId pid : processed_) {
+            for (ClauseId const pid : processed_) {
                 if (subsumes(store_.getClause(pid), stored_nc)) {
                     new_subsumed = true;
                     break;

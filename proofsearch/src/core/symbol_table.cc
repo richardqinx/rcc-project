@@ -21,7 +21,9 @@
 #include "atp/core/types.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace atp {
@@ -29,22 +31,23 @@ namespace atp {
 SymbolId SymbolTable::intern(std::string_view name, SymbolKind kind, uint16_t arity, SortId sort) {
     auto it = name_to_id_.find(name);
     if (it != name_to_id_.end()) {
-        SymbolId id = it->second;
-        SymbolInfo& info = infos_[id];
-        if (info.kind != kind || info.arity != arity) {
+        SymbolId const id = it->second;
+        SymbolInfo const& info = infos_[id];
+        if (info.kind_ != kind || info.arity_ != arity) {
             throw std::runtime_error("Symbol kind or arity mismatch for: " + std::string(name));
         }
         return id;
     }
     auto new_id = static_cast<SymbolId>(infos_.size());
-    infos_.push_back({.name = std::string(name), .kind = kind, .arity = arity, .sort = sort});
-    std::string_view stable_name_view = infos_.back().name;
+    infos_.push_back(SymbolInfo{
+        .name_ = std::string(name), .kind_ = kind, .arity_ = arity, .sort_ = sort});
+    std::string_view const stable_name_view = infos_.back().name_;
     name_to_id_.emplace(stable_name_view, new_id);
     return new_id;
 }
 
 std::string_view SymbolTable::getName(SymbolId id) const {
-    return infos_[id].name;
+    return infos_[id].name_;
 }
 
 const SymbolInfo& SymbolTable::getInfo(SymbolId id) const {
@@ -52,7 +55,7 @@ const SymbolInfo& SymbolTable::getInfo(SymbolId id) const {
 }
 
 bool SymbolTable::isVariable(SymbolId id) const {
-    return infos_[id].kind == SymbolKind::kVariable;
+    return infos_[id].kind_ == SymbolKind::kVariable;
 }
 
 size_t SymbolTable::size() const {

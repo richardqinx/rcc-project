@@ -58,22 +58,22 @@ FormulaRole parseRole(std::string_view role_str);
 
 /// A parsed TPTP formula with its name and role.
 struct AnnotatedFormula {
-    std::string name;                  ///< Formula name (e.g., "axiom1")
-    FormulaRole role;                  ///< Semantic role
-    std::unique_ptr<Formula> formula;  ///< The FOL formula (for fof(...))
-    std::vector<Clause> clauses;       ///< Direct clauses (for cnf(...))
-    bool is_cnf = false;               ///< true if input was cnf(), false if fof()
+    std::string name_;                  ///< Formula name (e.g., "axiom1")
+    FormulaRole role_;                  ///< Semantic role
+    std::unique_ptr<Formula> formula_;  ///< The FOL formula (for fof(...))
+    std::vector<Clause> clauses_;       ///< Direct clauses (for cnf(...))
+    bool is_cnf_ = false;               ///< true if input was cnf(), false if fof()
 };
 
 /// A complete parsed TPTP problem.
 struct ParsedProblem {
-    std::vector<AnnotatedFormula> formulas;
+    std::vector<AnnotatedFormula> formulas_;
 
     /// Does any formula contain an equality predicate?
-    bool has_equality = false;
+    bool has_equality_ = false;
 
     /// Original file path (for error messages).
-    std::string source_file;
+    std::string source_file_;
 };
 
 /// Parse a TPTP file.
@@ -82,7 +82,7 @@ struct ParsedProblem {
 /// For `fof(...)` entries: Formula AST is built (clausification happens later).
 ///
 /// All symbols are interned into `symbols` and terms into `bank` during parsing.
-ParsedProblem parseTptpFile(const std::string& filepath, TermBank& bank, SymbolTable& symbols);
+ParsedProblem parseTptpFile(const std::string& filename, TermBank& bank, SymbolTable& symbols);
 
 /// Parse a TPTP string (for testing).
 ParsedProblem parseTptpString(const std::string& input, TermBank& bank, SymbolTable& symbols);

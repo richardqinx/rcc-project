@@ -18,8 +18,13 @@
 
 #include "atp/infer/unification.h"
 
+#include "atp/core/term.h"
+#include "atp/core/term_bank.h"
 #include "atp/core/types.h"
 #include "atp/infer/substitution.h"
+
+#include <cstddef>
+#include <vector>
 
 namespace atp {
 
@@ -33,7 +38,7 @@ bool unify(const TermBank& bank, TermId t1, TermId t2, Substitution& subst,
     }
 
     if (bank.isVariable(t1)) {
-        if (config.enable_occurs_check && subst.occursIn(t1, t2, bank)) {
+        if (config.enable_occurs_check_ && subst.occursIn(t1, t2, bank)) {
             return false;
         }
         subst.bind(t1, t2);
@@ -41,7 +46,7 @@ bool unify(const TermBank& bank, TermId t1, TermId t2, Substitution& subst,
     }
 
     if (bank.isVariable(t2)) {
-        if (config.enable_occurs_check && subst.occursIn(t2, t1, bank)) {
+        if (config.enable_occurs_check_ && subst.occursIn(t2, t1, bank)) {
             return false;
         }
         subst.bind(t2, t1);
@@ -51,12 +56,12 @@ bool unify(const TermBank& bank, TermId t1, TermId t2, Substitution& subst,
     const Term& term1 = bank.getTerm(t1);
     const Term& term2 = bank.getTerm(t2);
 
-    if (term1.symbol_id != term2.symbol_id || term1.arity() != term2.arity()) {
+    if (term1.symbol_id_ != term2.symbol_id_ || term1.arity() != term2.arity()) {
         return false;
     }
 
     for (size_t i = 0; i < term1.arity(); ++i) {
-        if (!unify(bank, term1.args[i], term2.args[i], subst, config)) {
+        if (!unify(bank, term1.args_[i], term2.args_[i], subst, config)) {
             return false;
         }
     }
@@ -73,12 +78,12 @@ TermId applySubstitution(const Substitution& subst, TermId term, TermBank& bank)
     // IMPORTANT: Copy args and symbol_id BEFORE recursing.
     // Recursive calls may call bank.makeTerm() → realloc terms_ → invalidate refs.
     const Term& t = bank.getTerm(term);
-    SymbolId sym = t.symbol_id;
-    std::vector<TermId> old_args(t.args);  // copy!
+    SymbolId const sym = t.symbol_id_;
+    std::vector<TermId> const old_args(t.args_);  // copy!
 
     std::vector<TermId> new_args;
     new_args.reserve(old_args.size());
-    for (TermId arg : old_args) {
+    for (TermId const arg : old_args) {
         new_args.push_back(applySubstitution(subst, arg, bank));
     }
     return bank.makeTerm(sym, new_args);

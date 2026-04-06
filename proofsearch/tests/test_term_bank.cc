@@ -24,7 +24,11 @@
 #include "atp/core/term_bank.h"
 #include "atp/core/types.h"
 
+#include <cstddef>
 #include <gtest/gtest.h>
+#include <span>
+#include <stdexcept>
+#include <utility>
 
 namespace atp {
 namespace {
@@ -35,39 +39,39 @@ namespace {
 
 TEST(SymbolTableTest, InternReturnsConsistentId) {
     SymbolTable st;
-    SymbolId id1 = st.intern("foo", SymbolKind::kFunction, 2);
-    SymbolId id2 = st.intern("foo", SymbolKind::kFunction, 2);
+    SymbolId const id1 = st.intern("foo", SymbolKind::kFunction, 2);
+    SymbolId const id2 = st.intern("foo", SymbolKind::kFunction, 2);
     EXPECT_EQ(id1, id2);
 }
 
 TEST(SymbolTableTest, DifferentNamesGetDifferentIds) {
     SymbolTable st;
-    SymbolId a = st.intern("a", SymbolKind::kConstant);
-    SymbolId b = st.intern("b", SymbolKind::kConstant);
+    SymbolId const a = st.intern("a", SymbolKind::kConstant);
+    SymbolId const b = st.intern("b", SymbolKind::kConstant);
     EXPECT_NE(a, b);
 }
 
 TEST(SymbolTableTest, GetNameRoundTrips) {
     SymbolTable st;
-    SymbolId id = st.intern("hello", SymbolKind::kFunction, 1);
+    SymbolId const id = st.intern("hello", SymbolKind::kFunction, 1);
     EXPECT_EQ(st.getName(id), "hello");
 }
 
 TEST(SymbolTableTest, GetInfoPreservesMetadata) {
     SymbolTable st;
-    SymbolId id = st.intern("P", SymbolKind::kPredicate, 3, 42);
+    SymbolId const id = st.intern("P", SymbolKind::kPredicate, 3, 42);
     const SymbolInfo& info = st.getInfo(id);
-    EXPECT_EQ(info.name, "P");
-    EXPECT_EQ(info.kind, SymbolKind::kPredicate);
-    EXPECT_EQ(info.arity, 3);
-    EXPECT_EQ(info.sort, 42);
+    EXPECT_EQ(info.name_, "P");
+    EXPECT_EQ(info.kind_, SymbolKind::kPredicate);
+    EXPECT_EQ(info.arity_, 3);
+    EXPECT_EQ(info.sort_, 42);
 }
 
 TEST(SymbolTableTest, IsVariableDetectsKind) {
     SymbolTable st;
-    SymbolId var = st.intern("X", SymbolKind::kVariable);
-    SymbolId con = st.intern("a", SymbolKind::kConstant);
-    SymbolId fun = st.intern("f", SymbolKind::kFunction, 1);
+    SymbolId const var = st.intern("X", SymbolKind::kVariable);
+    SymbolId const con = st.intern("a", SymbolKind::kConstant);
+    SymbolId const fun = st.intern("f", SymbolKind::kFunction, 1);
     EXPECT_TRUE(st.isVariable(var));
     EXPECT_FALSE(st.isVariable(con));
     EXPECT_FALSE(st.isVariable(fun));
@@ -102,123 +106,123 @@ TEST(SymbolTableTest, SizeTracksInternedSymbols) {
 
 class TermBankTest : public ::testing::Test {
   protected:
-    SymbolTable symbols;
-    TermBank bank{symbols};
+    SymbolTable symbols_;
+    TermBank bank_{symbols_};
 
-    SymbolId sym_a, sym_b, sym_f, sym_g, sym_X, sym_Y;
+    SymbolId sym_a_{}, sym_b_{}, sym_f_{}, sym_g_{}, sym_x_id_{}, sym_y_id_{};
 
     void SetUp() override {
-        sym_a = symbols.intern("a", SymbolKind::kConstant);
-        sym_b = symbols.intern("b", SymbolKind::kConstant);
-        sym_f = symbols.intern("f", SymbolKind::kFunction, 1);
-        sym_g = symbols.intern("g", SymbolKind::kFunction, 2);
-        sym_X = symbols.intern("X", SymbolKind::kVariable);
-        sym_Y = symbols.intern("Y", SymbolKind::kVariable);
+        sym_a_ = symbols_.intern("a", SymbolKind::kConstant);
+        sym_b_ = symbols_.intern("b", SymbolKind::kConstant);
+        sym_f_ = symbols_.intern("f", SymbolKind::kFunction, 1);
+        sym_g_ = symbols_.intern("g", SymbolKind::kFunction, 2);
+        sym_x_id_ = symbols_.intern("X", SymbolKind::kVariable);
+        sym_y_id_ = symbols_.intern("Y", SymbolKind::kVariable);
     }
 };
 
 TEST_F(TermBankTest, HashConsingReturnsSameId) {
-    TermId a1 = bank.makeTerm(sym_a, {});
-    TermId a2 = bank.makeTerm(sym_a, {});
-    EXPECT_EQ(a1, a2) << "Hash consing failed: same term got different IDs";
+    const TermId kA1 = bank_.makeTerm(sym_a_, {});
+    const TermId kA2 = bank_.makeTerm(sym_a_, {});
+    EXPECT_EQ(kA1, kA2) << "Hash consing failed: same term got different IDs";
 }
 
 TEST_F(TermBankTest, DifferentTermsGetDifferentIds) {
-    TermId a = bank.makeTerm(sym_a, {});
-    TermId b = bank.makeTerm(sym_b, {});
-    EXPECT_NE(a, b);
+    const TermId kA = bank_.makeTerm(sym_a_, {});
+    const TermId kB = bank_.makeTerm(sym_b_, {});
+    EXPECT_NE(kA, kB);
 }
 
 TEST_F(TermBankTest, CompoundTermHashConsing) {
-    TermId a = bank.makeTerm(sym_a, {});
-    TermId b = bank.makeTerm(sym_b, {});
+    const TermId kA = bank_.makeTerm(sym_a_, {});
+    const TermId kB = bank_.makeTerm(sym_b_, {});
     // f(a)
-    TermId fa1 = bank.makeTerm(sym_f, {{a}});
-    TermId fa2 = bank.makeTerm(sym_f, {{a}});
-    EXPECT_EQ(fa1, fa2);
+    const TermId kFA1 = bank_.makeTerm(sym_f_, {{kA}});
+    const TermId kFA2 = bank_.makeTerm(sym_f_, {{kA}});
+    EXPECT_EQ(kFA1, kFA2);
     // f(b) != f(a)
-    TermId fb = bank.makeTerm(sym_f, {{b}});
-    EXPECT_NE(fa1, fb);
+    const TermId kFB = bank_.makeTerm(sym_f_, {{kB}});
+    EXPECT_NE(kFA1, kFB);
 }
 
 TEST_F(TermBankTest, NestedTermHashConsing) {
-    TermId a = bank.makeTerm(sym_a, {});
-    TermId fa = bank.makeTerm(sym_f, {{a}});
+    const TermId kA = bank_.makeTerm(sym_a_, {});
+    const TermId kFA = bank_.makeTerm(sym_f_, {{kA}});
     // g(f(a), a)
-    TermId gfa_a_1 = bank.makeTerm(sym_g, {{fa, a}});
-    TermId gfa_a_2 = bank.makeTerm(sym_g, {{fa, a}});
-    EXPECT_EQ(gfa_a_1, gfa_a_2);
+    const TermId kGFAA1 = bank_.makeTerm(sym_g_, {{kFA, kA}});
+    const TermId kGFAA2 = bank_.makeTerm(sym_g_, {{kFA, kA}});
+    EXPECT_EQ(kGFAA1, kGFAA2);
 }
 
 TEST_F(TermBankTest, GetTermReturnsCorrectSymbol) {
-    TermId a = bank.makeTerm(sym_a, {});
-    const Term& t = bank.getTerm(a);
-    EXPECT_EQ(t.symbol_id, sym_a);
+    const TermId kA = bank_.makeTerm(sym_a_, {});
+    const Term& t = bank_.getTerm(kA);
+    EXPECT_EQ(t.symbol_id_, sym_a_);
     EXPECT_EQ(t.arity(), 0);
 }
 
 TEST_F(TermBankTest, GetTermReturnsCorrectArgs) {
-    TermId a = bank.makeTerm(sym_a, {});
-    TermId b = bank.makeTerm(sym_b, {});
-    TermId gab = bank.makeTerm(sym_g, {{a, b}});
+    const TermId kA = bank_.makeTerm(sym_a_, {});
+    const TermId kB = bank_.makeTerm(sym_b_, {});
+    const TermId kGAB = bank_.makeTerm(sym_g_, {{kA, kB}});
 
-    const Term& t = bank.getTerm(gab);
-    EXPECT_EQ(t.symbol_id, sym_g);
+    const Term& t = bank_.getTerm(kGAB);
+    EXPECT_EQ(t.symbol_id_, sym_g_);
     EXPECT_EQ(t.arity(), 2);
-    ASSERT_EQ(t.args.size(), 2);
-    EXPECT_EQ(t.args[0], a);
-    EXPECT_EQ(t.args[1], b);
+    ASSERT_EQ(t.args_.size(), 2);
+    EXPECT_EQ(t.args_[0], kA);
+    EXPECT_EQ(t.args_[1], kB);
 }
 
 TEST_F(TermBankTest, MakeVarCreatesZeroArityTerm) {
-    TermId x = bank.makeVar(sym_X);
-    const Term& t = bank.getTerm(x);
-    EXPECT_EQ(t.symbol_id, sym_X);
+    const TermId kX = bank_.makeVar(sym_x_id_);
+    const Term& t = bank_.getTerm(kX);
+    EXPECT_EQ(t.symbol_id_, sym_x_id_);
     EXPECT_EQ(t.arity(), 0);
-    EXPECT_TRUE(t.args.empty());
+    EXPECT_TRUE(t.args_.empty());
 }
 
 TEST_F(TermBankTest, IsVariableDistinguishesFromConstants) {
-    TermId x = bank.makeVar(sym_X);
-    TermId a = bank.makeTerm(sym_a, {});
+    const TermId kX = bank_.makeVar(sym_x_id_);
+    const TermId kA = bank_.makeTerm(sym_a_, {});
 
-    EXPECT_TRUE(bank.isVariable(x)) << "Variable should be detected as variable";
-    EXPECT_FALSE(bank.isVariable(a)) << "Constant should NOT be detected as variable";
+    EXPECT_TRUE(bank_.isVariable(kX)) << "Variable should be detected as variable";
+    EXPECT_FALSE(bank_.isVariable(kA)) << "Constant should NOT be detected as variable";
 }
 
 TEST_F(TermBankTest, VariableHashConsing) {
-    TermId x1 = bank.makeVar(sym_X);
-    TermId x2 = bank.makeVar(sym_X);
-    EXPECT_EQ(x1, x2);
+    const TermId kX1 = bank_.makeVar(sym_x_id_);
+    const TermId kX2 = bank_.makeVar(sym_x_id_);
+    EXPECT_EQ(kX1, kX2);
 
-    TermId y = bank.makeVar(sym_Y);
-    EXPECT_NE(x1, y);
+    const TermId kY = bank_.makeVar(sym_y_id_);
+    EXPECT_NE(kX1, kY);
 }
 
 TEST_F(TermBankTest, SizeTracksUniqueTerms) {
-    EXPECT_EQ(bank.size(), 0);
-    TermId a = bank.makeTerm(sym_a, {});
-    EXPECT_EQ(bank.size(), 1);
-    bank.makeTerm(sym_a, {});  // duplicate
-    EXPECT_EQ(bank.size(), 1);
-    bank.makeTerm(sym_b, {});
-    EXPECT_EQ(bank.size(), 2);
-    bank.makeTerm(sym_f, {{a}});
-    EXPECT_EQ(bank.size(), 3);
+    EXPECT_EQ(bank_.size(), 0);
+    const TermId kA = bank_.makeTerm(sym_a_, {});
+    EXPECT_EQ(bank_.size(), 1);
+    bank_.makeTerm(sym_a_, {});  // duplicate
+    EXPECT_EQ(bank_.size(), 1);
+    bank_.makeTerm(sym_b_, {});
+    EXPECT_EQ(bank_.size(), 2);
+    bank_.makeTerm(sym_f_, {{kA}});
+    EXPECT_EQ(bank_.size(), 3);
 }
 
 TEST_F(TermBankTest, CompoundTermWithVariableArgs) {
     // f(X) — a function applied to a variable
-    TermId x = bank.makeVar(sym_X);
-    TermId fx = bank.makeTerm(sym_f, {{x}});
+    const TermId kX = bank_.makeVar(sym_x_id_);
+    const TermId kFX = bank_.makeTerm(sym_f_, {{kX}});
 
-    const Term& t = bank.getTerm(fx);
-    EXPECT_EQ(t.symbol_id, sym_f);
+    const Term& t = bank_.getTerm(kFX);
+    EXPECT_EQ(t.symbol_id_, sym_f_);
     EXPECT_EQ(t.arity(), 1);
-    EXPECT_EQ(t.args[0], x);
+    EXPECT_EQ(t.args_[0], kX);
 
-    EXPECT_FALSE(bank.isVariable(fx));
-    EXPECT_TRUE(bank.isVariable(x));
+    EXPECT_FALSE(bank_.isVariable(kFX));
+    EXPECT_TRUE(bank_.isVariable(kX));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -228,48 +232,48 @@ TEST_F(TermBankTest, CompoundTermWithVariableArgs) {
 TEST(ClauseStoreTest, AddAndRetrieve) {
     ClauseStore store;
     Clause c;
-    c.literals.push_back(Literal{.atom = 0, .is_positive = true});
-    c.literals.push_back(Literal{.atom = 1, .is_positive = false});
+    c.literals_.push_back(Literal{.atom_ = 0, .is_positive_ = true});
+    c.literals_.push_back(Literal{.atom_ = 1, .is_positive_ = false});
 
-    ClauseId id = store.addClause(std::move(c));
-    EXPECT_EQ(id, 0);
+    const ClauseId kId = store.addClause(std::move(c));
+    EXPECT_EQ(kId, 0);
 
-    const Clause& retrieved = store.getClause(id);
-    EXPECT_EQ(retrieved.id, id);
-    EXPECT_EQ(retrieved.literals.size(), 2);
-    EXPECT_EQ(retrieved.literals[0].atom, 0);
-    EXPECT_TRUE(retrieved.literals[0].is_positive);
-    EXPECT_EQ(retrieved.literals[1].atom, 1);
-    EXPECT_FALSE(retrieved.literals[1].is_positive);
+    const Clause& retrieved = store.getClause(kId);
+    EXPECT_EQ(retrieved.id_, kId);
+    EXPECT_EQ(retrieved.literals_.size(), 2);
+    EXPECT_EQ(retrieved.literals_[0].atom_, 0);
+    EXPECT_TRUE(retrieved.literals_[0].is_positive_);
+    EXPECT_EQ(retrieved.literals_[1].atom_, 1);
+    EXPECT_FALSE(retrieved.literals_[1].is_positive_);
 }
 
 TEST(ClauseStoreTest, AssignsSequentialIds) {
     ClauseStore store;
-    ClauseId id0 = store.addClause(Clause{});
-    ClauseId id1 = store.addClause(Clause{});
-    ClauseId id2 = store.addClause(Clause{});
-    EXPECT_EQ(id0, 0);
-    EXPECT_EQ(id1, 1);
-    EXPECT_EQ(id2, 2);
+    const ClauseId kId0 = store.addClause(Clause{});
+    const ClauseId kId1 = store.addClause(Clause{});
+    const ClauseId kId2 = store.addClause(Clause{});
+    EXPECT_EQ(kId0, 0);
+    EXPECT_EQ(kId1, 1);
+    EXPECT_EQ(kId2, 2);
     EXPECT_EQ(store.size(), 3);
 }
 
 TEST(ClauseStoreTest, StampsClauseWithId) {
     ClauseStore store;
     Clause c;
-    c.id = kInvalidId;  // unset
-    ClauseId id = store.addClause(std::move(c));
-    EXPECT_EQ(store.getClause(id).id, id);
+    c.id_ = kInvalidId;  // unset
+    const ClauseId kId = store.addClause(std::move(c));
+    EXPECT_EQ(store.getClause(kId).id_, kId);
 }
 
 TEST(ClauseStoreTest, MutableAccess) {
     ClauseStore store;
     Clause c;
-    c.depth = 0;
-    ClauseId id = store.addClause(std::move(c));
+    c.depth_ = 0;
+    const ClauseId kId = store.addClause(std::move(c));
 
-    store.getMutableClause(id).depth = 42;
-    EXPECT_EQ(store.getClause(id).depth, 42);
+    store.getMutableClause(kId).depth_ = 42;
+    EXPECT_EQ(store.getClause(kId).depth_, 42);
 }
 
 TEST(ClauseStoreTest, ForEachVisitsAll) {
@@ -286,7 +290,7 @@ TEST(ClauseStoreTest, ForEachVisitsAll) {
 TEST(ClauseStoreTest, EmptyClauseDetection) {
     Clause c;
     EXPECT_TRUE(c.isEmpty());
-    c.literals.push_back(Literal{.atom = 0, .is_positive = true});
+    c.literals_.push_back(Literal{.atom_ = 0, .is_positive_ = true});
     EXPECT_FALSE(c.isEmpty());
     EXPECT_EQ(c.size(), 1);
 }
@@ -294,17 +298,17 @@ TEST(ClauseStoreTest, EmptyClauseDetection) {
 TEST(ClauseStoreTest, ProvenancePreserved) {
     ClauseStore store;
     Clause c;
-    c.rule = InferenceRule::kResolution;
-    c.parent1 = 3;
-    c.parent2 = 7;
-    c.depth = 5;
+    c.rule_ = InferenceRule::kResolution;
+    c.parent1_ = 3;
+    c.parent2_ = 7;
+    c.depth_ = 5;
 
-    ClauseId id = store.addClause(std::move(c));
+    ClauseId const id = store.addClause(std::move(c));
     const Clause& retrieved = store.getClause(id);
-    EXPECT_EQ(retrieved.rule, InferenceRule::kResolution);
-    EXPECT_EQ(retrieved.parent1, 3);
-    EXPECT_EQ(retrieved.parent2, 7);
-    EXPECT_EQ(retrieved.depth, 5);
+    EXPECT_EQ(retrieved.rule_, InferenceRule::kResolution);
+    EXPECT_EQ(retrieved.parent1_, 3);
+    EXPECT_EQ(retrieved.parent2_, 7);
+    EXPECT_EQ(retrieved.depth_, 5);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -312,23 +316,23 @@ TEST(ClauseStoreTest, ProvenancePreserved) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST(LiteralTest, Complement) {
-    Literal pos{.atom = 42, .is_positive = true};
-    Literal neg = pos.complement();
-    EXPECT_EQ(neg.atom, 42);
-    EXPECT_FALSE(neg.is_positive);
+    const Literal kPos{.atom_ = 42, .is_positive_ = true};
+    const Literal kNeg = kPos.complement();
+    EXPECT_EQ(kNeg.atom_, 42);
+    EXPECT_FALSE(kNeg.is_positive_);
 
-    Literal back = neg.complement();
-    EXPECT_EQ(back, pos);
+    const Literal kBack = kNeg.complement();
+    EXPECT_EQ(kBack, kPos);
 }
 
 TEST(LiteralTest, Equality) {
-    Literal a{.atom = 1, .is_positive = true};
-    Literal b{.atom = 1, .is_positive = true};
-    Literal c{.atom = 1, .is_positive = false};
-    Literal d{.atom = 2, .is_positive = true};
-    EXPECT_EQ(a, b);
-    EXPECT_NE(a, c);
-    EXPECT_NE(a, d);
+    const Literal kA{.atom_ = 1, .is_positive_ = true};
+    const Literal kB{.atom_ = 1, .is_positive_ = true};
+    const Literal kC{.atom_ = 1, .is_positive_ = false};
+    const Literal kD{.atom_ = 2, .is_positive_ = true};
+    EXPECT_EQ(kA, kB);
+    EXPECT_NE(kA, kC);
+    EXPECT_NE(kA, kD);
 }
 
 }  // namespace

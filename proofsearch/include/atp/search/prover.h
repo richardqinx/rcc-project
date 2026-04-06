@@ -46,10 +46,10 @@ enum class ProverResult : uint8_t {
 /// V1 configuration — simple and direct.
 /// Future: replaced by strategy::Calculus for dynamic rule loading.
 struct ProverConfig {
-    ClauseComparator comparator = bfsCompare;
-    size_t max_clauses = 100000;     ///< Safety limit
-    size_t max_iterations = 500000;  ///< Safety limit
-    bool enable_occurs_check = false;
+    ClauseComparator comparator_ = bfsCompare;
+    size_t max_clauses_ = 100000;     ///< Safety limit
+    size_t max_iterations_ = 500000;  ///< Safety limit
+    bool enable_occurs_check_ = false;
 };
 
 /// Main prover class implementing the Given Clause Loop.

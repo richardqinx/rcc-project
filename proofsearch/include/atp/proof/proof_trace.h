@@ -32,10 +32,10 @@ namespace atp {
 
 /// A single step in a reconstructed proof.
 struct ProofStep {
-    ClauseId clause_id;
-    InferenceRule rule;
-    ClauseId parent1;
-    ClauseId parent2;
+    ClauseId clause_id_;
+    InferenceRule rule_;
+    ClauseId parent1_;
+    ClauseId parent2_;
 };
 
 /// Reconstruct the proof trace from the empty clause.
