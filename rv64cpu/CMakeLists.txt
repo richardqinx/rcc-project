@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
+
+if(POLICY CMP0144)
+    cmake_policy(SET CMP0144 NEW)
+endif()
+
 project(richard_cpu
     VERSION 0.1.0
     DESCRIPTION "RV64IMAZicsr_Zifencei Five-Stage Pipelined CPU SoC"
@@ -54,6 +59,7 @@ file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/waves)
 
 # ─── Testing ────────────────────────────────────────────────────────────────────
 enable_testing()
+include(CTest)
 
 # ─── Testbench Subdirectory ─────────────────────────────────────────────────────
 add_subdirectory(tb)

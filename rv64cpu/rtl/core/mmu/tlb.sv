@@ -341,7 +341,7 @@ module tlb
 					logic mode_match;
 					logic [44:0] mask;
 
-					asid_match = !flush_asid_valid || entries[i].g || (entries[i].asid == flush_asid);
+					asid_match = !flush_asid_valid || (!entries[i].g && (entries[i].asid == flush_asid));
 					mode_match = !flush_vpn_valid || (entries[i].mode == flush_mode);
 					if (flush_vpn_valid) begin
 						mask = make_vpn_mask(entries[i].mode, entries[i].level);

@@ -409,6 +409,69 @@ int main(int argc, char** argv) {
     issue_req(dut, va13, 18, MODE_SV48, 1, true, false, false, false);
     check(dut->resp_page_fault == 1, "ABit_FetchFault_WhenA0");
 
+    // 22) ASID-targeted flush must preserve global entries
+    const uint64_t va14 = 0x0000'0000'8888'0600ULL;
+    do_refill(dut, sv48_vpn(va14), 0x88000ULL, 0, MODE_SV48, 33, true, false, true, true, false, true, true);
+    apply_flush_asid(dut, 33);
+    issue_load(dut, va14, 99, MODE_SV48);
+    check(dut->resp_hit == 1, "FlushAsid_GlobalPreserved");
+
+    // 23) Refill pressure should eventually evict oldest entry (round-robin)
+    apply_flush_all(dut);
+    const uint64_t va15 = 0x0000'0000'9000'1000ULL;
+    do_refill(dut, sv48_vpn(va15), 0x90001ULL, 0, MODE_SV48, 40, false, false, true, true, false, true, true);
+    for (int n = 0; n < 32; ++n) {
+        const uint64_t va_fill = 0x0000'0001'0000'0000ULL + (static_cast<uint64_t>(n) << 12);
+        const uint64_t ppn_fill = 0x91000ULL + static_cast<uint64_t>(n);
+        do_refill(dut, sv48_vpn(va_fill), ppn_fill, 0, MODE_SV48, static_cast<uint16_t>(50 + n), false, false, true, true, false, true, true);
+    }
+    issue_load(dut, va15, 40, MODE_SV48);
+    check(dut->resp_hit == 0, "ReplacementPressure_OldestEvicted");
+
+    // 24) Newest refill remains accessible after pressure
+    const uint64_t va16 = 0x0000'0001'0001'F000ULL;
+    do_refill(dut, sv48_vpn(va16), 0xA001FULL, 0, MODE_SV48, 77, false, false, true, true, false, true, true);
+    issue_load(dut, va16, 77, MODE_SV48);
+    check(dut->resp_hit == 1, "ReplacementPressure_NewestEntryHits");
+
+    // 25) flush_vpn should invalidate Sv48 level-1 superpage for any VPN within same range
+    apply_flush_all(dut);
+    const uint64_t va17_base = 0x0000'0001'2340'0000ULL;
+    const uint64_t va17_same_superpage = 0x0000'0001'2341'2ABCULL;
+    const uint64_t va17_other_superpage = 0x0000'0001'2440'0555ULL;
+    do_refill(dut, sv48_vpn(va17_base), 0xB1000ULL, 1, MODE_SV48, 88, false, false, true, true, false, true, true);
+    do_refill(dut, sv48_vpn(va17_other_superpage), 0xB2000ULL, 1, MODE_SV48, 88, false, false, true, true, false, true, true);
+    apply_flush_vpn(dut, sv48_vpn(va17_same_superpage), MODE_SV48);
+    issue_load(dut, va17_base, 88, MODE_SV48);
+    check(dut->resp_hit == 0, "FlushVpn_Sv48L1_SameSuperpageInvalidated");
+    issue_load(dut, va17_other_superpage, 88, MODE_SV48);
+    check(dut->resp_hit == 1, "FlushVpn_Sv48L1_OtherSuperpagePreserved");
+
+    // 26) flush_vpn should invalidate Sv57 level-2 superpage with 18-bit VPN wildcard
+    apply_flush_all(dut);
+    const uint64_t va18_base = 0x0012'3456'7800'1000ULL;
+    const uint64_t va18_same_superpage = 0x0012'3456'7BFF'8FFFULL;
+    const uint64_t va18_other_superpage = 0x0012'345A'0000'2000ULL;
+    do_refill(dut, sv57_vpn(va18_base), 0xC1234ULL, 2, MODE_SV57, 99, false, false, true, true, false, true, true);
+    do_refill(dut, sv57_vpn(va18_other_superpage), 0xC5678ULL, 2, MODE_SV57, 99, false, false, true, true, false, true, true);
+    apply_flush_vpn(dut, sv57_vpn(va18_same_superpage), MODE_SV57);
+    issue_load(dut, va18_base, 99, MODE_SV57);
+    check(dut->resp_hit == 0, "FlushVpn_Sv57L2_SameSuperpageInvalidated");
+    issue_load(dut, va18_other_superpage, 99, MODE_SV57);
+    check(dut->resp_hit == 1, "FlushVpn_Sv57L2_OtherSuperpagePreserved");
+
+    // 27) flush_vpn with exact-page entry must not over-invalidate neighboring pages
+    apply_flush_all(dut);
+    const uint64_t va19_a = 0x0000'0000'9900'1000ULL;
+    const uint64_t va19_b = 0x0000'0000'9900'2000ULL;
+    do_refill(dut, sv48_vpn(va19_a), 0xD1000ULL, 0, MODE_SV48, 120, false, false, true, true, false, true, true);
+    do_refill(dut, sv48_vpn(va19_b), 0xD2000ULL, 0, MODE_SV48, 120, false, false, true, true, false, true, true);
+    apply_flush_vpn(dut, sv48_vpn(va19_a), MODE_SV48);
+    issue_load(dut, va19_a, 120, MODE_SV48);
+    check(dut->resp_hit == 0, "FlushVpn_Level0_OnlyTargetInvalidated");
+    issue_load(dut, va19_b, 120, MODE_SV48);
+    check(dut->resp_hit == 1, "FlushVpn_Level0_NeighborPreserved");
+
     std::cout << "\n----------------------------------\n";
     std::cout << "TLB tests passed: " << g_pass_count << "\n";
     std::cout << "----------------------------------\n";
