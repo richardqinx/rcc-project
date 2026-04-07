@@ -66,9 +66,9 @@ constexpr uint64_t EXC_LOAD_FAULT   = 5ULL;
 constexpr uint64_t EXC_STORE_FAULT  = 7ULL;
 
 constexpr uint64_t INTERRUPT_BIT    = 1ULL << 63;
-constexpr uint64_t INT_M_SOFTWARE   = 3ULL;
-constexpr uint64_t INT_M_TIMER      = 7ULL;
-constexpr uint64_t INT_M_EXTERNAL   = 11ULL;
+constexpr uint64_t INTERRUPT_M_SOFTWARE   = 3ULL;
+constexpr uint64_t INTERRUPT_M_TIMER      = 7ULL;
+constexpr uint64_t INTERRUPT_M_EXTERNAL   = 11ULL;
 
 constexpr int MSTATUS_MIE_BIT  = 3;
 constexpr int MSTATUS_MPIE_BIT = 7;
@@ -145,8 +145,8 @@ void trigger_trap(
     dut->trap_ctrl_to_s_mode = 0;
 }
 
-void trigger_interrupt(Vcsr_unit* dut, uint64_t mepc, uint64_t int_cause) {
-    trigger_trap(dut, mepc, (INTERRUPT_BIT | int_cause), 0ULL, false);
+void trigger_interrupt(Vcsr_unit* dut, uint64_t mepc, uint64_t interrupt_cause) {
+    trigger_trap(dut, mepc, (INTERRUPT_BIT | interrupt_cause), 0ULL, false);
 }
 
 template <typename Fn>
@@ -204,15 +204,15 @@ uint64_t arbitrate_trap_priority(
 ) {
     if (ext_external) {
         chose_interrupt = true;
-        return INTERRUPT_BIT | INT_M_EXTERNAL;
+        return INTERRUPT_BIT | INTERRUPT_M_EXTERNAL;
     }
     if (ext_software) {
         chose_interrupt = true;
-        return INTERRUPT_BIT | INT_M_SOFTWARE;
+        return INTERRUPT_BIT | INTERRUPT_M_SOFTWARE;
     }
     if (ext_timer) {
         chose_interrupt = true;
-        return INTERRUPT_BIT | INT_M_TIMER;
+        return INTERRUPT_BIT | INTERRUPT_M_TIMER;
     }
     chose_interrupt = false;
     return has_sync_exception ? sync_cause : 0ULL;
@@ -393,10 +393,10 @@ int main(int argc, char** argv) {
         };
 
         const std::array<PriorityScenario, 5> suite = {{
-            {"external_over_others", true,  true,  true,  true,  0xA000ULL, 0x1111ULL, INTERRUPT_BIT | INT_M_EXTERNAL},
-            {"software_over_timer",  false, true,  true,  true,  0xA040ULL, 0x2222ULL, INTERRUPT_BIT | INT_M_SOFTWARE},
-            {"timer_over_sync",      false, false, true,  true,  0xA080ULL, 0x3333ULL, INTERRUPT_BIT | INT_M_TIMER},
-            {"interrupt_only",       true,  false, false, false, 0xA0C0ULL, 0x0ULL,     INTERRUPT_BIT | INT_M_EXTERNAL},
+            {"external_over_others", true,  true,  true,  true,  0xA000ULL, 0x1111ULL, INTERRUPT_BIT | INTERRUPT_M_EXTERNAL},
+            {"software_over_timer",  false, true,  true,  true,  0xA040ULL, 0x2222ULL, INTERRUPT_BIT | INTERRUPT_M_SOFTWARE},
+            {"timer_over_sync",      false, false, true,  true,  0xA080ULL, 0x3333ULL, INTERRUPT_BIT | INTERRUPT_M_TIMER},
+            {"interrupt_only",       true,  false, false, false, 0xA0C0ULL, 0x0ULL,     INTERRUPT_BIT | INTERRUPT_M_EXTERNAL},
             {"sync_fallback",        false, false, false, true,  0xA100ULL, 0x4444ULL, EXC_INST_ILLEGAL}
         }};
 
@@ -535,8 +535,8 @@ int main(int argc, char** argv) {
         const std::array<DelegationProbe, 4> probes = {{
             {"medeleg_set",   false, EXC_ECALL_FROM_U, true,  0xD000ULL},
             {"medeleg_clear", false, EXC_ECALL_FROM_U, false, 0xD040ULL},
-            {"mideleg_set",   true,  INT_M_TIMER,      true,  0xD080ULL},
-            {"mideleg_clear", true,  INT_M_TIMER,      false, 0xD0C0ULL}
+            {"mideleg_set",   true,  INTERRUPT_M_TIMER,      true,  0xD080ULL},
+            {"mideleg_clear", true,  INTERRUPT_M_TIMER,      false, 0xD0C0ULL}
         }};
 
         for (const auto& probe : probes) {

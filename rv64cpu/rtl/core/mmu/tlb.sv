@@ -102,7 +102,7 @@ module tlb
 	logic [XLEN-1:0] low_mask;
 	logic        req_priv_u;
 	logic [XLEN-1:0] hit_ppn_xlen;
-	int unsigned shift_int;
+	int unsigned shift_index;
 
 	function automatic logic is_supported_mode(input logic [3:0] mode);
 		return (mode == SATP_MODE_BARE) || (mode == SATP_MODE_SV32) ||
@@ -248,7 +248,7 @@ module tlb
 		low_mask = '0;
 		req_priv_u = 1'b0;
 		hit_ppn_xlen = '0;
-		shift_int = 0;
+		shift_index = 0;
 
 		hit_found = 1'b0;
 		hit_ppn = '0;
@@ -286,11 +286,11 @@ module tlb
 
 				if (hit_found) begin
 					shift = page_shift(hit_mode, hit_level);
-					shift_int = int'(shift);
-					if (shift_int >= XLEN) begin
+					shift_index = int'(shift);
+					if (shift_index >= XLEN) begin
 						low_mask = {XLEN{1'b1}};
 					end else begin
-						low_mask = ({{(XLEN-1){1'b0}}, 1'b1} << shift_int) - 1;
+						low_mask = ({{(XLEN-1){1'b0}}, 1'b1} << shift_index) - 1;
 					end
 
 					hit_ppn_xlen = {{(XLEN-56){1'b0}}, hit_ppn, 12'b0};

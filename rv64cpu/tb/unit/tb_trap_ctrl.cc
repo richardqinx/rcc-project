@@ -32,9 +32,9 @@ constexpr uint64_t EXC_STORE_PAGE_FAULT= 15ULL;
 constexpr uint64_t EXC_LOAD_FAULT     = 5ULL;
 constexpr uint64_t EXC_STORE_FAULT    = 7ULL;
 
-constexpr uint64_t INT_M_SOFTWARE     = 3ULL;
-constexpr uint64_t INT_M_TIMER        = 7ULL;
-constexpr uint64_t INT_M_EXTERNAL     = 11ULL;
+constexpr uint64_t INTERRUPT_M_SOFTWARE = 3ULL;
+constexpr uint64_t INTERRUPT_M_TIMER    = 7ULL;
+constexpr uint64_t INTERRUPT_M_EXTERNAL = 11ULL;
 
 constexpr uint64_t INTERRUPT_BIT      = 1ULL << 63;
 constexpr uint64_t PRIV_MODE_U        = 0ULL;
@@ -161,9 +161,9 @@ int main(int argc, char** argv) {
     dut->ext_software_interrupt = 1;
     dut->ext_external_interrupt = 1;
     dut->eval();
-    const uint64_t expected_vectored_pc = 0x300ULL + (INT_M_EXTERNAL << 2);
+    const uint64_t expected_vectored_pc = 0x300ULL + (INTERRUPT_M_EXTERNAL << 2);
     check(dut->trap_trigger, "InterruptPriority_Triggers");
-    check(dut->trap_mcause == (INTERRUPT_BIT | INT_M_EXTERNAL), "InterruptPriority_Mcause");
+    check(dut->trap_mcause == (INTERRUPT_BIT | INTERRUPT_M_EXTERNAL), "InterruptPriority_Mcause");
     check(dut->trap_mtval == 0ULL, "InterruptPriority_MtvalZero");
     check(dut->trap_next_pc == expected_vectored_pc, "InterruptPriority_VectoredJump");
 
@@ -177,14 +177,14 @@ int main(int argc, char** argv) {
     dut->csr_priv_mode = PRIV_MODE_S;
     dut->csr_mstatus_mie = 1;
     dut->csr_stvec = 0x880ULL | 0x1ULL;  // vectored supervisor mode
-    dut->csr_mideleg = (1ULL << INT_M_TIMER);
+    dut->csr_mideleg = (1ULL << INTERRUPT_M_TIMER);
     dut->wb_pc = 0xABCDULL;
     dut->ext_timer_interrupt = 1;
     dut->eval();
-    const uint64_t expected_sv_pc = 0x880ULL + (INT_M_TIMER << 2);
+    const uint64_t expected_sv_pc = 0x880ULL + (INTERRUPT_M_TIMER << 2);
     check(dut->trap_to_s_mode, "InterruptDelegation_ToSupervisor");
     check(dut->trap_next_pc == expected_sv_pc, "InterruptDelegation_UsesStvec");
-    check(dut->trap_mcause == (INTERRUPT_BIT | INT_M_TIMER), "InterruptDelegation_Mcause");
+    check(dut->trap_mcause == (INTERRUPT_BIT | INTERRUPT_M_TIMER), "InterruptDelegation_Mcause");
 
     // ---------------------------------------------------------------------
     // 3) MRET/SRET redirect without new traps

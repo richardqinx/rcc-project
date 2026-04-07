@@ -69,8 +69,8 @@ constexpr uint64_t EXC_STORE_FAULT  = 7ULL;
 constexpr uint64_t EXC_ECALL_FROM_U = 8ULL;
 constexpr uint64_t EXC_ECALL_FROM_M = 11ULL;
 constexpr uint64_t INTERRUPT_BIT    = 1ULL << 63;
-constexpr uint64_t INT_M_EXTERNAL   = 11ULL;
-constexpr uint64_t INT_M_TIMER      = 7ULL;
+constexpr uint64_t INTERRUPT_M_EXTERNAL   = 11ULL;
+constexpr uint64_t INTERRUPT_M_TIMER      = 7ULL;
 
 constexpr uint64_t LOG_ENTRY_STRIDE = 24ULL;
 constexpr uint64_t MACHINE_TRAP_VECTOR = 0x00000000ULL;
@@ -837,9 +837,9 @@ void test_fibonacci(CoreSim& sim) {
     
     for (int i = 0; i < 10; i++) {
         uint64_t addr = 0x10000000ULL + (i * 8);
-        uint64_t actual_val = sim.mem.read_data(addr); 
+        uint64_t actual_data = sim.mem.read_data(addr); 
         
-        ASSERT_EQ(actual_val, expected_fib[i], "Fibonacci value mismatch");
+        ASSERT_EQ(actual_data, expected_fib[i], "Fibonacci value mismatch");
     }
 }
 
@@ -949,7 +949,7 @@ static void run_branch_interrupt_priority_case() {
     emit_nops(boot, 8);
     emit_csrrw_imm64(boot, 1, CSR_MTVEC, MACHINE_TRAP_VECTOR);
     emit_csrrw_imm64(boot, 2, CSR_MSTATUS, (1ULL << MSTATUS_MIE_BIT));
-    emit_csrrw_imm64(boot, 3, CSR_MIE, (1ULL << INT_M_EXTERNAL));
+    emit_csrrw_imm64(boot, 3, CSR_MIE, (1ULL << INTERRUPT_M_EXTERNAL));
     boot.push_back(JAL(0, 0));
     sim.mem.load_program(boot_pc, boot);
 
@@ -961,7 +961,7 @@ static void run_branch_interrupt_priority_case() {
     sim.run(20);
 
     const TrapRecord interrupt_trap = fetch_trap_record(sim.mem, log_base, 0);
-    ASSERT_EQ(interrupt_trap.mcause, INTERRUPT_BIT | INT_M_EXTERNAL, "external interrupt cause");
+    ASSERT_EQ(interrupt_trap.mcause, INTERRUPT_BIT | INTERRUPT_M_EXTERNAL, "external interrupt cause");
     ASSERT_EQ(interrupt_trap.mtval, 0ULL, "interrupt mtval should be zero");
 }
 
@@ -980,7 +980,7 @@ static void run_mie_masking_case() {
     std::vector<uint32_t> program;
     emit_nops(program, 8);
     emit_csrrw_imm64(program, 1, CSR_MTVEC, MACHINE_TRAP_VECTOR);
-    emit_csrrw_imm64(program, 2, CSR_MIE, (1ULL << INT_M_EXTERNAL));
+    emit_csrrw_imm64(program, 2, CSR_MIE, (1ULL << INTERRUPT_M_EXTERNAL));
     program.push_back(CSRRW(0, CSR_MSTATUS, 0));
     emit_nops(program, 8);
     emit_nops(program, 48);
@@ -994,8 +994,8 @@ static void run_mie_masking_case() {
     sim.run(20);
     ASSERT_EQ(sim.mem.read_data(log_base), 0ULL, "no trap while MIE=0");
     sim.run(100);
-    const TrapRecord int_trap = fetch_trap_record(sim.mem, log_base, 0);
-    ASSERT_EQ(int_trap.mcause, INTERRUPT_BIT | INT_M_EXTERNAL, "external interrupt cause");
+    const TrapRecord interrupt_trap = fetch_trap_record(sim.mem, log_base, 0);
+    ASSERT_EQ(interrupt_trap.mcause, INTERRUPT_BIT | INTERRUPT_M_EXTERNAL, "external interrupt cause");
 }
 
 // TODO: Add EXPECT_FAIL once trap_load_page_fault/trap_store_page_fault are driven by the MMU.
