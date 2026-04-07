@@ -12,8 +12,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Export compile_commands.json for clang-tidy and IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# ─── Compiler Warnings ──────────────────────────────────────────────────────
-add_compile_options(
+# ─── Compiler Warnings ──────────────────────────
+set(ATP_PROJECT_WARNING_FLAGS
     -Wall -Wextra -Wpedantic
     -Wshadow -Wnon-virtual-dtor
     -Wold-style-cast -Wcast-align -Wunused
@@ -34,7 +34,6 @@ option(ATP_ENABLE_CLANG_TIDY "Enable clang-tidy static analysis" OFF)
 if(ATP_ENABLE_CLANG_TIDY)
     find_program(CLANG_TIDY_EXE NAMES clang-tidy)
     if(CLANG_TIDY_EXE)
-        set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
         message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
     else()
         message(WARNING "clang-tidy requested but not found")
@@ -91,10 +90,18 @@ add_library(atp_core STATIC ${ATP_SOURCES})
 target_include_directories(atp_core PUBLIC
     ${PROJECT_SOURCE_DIR}/include
 )
+target_compile_options(atp_core PRIVATE ${ATP_PROJECT_WARNING_FLAGS})
+if(ATP_ENABLE_CLANG_TIDY AND CLANG_TIDY_EXE)
+    set_property(TARGET atp_core PROPERTY CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+endif()
 
 # ─── Main Executable ────────────────────────────────────────────────────────
 add_executable(atp src/main.cc)
 target_link_libraries(atp PRIVATE atp_core)
+target_compile_options(atp PRIVATE ${ATP_PROJECT_WARNING_FLAGS})
+if(ATP_ENABLE_CLANG_TIDY AND CLANG_TIDY_EXE)
+    set_property(TARGET atp PROPERTY CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+endif()
 
 # ─── Tests ───────────────────────────────────────────────────────────────────
 option(ATP_BUILD_TESTS "Build unit tests" ON)

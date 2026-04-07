@@ -47,114 +47,113 @@ void Prover::addClauses(std::vector<Clause> clauses) {
     }
 }
 
+bool Prover::hitResourceLimit(size_t iterations) const {
+    return iterations >= config_.max_iterations_ || store_.size() >= config_.max_clauses_;
+}
+
+Clause Prover::popGivenClause() {
+    Clause given = unprocessed_.top();
+    unprocessed_.pop();
+    return given;
+}
+
+bool Prover::isForwardSubsumedByProcessed(const Clause& clause) const {
+    return std::ranges::any_of(processed_,
+                               [&](ClauseId pid) { return subsumes(store_.getClause(pid), clause); });
+}
+
+bool Prover::shouldSkipGiven(const Clause& given) const {
+    return isTautology(given) || isForwardSubsumedByProcessed(given);
+}
+
+void Prover::applyBackwardSubsumption(const Clause& given) {
+    std::erase_if(processed_, [&](ClauseId pid) { return subsumes(given, store_.getClause(pid)); });
+}
+
+std::vector<Clause> Prover::generateNewClauses(const Clause& given) const {
+    std::vector<Clause> new_clauses;
+    const UnificationConfig uconfig{.enable_occurs_check_ = config_.enable_occurs_check_};
+
+    for (ClauseId const pid : processed_) {
+        const Clause& pc = store_.getClause(pid);
+
+        auto resolvents1 = allResolvents(bank_, given, pc, uconfig);
+        auto resolvents2 = allResolvents(bank_, pc, given, uconfig);
+
+        for (auto& r : resolvents1) {
+            new_clauses.push_back(std::move(r));
+        }
+        for (auto& r : resolvents2) {
+            new_clauses.push_back(std::move(r));
+        }
+    }
+
+    auto factors = factor(bank_, given, uconfig);
+    for (auto& f : factors) {
+        new_clauses.push_back(std::move(f));
+    }
+
+    return new_clauses;
+}
+
+uint16_t Prover::computeDepth(const Clause& clause) const {
+    uint32_t const d1 = (clause.parent1_ != kInvalidId) ? store_.getClause(clause.parent1_).depth_ : 0;
+    uint32_t const d2 = (clause.parent2_ != kInvalidId) ? store_.getClause(clause.parent2_).depth_ : 0;
+    return static_cast<uint16_t>(std::max(d1, d2) + 1);
+}
+
+std::optional<ClauseId> Prover::processNewClauses(std::vector<Clause> new_clauses) {
+    for (auto& nc : new_clauses) {
+        if (nc.isEmpty()) {
+            return store_.addClause(std::move(nc));
+        }
+
+        if (isTautology(nc)) {
+            continue;
+        }
+
+        nc.depth_ = computeDepth(nc);
+
+        ClauseId const nid = store_.addClause(nc);
+        const Clause& stored_nc = store_.getClause(nid);
+        if (isForwardSubsumedByProcessed(stored_nc)) {
+            continue;
+        }
+
+        unprocessed_.push(stored_nc);
+    }
+
+    return std::nullopt;
+}
+
 ProverResult Prover::prove() {
     size_t iterations = 0;
 
     while (!unprocessed_.empty()) {
-        // Resource limits
-        if (iterations >= config_.max_iterations_ || store_.size() >= config_.max_clauses_) {
+        if (hitResourceLimit(iterations)) {
             return ProverResult::kTimeout;
         }
         ++iterations;
 
-        // 1. Select the best clause from unprocessed
-        Clause given = unprocessed_.top();
-        unprocessed_.pop();
+        Clause given = popGivenClause();
 
-        // 2. Check if given is itself the empty clause
         if (given.isEmpty()) {
             empty_clause_id_ = given.id_;
             return ProverResult::kTheorem;
         }
 
-        // 3. Forward redundancy checks
-        if (isTautology(given)) {
+        if (shouldSkipGiven(given)) {
             continue;
         }
 
-        bool forward_subsumed = false;
-        for (ClauseId const pid : processed_) {
-            if (subsumes(store_.getClause(pid), given)) {
-                forward_subsumed = true;
-                break;
-            }
-        }
-        if (forward_subsumed) {
-            continue;
-        }
-
-        // 4. Backward subsumption
-        // Remove from processed all clauses that are subsumed by given.
-        // Use erase-remove idiom for O(n) scan instead of repeated erase.
-        std::erase_if(processed_,
-                      [&](ClauseId pid) { return subsumes(given, store_.getClause(pid)); });
-
-        // 5. Generate new clauses
-        // Inference BEFORE adding given to processed — matches doc §4.6.
-        std::vector<Clause> new_clauses;
-        const UnificationConfig kUconfig{.enable_occurs_check_ = config_.enable_occurs_check_};
-
-        // 5a. Resolve given with every processed clause (both directions)
-        for (ClauseId const pid : processed_) {
-            const Clause& pc = store_.getClause(pid);
-
-            auto resolvents1 = allResolvents(bank_, given, pc, kUconfig);
-            auto resolvents2 = allResolvents(bank_, pc, given, kUconfig);
-
-            for (auto& r : resolvents1) {
-                new_clauses.push_back(std::move(r));
-            }
-            for (auto& r : resolvents2) {
-                new_clauses.push_back(std::move(r));
-            }
-        }
-
-        // 5b. Factor given (only once)
-        auto factors = factor(bank_, given, kUconfig);
-        for (auto& f : factors) {
-            new_clauses.push_back(std::move(f));
-        }
-
-        // 6. Add given to processed AFTER inference
+        applyBackwardSubsumption(given);
+        std::vector<Clause> new_clauses = generateNewClauses(given);
         processed_.push_back(given.id_);
 
-        // 7. Process new clauses
-        for (auto& nc : new_clauses) {
-            // 7a. Check for empty clause → proof found!
-            if (nc.isEmpty()) {
-                ClauseId eid = store_.addClause(std::move(nc));
-                empty_clause_id_ = eid;
-                return ProverResult::kTheorem;
-            }
-
-            // 7b. Skip tautologies
-            if (isTautology(nc)) {
-                continue;
-            }
-
-            // 7c. Set depth
-            uint32_t const d1 = (nc.parent1_ != kInvalidId) ? store_.getClause(nc.parent1_).depth_ : 0;
-            uint32_t const d2 = (nc.parent2_ != kInvalidId) ? store_.getClause(nc.parent2_).depth_ : 0;
-            nc.depth_ = static_cast<uint16_t>(std::max(d1, d2) + 1);
-
-            // 7d. Store the clause (needed for forward subsumption check)
-            ClauseId const nid = store_.addClause(nc);
-            const Clause& stored_nc = store_.getClause(nid);
-
-            // 7e. Forward subsumption on new clause
-            bool new_subsumed = false;
-            for (ClauseId const pid : processed_) {
-                if (subsumes(store_.getClause(pid), stored_nc)) {
-                    new_subsumed = true;
-                    break;
-                }
-            }
-            if (new_subsumed) {
-                continue;
-            }
-
-            // 7f. Enqueue
-            unprocessed_.push(stored_nc);
+        const std::optional<ClauseId> derived_empty = processNewClauses(std::move(new_clauses));
+        if (derived_empty.has_value()) {
+            empty_clause_id_ = derived_empty;
+            return ProverResult::kTheorem;
         }
     }
 

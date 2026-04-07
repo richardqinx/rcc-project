@@ -53,7 +53,7 @@ const Term& TermBank::getTerm(TermId id) const {
 
 bool TermBank::isVariable(TermId id) const {
     assert(id < terms_.size() && "TermId out of bounds!");
-    return symbols_.isVariable(terms_[id].symbol_id_);
+    return symbols_->isVariable(terms_[id].symbol_id_);
 }
 
 size_t TermBank::size() const {

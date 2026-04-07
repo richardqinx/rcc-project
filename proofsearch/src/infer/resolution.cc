@@ -98,7 +98,7 @@ std::optional<Clause> resolve(TermBank& bank, const Clause& c1, size_t lit_idx1,
     // Rename c2's variables to avoid clashes with c1
     // Use a static counter — safe for single-threaded prover
     static uint32_t var_counter = 0;
-    auto& symbols = const_cast<SymbolTable&>(bank.symbols());
+    auto& symbols = bank.mutableSymbols();
     Clause c2r = renameVariables(c2, bank, symbols, var_counter);
 
     // Unify the complementary atoms

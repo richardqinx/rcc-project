@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    const std::string kFilepath = argv[1];
+    const std::string filepath = argv[1];
 
     try {
         // 1. Initialize core modules
@@ -52,9 +52,9 @@ int main(int argc, char* argv[]) {
         atp::ClauseStore store;
 
         // 2. Parse TPTP input
-        auto problem = atp::parseTptpFile(kFilepath, bank, symbols);
+        auto problem = atp::parseTptpFile(filepath, bank, symbols);
 
-        std::cerr << "% Parsed " << problem.formulas_.size() << " formulas from " << kFilepath
+        std::cerr << "% Parsed " << problem.formulas_.size() << " formulas from " << filepath
                   << "\n";
 
         // 3. Prepare clauses for proving
@@ -70,23 +70,23 @@ int main(int argc, char* argv[]) {
         // 5. Output result (SZS format)
         switch (result) {
             case atp::ProverResult::kTheorem: {
-                std::cout << "% SZS status Theorem for " << kFilepath << "\n\n";
+                std::cout << "% SZS status Theorem for " << filepath << "\n\n";
 
                 // Extract and print proof
                 auto eid = prover.getEmptyClauseId();
                 if (eid.has_value()) {
                     auto proof = atp::extractProof(store, *eid);
-                    std::cout << "% SZS output start Proof for " << kFilepath << "\n";
+                    std::cout << "% SZS output start Proof for " << filepath << "\n";
                     std::cout << atp::formatProof(proof, store, bank);
-                    std::cout << "% SZS output end Proof for " << kFilepath << "\n";
+                    std::cout << "% SZS output end Proof for " << filepath << "\n";
                 }
                 break;
             }
             case atp::ProverResult::kSaturation:
-                std::cout << "% SZS status Satisfiable for " << kFilepath << "\n";
+                std::cout << "% SZS status Satisfiable for " << filepath << "\n";
                 break;
             case atp::ProverResult::kTimeout:
-                std::cout << "% SZS status Timeout for " << kFilepath << "\n";
+                std::cout << "% SZS status Timeout for " << filepath << "\n";
                 break;
         }
 

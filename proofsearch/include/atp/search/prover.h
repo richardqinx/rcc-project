@@ -72,6 +72,15 @@ class Prover {
     [[nodiscard]] const ClauseStore& clauseStore() const { return store_; }
 
   private:
+    [[nodiscard]] bool hitResourceLimit(size_t iterations) const;
+    [[nodiscard]] Clause popGivenClause();
+    [[nodiscard]] bool isForwardSubsumedByProcessed(const Clause& clause) const;
+    [[nodiscard]] bool shouldSkipGiven(const Clause& given) const;
+    void applyBackwardSubsumption(const Clause& given);
+    [[nodiscard]] std::vector<Clause> generateNewClauses(const Clause& given) const;
+    [[nodiscard]] uint16_t computeDepth(const Clause& clause) const;
+    [[nodiscard]] std::optional<ClauseId> processNewClauses(std::vector<Clause> new_clauses);
+
     TermBank& bank_;
     ClauseStore& store_;
     ProverConfig config_;

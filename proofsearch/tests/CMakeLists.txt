@@ -15,6 +15,7 @@ include(GoogleTest)
 function(atp_add_test TEST_NAME TEST_SOURCE)
     add_executable(${TEST_NAME} ${TEST_SOURCE})
     target_link_libraries(${TEST_NAME} PRIVATE atp_core GTest::gtest_main)
+    target_compile_options(${TEST_NAME} PRIVATE ${ATP_PROJECT_WARNING_FLAGS})
     gtest_discover_tests(${TEST_NAME})
 endfunction()
 

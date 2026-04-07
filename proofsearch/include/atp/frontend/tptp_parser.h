@@ -59,7 +59,7 @@ FormulaRole parseRole(std::string_view role_str);
 /// A parsed TPTP formula with its name and role.
 struct AnnotatedFormula {
     std::string name_;                  ///< Formula name (e.g., "axiom1")
-    FormulaRole role_;                  ///< Semantic role
+    FormulaRole role_ = FormulaRole::kPlain;  ///< Semantic role
     std::unique_ptr<Formula> formula_;  ///< The FOL formula (for fof(...))
     std::vector<Clause> clauses_;       ///< Direct clauses (for cnf(...))
     bool is_cnf_ = false;               ///< true if input was cnf(), false if fof()

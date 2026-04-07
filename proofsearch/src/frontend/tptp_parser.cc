@@ -42,31 +42,31 @@ namespace atp {
 FormulaRole parseRole(std::string_view role_str) {
     if (role_str == "axiom") {
         return FormulaRole::kAxiom;
-}
+    }
     if (role_str == "hypothesis") {
         return FormulaRole::kHypothesis;
-}
+    }
     if (role_str == "definition") {
         return FormulaRole::kDefinition;
-}
+    }
     if (role_str == "assumption") {
         return FormulaRole::kAssumption;
-}
+    }
     if (role_str == "lemma") {
         return FormulaRole::kLemma;
-}
+    }
     if (role_str == "theorem") {
         return FormulaRole::kTheorem;
-}
+    }
     if (role_str == "conjecture") {
         return FormulaRole::kConjecture;
-}
+    }
     if (role_str == "negated_conjecture") {
         return FormulaRole::kNegatedConjecture;
-}
+    }
     if (role_str == "plain") {
         return FormulaRole::kPlain;
-}
+    }
     return FormulaRole::kPlain;
 }
 
@@ -215,7 +215,7 @@ class TptpParser {
     SymbolTable& symbols_;
     Token current_token_{};
     std::vector<Token> tokens_;
-    std::unordered_map<std::string_view, SymbolId> variable_cache_{};
+    std::unordered_map<std::string_view, SymbolId> variable_cache_;
 
     void advance() { current_token_ = lexer_.nextToken(); }
 
@@ -252,27 +252,28 @@ class TptpParser {
             TermId const var_id = bank_.makeVar(sym);
             variable_cache_[name] = var_id;
             return var_id;
-        }             // Check if this is a function/predicate (has args) or a constant (no parens)
-            if (current_token_.type_ == TokenType::kLParen) {
-                advance();  // consume '('
-                std::vector<TermId> args;
-                if (current_token_.type_ != TokenType::kRParen) {
+        }
+
+        // Check if this is a function/predicate (has args) or a constant (no parens)
+        if (current_token_.type_ == TokenType::kLParen) {
+            advance();  // consume '('
+            std::vector<TermId> args;
+            if (current_token_.type_ != TokenType::kRParen) {
+                args.push_back(parseTerm());
+                while (current_token_.type_ == TokenType::kComma) {
+                    advance();
                     args.push_back(parseTerm());
-                    while (current_token_.type_ == TokenType::kComma) {
-                        advance();
-                        args.push_back(parseTerm());
-                    }
                 }
-                expect(TokenType::kRParen);
-                SymbolId sym = symbols_.intern(name, SymbolKind::kFunction,
-                                               static_cast<uint16_t>(args.size()));
-                return bank_.makeTerm(sym, args);
-            } else {
-                // Constant: no parentheses (e.g., a, b, h0, s0)
-                SymbolId sym = symbols_.intern(name, SymbolKind::kConstant, 0);
-                return bank_.makeTerm(sym, {});
             }
-       
+            expect(TokenType::kRParen);
+            const SymbolId sym = symbols_.intern(name, SymbolKind::kFunction,
+                                                 static_cast<uint16_t>(args.size()));
+            return bank_.makeTerm(sym, args);
+        }
+
+        // Constant: no parentheses (e.g., a, b, h0, s0)
+        const SymbolId sym = symbols_.intern(name, SymbolKind::kConstant, 0);
+        return bank_.makeTerm(sym, {});
     }
 
     Literal parseLiteral() {

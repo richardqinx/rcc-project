@@ -22,6 +22,7 @@
 #include "atp/core/term_bank.h"
 #include "atp/core/types.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace atp {
@@ -107,12 +108,8 @@ bool Substitution::occursIn(TermId var, TermId term, const TermBank& bank) const
     }
 
     const Term& t = bank.getTerm(term);
-    for (TermId const arg : t.args_) {
-        if (occursIn(var, arg, bank)) {
-            return true;
-        }
-    }
-    return false;
+    return std::any_of(t.args_.begin(), t.args_.end(),
+                       [&](TermId arg) { return occursIn(var, arg, bank); });
 }
 
 void Substitution::clear() {

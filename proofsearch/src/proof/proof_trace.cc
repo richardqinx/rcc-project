@@ -26,7 +26,6 @@
 #include "atp/core/types.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <stack>
 #include <string>
@@ -47,20 +46,20 @@ std::vector<ProofStep> extractProof(const ClauseStore& store, ClauseId empty_cla
     worklist.push(empty_clause_id);
 
     while (!worklist.empty()) {
-        const ClauseId kCid = worklist.top();
+        const ClauseId cid = worklist.top();
         worklist.pop();
 
-        if (kCid == kInvalidId) {
+        if (cid == kInvalidId) {
             continue;
         }
-        if (visited.contains(kCid)) {
+        if (visited.contains(cid)) {
             continue;
         }
-        visited.insert(kCid);
+        visited.insert(cid);
 
-        const Clause& c = store.getClause(kCid);
+        const Clause& c = store.getClause(cid);
         steps.push_back({
-            .clause_id_ = kCid,
+            .clause_id_ = cid,
             .rule_ = c.rule_,
             .parent1_ = c.parent1_,
             .parent2_ = c.parent2_,
@@ -105,15 +104,32 @@ namespace {
 /// Generate a human-readable variable name from an index.
 /// 0→X, 1→Y, 2→Z, 3→W, 4→V, 5→U, 6→X1, 7→Y1, ...
 std::string prettyVarName(size_t index) {
-    static constexpr std::array<char, 6> kBaseNames = {'X', 'Y', 'Z', 'W', 'V', 'U'};
-    static constexpr size_t kBaseCount = kBaseNames.size();
+    constexpr size_t kBaseCount = 6;
+    const size_t base_index = index % kBaseCount;
+    const char base = [&]() {
+        switch (base_index) {
+            case 0:
+                return 'X';
+            case 1:
+                return 'Y';
+            case 2:
+                return 'Z';
+            case 3:
+                return 'W';
+            case 4:
+                return 'V';
+            case 5:
+                return 'U';
+            default:
+                return 'X';
+        }
+    }();
 
-    const char kBase = kBaseNames[index % kBaseCount];
-    const size_t kSuffix = index / kBaseCount;
-    if (kSuffix == 0) {
-        return std::string{kBase};
+    const size_t suffix = index / kBaseCount;
+    if (suffix == 0) {
+        return std::string{base};
     }
-    return std::string{kBase} + std::to_string(kSuffix);
+    return std::string{base} + std::to_string(suffix);
 }
 
 /// Pretty-print a term, renaming variables to readable names.
@@ -125,9 +141,9 @@ std::string termToPretty(TermId id, const TermBank& bank,
         if (it != var_map.end()) {
             return it->second;
         }
-        const std::string kName = prettyVarName(var_map.size());
-        var_map[id] = kName;
-        return kName;
+        const std::string name = prettyVarName(var_map.size());
+        var_map[id] = name;
+        return name;
     }
 
     const Term& t = bank.getTerm(id);

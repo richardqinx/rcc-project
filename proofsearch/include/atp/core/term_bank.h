@@ -39,7 +39,7 @@ class TermBank {
   public:
     /// TermBank needs the SymbolTable to distinguish variables from constants
     /// (both have 0 args, but SymbolKind differs).
-    explicit TermBank(const SymbolTable& symbols) : symbols_(symbols) {}
+        explicit TermBank(SymbolTable& symbols) : symbols_(&symbols) {}
 
     /// Create or retrieve a term. Returns the canonical TermId.
     TermId makeTerm(SymbolId symbol, std::span<const TermId> args);
@@ -57,7 +57,8 @@ class TermBank {
     [[nodiscard]] size_t size() const;
 
     /// Access the underlying SymbolTable.
-    [[nodiscard]] const SymbolTable& symbols() const { return symbols_; }
+    [[nodiscard]] const SymbolTable& symbols() const { return *symbols_; }
+    [[nodiscard]] SymbolTable& mutableSymbols() { return *symbols_; }
 
   private:
     struct TermKey {
@@ -70,14 +71,14 @@ class TermBank {
     struct TermKeyHash {
         size_t operator()(const TermKey& key) const {
             size_t seed = std::hash<uint32_t>{}(key.symbol_);
-            for (const TermId kArg : key.args_) {
-                seed ^= std::hash<TermId>{}(kArg) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            for (const TermId arg : key.args_) {
+                seed ^= std::hash<TermId>{}(arg) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             return seed;
         }
     };
 
-    const SymbolTable& symbols_;
+    SymbolTable* symbols_;
     std::vector<Term> terms_;
     std::unordered_map<TermKey, TermId, TermKeyHash> term_to_id_;
 };
