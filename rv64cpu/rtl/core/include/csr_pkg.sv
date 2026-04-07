@@ -102,16 +102,16 @@ package csr_pkg;
     // Interrupt Cause Codes (mcause.Interrupt == 1)
     // ---------------------------------
     // User Mode Interrupts
-    localparam logic [XLEN-1:0] INT_U_SOFTWARE                  = 64'd0;    // User Mode Software Interrupt
-    localparam logic [XLEN-1:0] INT_U_TIMER                     = 64'd4;    // User Mode Timer Interrupt
-    localparam logic [XLEN-1:0] INT_U_EXTERNAL                  = 64'd8;    // User Mode External Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_U_SOFTWARE            = 64'd0;    // User Mode Software Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_U_TIMER               = 64'd4;    // User Mode Timer Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_U_EXTERNAL            = 64'd8;    // User Mode External Interrupt
     // Supervisor Mode Interrupts
-    localparam logic [XLEN-1:0] INT_S_SOFTWARE                  = 64'd1;    // Supervisor Mode Software Interrupt
-    localparam logic [XLEN-1:0] INT_S_TIMER                     = 64'd5;    // Supervisor Mode Timer Interrupt
-    localparam logic [XLEN-1:0] INT_S_EXTERNAL                  = 64'd9;    // Supervisor Mode External Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_S_SOFTWARE            = 64'd1;    // Supervisor Mode Software Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_S_TIMER               = 64'd5;    // Supervisor Mode Timer Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_S_EXTERNAL            = 64'd9;    // Supervisor Mode External Interrupt
     // Machine Mode Interrupts
-    localparam logic [XLEN-1:0] INT_M_SOFTWARE                  = 64'd3;    // Machine Mode Software Interrupt
-    localparam logic [XLEN-1:0] INT_M_TIMER                     = 64'd7;    // Machine Mode Timer Interrupt
-    localparam logic [XLEN-1:0] INT_M_EXTERNAL                  = 64'd11;   // Machine Mode External Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_M_SOFTWARE            = 64'd3;    // Machine Mode Software Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_M_TIMER               = 64'd7;    // Machine Mode Timer Interrupt
+    localparam logic [XLEN-1:0] INTERRUPT_M_EXTERNAL            = 64'd11;   // Machine Mode External Interrupt
 
 endpackage

@@ -38,9 +38,9 @@ module trap_ctrl
     input  logic [INST_WIDTH-1:0] trap_bad_instr,
 
     // Interrupt pin from external source (asynchronous signal)
-    input  logic                  ext_timer_int,       // M-Mode Machine Timer Interrupt (MTIP)
-    input  logic                  ext_software_int,    // M-Mode Software Interrupt (MSIP)
-    input  logic                  ext_external_int,    // M-Mode External Interrupt (MEIP)
+    input  logic                  ext_timer_interrupt,       // M-Mode Machine Timer Interrupt (MTIP)
+    input  logic                  ext_software_interrupt,    // M-Mode Software Interrupt (MSIP)
+    input  logic                  ext_external_interrupt,    // M-Mode External Interrupt (MEIP)
 
     // Status read from CSR Unit
     input  logic                  csr_mstatus_mie,    // Global interrupt enable (MIE)
@@ -128,22 +128,22 @@ module trap_ctrl
 
     // Interrupt Detection - Asynchronous, Protected by MIE
     logic               has_interrupt;
-    logic [XLEN-1:0]    int_cause;
+    logic [XLEN-1:0]    interrupt_cause;
 
     always_comb begin
         has_interrupt = 1'b0;
-        int_cause     = '0;
+        interrupt_cause = '0;
 
         if (csr_mstatus_mie) begin
-            if (ext_external_int) begin
+            if (ext_external_interrupt) begin
                 has_interrupt = 1'b1;
-                int_cause     = INTERRUPT_BIT | INT_M_EXTERNAL;
-            end else if (ext_software_int) begin
+                interrupt_cause = INTERRUPT_BIT | INTERRUPT_M_EXTERNAL;
+            end else if (ext_software_interrupt) begin
                 has_interrupt = 1'b1;
-                int_cause     = INTERRUPT_BIT | INT_M_SOFTWARE;
-            end else if (ext_timer_int) begin
+                interrupt_cause = INTERRUPT_BIT | INTERRUPT_M_SOFTWARE;
+            end else if (ext_timer_interrupt) begin
                 has_interrupt = 1'b1;
-                int_cause     = INTERRUPT_BIT | INT_M_TIMER;
+                interrupt_cause = INTERRUPT_BIT | INTERRUPT_M_TIMER;
             end
         end
     end 
@@ -153,7 +153,7 @@ module trap_ctrl
     logic            trap_is_interrupt;
 
     assign trap_is_interrupt = has_interrupt;
-    assign trap_cause_value  = has_interrupt ? int_cause : sync_cause;
+    assign trap_cause_value  = has_interrupt ? interrupt_cause : sync_cause;
     assign trap_mtval_value  = has_interrupt ? '0 : sync_mtval;
 
     assign trap_trigger = has_interrupt | has_sync_exception;

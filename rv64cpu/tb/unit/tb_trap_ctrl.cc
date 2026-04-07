@@ -56,9 +56,9 @@ void drive_defaults(Vtrap_ctrl* dut) {
     dut->trap_bad_addr = 0;
     dut->trap_bad_instr = 0;
 
-    dut->ext_timer_int = 0;
-    dut->ext_software_int = 0;
-    dut->ext_external_int = 0;
+    dut->ext_timer_interrupt = 0;
+    dut->ext_software_interrupt = 0;
+    dut->ext_external_interrupt = 0;
 
     dut->csr_mstatus_mie = 0;
     dut->csr_mtvec = 0x800ULL;
@@ -157,9 +157,9 @@ int main(int argc, char** argv) {
     dut->csr_priv_mode = PRIV_MODE_M;
     dut->csr_mtvec = 0x300ULL | 0x1ULL;  // vectored mode
     dut->wb_pc = 0x4000ULL;
-    dut->ext_timer_int = 1;
-    dut->ext_software_int = 1;
-    dut->ext_external_int = 1;
+    dut->ext_timer_interrupt = 1;
+    dut->ext_software_interrupt = 1;
+    dut->ext_external_interrupt = 1;
     dut->eval();
     const uint64_t expected_vectored_pc = 0x300ULL + (INT_M_EXTERNAL << 2);
     check(dut->trap_trigger, "InterruptPriority_Triggers");
@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
 
     drive_defaults(dut);
     dut->csr_mstatus_mie = 0;
-    dut->ext_external_int = 1;
+    dut->ext_external_interrupt = 1;
     dut->eval();
     check(!dut->trap_trigger, "InterruptMasked_NoTrigger");
 
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
     dut->csr_stvec = 0x880ULL | 0x1ULL;  // vectored supervisor mode
     dut->csr_mideleg = (1ULL << INT_M_TIMER);
     dut->wb_pc = 0xABCDULL;
-    dut->ext_timer_int = 1;
+    dut->ext_timer_interrupt = 1;
     dut->eval();
     const uint64_t expected_sv_pc = 0x880ULL + (INT_M_TIMER << 2);
     check(dut->trap_to_s_mode, "InterruptDelegation_ToSupervisor");

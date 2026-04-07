@@ -306,9 +306,9 @@ bool load_elf64(const std::string& path, ByteMemory* memory, Symbols* symbols) {
 void tick(Vrichard_core* top, ByteMemory* memory) {
     top->imem_rdata = memory->read_u32(top->imem_addr);
     top->dmem_rdata = top->dmem_read_en ? memory->read_u64(top->dmem_addr & ~0x7ULL) : 0;
-    top->ext_timer_int = 0;
-    top->ext_software_int = 0;
-    top->ext_external_int = 0;
+    top->ext_timer_interrupt = 0;
+    top->ext_software_interrupt = 0;
+    top->ext_external_interrupt = 0;
 
     top->clk = 0;
     top->eval();

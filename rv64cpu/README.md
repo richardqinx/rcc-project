@@ -130,7 +130,7 @@ richard-cpu/
 |---|---|
 | P1 | RV64I five-stage pipeline + hazard handling (Done) |
 | P2 | CSR + M/S/U privilege levels + Trap (Done) |
-| P3 | MMU (Sv39 TLB + PTW) |
+| P3 | MMU (TLB + PTW) |
 | P4 | Cache + AXI4-Full Burst |
 | P5 | Peripherals + AXI4-Lite bridge + SoC integration |
 | P6 | Pass riscv-arch-test (In Progress: strict suites above all pass) |

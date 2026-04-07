@@ -37,9 +37,9 @@ module richard_core
     input  logic [63:0] dmem_rdata,
 
     // Interface 3: External Interrupt Sources
-    input  logic        ext_timer_int,
-    input  logic        ext_software_int,
-    input  logic        ext_external_int
+    input  logic        ext_timer_interrupt,
+    input  logic        ext_software_interrupt,
+    input  logic        ext_external_interrupt
 );
     localparam int CSR_MSTATUS_MIE_BIT = 3;
 
@@ -159,7 +159,7 @@ module richard_core
     logic [4:0]        wb_rs1_addr_in;
     logic [XLEN-1:0]   wb_imm_in;
     logic              wb_illegal_instr_in, wb_is_ecall_in, wb_is_ebreak_in, wb_is_mret_in, wb_is_sret_in;
-    logic              wb_load_fault_flag, wb_store_fault_flag;
+    logic              wb_load_fault, wb_store_fault;
     logic [XLEN-1:0]   wb_fault_addr_in;
 
     // (10) WB Stage Outputs (to RegFile & CSR Unit)
@@ -182,8 +182,8 @@ module richard_core
     logic [XLEN-1:0]   csr_sepc_value;
     logic [XLEN-1:0]   csr_satp_value;
     logic [XLEN-1:0]   csr_trap_vector_value;
-    logic              csr_trap_to_s_mode_flag;
-    logic              csr_illegal_access_flag;
+    logic              csr_trap_to_s_mode;
+    logic              csr_illegal_access;
 
     // (11) Exception / Trap bus
     logic              trap_illegal_instr, trap_is_ecall, trap_is_ebreak, trap_is_mret, trap_is_sret;
@@ -203,7 +203,7 @@ module richard_core
     logic [XLEN-1:0]   trap_ctrl_mepc;
     logic [XLEN-1:0]   trap_ctrl_mcause;
     logic [XLEN-1:0]   trap_ctrl_mtval;
-    logic              trap_ctrl_to_s_mode_flag;
+    logic              trap_ctrl_to_s_mode;
     logic              trap_ctrl_mret_en;
     logic              trap_ctrl_sret_en;
     logic              csr_mstatus_mie;
@@ -591,8 +591,8 @@ module richard_core
         .wb_is_ebreak        (wb_is_ebreak_in),
         .wb_is_mret          (wb_is_mret_in),
         .wb_is_sret          (wb_is_sret_in),
-        .wb_load_fault       (wb_load_fault_flag),
-        .wb_store_fault      (wb_store_fault_flag),
+        .wb_load_fault       (wb_load_fault),
+        .wb_store_fault      (wb_store_fault),
         .wb_fault_addr       (wb_fault_addr_in)
     );
 
@@ -618,11 +618,11 @@ module richard_core
         .mem_wb_is_ebreak   (wb_is_ebreak_in),
         .mem_wb_is_mret     (wb_is_mret_in),
         .mem_wb_is_sret     (wb_is_sret_in),
-        .mem_wb_load_fault  (wb_load_fault_flag),
-        .mem_wb_store_fault (wb_store_fault_flag),
+        .mem_wb_load_fault  (wb_load_fault),
+        .mem_wb_store_fault (wb_store_fault),
         .mem_wb_fault_addr  (wb_fault_addr_in),
         .csr_rdata          (csr_rdata),
-        .csr_illegal_access (csr_illegal_access_flag),
+        .csr_illegal_access (csr_illegal_access),
         .wb_rd_wdata        (wb_rd_wdata),
         .wb_rd_addr         (wb_rd_addr),
         .wb_reg_write_en    (wb_reg_write_en_out),
@@ -650,7 +650,7 @@ module richard_core
         .csr_addr           (csr_addr),
         .csr_rs1_data       (csr_rs1_data),
         .trap_ctrl_trigger  (trap_ctrl_trigger),
-        .trap_ctrl_to_s_mode(trap_ctrl_to_s_mode_flag),
+        .trap_ctrl_to_s_mode(trap_ctrl_to_s_mode),
         .trap_ctrl_mepc     (trap_ctrl_mepc),
         .trap_ctrl_mcause   (trap_ctrl_mcause),
         .trap_ctrl_mtval    (trap_ctrl_mtval),
@@ -670,8 +670,8 @@ module richard_core
         .csr_trap_vector        (),
         .csr_trap_to_s_mode     (),
         .csr_trap_vector_next   (csr_trap_vector_value),
-        .csr_trap_to_s_mode_next(csr_trap_to_s_mode_flag),
-        .csr_illegal_access     (csr_illegal_access_flag)
+        .csr_trap_to_s_mode_next(csr_trap_to_s_mode),
+        .csr_illegal_access     (csr_illegal_access)
     );
 
     trap_ctrl u_trap_ctrl (
@@ -688,9 +688,9 @@ module richard_core
         .trap_store_page_fault(trap_store_page_fault),
         .trap_bad_addr       (trap_bad_addr),
         .trap_bad_instr      (trap_bad_instr),
-        .ext_timer_int       (ext_timer_int),
-        .ext_software_int    (ext_software_int),
-        .ext_external_int    (ext_external_int),
+        .ext_timer_interrupt    (ext_timer_interrupt),
+        .ext_software_interrupt (ext_software_interrupt),
+        .ext_external_interrupt (ext_external_interrupt),
         .csr_mstatus_mie     (csr_mstatus_mie),
         .csr_mtvec           (csr_mtvec_base),
         .csr_stvec           (csr_stvec_base),
@@ -703,7 +703,7 @@ module richard_core
         .trap_mepc           (trap_ctrl_mepc),
         .trap_mcause         (trap_ctrl_mcause),
         .trap_mtval          (trap_ctrl_mtval),
-        .trap_to_s_mode      (trap_ctrl_to_s_mode_flag),
+        .trap_to_s_mode      (trap_ctrl_to_s_mode),
         .mret_en             (trap_ctrl_mret_en),
         .sret_en             (trap_ctrl_sret_en),
         .trap_flush_req      (trap_flush_req),

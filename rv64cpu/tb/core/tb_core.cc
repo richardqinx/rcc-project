@@ -352,17 +352,17 @@ public:
     Vrichard_core* top;
     MemoryModel mem;
     uint64_t sim_time;
-    bool ext_timer_int_level;
-    bool ext_software_int_level;
-    bool ext_external_int_level;
+    bool ext_timer_interrupt_level;
+    bool ext_software_interrupt_level;
+    bool ext_external_interrupt_level;
 #if VM_TRACE
     VerilatedVcdC* tfp;
 #endif
 
     CoreSim() : sim_time(0),
-                ext_timer_int_level(false),
-                ext_software_int_level(false),
-                ext_external_int_level(false) {
+                ext_timer_interrupt_level(false),
+                ext_software_interrupt_level(false),
+                ext_external_interrupt_level(false) {
         top = new Vrichard_core;
 #if VM_TRACE
         Verilated::traceEverOn(true);
@@ -401,9 +401,9 @@ public:
             top->dmem_rdata = 0;
         }
 
-        top->ext_timer_int = ext_timer_int_level;
-        top->ext_software_int = ext_software_int_level;
-        top->ext_external_int = ext_external_int_level;
+        top->ext_timer_interrupt = ext_timer_interrupt_level;
+        top->ext_software_interrupt = ext_software_interrupt_level;
+        top->ext_external_interrupt = ext_external_interrupt_level;
 
         // Rising edge
         top->clk = 0;
@@ -432,9 +432,9 @@ public:
     }
 
     void set_interrupt_lines(bool timer, bool software, bool external) {
-        ext_timer_int_level = timer;
-        ext_software_int_level = software;
-        ext_external_int_level = external;
+        ext_timer_interrupt_level = timer;
+        ext_software_interrupt_level = software;
+        ext_external_interrupt_level = external;
     }
 
     void clear_interrupts() {

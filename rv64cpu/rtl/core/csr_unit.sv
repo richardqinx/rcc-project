@@ -201,10 +201,10 @@ module csr_unit
 			if (csr_write_en && csr_is_writable(csr_addr_canonical)) begin
 				unique case (csr_addr_canonical)
 					CSR_MSTATUS: begin
-						logic [XLEN-1:0] next_val;
-						next_val     = csr_write_next(mstatus_reg, csr_rs1_data, csr_op);
-						mstatus_reg  <= next_val;
-						sstatus_reg  <= mirror_mstatus_to_sstatus(sstatus_reg, next_val);
+						logic [XLEN-1:0] next_data;
+						next_data    = csr_write_next(mstatus_reg, csr_rs1_data, csr_op);
+						mstatus_reg  <= next_data;
+						sstatus_reg  <= mirror_mstatus_to_sstatus(sstatus_reg, next_data);
 					end
 					CSR_MEDELEG:    medeleg_reg    <= csr_write_next(medeleg_reg, csr_rs1_data, csr_op);
 					CSR_MIDELEG:    mideleg_reg    <= csr_write_next(mideleg_reg, csr_rs1_data, csr_op);
@@ -321,18 +321,18 @@ module csr_unit
 
 	// Apply the CSR op semantics (write/set/clear) for a single register.
 	function automatic logic [XLEN-1:0] csr_write_next(
-		input logic [XLEN-1:0] current_val,
-		input logic [XLEN-1:0] write_val,
+		input logic [XLEN-1:0] current_data,
+		input logic [XLEN-1:0] write_data,
 		input logic [2:0]      op_code
 	);
-		logic [XLEN-1:0] next_val;
+		logic [XLEN-1:0] next_data;
 		unique case (op_code)
-			3'b001, 3'b101: next_val = write_val;                     // CSRRW / CSRRWI
-			3'b010, 3'b110: next_val = current_val | write_val;       // CSRRS / CSRRSI
-			3'b011, 3'b111: next_val = current_val & ~write_val;      // CSRRC / CSRRCI
-			default:         next_val = current_val;
+			3'b001, 3'b101: next_data = write_data;                     // CSRRW / CSRRWI
+			3'b010, 3'b110: next_data = current_data | write_data;      // CSRRS / CSRRSI
+			3'b011, 3'b111: next_data = current_data & ~write_data;     // CSRRC / CSRRCI
+			default:         next_data = current_data;
 		endcase
-		return next_val;
+		return next_data;
 	endfunction
 
 	function automatic bit csr_is_writable(input logic [11:0] addr);
@@ -393,26 +393,26 @@ module csr_unit
 
 	function automatic logic [XLEN-1:0] apply_sstatus_to_mstatus(
 		input logic [XLEN-1:0] mstatus_cur,
-		input logic [XLEN-1:0] sstatus_val
+		input logic [XLEN-1:0] sstatus_data
 	);
-		logic [XLEN-1:0] next_val;
-		next_val = mstatus_cur;
-		next_val[SSTATUS_SIE_BIT]  = sstatus_val[SSTATUS_SIE_BIT];
-		next_val[SSTATUS_SPIE_BIT] = sstatus_val[SSTATUS_SPIE_BIT];
-		next_val[SSTATUS_SPP_BIT]  = sstatus_val[SSTATUS_SPP_BIT];
-		return next_val;
+		logic [XLEN-1:0] next_data;
+		next_data = mstatus_cur;
+		next_data[SSTATUS_SIE_BIT]  = sstatus_data[SSTATUS_SIE_BIT];
+		next_data[SSTATUS_SPIE_BIT] = sstatus_data[SSTATUS_SPIE_BIT];
+		next_data[SSTATUS_SPP_BIT]  = sstatus_data[SSTATUS_SPP_BIT];
+		return next_data;
 	endfunction
 
 	function automatic logic [XLEN-1:0] mirror_mstatus_to_sstatus(
 		input logic [XLEN-1:0] sstatus_cur,
-		input logic [XLEN-1:0] mstatus_val
+		input logic [XLEN-1:0] mstatus_data
 	);
-		logic [XLEN-1:0] next_val;
-		next_val = sstatus_cur;
-		next_val[SSTATUS_SIE_BIT]  = mstatus_val[SSTATUS_SIE_BIT];
-		next_val[SSTATUS_SPIE_BIT] = mstatus_val[SSTATUS_SPIE_BIT];
-		next_val[SSTATUS_SPP_BIT]  = mstatus_val[SSTATUS_SPP_BIT];
-		return next_val;
+		logic [XLEN-1:0] next_data;
+		next_data = sstatus_cur;
+		next_data[SSTATUS_SIE_BIT]  = mstatus_data[SSTATUS_SIE_BIT];
+		next_data[SSTATUS_SPIE_BIT] = mstatus_data[SSTATUS_SPIE_BIT];
+		next_data[SSTATUS_SPP_BIT]  = mstatus_data[SSTATUS_SPP_BIT];
+		return next_data;
 	endfunction
 
 	// Pack the discrete FP status bits into the architectural FCSR layout.

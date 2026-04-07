@@ -13,6 +13,20 @@ modifying existing code.
 | Abbreviations are allowed **only** from the approved list (Section 7) | `addr` not `address`, `imm` not `immediate` |
 | No trailing numbers for disambiguation; use descriptive suffixes instead | `read_port_a` not `read_port_1` |
 
+### 1.1 Semantic Clarity Priority
+
+When multiple names are technically valid, prefer the name with the clearest
+semantic meaning:
+
+1. Prefer full words over unclear abbreviations unless listed in Section 7.
+2. Prefer domain-accurate nouns over generic placeholders.
+3. Prefer names that communicate role and timing (source, destination, stage).
+
+Examples:
+- `interrupt_cause` is preferred over `int_cause`
+- `trap_target_pc` is preferred over `trap_next_value`
+- `csr_write_data` is preferred over `csr_write_val`
+
 ## 2. Module & Package Names
 
 | Item | Rule | Example |
@@ -40,6 +54,14 @@ Use these suffixes consistently to indicate the **role** of a signal:
 | `_en` | Enable (active-high gating signal) | `reg_write_en`, `mem_read_en` |
 | `_val` | **Deprecated — do not use for new code.** Use `_rdata`/`_wdata`/`_data` instead | — |
 
+Additional clarity rules:
+- `*_value` is allowed for architectural/state snapshots when `*_data` would be
+	ambiguous. Example: `csr_mstatus_value`.
+- For storage read/write payloads, always prefer `_rdata`/`_wdata`/`_data` over
+	`_value`.
+- `_flag` is deprecated for new boolean signals. Use `is_<noun>`, `has_<noun>`,
+	or `<adjective>_<noun>`.
+
 ### 3.2 Standard Prefixes
 
 | Prefix | Meaning | Example |
@@ -59,6 +81,11 @@ All single-bit control signals should follow **one** of these patterns:
 
 > **Consistency rule**: For write-enable signals on storage elements (register file,
 > memory, CSR), always use the `_en` suffix. Example: `reg_write_en`, not `reg_write`.
+
+Additional boolean rules:
+- Avoid suffix-only boolean naming such as `*_flag` and `*_bool` in new code.
+- `has_` is for condition presence (`has_interrupt`), `is_` is for classification
+	(`is_interrupt` for a classified event or type).
 
 ### 3.4 Clock & Reset
 
@@ -141,6 +168,24 @@ Only these abbreviations are permitted. All other words should be spelled in ful
 | `val` | **Deprecated — use `rdata`/`wdata`/`data`** |
 | `wb` | write back (pipeline stage only) |
 | `wdata` | write data |
+
+Not approved for new code:
+- `int` (use `interrupt`)
+- `flag` suffix for booleans (use Section 3.3 patterns)
+
+## 7.1 Architecture-Defined Bit Names (Exception)
+
+Some names come directly from ISA-defined bit semantics and are allowed in narrow
+scopes even if they are single-letter:
+
+- PTE-like permission bits: `u`, `r`, `w`, `x`, `a`, `d`, `g`
+
+Scope limits:
+1. Allowed only inside tightly scoped structs, packed fields, or helper function
+	parameters tied to ISA semantics.
+2. For module ports and cross-module buses, prefer descriptive names such as
+	`pte_user`, `pte_read`, `pte_write`, `pte_exec`, `pte_accessed`, `pte_dirty`,
+	`pte_global`.
 
 ## 8. Current Codebase Non-Conformances
 
