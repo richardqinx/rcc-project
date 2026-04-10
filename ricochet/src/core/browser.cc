@@ -19,20 +19,23 @@
 #include "ricochet/core/browser.hh"
 #include "ricochet/net/http_client.hh"
 #include "ricochet/parser/html_lexer.hh"
+#include "ricochet/parser/tree_builder.hh"
 #include <iostream>
 
 namespace {
-struct TokenPrinter {
-    void operator()(const ricochet::parser::TextToken& t) const {
-        std::cout << "[TEXT] " << t.content << "\n";
+void print_dom_tree(const ricochet::parser::DomNode& node, std::size_t depth = 0) // NOLINT(misc-no-recursion)
+{
+    const std::string indent(depth * 2, ' ');
+    
+    if (node.tag_name.empty()) {
+        std::cout << indent << "\"" << node.text_content << "\"\n";
+    } else {
+        std::cout << indent << "<" << node.tag_name << ">\n";
+        for (const auto& child : node.children) {
+            print_dom_tree(child, depth + 1);
+        }
     }
-    void operator()(const ricochet::parser::TagOpenToken& t) const {
-        std::cout << "[OPEN] <" << t.name << ">\n";
-    }
-    void operator()(const ricochet::parser::TagCloseToken& t) const {
-        std::cout << "[CLOSE] </" << t.name << ">\n";
-    }
-};
+}
 } // namespace
 namespace ricochet::core {
 
@@ -49,15 +52,15 @@ int Browser::run( std::string_view initial_url )
     }
 
     const auto& response = response_result.value();
-    std::cout << "[=== HTTP Status: " << response.status_code << " ===]\n";
     
-    std::cout << "\n[=== Tokenizing HTML ===]\n";
     const parser::HtmlLexer lexer;
-    auto tokens = lexer.tokenize(response.body);
+    const auto tokens = lexer.tokenize(response.body);
 
-    for (const auto& token : tokens) {
-        std::visit(TokenPrinter{}, token);
-    }
+    const parser::TreeBuilder builder;
+    const auto dom_root = builder.build(tokens);
+
+    std::cout << "\n[=== Abstract Syntax Tree (DOM) ===]\n";
+    print_dom_tree(dom_root);
 
     return 0;
 }

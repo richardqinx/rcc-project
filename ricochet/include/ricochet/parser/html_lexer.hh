@@ -25,7 +25,7 @@
 
 namespace ricochet::parser {
 
-    struct TextToken {
+struct TextToken {
     std::string content{};
 };
 
