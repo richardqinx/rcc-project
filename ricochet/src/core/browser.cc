@@ -21,23 +21,11 @@
 #include "ricochet/parser/html_lexer.hh"
 #include "ricochet/parser/tree_builder.hh"
 #include "ricochet/render/renderer.hh"
+#include "ricochet/tui/terminal.hh"
+#include <cstddef>
 #include <iostream>
+#include <sstream>
 
-// namespace {
-// void print_dom_tree( const ricochet::parser::DomNode& node, std::size_t depth = 0 ) // NOLINT(misc-no-recursion)
-// {
-//   const std::string indent( depth * 2, ' ' );
-
-//   if ( node.tag_name.empty() ) {
-//     std::cout << indent << "\"" << node.text_content << "\"\n";
-//   } else {
-//     std::cout << indent << "<" << node.tag_name << ">\n";
-//     for ( const auto& child : node.children ) {
-//       print_dom_tree( child, depth + 1 );
-//     }
-//   }
-// }
-// } // namespace
 namespace ricochet::core {
 
 int Browser::run( std::string_view initial_url )
@@ -63,8 +51,53 @@ int Browser::run( std::string_view initial_url )
   // std::cout << "\033[2J\033[1;1H";
 
   const render::Renderer renderer;
-  renderer.render( dom_root );
+  const std::string rendered_text = renderer.render( dom_root );
 
+  std::vector<std::string> lines;
+  std::stringstream ss(rendered_text);
+  std::string line;
+  while (std::getline(ss, line, '\n')) {
+    lines.push_back(line);
+  }
+
+  // TUI Event Loop
+  const tui::Terminal terminal;
+
+  std::size_t scroll_y = 0;
+  const std::size_t screen_height = 24;
+
+  while (true) {
+    terminal.clear_screen();
+
+    for (std::size_t i = 0; i < screen_height - 1; ++i) {
+      const std::size_t line_idx = scroll_y + i;
+      if (line_idx < lines.size()) {
+        std::cout << lines[line_idx] << "\r\n";
+      } else {
+        std::cout << "~\r\n";
+      }
+    }
+
+    std::cout << "\033[7m" << " URL: " << initial_url 
+                  << " | [j] Down  [k] Up  [q] Quit " << "\033[0m";
+    std::cout.flush();
+
+    const char c = terminal.read_key();
+    if (c == 'q') {
+      break; // Break loop, terminal destructor will restore terminal
+    }
+    if (c == 'j') {
+      if (scroll_y + screen_height - 1 < lines.size()) {
+        scroll_y++; // Scroll down
+      }
+    } else if (c == 'k') {
+      if (scroll_y > 0) {
+        scroll_y--; // Scroll up
+      }
+    }
+  }
+
+  terminal.clear_screen();
   return 0;
 }
 

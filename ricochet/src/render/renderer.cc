@@ -23,7 +23,7 @@ namespace ricochet::render {
 
 namespace {
 
-void render_node( const parser::DomNode& node ) // NOLINT(misc-no-recursion)
+void render_node( const parser::DomNode& node, std::string& output ) // NOLINT(misc-no-recursion)
 {
   if ( node.tag_name == "head" || node.tag_name == "style" || node.tag_name == "script" || node.tag_name == "meta"
        || node.tag_name == "title" || node.tag_name == "link" ) {
@@ -31,35 +31,36 @@ void render_node( const parser::DomNode& node ) // NOLINT(misc-no-recursion)
   }
 
   if ( node.tag_name.empty() ) {
-    std::cout << node.text_content;
+    output += node.text_content;
     return;
   }
   if ( node.tag_name == "h1" ) {
-    std::cout << "\n\n\033[1;31m";
+    output += "\n\n\033[1;31m";
   } else if ( node.tag_name == "a" ) {
     std::cout << "\033[4;34m";
   } else if ( node.tag_name == "p" || node.tag_name == "div" ) {
-    std::cout << "\n";
+    output += "\n";
   }
 
   for ( const auto& child : node.children ) {
-    render_node( child );
+    render_node( child, output );
   }
   if ( node.tag_name == "h1" || node.tag_name == "a" ) {
-    std::cout << "\033[0m";
+    output += "\033[0m";
   }
 
   if ( node.tag_name == "h1" || node.tag_name == "p" || node.tag_name == "div" ) {
-    std::cout << "\n";
+    output += "\n";
   }
 }
 
 } // namespace
 
-void Renderer::render( const parser::DomNode& node ) const // NOLINT(readability-convert-member-functions-to-static)
+std::string Renderer::render( const parser::DomNode& node ) const // NOLINT(readability-convert-member-functions-to-static)
 {
-  render_node( node );
-  std::cout << "\n";
+  std::string output;
+  render_node( node, output );
+  return output;
 }
 
 } // namespace ricochet::render
