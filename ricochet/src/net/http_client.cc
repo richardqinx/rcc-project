@@ -59,7 +59,8 @@ std::expected<ParsedUrl, std::string> parse_url( std::string_view url )
 }
 } // namespace
 
-std::expected<HttpResponse, std::string> HttpClient::fetch( // NOLINT(readability-convert-member-functions-to-static)
+std::expected<HttpResponse, std::string>
+HttpClient::fetch( // NOLINT(readability-convert-member-functions-to-static)
   std::string_view url ) const
 {
   auto parsed_url = parse_url( url );

@@ -20,23 +20,24 @@
 #include "ricochet/net/http_client.hh"
 #include "ricochet/parser/html_lexer.hh"
 #include "ricochet/parser/tree_builder.hh"
+#include "ricochet/render/renderer.hh"
 #include <iostream>
 
-namespace {
-void print_dom_tree( const ricochet::parser::DomNode& node, std::size_t depth = 0 ) // NOLINT(misc-no-recursion)
-{
-  const std::string indent( depth * 2, ' ' );
+// namespace {
+// void print_dom_tree( const ricochet::parser::DomNode& node, std::size_t depth = 0 ) // NOLINT(misc-no-recursion)
+// {
+//   const std::string indent( depth * 2, ' ' );
 
-  if ( node.tag_name.empty() ) {
-    std::cout << indent << "\"" << node.text_content << "\"\n";
-  } else {
-    std::cout << indent << "<" << node.tag_name << ">\n";
-    for ( const auto& child : node.children ) {
-      print_dom_tree( child, depth + 1 );
-    }
-  }
-}
-} // namespace
+//   if ( node.tag_name.empty() ) {
+//     std::cout << indent << "\"" << node.text_content << "\"\n";
+//   } else {
+//     std::cout << indent << "<" << node.tag_name << ">\n";
+//     for ( const auto& child : node.children ) {
+//       print_dom_tree( child, depth + 1 );
+//     }
+//   }
+// }
+// } // namespace
 namespace ricochet::core {
 
 int Browser::run( std::string_view initial_url )
@@ -59,8 +60,10 @@ int Browser::run( std::string_view initial_url )
   const parser::TreeBuilder builder;
   const auto dom_root = builder.build( tokens );
 
-  std::cout << "\n[=== Abstract Syntax Tree (DOM) ===]\n";
-  print_dom_tree( dom_root );
+  // std::cout << "\033[2J\033[1;1H";
+
+  const render::Renderer renderer;
+  renderer.render( dom_root );
 
   return 0;
 }
