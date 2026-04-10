@@ -59,7 +59,8 @@ std::expected<ParsedUrl, std::string> parse_url( std::string_view url )
 }
 } // namespace
 
-std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url ) const // NOLINT(readability-convert-member-functions-to-static)
+std::expected<HttpResponse, std::string> HttpClient::fetch( // NOLINT(readability-convert-member-functions-to-static)
+  std::string_view url ) const
 {
   auto parsed_url = parse_url( url );
   if ( !parsed_url.has_value() ) {
@@ -75,11 +76,11 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
     socket.connect( server_addr );
 
     const std::string request = std::format( "GET {} HTTP/1.1\r\n"
-                                       "Host: {}\r\n"
-                                       "User-Agent: Ricochet/0.1.0\r\n"
-                                       "Connection: close\r\n\r\n",
-                                       path,
-                                       host );
+                                             "Host: {}\r\n"
+                                             "User-Agent: Ricochet/0.1.0\r\n"
+                                             "Connection: close\r\n\r\n",
+                                             path,
+                                             host );
 
     size_t bytes_written = 0;
     while ( bytes_written < request.size() ) {

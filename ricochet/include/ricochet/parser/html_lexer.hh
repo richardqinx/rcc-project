@@ -25,16 +25,19 @@
 
 namespace ricochet::parser {
 
-struct TextToken {
-    std::string content{};
+struct TextToken
+{
+  std::string content {};
 };
 
-struct TagOpenToken {
-    std::string name{};
+struct TagOpenToken
+{
+  std::string name {};
 };
 
-struct TagCloseToken {
-    std::string name{};
+struct TagCloseToken
+{
+  std::string name {};
 };
 
 using HtmlToken = std::variant<TextToken, TagOpenToken, TagCloseToken>;
@@ -53,7 +56,7 @@ public:
   /**
    * @brief Perform lexical analysis to convert HTML source code into a structured sequence of tokens
    */
-  std::vector<HtmlToken> tokenize(std::string_view html) const;
+  std::vector<HtmlToken> tokenize( std::string_view html ) const;
 
 private:
 };

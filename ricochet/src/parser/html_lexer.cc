@@ -21,99 +21,101 @@
 #include <cstdint>
 #include <string_view>
 
-
 namespace ricochet::parser {
 
 namespace {
-enum class LexerState : std::uint8_t {
-    Data,              // Reading plain text
-    TagOpen,           // Just encountered '<'
-    TagName,           // Reading the name of an opening tag (e.g., "div")
-    ClosingTagName,    // Reading the name of a closing tag (e.g., "/div")
-    SwallowAttributes  // Ignore attributes mode (ignore until encountering '>')
+enum class LexerState : std::uint8_t
+{
+  Data,             // Reading plain text
+  TagOpen,          // Just encountered '<'
+  TagName,          // Reading the name of an opening tag (e.g., "div")
+  ClosingTagName,   // Reading the name of a closing tag (e.g., "/div")
+  SwallowAttributes // Ignore attributes mode (ignore until encountering '>')
 };
 
-void emit_text(std::string& buffer, std::vector<HtmlToken>& tokens) {
-    if (buffer.empty()) {
-        return; // 提前返回，减少 if 嵌套层级
-    }
+void emit_text( std::string& buffer, std::vector<HtmlToken>& tokens )
+{
+  if ( buffer.empty() ) {
+    return; // 提前返回，减少 if 嵌套层级
+  }
 
-    bool all_whitespace = true;
-    for (const char c : buffer) {
-        if (!std::isspace(static_cast<unsigned char>(c))) {
-            all_whitespace = false;
-            break;
-        }
+  bool all_whitespace = true;
+  for ( const char c : buffer ) {
+    if ( !std::isspace( static_cast<unsigned char>( c ) ) ) {
+      all_whitespace = false;
+      break;
     }
-    
-    if (!all_whitespace) {
-        tokens.emplace_back(TextToken{buffer});
-    }
-    buffer.clear();
+  }
+
+  if ( !all_whitespace ) {
+    tokens.emplace_back( TextToken { buffer } );
+  }
+  buffer.clear();
 }
 
 } // namespace
 
-std::vector<HtmlToken> HtmlLexer::tokenize( std::string_view html ) const // NOLINT(readability-convert-member-functions-to-static)
+std::vector<HtmlToken> HtmlLexer::tokenize( // NOLINT(readability-convert-member-functions-to-static)
+  std::string_view html ) const
 {
   std::vector<HtmlToken> tokens;
 
   LexerState state = LexerState::Data;
-  std::string buffer{};
+  std::string buffer {};
 
-  for (const char c : html) {
-    switch (state) {
-    case LexerState::Data:
-        if (c == '<') {
-            emit_text(buffer, tokens);
-            state = LexerState::TagOpen;
+  for ( const char c : html ) {
+    switch ( state ) {
+      case LexerState::Data:
+        if ( c == '<' ) {
+          emit_text( buffer, tokens );
+          state = LexerState::TagOpen;
         } else {
-            buffer += c;
+          buffer += c;
         }
         break;
-    case LexerState::TagOpen:
-        if (c == '/') {
-            state = LexerState::ClosingTagName;
-        } else if (std::isalpha(static_cast<unsigned char>(c))) {
-            buffer.push_back(c);
-            state = LexerState::TagName;
+      case LexerState::TagOpen:
+        if ( c == '/' ) {
+          state = LexerState::ClosingTagName;
+        } else if ( std::isalpha( static_cast<unsigned char>( c ) ) ) {
+          buffer.push_back( c );
+          state = LexerState::TagName;
         } else {
-            buffer.push_back('<');
-            buffer.push_back(c);
-            state = LexerState::Data;
+          buffer.push_back( '<' );
+          buffer.push_back( c );
+          state = LexerState::Data;
         }
         break;
-    case LexerState::TagName:
-        if (c == '>') {
-            tokens.emplace_back(TagOpenToken{buffer});
-            buffer.clear();
-            state = LexerState::Data;
-        } else if (std::isspace(static_cast<unsigned char>(c))) {
-            tokens.emplace_back(TagOpenToken{buffer});
-            buffer.clear();
-            state = LexerState::SwallowAttributes;
+      case LexerState::TagName:
+        if ( c == '>' ) {
+          tokens.emplace_back( TagOpenToken { buffer } );
+          buffer.clear();
+          state = LexerState::Data;
+        } else if ( std::isspace( static_cast<unsigned char>( c ) ) ) {
+          tokens.emplace_back( TagOpenToken { buffer } );
+          buffer.clear();
+          state = LexerState::SwallowAttributes;
         } else {
-            buffer += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+          buffer += static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
         }
         break;
-    case LexerState::ClosingTagName:
-        if (c == '>') {
-            tokens.emplace_back(TagCloseToken{buffer});
-            buffer.clear();
-            state = LexerState::Data;
+      case LexerState::ClosingTagName:
+        if ( c == '>' ) {
+          tokens.emplace_back( TagCloseToken { buffer } );
+          buffer.clear();
+          state = LexerState::Data;
         } else {
-            buffer += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+          buffer += static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
         }
         break;
-    case LexerState::SwallowAttributes:
-        if (c == '>') {
-            state = LexerState::Data;
+      case LexerState::SwallowAttributes:
+        if ( c == '>' ) {
+          state = LexerState::Data;
         }
         break;
     }
   }
 
-  emit_text(buffer, tokens);
+  emit_text( buffer, tokens );
 
   return tokens;
 }

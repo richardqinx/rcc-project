@@ -26,10 +26,11 @@ namespace ricochet::parser {
 /**
  * @brief DOM Node. Pure value semantics, no pointers.
  */
-struct DomNode {
-    std::string tag_name{};    // If empty, it's a pure text node
-    std::string text_content{}; // Only meaningful when tag_name is empty
-    std::vector<DomNode> children{}; // Recursive child nodes list
+struct DomNode
+{
+  std::string tag_name {};          // If empty, it's a pure text node
+  std::string text_content {};      // Only meaningful when tag_name is empty
+  std::vector<DomNode> children {}; // Recursive child nodes list
 };
 
 } // namespace ricochet::parser

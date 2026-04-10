@@ -23,18 +23,18 @@
 #include <iostream>
 
 namespace {
-void print_dom_tree(const ricochet::parser::DomNode& node, std::size_t depth = 0) // NOLINT(misc-no-recursion)
+void print_dom_tree( const ricochet::parser::DomNode& node, std::size_t depth = 0 ) // NOLINT(misc-no-recursion)
 {
-    const std::string indent(depth * 2, ' ');
-    
-    if (node.tag_name.empty()) {
-        std::cout << indent << "\"" << node.text_content << "\"\n";
-    } else {
-        std::cout << indent << "<" << node.tag_name << ">\n";
-        for (const auto& child : node.children) {
-            print_dom_tree(child, depth + 1);
-        }
+  const std::string indent( depth * 2, ' ' );
+
+  if ( node.tag_name.empty() ) {
+    std::cout << indent << "\"" << node.text_content << "\"\n";
+  } else {
+    std::cout << indent << "<" << node.tag_name << ">\n";
+    for ( const auto& child : node.children ) {
+      print_dom_tree( child, depth + 1 );
     }
+  }
 }
 } // namespace
 namespace ricochet::core {
@@ -43,26 +43,26 @@ int Browser::run( std::string_view initial_url )
 {
   std::cout << "-> Fetching: " << initial_url << "...\n";
 
-    const net::HttpClient client;
-    auto response_result = client.fetch(initial_url);
+  const net::HttpClient client;
+  auto response_result = client.fetch( initial_url );
 
-    if (!response_result.has_value()) {
-        std::cerr << "[!] Ricochet failed to load page: " << response_result.error() << "\n";
-        return 1;
-    }
+  if ( !response_result.has_value() ) {
+    std::cerr << "[!] Ricochet failed to load page: " << response_result.error() << "\n";
+    return 1;
+  }
 
-    const auto& response = response_result.value();
-    
-    const parser::HtmlLexer lexer;
-    const auto tokens = lexer.tokenize(response.body);
+  const auto& response = response_result.value();
 
-    const parser::TreeBuilder builder;
-    const auto dom_root = builder.build(tokens);
+  const parser::HtmlLexer lexer;
+  const auto tokens = lexer.tokenize( response.body );
 
-    std::cout << "\n[=== Abstract Syntax Tree (DOM) ===]\n";
-    print_dom_tree(dom_root);
+  const parser::TreeBuilder builder;
+  const auto dom_root = builder.build( tokens );
 
-    return 0;
+  std::cout << "\n[=== Abstract Syntax Tree (DOM) ===]\n";
+  print_dom_tree( dom_root );
+
+  return 0;
 }
 
 } // namespace ricochet::core

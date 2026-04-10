@@ -25,20 +25,21 @@
 
 namespace ricochet::parser {
 
-class TreeBuilder {
+class TreeBuilder
+{
 public:
-    TreeBuilder() = default;
-    ~TreeBuilder() = default;
+  TreeBuilder() = default;
+  ~TreeBuilder() = default;
 
-    TreeBuilder(const TreeBuilder&) = delete;
-    TreeBuilder& operator=(const TreeBuilder&) = delete;
-    TreeBuilder(TreeBuilder&&) = delete;
-    TreeBuilder& operator=(TreeBuilder&&) = delete;
+  TreeBuilder( const TreeBuilder& ) = delete;
+  TreeBuilder& operator=( const TreeBuilder& ) = delete;
+  TreeBuilder( TreeBuilder&& ) = delete;
+  TreeBuilder& operator=( TreeBuilder&& ) = delete;
 
-    /**
-     * @brief Assemble a one-dimensional token sequence into a multi-dimensional DOM tree
-     */
-    DomNode build(const std::vector<HtmlToken>& tokens) const;
+  /**
+   * @brief Assemble a one-dimensional token sequence into a multi-dimensional DOM tree
+   */
+  DomNode build( const std::vector<HtmlToken>& tokens ) const;
 };
 
 } // namespace ricochet::parser
