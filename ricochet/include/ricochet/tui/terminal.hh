@@ -19,27 +19,32 @@
 #pragma once
 
 #include <termios.h>
+#include <utility>
 
 namespace ricochet::tui {
 
-class Terminal {
+class Terminal
+{
 public:
-    Terminal();
-    ~Terminal();
+  Terminal();
+  ~Terminal();
 
-    Terminal(const Terminal&) = delete;
-    Terminal& operator=(const Terminal&) = delete;
-    Terminal(Terminal&&) = delete;
-    Terminal& operator=(Terminal&&) = delete;
+  Terminal( const Terminal& ) = delete;
+  Terminal& operator=( const Terminal& ) = delete;
+  Terminal( Terminal&& ) = delete;
+  Terminal& operator=( Terminal&& ) = delete;
 
-    // Read a single key
-    char read_key() const;
-    
-    // Clear screen and move cursor to top-left
-    void clear_screen() const;
+  // Read a single key
+  char read_key() const;
+
+  // Clear screen and move cursor to top-left
+  void clear_screen() const;
+
+  // Get terminal size
+  std::pair<std::size_t, std::size_t> get_size() const;
 
 private:
-    struct termios original_termios_{}; // Save terminal original state
+  struct termios original_termios_ {}; // Save terminal original state
 };
 
 } // namespace ricochet::tui

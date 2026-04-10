@@ -19,44 +19,59 @@
 #include "ricochet/tui/terminal.hh"
 #include <cstdlib>
 #include <iostream>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 namespace ricochet::tui {
 
-Terminal::Terminal() {
-    // get terminal attributes
-    tcgetattr(STDIN_FILENO, &original_termios_);
-    
-    struct termios raw = original_termios_;
-    
-    // close echo, close canonical mode
-    // close terminal signals (ISIG disable Ctrl+C and Ctrl+Z, let the program handle it)
-    raw.c_lflag &= ~(ECHO | ICANON | ISIG);
-    
-    // close software flow control (Ctrl+S, Ctrl+Q)
-    raw.c_iflag &= ~(IXON | ICRNL);
-    
-    // apply new terminal attributes
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+Terminal::Terminal()
+{
+  // get terminal attributes
+  tcgetattr( STDIN_FILENO, &original_termios_ );
+
+  struct termios raw = original_termios_;
+
+  // close echo, close canonical mode
+  // close terminal signals (ISIG disable Ctrl+C and Ctrl+Z, let the program handle it)
+  raw.c_lflag &= ~( ECHO | ICANON | ISIG );
+
+  // close software flow control (Ctrl+S, Ctrl+Q)
+  raw.c_iflag &= ~( IXON | ICRNL );
+
+  // apply new terminal attributes
+  tcsetattr( STDIN_FILENO, TCSAFLUSH, &raw );
 }
 
-Terminal::~Terminal() {
-    // RAII: restore terminal attributes when program exits
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios_);
+Terminal::~Terminal()
+{
+  // RAII: restore terminal attributes when program exits
+  tcsetattr( STDIN_FILENO, TCSAFLUSH, &original_termios_ );
 }
 
-char Terminal::read_key() const { // NOLINT(readability-convert-member-functions-to-static)
-    char c = '\0';
-    // read 1 byte
-    if (read(STDIN_FILENO, &c, 1) == -1) {
-        return '\0';
-    }
-    return c;
+char Terminal::read_key() const // NOLINT(readability-convert-member-functions-to-static)
+{
+  char c = '\0';
+  // read 1 byte
+  if ( read( STDIN_FILENO, &c, 1 ) == -1 ) {
+    return '\0';
+  }
+  return c;
 }
 
-void Terminal::clear_screen() const { // NOLINT(readability-convert-member-functions-to-static)
-    // ANSI escape codes: \x1b[2J clear screen, \x1b[H move cursor to (1,1)
-    std::cout << "\x1b[2J\x1b[H";
+void Terminal::clear_screen() const // NOLINT(readability-convert-member-functions-to-static)
+{
+  // ANSI escape codes: \x1b[2J clear screen, \x1b[H move cursor to (1,1)
+  std::cout << "\x1b[2J\x1b[H";
+}
+
+std::pair<std::size_t, std::size_t> Terminal::get_size() // NOLINT(readability-convert-member-functions-to-static)
+  const
+{
+  struct winsize w {};
+  if ( ioctl( STDOUT_FILENO, TIOCGWINSZ, &w ) == -1 ) {
+    return { 80, 24 };
+  }
+  return { static_cast<std::size_t>( w.ws_col ), static_cast<std::size_t>( w.ws_row ) };
 }
 
 } // namespace ricochet::tui

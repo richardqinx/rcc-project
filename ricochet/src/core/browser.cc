@@ -54,44 +54,48 @@ int Browser::run( std::string_view initial_url )
   const std::string rendered_text = renderer.render( dom_root );
 
   std::vector<std::string> lines;
-  std::stringstream ss(rendered_text);
+  std::stringstream ss( rendered_text );
   std::string line;
-  while (std::getline(ss, line, '\n')) {
-    lines.push_back(line);
+  while ( std::getline( ss, line, '\n' ) ) {
+    lines.push_back( line );
   }
+
+  std::cout << "DEBUG: Status Code: " << response.status_code << "\r\n";
+  std::cout << "DEBUG: Raw Body Length: " << response.body.length() << "\r\n";
 
   // TUI Event Loop
   const tui::Terminal terminal;
 
   std::size_t scroll_y = 0;
-  const std::size_t screen_height = 24;
 
-  while (true) {
+  while ( true ) {
     terminal.clear_screen();
 
-    for (std::size_t i = 0; i < screen_height - 1; ++i) {
+    const auto [term_width, term_height] = terminal.get_size();
+    const std::size_t usable_height = ( term_height > 1 ) ? ( term_height - 1 ) : 1;
+
+    for ( std::size_t i = 0; i < usable_height; ++i ) {
       const std::size_t line_idx = scroll_y + i;
-      if (line_idx < lines.size()) {
+      if ( line_idx < lines.size() ) {
         std::cout << lines[line_idx] << "\r\n";
       } else {
         std::cout << "~\r\n";
       }
     }
 
-    std::cout << "\033[7m" << " URL: " << initial_url 
-                  << " | [j] Down  [k] Up  [q] Quit " << "\033[0m";
+    std::cout << "\033[7m" << " URL: " << initial_url << " | [j] Down  [k] Up  [q] Quit " << "\033[0m";
     std::cout.flush();
 
     const char c = terminal.read_key();
-    if (c == 'q') {
+    if ( c == 'q' ) {
       break; // Break loop, terminal destructor will restore terminal
     }
-    if (c == 'j') {
-      if (scroll_y + screen_height - 1 < lines.size()) {
+    if ( c == 'j' ) {
+      if ( scroll_y + usable_height < lines.size() ) {
         scroll_y++; // Scroll down
       }
-    } else if (c == 'k') {
-      if (scroll_y > 0) {
+    } else if ( c == 'k' ) {
+      if ( scroll_y > 0 ) {
         scroll_y--; // Scroll up
       }
     }
