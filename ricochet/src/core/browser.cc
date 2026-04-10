@@ -17,6 +17,7 @@
  */
 
 #include "ricochet/core/browser.hh"
+#include "ricochet/net/http_client.hh"
 #include <iostream>
 
 namespace ricochet::core {
@@ -24,6 +25,18 @@ namespace ricochet::core {
 int Browser::run( std::string_view initial_url )
 {
   std::cout << "Browser: Navigating to " << initial_url << "...\n";
+
+  const net::HttpClient client;
+  auto response_result = client.fetch( initial_url );
+  if ( !response_result.has_value() ) {
+    std::cerr << "[!] Ricochet failed to load page: " << response_result.error() << "\n";
+    return 1;
+  }
+
+  const auto& response = response_result.value();
+  std::cout << "\n[=== HTTP Status: " << response.status_code << " ===]\n";
+  std::cout << "[=== HTML Content Below ===]\n\n";
+  std::cout << response.body << "\n";
   return 0;
 }
 

@@ -104,6 +104,9 @@ This installs the `ricochet` binary to `bin` and supporting libraries to `lib`.
 | `u` | Enter new URL |
 | `q` | Quit Ricochet |
 
+## Acknowledgments
+The low-level POSIX socket wrappers in `src/net/sys/` are adapted from the Minnow networking framework developed for Stanford University's CS144 course. These utilities are used gracefully to handle file descriptors and network interfaces.
+
 ## License
 Ricochet is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License (GPL) v3**.
 
