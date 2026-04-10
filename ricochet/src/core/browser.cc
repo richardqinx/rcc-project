@@ -18,26 +18,48 @@
 
 #include "ricochet/core/browser.hh"
 #include "ricochet/net/http_client.hh"
+#include "ricochet/parser/html_lexer.hh"
 #include <iostream>
 
+namespace {
+struct TokenPrinter {
+    void operator()(const ricochet::parser::TextToken& t) const {
+        std::cout << "[TEXT] " << t.content << "\n";
+    }
+    void operator()(const ricochet::parser::TagOpenToken& t) const {
+        std::cout << "[OPEN] <" << t.name << ">\n";
+    }
+    void operator()(const ricochet::parser::TagCloseToken& t) const {
+        std::cout << "[CLOSE] </" << t.name << ">\n";
+    }
+};
+} // namespace
 namespace ricochet::core {
 
 int Browser::run( std::string_view initial_url )
 {
-  std::cout << "Browser: Navigating to " << initial_url << "...\n";
+  std::cout << "-> Fetching: " << initial_url << "...\n";
 
-  const net::HttpClient client;
-  auto response_result = client.fetch( initial_url );
-  if ( !response_result.has_value() ) {
-    std::cerr << "[!] Ricochet failed to load page: " << response_result.error() << "\n";
-    return 1;
-  }
+    const net::HttpClient client;
+    auto response_result = client.fetch(initial_url);
 
-  const auto& response = response_result.value();
-  std::cout << "\n[=== HTTP Status: " << response.status_code << " ===]\n";
-  std::cout << "[=== HTML Content Below ===]\n\n";
-  std::cout << response.body << "\n";
-  return 0;
+    if (!response_result.has_value()) {
+        std::cerr << "[!] Ricochet failed to load page: " << response_result.error() << "\n";
+        return 1;
+    }
+
+    const auto& response = response_result.value();
+    std::cout << "[=== HTTP Status: " << response.status_code << " ===]\n";
+    
+    std::cout << "\n[=== Tokenizing HTML ===]\n";
+    const parser::HtmlLexer lexer;
+    auto tokens = lexer.tokenize(response.body);
+
+    for (const auto& token : tokens) {
+        std::visit(TokenPrinter{}, token);
+    }
+
+    return 0;
 }
 
 } // namespace ricochet::core
