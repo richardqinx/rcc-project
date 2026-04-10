@@ -74,4 +74,16 @@ std::pair<std::size_t, std::size_t> Terminal::get_size() // NOLINT(readability-c
   return { static_cast<std::size_t>( w.ws_col ), static_cast<std::size_t>( w.ws_row ) };
 }
 
+void Terminal::move_cursor( std::size_t row, std::size_t col ) const // NOLINT
+{
+  // ANSI: \x1b[H move to 1,1; \x1b[row;colH move to specified row and column
+  std::cout << "\x1b[" << row << ";" << col << "H";
+}
+
+void Terminal::show_cursor( bool visible ) const // NOLINT
+{
+  // \x1b[?25h show cursor, \x1b[?25l hide cursor
+  std::cout << ( visible ? "\x1b[?25h" : "\x1b[?25l" );
+}
+
 } // namespace ricochet::tui

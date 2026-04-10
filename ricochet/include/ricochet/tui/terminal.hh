@@ -43,6 +43,12 @@ public:
   // Get terminal size
   std::pair<std::size_t, std::size_t> get_size() const;
 
+  // Move cursor to a specific position
+  void move_cursor( std::size_t row, std::size_t col ) const;
+
+  // Show or hide cursor
+  void show_cursor( bool visible ) const;
+
 private:
   struct termios original_termios_ {}; // Save terminal original state
 };
