@@ -22,6 +22,12 @@
 
 namespace ricochet::render {
 
+struct RenderResult
+{
+  std::string text {};
+  std::vector<std::string> links {};
+};
+
 class Renderer
 {
 public:
@@ -37,7 +43,7 @@ public:
    * @brief Traverse the DOM tree and output the formatted result to the terminal using ANSI escape codes
    * @param node The root node of the DOM tree
    */
-  std::string render( const parser::DomNode& node ) const;
+  RenderResult render( const parser::DomNode& node ) const;
 };
 
 } // namespace ricochet::render

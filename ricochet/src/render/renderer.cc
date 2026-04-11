@@ -17,7 +17,7 @@
  */
 
 #include "ricochet/render/renderer.hh"
-#include <iostream>
+#include <array>
 
 namespace ricochet::render {
 
@@ -42,51 +42,86 @@ std::string decode_entities( std::string text ) // NOLINT(readability-convert-me
   return text;
 }
 
-void render_node( const parser::DomNode& node, std::string& output ) // NOLINT(misc-no-recursion)
+std::string extract_href( const std::string& tag_name )
 {
-  if ( node.tag_name == "head" || node.tag_name == "style" || node.tag_name == "script" || node.tag_name == "meta"
-       || node.tag_name == "title" || node.tag_name == "link" ) {
+  std::size_t pos = tag_name.find( "href=\"" );
+  if ( pos != std::string::npos ) {
+    pos += 6;
+    const std::size_t end = tag_name.find( '\"', pos );
+    if ( end != std::string::npos ) {
+      return tag_name.substr( pos, end - pos );
+    }
+  }
+  pos = tag_name.find( "href='" );
+  if ( pos != std::string::npos ) {
+    pos += 6;
+    const std::size_t end = tag_name.find( '\'', pos );
+    if ( end != std::string::npos ) {
+      return tag_name.substr( pos, end - pos );
+    }
+  }
+  return "";
+}
+
+void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
+                  std::string& output,
+                  std::vector<std::string>& links )
+{
+  const std::size_t space_pos = node.tag_name.find( ' ' );
+  const std::string base_tag
+    = ( space_pos == std::string::npos ) ? node.tag_name : node.tag_name.substr( 0, space_pos );
+
+  if ( base_tag == "head" || base_tag == "style" || base_tag == "script" || base_tag == "meta"
+       || base_tag == "title" || base_tag == "link" ) {
     return;
   }
 
-  if ( node.tag_name.empty() ) {
+  if ( base_tag.empty() ) {
     output += decode_entities( node.text_content );
     return;
   }
 
-  const bool is_header
-    = ( node.tag_name == "h1" || node.tag_name == "h2" || node.tag_name == "h3" || node.tag_name == "h4" );
+  const bool is_header = ( base_tag == "h1" || base_tag == "h2" || base_tag == "h3" || base_tag == "h4" );
+  const bool is_link = ( base_tag == "a" );
 
   if ( is_header ) {
     output += "\n\n\033[1;31m";
-  } else if ( node.tag_name == "a" ) {
-    std::cout << "\033[4;34m";
-  } else if ( node.tag_name == "p" || node.tag_name == "div" || is_header ) {
+  } else if ( is_link ) {
+    output += "\033[4;34m"; // 【核心修复】：必须是 output += ，绝对不能用 std::cout
+  } else if ( base_tag == "p" || base_tag == "div" || is_header ) {
     if ( !output.empty() && output.back() != '\n' ) {
       output += "\n";
     }
   }
 
   for ( const auto& child : node.children ) {
-    render_node( child, output );
-  }
-  if ( is_header || node.tag_name == "a" ) {
-    output += "\033[0m";
+    render_node( child, output, links );
   }
 
-  if ( node.tag_name == "h1" || node.tag_name == "p" || node.tag_name == "div" ) {
+  if ( is_header ) {
+    output += "\033[0m";
+  } else if ( is_link ) {
+    output += "\033[0m";
+    const std::string href = extract_href( node.tag_name );
+    if ( !href.empty() && !href.starts_with( "javascript:" ) && !href.starts_with( "#" ) ) {
+      links.push_back( href );
+      output += " \033[7m[" + std::to_string( links.size() ) + "]\033[0m"; // 打印数字标签！
+    }
+  }
+
+  if ( base_tag == "h1" || base_tag == "p" || base_tag == "div" ) {
     output += "\n";
   }
 }
 
 } // namespace
 
-std::string Renderer::render( // NOLINT(readability-convert-member-functions-to-static)
+RenderResult Renderer::render( // NOLINT(readability-convert-member-functions-to-static)
   const parser::DomNode& node ) const
 {
-  std::string output;
-  render_node( node, output );
-  return output;
+  RenderResult result;
+  render_node( node, result.text, result.links );
+  return result;
 }
 
 } // namespace ricochet::render

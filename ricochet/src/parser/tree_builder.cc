@@ -36,10 +36,14 @@ struct TokenVisitor
 
   void operator()( const TagOpenToken& token ) const
   {
+    const std::size_t space_pos = token.name.find( ' ' );
+    const std::string base_name
+      = ( space_pos == std::string::npos ) ? token.name : token.name.substr( 0, space_pos );
+
     DomNode new_node { .tag_name = token.name, .text_content = "", .children = {} };
 
-    if ( token.name == "meta" || token.name == "link" || token.name == "img" || token.name == "br"
-         || token.name == "hr" || token.name == "input" || token.name == "base" || token.name == "col" ) {
+    if ( base_name == "meta" || base_name == "link" || base_name == "img" || base_name == "br" || base_name == "hr"
+         || base_name == "input" || base_name == "base" || base_name == "col" ) {
 
       stack->back().children.push_back( std::move( new_node ) );
     } else {

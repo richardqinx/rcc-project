@@ -90,12 +90,8 @@ std::vector<HtmlToken> HtmlLexer::tokenize( // NOLINT(readability-convert-member
           tokens.emplace_back( TagOpenToken { buffer } );
           buffer.clear();
           state = LexerState::Data;
-        } else if ( std::isspace( static_cast<unsigned char>( c ) ) ) {
-          tokens.emplace_back( TagOpenToken { buffer } );
-          buffer.clear();
-          state = LexerState::SwallowAttributes;
         } else {
-          buffer += static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
+          buffer += c;
         }
         break;
       case LexerState::ClosingTagName:
