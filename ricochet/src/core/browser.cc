@@ -379,6 +379,9 @@ InputAction submit_form( const render::InputField& target_input,
   std::string body;
   for ( const auto& in : inputs ) {
     if ( in.action == target_input.action && !in.name.empty() && in.type != "submit" && in.type != "button" ) {
+      if ( ( in.type == "checkbox" || in.type == "radio" ) && !in.checked ) {
+        continue;
+      }
       std::string encoded = in.value;
       for ( char& ch : encoded ) {
         if ( ch == ' ' ) {
@@ -422,6 +425,40 @@ void update_input_value( PageData& page_data, std::size_t index, const std::stri
   }
 }
 
+void update_single_line_ui( std::string& line, const std::string& marker, const render::InputField& in )
+{
+  const std::size_t pos = line.find( marker );
+  if ( pos == std::string::npos ) {
+    return;
+  }
+  const std::size_t end = line.find( ']', pos );
+  if ( end == std::string::npos ) {
+    return;
+  }
+
+  std::string prefix;
+  if ( in.type == "checkbox" ) {
+    prefix = in.checked ? "[X] " : "[ ] ";
+  } else {
+    prefix = in.checked ? "(X) " : "( ) ";
+  }
+  line.replace( pos, end - pos + 1, marker + prefix + in.value + "]" );
+}
+
+void update_toggle_ui( PageData& page_data )
+{
+  for ( std::size_t i = 0; i < page_data.inputs.size(); ++i ) {
+    const auto& in = page_data.inputs[i];
+    if ( in.type != "checkbox" && in.type != "radio" ) {
+      continue;
+    }
+    const std::string marker = "[I" + std::to_string( i + 1 ) + ":";
+    for ( auto& line : page_data.lines ) {
+      update_single_line_ui( line, marker, in );
+    }
+  }
+}
+
 InputAction handle_form_input( const tui::Terminal& terminal,
                                PageData& page_data,
                                const std::string& current_url,
@@ -442,9 +479,24 @@ InputAction handle_form_input( const tui::Terminal& terminal,
     return InputAction::None;
   }
 
-  const auto& target_input = page_data.inputs[index - 1];
+  auto& target_input = page_data.inputs[index - 1];
   if ( target_input.type == "submit" || target_input.type == "button" ) {
     return submit_form( target_input, page_data.inputs, current_url, history, history_idx );
+  }
+
+  if ( target_input.type == "checkbox" || target_input.type == "radio" ) {
+    if ( target_input.type == "radio" ) {
+      for ( auto& in : page_data.inputs ) {
+        if ( in.name == target_input.name && in.action == target_input.action ) {
+          in.checked = false;
+        }
+      }
+      target_input.checked = true;
+    } else {
+      target_input.checked = !target_input.checked;
+    }
+    update_toggle_ui( page_data );
+    return InputAction::None;
   }
 
   const std::string query = get_terminal_input( terminal, "Enter Text [I" + std::to_string( index ) + "]:" );

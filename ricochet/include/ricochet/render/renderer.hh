@@ -30,6 +30,7 @@ struct InputField
   std::string method;
   std::string value {};
   std::string type {};
+  bool checked { false };
 };
 struct RenderResult
 {

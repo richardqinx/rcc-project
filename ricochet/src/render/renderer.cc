@@ -71,25 +71,35 @@ std::string decode_entities( std::string text )
 
 std::string extract_attr( const std::string& tag_name, std::string_view attr_name )
 {
-  std::string match = std::string( attr_name ) + "=\"";
+  std::string match = " " + std::string( attr_name ) + "=";
   std::size_t pos = tag_name.find( match );
-  if ( pos != std::string::npos ) {
-    pos += match.length();
-    const std::size_t end = tag_name.find( '"', pos );
-    if ( end != std::string::npos ) {
-      return tag_name.substr( pos, end - pos );
+
+  if ( pos == std::string::npos ) {
+    match = std::string( attr_name ) + "=";
+    if ( !tag_name.starts_with( match ) ) {
+      return "";
     }
+    pos = 0;
+  } else {
+    pos += 1;
   }
-  match = std::string( attr_name ) + "='";
-  pos = tag_name.find( match );
-  if ( pos != std::string::npos ) {
-    pos += match.length();
-    const std::size_t end = tag_name.find( '\'', pos );
+
+  pos += attr_name.length() + 1;
+  if ( pos >= tag_name.length() ) {
+    return "";
+  }
+
+  const char quote = tag_name[pos];
+  if ( quote == '"' || quote == '\'' ) {
+    const std::size_t end = tag_name.find( quote, pos + 1 );
     if ( end != std::string::npos ) {
-      return tag_name.substr( pos, end - pos );
+      return tag_name.substr( pos + 1, end - pos - 1 );
     }
+    return "";
   }
-  return "";
+
+  const std::size_t end = tag_name.find_first_of( " >/", pos );
+  return tag_name.substr( pos, ( end == std::string::npos ) ? std::string::npos : end - pos );
 }
 
 void render_link_end( const parser::DomNode& node, RenderResult& result )
@@ -114,10 +124,10 @@ void render_img( const parser::DomNode& node, RenderResult& result )
   }
 }
 
-std::string build_input_hint( const std::string& tag_name )
+std::string build_input_hint( const std::string& tag_name, bool checked )
 {
   std::string placeholder = extract_attr( tag_name, "placeholder" );
-  std::string type = extract_attr( tag_name, "type" );
+  const std::string type = extract_attr( tag_name, "type" );
   std::string val = extract_attr( tag_name, "value" );
 
   if ( !placeholder.empty() ) {
@@ -126,8 +136,11 @@ std::string build_input_hint( const std::string& tag_name )
   if ( type == "submit" || type == "button" ) {
     return val.empty() ? "Submit" : val;
   }
-  if ( type == "checkbox" || type == "radio" ) {
-    return type;
+  if ( type == "checkbox" ) {
+    return checked ? "[X] " + val : "[ ] " + val;
+  }
+  if ( type == "radio" ) {
+    return checked ? "(X) " + val : "( ) " + val;
   }
   if ( type == "hidden" ) {
     return "hidden";
@@ -167,9 +180,11 @@ void render_input_node( const parser::DomNode& node,
     type = "submit";
   }
   const std::string default_val = extract_attr( node.tag_name, "value" );
-  result.inputs.push_back( { extract_attr( node.tag_name, "name" ), ctx.action, ctx.method, default_val, type } );
+  const bool is_checked = node.tag_name.contains( "checked" );
+  result.inputs.push_back(
+    { extract_attr( node.tag_name, "name" ), ctx.action, ctx.method, default_val, type, is_checked } );
 
-  std::string hint = build_input_hint( node.tag_name );
+  std::string hint = build_input_hint( node.tag_name, is_checked );
   if ( base_tag == "button" ) {
     hint = "Submit";
   }
