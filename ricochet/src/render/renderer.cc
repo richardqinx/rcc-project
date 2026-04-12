@@ -18,19 +18,21 @@
 
 #include "ricochet/render/renderer.hh"
 #include <array>
+#include <cstdint>
+#include <stdexcept>
 
 namespace ricochet::render {
 
 namespace {
 
-std::string decode_entities( std::string text ) // NOLINT(readability-convert-member-functions-to-static)
+std::string decode_entities( std::string text )
 {
-  constexpr std::array<std::pair<std::string_view, std::string_view>, 24> entities
-    = { { { "&nbsp;", " " },   { "&lt;", "<" },     { "&gt;", ">" },    { "&amp;", "&" },   { "&quot;", "\"" },
-          { "&copy;", "©" },   { "&reg;", "®" },    { "&trade;", "™" }, { "&euro;", "€" },  { "&pound;", "£" },
-          { "&yen;", "¥" },    { "&cent;", "¢" },   { "&sect;", "§" },  { "&para;", "¶" },  { "&hellip;", "…" },
-          { "&dagger;", "†" }, { "&Dagger;", "‡" }, { "&bull;", "•" },  { "&prime;", "′" }, { "&Prime;", "″" },
-          { "&lsaquo;", "‹" }, { "&rsaquo;", "›" }, { "&oline;", "‾" }, { "&frasl;", "⁄" } } };
+  constexpr std::array<std::pair<std::string_view, std::string_view>, 25> entities
+    = { { { "&nbsp;", " " },   { "&lt;", "<" },     { "&gt;", ">" },     { "&amp;", "&" },   { "&quot;", "\"" },
+          { "&apos;", "'" },   { "&copy;", "©" },   { "&reg;", "®" },    { "&trade;", "™" }, { "&euro;", "€" },
+          { "&pound;", "£" },  { "&yen;", "¥" },    { "&cent;", "¢" },   { "&sect;", "§" },  { "&para;", "¶" },
+          { "&hellip;", "…" }, { "&dagger;", "†" }, { "&Dagger;", "‡" }, { "&bull;", "•" },  { "&prime;", "′" },
+          { "&Prime;", "″" },  { "&lsaquo;", "‹" }, { "&rsaquo;", "›" }, { "&oline;", "‾" }, { "&frasl;", "⁄" } } };
 
   for ( const auto& [entity, replacement] : entities ) {
     std::size_t pos = 0;
@@ -38,6 +40,31 @@ std::string decode_entities( std::string text ) // NOLINT(readability-convert-me
       text.replace( pos, entity.length(), replacement );
       pos += replacement.length();
     }
+  }
+
+  std::size_t pos = 0;
+  while ( ( pos = text.find( "&#", pos ) ) != std::string::npos ) {
+    const std::size_t end = text.find( ';', pos );
+    if ( end != std::string::npos && end - pos < 10 ) {
+      const std::string code = text.substr( pos + 2, end - pos - 2 );
+      try {
+        std::uint32_t cp = 0;
+        if ( !code.empty() && ( code[0] == 'x' || code[0] == 'X' ) ) {
+          cp = std::stoul( code.substr( 1 ), nullptr, 16 );
+        } else {
+          cp = std::stoul( code );
+        }
+        if ( cp < 128 ) {
+          text.replace( pos, end - pos + 1, 1, static_cast<char>( cp ) );
+          continue;
+        }
+      } catch ( const std::invalid_argument& ) {
+        (void)0; // Not a valid number, leave as-is
+      } catch ( const std::out_of_range& ) {
+        (void)0; // Value too large, leave as-is
+      }
+    }
+    pos++;
   }
   return text;
 }
@@ -107,7 +134,7 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
     output += "\033[0m";
     const std::string href = extract_href( node.tag_name );
     if ( !href.empty() && !href.starts_with( "javascript:" ) && !href.starts_with( "#" ) ) {
-      links.push_back( href );
+      links.push_back( decode_entities( href ) );
       output += " \033[7m[" + std::to_string( links.size() ) + "]\033[0m"; // 打印数字标签！
     }
   }

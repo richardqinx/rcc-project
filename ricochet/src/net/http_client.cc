@@ -39,7 +39,6 @@ struct ParsedUrl
 std::expected<ParsedUrl, std::string> parse_url( std::string_view url )
 {
   std::string_view prefix = "http://";
-
   if ( url.starts_with( "https://" ) ) {
     prefix = "https://";
   } else if ( url.starts_with( "http://" ) ) {
@@ -49,17 +48,20 @@ std::expected<ParsedUrl, std::string> parse_url( std::string_view url )
   }
 
   url.remove_prefix( prefix.length() );
-  auto slash_pos = url.find( '/' );
+
+  const auto sep_pos = url.find_first_of( "/?#" );
 
   ParsedUrl result;
-  if ( slash_pos == std::string_view::npos ) {
+  if ( sep_pos == std::string_view::npos ) {
     result.host = std::string( url );
     result.path = "/";
   } else {
-    result.host = std::string( url.substr( 0, slash_pos ) );
-    result.path = std::string( url.substr( slash_pos ) );
+    result.host = std::string( url.substr( 0, sep_pos ) );
+    result.path = std::string( url.substr( sep_pos ) );
+    if ( result.path[0] != '/' ) {
+      result.path.insert( 0, "/" );
+    }
   }
-
   return result;
 }
 

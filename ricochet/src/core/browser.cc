@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <exception>
 #include <iostream>
+#include <ranges>
 
 namespace ricochet::core {
 
@@ -32,15 +33,57 @@ struct PageData
 {
   std::vector<std::string> lines;
   std::vector<std::string> links;
+  std::string title;
 };
 
 namespace {
+
+std::string extract_title( const parser::DomNode& root_node )
+{
+  std::vector<const parser::DomNode*> stack;
+  stack.push_back( &root_node );
+
+  while ( !stack.empty() ) {
+    const parser::DomNode* current = stack.back();
+    stack.pop_back();
+
+    std::string base_tag = current->tag_name;
+    const std::size_t space_pos = base_tag.find( ' ' );
+    if ( space_pos != std::string::npos ) {
+      base_tag = base_tag.substr( 0, space_pos );
+    }
+
+    for ( char& c : base_tag ) {
+      if ( c >= 'A' && c <= 'Z' ) {
+        c = static_cast<char>( c + 32 );
+      }
+    }
+
+    if ( base_tag == "title" ) {
+      std::string full_title;
+      for ( const auto& child : current->children ) {
+        if ( child.tag_name.empty() ) {
+          full_title += child.text_content;
+        }
+      }
+      if ( !full_title.empty() ) {
+        return full_title;
+      }
+    }
+
+    for ( const auto& child : std::ranges::reverse_view( current->children ) ) {
+      stack.push_back( &child );
+    }
+  }
+  return "";
+}
+
 PageData load_page( std::string_view url )
 {
   const net::HttpClient client;
   auto response_result = client.fetch( url );
   if ( !response_result.has_value() ) {
-    return { .lines = { "[!] Failed to load: " + std::string( url ) }, .links = {} };
+    return { .lines = { "[!] Failed to load: " + std::string( url ) }, .links = {}, .title = "Error" };
   }
 
   const parser::HtmlLexer lexer;
@@ -61,17 +104,40 @@ PageData load_page( std::string_view url )
     lines.push_back( result.text.substr( start, end - start ) );
     start = end + 1;
   }
-  return { .lines = lines, .links = result.links };
+  const std::string title = extract_title( dom_root );
+  return { .lines = lines, .links = result.links, .title = title };
 }
 
 void draw_view( const tui::Terminal& terminal,
                 const std::vector<std::string>& lines,
                 std::size_t scroll_y,
-                std::string_view url )
+                std::string_view url,    // NOLINT(bugprone-easily-swappable-parameters)
+                std::string_view title ) // NOLINT(bugprone-easily-swappable-parameters)
 {
   terminal.clear_screen();
   auto [width, height] = terminal.get_size();
-  const std::size_t usable_height = ( height > 1 ) ? ( height - 1 ) : 1;
+  const std::size_t usable_height = ( height > 2 ) ? ( height - 2 ) : 1;
+
+  std::string clean_title( title );
+  if ( clean_title.empty() ) {
+    const std::size_t start = url.find( "://" );
+    const std::size_t host_start = ( start == std::string::npos ) ? 0 : start + 3;
+    const std::size_t host_end = url.find( '/', host_start );
+    clean_title = std::string( url.substr( host_start, host_end - host_start ) );
+  }
+  for ( char& c : clean_title ) {
+    if ( c == '\n' || c == '\r' ) {
+      c = ' ';
+    }
+  }
+
+  std::string header = " PAGE: " + clean_title;
+  if ( header.size() < width ) {
+    header.append( width - header.size(), ' ' );
+  } else if ( header.size() > width && width > 3 ) {
+    header = header.substr( 0, width - 3 ) + "...";
+  }
+  std::cout << "\033[7m" << header << "\033[0m\r\n";
 
   for ( std::size_t i = 0; i < usable_height; ++i ) {
     if ( scroll_y + i < lines.size() ) {
@@ -80,7 +146,14 @@ void draw_view( const tui::Terminal& terminal,
       std::cout << "~\r\n";
     }
   }
-  std::cout << "\033[7m URL: " << url << " | [j/k] Scroll [/] Jump [f] Follow [H/L] History [q] Quit \033[0m";
+
+  std::string footer = " URL: " + std::string( url ) + " | [j/k]Scroll [/]Jump [f]Follow [H/L]History [q]Quit ";
+  if ( footer.size() < width ) {
+    footer.append( width - footer.size(), ' ' );
+  } else if ( footer.size() > width && width > 3 ) {
+    footer = footer.substr( 0, width - 3 ) + "...";
+  }
+  std::cout << "\033[7m" << footer << "\033[0m";
   std::cout.flush();
 }
 
@@ -177,6 +250,52 @@ std::string get_link_input( const tui::Terminal& terminal )
   return num_input;
 }
 
+std::string normalize_url( const std::string& target, const std::string& current_url )
+{
+  if ( target.starts_with( "/" ) ) {
+    if ( target.starts_with( "//" ) ) {
+      return "https:" + target;
+    }
+    const std::size_t slash_pos = current_url.find( '/', 8 );
+    const std::string domain
+      = ( slash_pos == std::string::npos ) ? current_url : current_url.substr( 0, slash_pos );
+    return domain + target;
+  }
+  if ( !target.starts_with( "http" ) ) {
+    const std::size_t last_slash = current_url.rfind( '/' );
+    if ( last_slash > 7 ) {
+      return current_url.substr( 0, last_slash + 1 ) + target;
+    }
+    return current_url + "/" + target;
+  }
+  return target;
+}
+
+std::string strip_ddg_tracker( std::string target )
+{
+  const std::size_t uddg_pos = target.find( "uddg=" );
+  if ( uddg_pos != std::string::npos ) {
+    const std::size_t end_pos = target.find( '&', uddg_pos );
+    const std::string encoded = target.substr( uddg_pos + 5, end_pos - ( uddg_pos + 5 ) );
+    std::string decoded;
+    for ( std::size_t i = 0; i < encoded.length(); ++i ) {
+      if ( encoded[i] == '%' && i + 2 < encoded.length() ) {
+        const std::string hex = encoded.substr( i + 1, 2 );
+        try {
+          decoded += static_cast<char>( std::stoi( hex, nullptr, 16 ) );
+        } catch ( const std::exception& ) {
+          (void)0;
+        }
+        i += 2;
+      } else {
+        decoded += encoded[i];
+      }
+    }
+    return decoded;
+  }
+  return target;
+}
+
 void handle_follow_link( const tui::Terminal& terminal,
                          const std::vector<std::string>& links,
                          std::string& current_url,
@@ -189,23 +308,8 @@ void handle_follow_link( const tui::Terminal& terminal,
       if ( index > 0 && index <= links.size() ) {
         std::string target = links[index - 1];
 
-        if ( target.starts_with( "/" ) ) {
-          if ( target.starts_with( "//" ) ) {
-            target = "https:" + target; // "//example.com"
-          } else {
-            const std::size_t slash_pos = current_url.find( '/', 8 ); // 跳过 https://
-            const std::string domain
-              = ( slash_pos == std::string::npos ) ? current_url : current_url.substr( 0, slash_pos );
-            target = domain + target; // "/about" -> "https://gnu.org/about"
-          }
-        } else if ( !target.starts_with( "http" ) ) {
-          const std::size_t last_slash = current_url.rfind( '/' );
-          if ( last_slash > 7 ) {
-            target = current_url.substr( 0, last_slash + 1 ) + target;
-          } else {
-            target = current_url + "/" + target;
-          }
-        }
+        target = normalize_url( target, current_url );
+        target = strip_ddg_tracker( target );
 
         current_url = target;
         navigate = true;
@@ -276,6 +380,39 @@ InputAction process_key( char c,
   return InputAction::None;
 }
 
+std::vector<std::string> wrap_lines( const std::vector<std::string>& original_lines, std::size_t wrap_width )
+{
+  std::vector<std::string> wrapped_lines;
+  for ( const auto& line : original_lines ) {
+    std::string current_line;
+    std::size_t vis_count = 0;
+    bool in_ansi = false;
+    for ( const char c : line ) {
+      if ( c == '\x1b' ) {
+        in_ansi = true;
+      }
+      if ( in_ansi ) {
+        current_line += c;
+        if ( c == 'm' ) {
+          in_ansi = false;
+        }
+      } else {
+        if ( vis_count >= wrap_width ) {
+          wrapped_lines.push_back( current_line + "\033[0m" );
+          current_line.clear();
+          vis_count = 0;
+        }
+        current_line += c;
+        vis_count++;
+      }
+    }
+    if ( !current_line.empty() || line.empty() ) {
+      wrapped_lines.push_back( current_line + "\033[0m" );
+    }
+  }
+  return wrapped_lines;
+}
+
 } // namespace
 
 int Browser::run( std::string_view initial_url )
@@ -293,11 +430,16 @@ int Browser::run( std::string_view initial_url )
     std::cout.flush();
 
     auto page_data = load_page( current_url );
+
+    auto [term_width, term_height] = terminal.get_size();
+    const std::size_t wrap_width = ( term_width > 1 ) ? ( term_width - 1 ) : 80;
+    page_data.lines = wrap_lines( page_data.lines, wrap_width );
+
     std::size_t scroll_y = 0;
     bool navigate = false;
 
     while ( !navigate ) {
-      draw_view( terminal, page_data.lines, scroll_y, current_url );
+      draw_view( terminal, page_data.lines, scroll_y, current_url, page_data.title );
       const char c = terminal.read_key();
 
       const InputAction action = process_key( c, terminal, page_data, current_url, history, history_idx, scroll_y );
