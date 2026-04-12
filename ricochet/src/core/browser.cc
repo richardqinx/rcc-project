@@ -149,6 +149,60 @@ std::string generate_bookmarks_html()
   return html;
 }
 
+void append_to_history( const std::string& url, // NOLINT(bugprone-easily-swappable-parameters)
+                        const std::string& title )
+{
+  if ( url.starts_with( "ricochet://" ) ) {
+    return;
+  }
+  std::ofstream file( get_config_path( "history.txt" ), std::ios::app );
+  if ( !file.is_open() ) {
+    return;
+  }
+
+  std::string safe_title = title;
+  if ( safe_title.empty() ) {
+    safe_title = url;
+  }
+  for ( char& c : safe_title ) {
+    if ( c == '\n' || c == '\r' || c == '\t' ) {
+      c = ' ';
+    }
+  }
+  file << url << '\t' << safe_title << '\n';
+}
+
+std::string generate_history_html()
+{
+  std::ifstream file( get_config_path( "history.txt" ) );
+  std::string html = "<html><head><title>History</title></head><body><h1>Browsing History</h1><ul>";
+  if ( !file.is_open() ) {
+    html += "<li>No history found. Start browsing!</li>";
+  } else {
+    std::vector<std::string> lines;
+    std::string line;
+    while ( std::getline( file, line ) ) {
+      lines.push_back( std::move( line ) );
+    }
+
+    std::size_t count = 0;
+    for ( auto it = lines.rbegin(); it != lines.rend() && count < 100; ++it, ++count ) {
+      const std::size_t tab_pos = it->find( '\t' );
+      if ( tab_pos != std::string::npos ) {
+        const std::string url = it->substr( 0, tab_pos );
+        const std::string title = it->substr( tab_pos + 1 );
+        html += "<li><a href=\"";
+        html += url;
+        html += "\">[Link] ";
+        html += title;
+        html += "</a></li>";
+      }
+    }
+  }
+  html += "</ul></body></html>";
+  return html;
+}
+
 PageData process_binary_download( const HttpRequest& req, const net::HttpResponse& resp )
 {
   std::string fname = "download.dat";
@@ -201,6 +255,8 @@ PageData load_page( const HttpRequest& req )
   std::string html_body;
   if ( req.url == "ricochet://bookmarks" ) {
     html_body = generate_bookmarks_html();
+  } else if ( req.url == "ricochet://history" ) {
+    html_body = generate_history_html();
   } else {
     const net::HttpClient client;
     auto response_result = client.fetch( req.url, req.method, req.body );
@@ -243,7 +299,8 @@ PageData load_page( const HttpRequest& req )
 
 std::string build_footer( std::string_view url, std::size_t width )
 {
-  const std::string_view keys = " | [j/k]Scroll [n/N]Find [/]Nav [f]Hint [i]In [r]Ref [H/L]Hist [b/B]Mark [q]Quit ";
+  const std::string_view keys
+    = " | [j/k]Scroll [n/N]Find [/]Nav [f]Hint [i]In [r]Ref [H/L]Back [h]Hist [b/B]Mark [q]Quit ";
   const std::string_view prefix = " URL: ";
 
   std::string footer;
@@ -827,6 +884,13 @@ InputAction process_key( char c,
     return InputAction::Navigate;
   }
 
+  if ( c == 'h' ) {
+    history.resize( history_idx + 1 );
+    history.push_back( HttpRequest { .url = "ricochet://history", .method = "GET", .body = "" } );
+    history_idx++;
+    return InputAction::Navigate;
+  }
+
   if ( c == 'n' ) {
     const std::string query = get_terminal_input( terminal, "Find in Page:" );
     execute_search( page_data, query, scroll_y, false );
@@ -916,6 +980,12 @@ int Browser::run( std::string_view initial_url )
     std::cout.flush();
 
     auto page_data = load_page( current_req );
+
+    static std::string last_recorded_url;
+    if ( current_url != last_recorded_url && !current_url.starts_with( "ricochet://" ) ) {
+      append_to_history( current_url, page_data.title );
+      last_recorded_url = current_url;
+    }
 
     auto [term_width, term_height] = terminal.get_size();
     const std::size_t wrap_width = ( term_width > 1 ) ? ( term_width - 1 ) : 80;
