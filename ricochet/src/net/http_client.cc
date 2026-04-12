@@ -308,13 +308,15 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
       return std::unexpected( net_res.error );
     }
     const std::string& raw_response = net_res.raw_response;
-    update_cookies( raw_response );
 
     HttpResponse response;
     const auto header_end = raw_response.find( "\r\n\r\n" );
+    const std::string headers
+      = ( header_end != std::string::npos ) ? raw_response.substr( 0, header_end ) : raw_response;
+    update_cookies( headers );
+
     if ( header_end != std::string::npos ) {
       response.body = raw_response.substr( header_end + 4 );
-      const std::string headers = raw_response.substr( 0, header_end );
       std::size_t ct_pos = headers.find( "Content-Type: " );
       if ( ct_pos == std::string::npos ) {
         ct_pos = headers.find( "content-type: " );
@@ -339,7 +341,7 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
     }
 
     if ( response.status_code >= 300 && response.status_code < 400 ) {
-      const std::string next_url = extract_redirect_url( raw_response, is_https, host );
+      const std::string next_url = extract_redirect_url( headers, is_https, host );
       if ( !next_url.empty() ) {
         current_url = next_url;
         if ( response.status_code == 301 || response.status_code == 302 || response.status_code == 303 ) {
@@ -353,9 +355,18 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
     if ( raw_response.contains( "Transfer-Encoding: chunked" ) ) {
       response.body = dechunk( response.body );
     }
-    response.body = remove_html_comments( response.body );
-    response.body = remove_tag_blocks( response.body, "script" );
-    response.body = remove_tag_blocks( response.body, "style" );
+    std::string ct_lower = response.content_type;
+    for ( char& c : ct_lower ) {
+      if ( c >= 'A' && c <= 'Z' ) {
+        c = static_cast<char>( c + 32 );
+      }
+    }
+
+    if ( ct_lower.starts_with( "text/" ) || ct_lower.contains( "xml" ) ) {
+      response.body = remove_html_comments( response.body );
+      response.body = remove_tag_blocks( response.body, "script" );
+      response.body = remove_tag_blocks( response.body, "style" );
+    }
     return response;
   }
 

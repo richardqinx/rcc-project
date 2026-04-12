@@ -191,7 +191,11 @@ PageData load_page( const HttpRequest& req )
     const net::HttpClient client;
     auto response_result = client.fetch( req.url, req.method, req.body );
     if ( !response_result.has_value() ) {
-      return { .lines = { "[!] Failed to load: " + req.url }, .links = {}, .inputs = {}, .title = "Error" };
+      return { .lines
+               = { "\033[1;31m[!] Failed to load:\033[0m " + req.url, "", "Reason: " + response_result.error() },
+               .links = {},
+               .inputs = {},
+               .title = "Error" };
     }
 
     const auto& resp = response_result.value();
@@ -221,6 +225,41 @@ PageData load_page( const HttpRequest& req )
 
   return {
     .lines = split_into_lines( result.text ), .links = result.links, .inputs = result.inputs, .title = title };
+}
+
+// --- 🔪 智能底部排版：优先截断 URL，誓死保卫快捷键 ---
+std::string build_footer( std::string_view url, std::size_t width )
+{
+  const std::string_view keys = " | [j/k]Scroll [/]Nav [f]Link [i]In [r]Ref [H/L]Hist [b/B]Mark [q]Quit ";
+  const std::string_view prefix = " URL: ";
+
+  std::string footer;
+  if ( width <= keys.length() + prefix.length() + 3 ) {
+    footer.reserve( prefix.length() + url.length() + keys.length() );
+    footer += prefix;
+    footer += url;
+    footer += keys;
+    if ( footer.length() > width && width > 3 ) {
+      footer.erase( width - 3 );
+      footer += "...";
+    }
+  } else {
+    const std::size_t max_url_len = width - keys.length() - prefix.length();
+    footer.reserve( width );
+    footer += prefix;
+    if ( url.length() > max_url_len ) {
+      footer += url.substr( 0, max_url_len - 3 );
+      footer += "...";
+    } else {
+      footer += url;
+    }
+    footer += keys;
+  }
+
+  if ( footer.length() < width ) {
+    footer.append( width - footer.length(), ' ' );
+  }
+  return footer;
 }
 
 void draw_view( const tui::Terminal& terminal,
@@ -262,13 +301,7 @@ void draw_view( const tui::Terminal& terminal,
     }
   }
 
-  std::string footer
-    = " URL: " + std::string( url ) + " | [j/k]Scroll [/]Jump [f]Follow [i]Input [b]Mark [B]Marks [q]Quit ";
-  if ( footer.size() < width ) {
-    footer.append( width - footer.size(), ' ' );
-  } else if ( footer.size() > width && width > 3 ) {
-    footer = footer.substr( 0, width - 3 ) + "...";
-  }
+  const std::string footer = build_footer( url, width );
   std::cout << "\033[7m" << footer << "\033[0m";
   std::cout.flush();
 }
