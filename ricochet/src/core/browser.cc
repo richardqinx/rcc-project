@@ -203,6 +203,40 @@ std::string generate_history_html()
   return html;
 }
 
+std::string generate_help_html()
+{
+  return R"(<html>
+  <head><title>Ricochet Help Manual</title></head>
+  <body>
+    <h1>Ricochet User Manual</h1>
+    <h2>1. Navigation & Browsing</h2>
+    <ul>
+      <li><b>j / k</b> : Scroll down / up</li>
+      <li><b>H / L</b> : History backward / forward</li>
+      <li><b>/</b> : Open prompt to enter a new URL</li>
+    </ul>
+    <h2>2. Page Interaction</h2>
+    <ul>
+      <li><b>f</b> : Toggle Link Hints (type the two letters to follow a link instantly)</li>
+      <li><b>n</b> : Find in page (search for text)</li>
+      <li><b>N</b> : Jump to the next search match</li>
+      <li><b>i</b> : Enter form input mode (fill textboxes, click buttons, toggle checkboxes)</li>
+    </ul>
+    <h2>3. Bookmarks & History</h2>
+    <ul>
+      <li><b>b</b> : Bookmark the current page</li>
+      <li><b>B</b> : View all saved bookmarks</li>
+      <li><b>h</b> : View browsing history</li>
+    </ul>
+    <h2>4. System</h2>
+    <ul>
+      <li><b>?</b> : Show this help manual</li>
+      <li><b>q</b> : Quit Ricochet</li>
+    </ul>
+  </body>
+  </html>)";
+}
+
 PageData process_binary_download( const HttpRequest& req, const net::HttpResponse& resp )
 {
   std::string fname = "download.dat";
@@ -257,6 +291,8 @@ PageData load_page( const HttpRequest& req )
     html_body = generate_bookmarks_html();
   } else if ( req.url == "ricochet://history" ) {
     html_body = generate_history_html();
+  } else if ( req.url == "ricochet://help" ) {
+    html_body = generate_help_html();
   } else {
     const net::HttpClient client;
     auto response_result = client.fetch( req.url, req.method, req.body );
@@ -300,7 +336,7 @@ PageData load_page( const HttpRequest& req )
 std::string build_footer( std::string_view url, std::size_t width )
 {
   const std::string_view keys
-    = " | [j/k]Scroll [n/N]Find [/]Nav [f]Hint [i]In [r]Ref [H/L]Back [h]Hist [b/B]Mark [q]Quit ";
+    = " | [j/k]Scroll [n/N]Find [/]Nav [f]Hint [i]In [r]Ref [H/L]Back [h]Hist [b/B]Mark [?]Help [q]Quit ";
   const std::string_view prefix = " URL: ";
 
   std::string footer;
@@ -842,6 +878,14 @@ InputAction handle_form_input( const tui::Terminal& terminal,
   return InputAction::None;
 }
 
+InputAction push_history( const std::string& url, std::vector<HttpRequest>& history, std::size_t& history_idx )
+{
+  history.resize( history_idx + 1 );
+  history.push_back( HttpRequest { .url = url, .method = "GET", .body = "" } );
+  history_idx++;
+  return InputAction::Navigate;
+}
+
 InputAction process_key( char c,
                          const tui::Terminal& terminal,
                          PageData& page_data,
@@ -853,78 +897,73 @@ InputAction process_key( char c,
   auto [width, height] = terminal.get_size();
   const std::size_t view_h = ( height > 1 ) ? ( height - 1 ) : 1;
 
-  if ( c == 'q' ) {
-    return InputAction::Quit;
-  }
-  if ( c == 'j' && scroll_y + view_h < page_data.lines.size() ) {
-    scroll_y++;
-  }
-  if ( c == 'k' && scroll_y > 0 ) {
-    scroll_y--;
-  }
-  if ( c == 'H' && history_idx > 0 ) {
-    history_idx--;
-    return InputAction::Navigate;
-  }
-  if ( c == 'L' && history_idx + 1 < history.size() ) {
-    history_idx++;
-    return InputAction::Navigate;
-  }
-  if ( c == 'r' ) {
-    return InputAction::Navigate;
-  }
-  if ( c == 'b' ) {
-    save_bookmark( page_data.title, current_url );
-    return InputAction::None;
-  }
-  if ( c == 'B' ) {
-    history.resize( history_idx + 1 );
-    history.push_back( HttpRequest { .url = "ricochet://bookmarks", .method = "GET", .body = "" } );
-    history_idx++;
-    return InputAction::Navigate;
-  }
-
-  if ( c == 'h' ) {
-    history.resize( history_idx + 1 );
-    history.push_back( HttpRequest { .url = "ricochet://history", .method = "GET", .body = "" } );
-    history_idx++;
-    return InputAction::Navigate;
-  }
-
-  if ( c == 'n' ) {
-    const std::string query = get_terminal_input( terminal, "Find in Page:" );
-    execute_search( page_data, query, scroll_y, false );
-    return InputAction::None;
-  }
-  if ( c == 'N' ) {
-    execute_search( page_data, page_data.last_search, scroll_y, true );
-    return InputAction::None;
-  }
-
-  if ( c == '/' ) {
-    const std::string next_url = get_url_input( terminal );
-    if ( !next_url.empty() ) {
-      history.resize( history_idx + 1 );
-      history.push_back( HttpRequest { .url = next_url, .method = "GET", .body = "" } );
-      history_idx++;
+  switch ( c ) {
+    case 'q':
+      return InputAction::Quit;
+    case 'j':
+      if ( scroll_y + view_h < page_data.lines.size() ) {
+        scroll_y++;
+      }
+      break;
+    case 'k':
+      if ( scroll_y > 0 ) {
+        scroll_y--;
+      }
+      break;
+    case 'H':
+      if ( history_idx > 0 ) {
+        history_idx--;
+        return InputAction::Navigate;
+      }
+      break;
+    case 'L':
+      if ( history_idx + 1 < history.size() ) {
+        history_idx++;
+        return InputAction::Navigate;
+      }
+      break;
+    case 'r':
       return InputAction::Navigate;
+    case 'b':
+      save_bookmark( page_data.title, current_url );
+      break;
+    case 'B':
+      return push_history( "ricochet://bookmarks", history, history_idx );
+    case '?':
+      return push_history( "ricochet://help", history, history_idx );
+    case 'h':
+      return push_history( "ricochet://history", history, history_idx );
+    case 'n': {
+      const std::string query = get_terminal_input( terminal, "Find in Page:" );
+      execute_search( page_data, query, scroll_y, false );
+      break;
     }
-  }
-
-  if ( c == 'f' ) {
-    const std::string old_url = current_url;
-    bool nav = false;
-    handle_follow_link( terminal, page_data, current_url, scroll_y, nav );
-    if ( nav && current_url != old_url ) {
-      history.resize( history_idx + 1 );
-      history.push_back( HttpRequest { .url = current_url, .method = "GET", .body = "" } );
-      history_idx++;
-      return InputAction::Navigate;
+    case 'N':
+      execute_search( page_data, page_data.last_search, scroll_y, true );
+      break;
+    case '/': {
+      const std::string next_url = get_url_input( terminal );
+      if ( !next_url.empty() ) {
+        return push_history( next_url, history, history_idx );
+      }
+      break;
     }
-  }
-
-  if ( c == 'i' && !page_data.inputs.empty() ) {
-    return handle_form_input( terminal, page_data, current_url, history, history_idx );
+    case 'f': {
+      const std::string old_url = current_url;
+      bool nav = false;
+      handle_follow_link( terminal, page_data, current_url, scroll_y, nav );
+      if ( nav && current_url != old_url ) {
+        return push_history( current_url, history, history_idx );
+      }
+      break;
+    }
+    case 'i':
+      if ( !page_data.inputs.empty() ) {
+        return handle_form_input( terminal, page_data, current_url, history, history_idx );
+      }
+      break;
+    default:
+      break;
   }
   return InputAction::None;
 }
