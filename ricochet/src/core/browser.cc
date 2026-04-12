@@ -38,6 +38,10 @@ struct PageData
   std::vector<std::string> links;
   std::vector<render::InputField> inputs;
   std::string title;
+  std::vector<std::string> original_lines {};
+  std::string last_search {};
+  std::size_t current_match_idx { 0 };
+  std::vector<std::size_t> match_lines {};
 };
 
 struct HttpRequest
@@ -237,10 +241,9 @@ PageData load_page( const HttpRequest& req )
     .lines = split_into_lines( result.text ), .links = result.links, .inputs = result.inputs, .title = title };
 }
 
-// --- 🔪 智能底部排版：优先截断 URL，誓死保卫快捷键 ---
 std::string build_footer( std::string_view url, std::size_t width )
 {
-  const std::string_view keys = " | [j/k]Scroll [/]Nav [f]Link [i]In [r]Ref [H/L]Hist [b/B]Mark [q]Quit ";
+  const std::string_view keys = " | [j/k]Scroll [n/N]Find [/]Nav [f]Link [i]In [r]Ref [H/L]Hist [b/B]Mark [q]Quit ";
   const std::string_view prefix = " URL: ";
 
   std::string footer;
@@ -560,19 +563,83 @@ InputAction submit_form( const render::InputField& target_input,
   return InputAction::Navigate;
 }
 
+void find_search_matches( PageData& page_data, const std::string& query )
+{
+  page_data.last_search = query;
+  page_data.match_lines.clear();
+  page_data.current_match_idx = 0;
+  for ( std::size_t i = 0; i < page_data.original_lines.size(); ++i ) {
+    if ( page_data.original_lines[i].find( query ) != std::string::npos ) {
+      page_data.match_lines.push_back( i );
+    }
+  }
+}
+
+void apply_search_highlight( PageData& page_data, const std::string& query )
+{
+  page_data.lines = page_data.original_lines;
+  if ( page_data.match_lines.empty() ) {
+    return;
+  }
+
+  const std::string hl_start = "\033[43;30m";
+  const std::string hl_end = "\033[0m";
+
+  for ( const auto match_idx : page_data.match_lines ) {
+    auto& line = page_data.lines[match_idx];
+    std::size_t pos = 0;
+    std::string replacement;
+    replacement.reserve( hl_start.length() + query.length() + hl_end.length() );
+    replacement += hl_start;
+    replacement += query;
+    replacement += hl_end;
+    while ( ( pos = line.find( query, pos ) ) != std::string::npos ) {
+      line.replace( pos, query.length(), replacement );
+      pos += hl_start.length() + query.length() + hl_end.length();
+    }
+  }
+}
+
+void execute_search( PageData& page_data, const std::string& query, std::size_t& scroll_y, bool next_match )
+{
+  if ( query.empty() ) {
+    return;
+  }
+
+  if ( !next_match || query != page_data.last_search ) {
+    find_search_matches( page_data, query );
+    apply_search_highlight( page_data, query );
+  } else if ( !page_data.match_lines.empty() ) {
+    page_data.current_match_idx = ( page_data.current_match_idx + 1 ) % page_data.match_lines.size();
+  }
+
+  if ( page_data.match_lines.empty() ) {
+    return;
+  }
+
+  const std::size_t target_line = page_data.match_lines[page_data.current_match_idx];
+  scroll_y = ( target_line > 5 ) ? ( target_line - 5 ) : 0;
+}
+
 void update_input_value( PageData& page_data, std::size_t index, const std::string& query )
 {
   page_data.inputs[index - 1].value = query;
   const std::string marker = "[I" + std::to_string( index ) + ":";
-  for ( auto& line : page_data.lines ) {
-    const std::size_t pos = line.find( marker );
-    if ( pos != std::string::npos ) {
-      const std::size_t end = line.find( "]", pos );
-      if ( end != std::string::npos ) {
-        line.replace( pos, end - pos + 1, "[I" + std::to_string( index ) + ":" + query + "]" );
+  const std::string replacement = "[I" + std::to_string( index ) + ":" + query + "]";
+
+  auto update_lines = [&]( std::vector<std::string>& lines_arr ) {
+    for ( auto& line : lines_arr ) {
+      const std::size_t pos = line.find( marker );
+      if ( pos != std::string::npos ) {
+        const std::size_t end = line.find( ']', pos );
+        if ( end != std::string::npos ) {
+          line.replace( pos, end - pos + 1, replacement );
+        }
       }
     }
-  }
+  };
+  update_lines( page_data.lines );
+  update_lines( page_data.original_lines );
 }
 
 void update_single_line_ui( std::string& line, const std::string& marker, const render::InputField& in )
@@ -604,6 +671,9 @@ void update_toggle_ui( PageData& page_data )
     }
     const std::string marker = "[I" + std::to_string( i + 1 ) + ":";
     for ( auto& line : page_data.lines ) {
+      update_single_line_ui( line, marker, in );
+    }
+    for ( auto& line : page_data.original_lines ) {
       update_single_line_ui( line, marker, in );
     }
   }
@@ -699,6 +769,16 @@ InputAction process_key( char c,
     return InputAction::Navigate;
   }
 
+  if ( c == 'n' ) {
+    const std::string query = get_terminal_input( terminal, "Find in Page:" );
+    execute_search( page_data, query, scroll_y, false );
+    return InputAction::None;
+  }
+  if ( c == 'N' ) {
+    execute_search( page_data, page_data.last_search, scroll_y, true );
+    return InputAction::None;
+  }
+
   if ( c == '/' ) {
     const std::string next_url = get_url_input( terminal );
     if ( !next_url.empty() ) {
@@ -782,6 +862,7 @@ int Browser::run( std::string_view initial_url )
     auto [term_width, term_height] = terminal.get_size();
     const std::size_t wrap_width = ( term_width > 1 ) ? ( term_width - 1 ) : 80;
     page_data.lines = wrap_lines( page_data.lines, wrap_width );
+    page_data.original_lines = page_data.lines;
 
     std::size_t scroll_y = 0;
     bool navigate = false;
