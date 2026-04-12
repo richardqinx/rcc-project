@@ -22,11 +22,17 @@
 
 namespace ricochet::render {
 
+struct InputField
+{
+  std::string name;
+  std::string action;
+  std::string method;
+};
 struct RenderResult
 {
   std::string text {};
   std::vector<std::string> links {};
-  std::vector<std::string> inputs {};
+  std::vector<InputField> inputs {};
 };
 
 class Renderer

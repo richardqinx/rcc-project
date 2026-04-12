@@ -33,7 +33,7 @@ struct PageData
 {
   std::vector<std::string> lines;
   std::vector<std::string> links;
-  std::vector<std::string> inputs;
+  std::vector<render::InputField> inputs;
   std::string title;
 };
 
@@ -390,7 +390,7 @@ InputAction handle_form_input( const tui::Terminal& terminal,
     return InputAction::None;
   }
 
-  std::string target_url;
+  const auto& target_input = page_data.inputs[index - 1];
   std::string encoded_query = query;
   for ( char& ch : encoded_query ) {
     if ( ch == ' ' ) {
@@ -398,11 +398,20 @@ InputAction handle_form_input( const tui::Terminal& terminal,
     }
   }
 
-  if ( current_url.contains( "wikipedia.org" ) ) {
-    target_url = "https://en.wikipedia.org/w/index.php?search=" + encoded_query;
+  std::string action = target_input.action;
+  if ( action.empty() ) {
+    action = current_url;
   } else {
-    target_url = "https://lite.duckduckgo.com/lite/?q=" + encoded_query;
+    action = normalize_url( action, current_url );
   }
+
+  std::string param_name = target_input.name;
+  if ( param_name.empty() ) {
+    param_name = "q";
+  }
+
+  const char sep = action.contains( '?' ) ? '&' : '?';
+  const std::string target_url = action + sep + param_name + "=" + encoded_query;
 
   history.resize( history_idx + 1 );
   history.push_back( target_url );

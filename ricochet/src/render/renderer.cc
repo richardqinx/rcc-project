@@ -69,19 +69,21 @@ std::string decode_entities( std::string text )
   return text;
 }
 
-std::string extract_href( const std::string& tag_name )
+std::string extract_attr( const std::string& tag_name, std::string_view attr_name )
 {
-  std::size_t pos = tag_name.find( "href=\"" );
+  std::string match = std::string( attr_name ) + "=\"";
+  std::size_t pos = tag_name.find( match );
   if ( pos != std::string::npos ) {
-    pos += 6;
-    const std::size_t end = tag_name.find( '\"', pos );
+    pos += match.length();
+    const std::size_t end = tag_name.find( '"', pos );
     if ( end != std::string::npos ) {
       return tag_name.substr( pos, end - pos );
     }
   }
-  pos = tag_name.find( "href='" );
+  match = std::string( attr_name ) + "='";
+  pos = tag_name.find( match );
   if ( pos != std::string::npos ) {
-    pos += 6;
+    pos += match.length();
     const std::size_t end = tag_name.find( '\'', pos );
     if ( end != std::string::npos ) {
       return tag_name.substr( pos, end - pos );
@@ -89,6 +91,58 @@ std::string extract_href( const std::string& tag_name )
   }
   return "";
 }
+
+void render_link_end( const parser::DomNode& node, RenderResult& result )
+{
+  result.text += "\033[0m";
+  const std::string href = extract_attr( node.tag_name, "href" );
+  if ( !href.empty() && !href.starts_with( "javascript:" ) && !href.starts_with( "#" ) ) {
+    result.links.push_back( decode_entities( href ) );
+    result.text += " \033[7m[" + std::to_string( result.links.size() ) + "]\033[0m";
+  }
+}
+
+void render_img( const parser::DomNode& node, RenderResult& result )
+{
+  std::size_t alt_pos = node.tag_name.find( "alt=\"" );
+  if ( alt_pos != std::string::npos ) {
+    alt_pos += 5;
+    const std::size_t alt_end = node.tag_name.find( '"', alt_pos );
+    result.text += " \033[90m[Image: " + node.tag_name.substr( alt_pos, alt_end - alt_pos ) + "]\033[0m ";
+  } else {
+    result.text += " \033[90m[IMAGE]\033[0m ";
+  }
+}
+
+std::string build_input_hint( const std::string& tag_name )
+{
+  std::string placeholder = extract_attr( tag_name, "placeholder" );
+  std::string type = extract_attr( tag_name, "type" );
+  std::string val = extract_attr( tag_name, "value" );
+
+  if ( !placeholder.empty() ) {
+    return placeholder;
+  }
+  if ( type == "submit" || type == "button" ) {
+    return val.empty() ? "Submit" : val;
+  }
+  if ( type == "checkbox" || type == "radio" ) {
+    return type;
+  }
+  if ( type == "hidden" ) {
+    return "hidden";
+  }
+  if ( !val.empty() ) {
+    return val;
+  }
+  return "text";
+}
+
+struct FormContext
+{
+  std::string action;
+  std::string method;
+};
 
 bool is_ignored_tag( std::string_view tag )
 {
@@ -101,12 +155,10 @@ bool is_heading_tag( std::string_view tag )
 }
 
 void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
-                  RenderResult& result )       // NOLINT(bugprone-easily-swappable-parameters)
+                  RenderResult& result,
+                  FormContext ctx )
 {
   std::string& output = result.text;
-  std::vector<std::string>& links = result.links;
-  std::vector<std::string>& inputs = result.inputs;
-
   const std::size_t space_pos = node.tag_name.find( ' ' );
   const std::string base_tag
     = ( space_pos == std::string::npos ) ? node.tag_name : node.tag_name.substr( 0, space_pos );
@@ -114,10 +166,14 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
   if ( is_ignored_tag( base_tag ) ) {
     return;
   }
-
   if ( base_tag.empty() ) {
     output += decode_entities( node.text_content );
     return;
+  }
+
+  if ( base_tag == "form" ) {
+    ctx.action = extract_attr( node.tag_name, "action" );
+    ctx.method = extract_attr( node.tag_name, "method" );
   }
 
   const bool is_header = is_heading_tag( base_tag );
@@ -132,8 +188,12 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
   } else if ( is_list_item ) {
     output += "\n  • ";
   } else if ( is_input ) {
-    inputs.emplace_back( "input_field" );
-    output += " \033[7;33m[I" + std::to_string( inputs.size() ) + "]\033[0m ";
+    result.inputs.push_back( { extract_attr( node.tag_name, "name" ), ctx.action, ctx.method } );
+    const std::string hint = build_input_hint( node.tag_name );
+
+    if ( hint != "hidden" ) {
+      output += " \033[7;33m[I" + std::to_string( result.inputs.size() ) + ":" + hint + "]\033[0m ";
+    }
   } else if ( base_tag == "p" || base_tag == "div" || is_header ) {
     if ( !output.empty() && output.back() != '\n' ) {
       output += "\n";
@@ -141,33 +201,20 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
   }
 
   for ( const auto& child : node.children ) {
-    render_node( child, result );
+    render_node( child, result, ctx );
   }
 
   if ( is_header ) {
     output += "\033[0m";
   } else if ( is_link ) {
-    output += "\033[0m";
-    const std::string href = extract_href( node.tag_name );
-    if ( !href.empty() && !href.starts_with( "javascript:" ) && !href.starts_with( "#" ) ) {
-      links.push_back( decode_entities( href ) );
-      output += " \033[7m[" + std::to_string( links.size() ) + "]\033[0m"; // 打印数字标签！
-    }
+    render_link_end( node, result );
   }
 
   if ( base_tag == "h1" || base_tag == "p" || base_tag == "div" ) {
     output += "\n";
   }
-
   if ( base_tag == "img" ) {
-    std::size_t alt_pos = node.tag_name.find( "alt=\"" );
-    if ( alt_pos != std::string::npos ) {
-      alt_pos += 5;
-      const std::size_t alt_end = node.tag_name.find( '"', alt_pos );
-      output += " \033[90m[Image: " + node.tag_name.substr( alt_pos, alt_end - alt_pos ) + "]\033[0m ";
-    } else {
-      output += " \033[90m[IMAGE]\033[0m ";
-    }
+    render_img( node, result );
   }
 }
 
@@ -177,7 +224,7 @@ RenderResult Renderer::render( // NOLINT(readability-convert-member-functions-to
   const parser::DomNode& node ) const
 {
   RenderResult result;
-  render_node( node, result );
+  render_node( node, result, FormContext {} );
   return result;
 }
 
