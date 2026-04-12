@@ -26,6 +26,7 @@
 #include <format>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace ricochet::net {
 
@@ -162,6 +163,57 @@ std::string extract_redirect_url( const std::string& raw_response, bool is_https
   return "";
 }
 
+std::unordered_map<std::string, std::string>& get_cookie_jar()
+{
+  static std::unordered_map<std::string, std::string> jar;
+  return jar;
+}
+
+void update_cookies( const std::string& raw_response )
+{
+  std::size_t pos = 0;
+  while ( ( pos = raw_response.find( "Set-Cookie: ", pos ) ) != std::string::npos ) {
+    pos += 12;
+    const std::size_t end_pos = raw_response.find( '\r', pos );
+    if ( end_pos == std::string::npos ) {
+      break;
+    }
+
+    const std::string cookie_line = raw_response.substr( pos, end_pos - pos );
+    const std::size_t semi_pos = cookie_line.find( ';' );
+    const std::string cookie_pair
+      = ( semi_pos == std::string::npos ) ? cookie_line : cookie_line.substr( 0, semi_pos );
+
+    const std::size_t eq_pos = cookie_pair.find( '=' );
+    if ( eq_pos != std::string::npos ) {
+      const std::string key = cookie_pair.substr( 0, eq_pos );
+      const std::string val = cookie_pair.substr( eq_pos + 1 );
+      get_cookie_jar()[key] = val;
+    }
+  }
+}
+
+std::string build_cookie_header()
+{
+  const auto& jar = get_cookie_jar();
+  if ( jar.empty() ) {
+    return "";
+  }
+  std::string header = "Cookie: ";
+  bool first = true;
+  for ( const auto& [k, v] : jar ) {
+    if ( !first ) {
+      header += "; ";
+    }
+    header += k;
+    header += "=";
+    header += v;
+    first = false;
+  }
+  header += "\r\n";
+  return header;
+}
+
 struct FetchResult
 {
   std::string raw_response {};
@@ -172,7 +224,8 @@ FetchResult do_network_request( const std::string& host,
                                 const std::string& path,    // NOLINT(bugprone-easily-swappable-parameters)
                                 bool is_https,
                                 const std::string& method, // NOLINT(bugprone-easily-swappable-parameters)
-                                const std::string& body )  // NOLINT(bugprone-easily-swappable-parameters)
+                                const std::string& body,
+                                const std::string& cookie_header ) // NOLINT(bugprone-easily-swappable-parameters)
 {
   FetchResult res;
   try {
@@ -185,10 +238,12 @@ FetchResult do_network_request( const std::string& host,
                      "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n"
                      "Accept-Language: en-US,en;q=0.9\r\n"
                      "DNT: 1\r\n"
+                     "{}"
                      "Connection: close\r\n",
                      method,
                      path,
-                     host );
+                     host,
+                     cookie_header );
     if ( !body.empty() ) {
       request += std::format( "Content-Length: {}\r\n"
                               "Content-Type: application/x-www-form-urlencoded\r\n",
@@ -245,11 +300,15 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
     const bool is_https = current_url.starts_with( "https://" );
     const std::string service = is_https ? "https" : "http";
 
-    const FetchResult net_res = do_network_request( host, service, path, is_https, current_method, current_body );
+    const std::string cookie_header = build_cookie_header();
+
+    const FetchResult net_res
+      = do_network_request( host, service, path, is_https, current_method, current_body, cookie_header );
     if ( !net_res.error.empty() ) {
       return std::unexpected( net_res.error );
     }
     const std::string& raw_response = net_res.raw_response;
+    update_cookies( raw_response );
 
     HttpResponse response;
     const auto header_end = raw_response.find( "\r\n\r\n" );
