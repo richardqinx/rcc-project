@@ -17,6 +17,7 @@
  */
 
 #include "ricochet/render/renderer.hh"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <stdexcept>
@@ -193,6 +194,149 @@ void render_input_node( const parser::DomNode& node,
   }
 }
 
+void render_node( const parser::DomNode& node, RenderResult& result, FormContext ctx );
+
+std::size_t get_visible_length( std::string_view str )
+{
+  std::size_t len = 0;
+  bool in_ansi = false;
+  for ( std::size_t i = 0; i < str.length(); ++i ) {
+    const auto c = static_cast<unsigned char>( str[i] );
+    if ( c == 0x1B ) {
+      in_ansi = true;
+    } else if ( in_ansi && c == 'm' ) {
+      in_ansi = false;
+    } else if ( !in_ansi ) {
+      if ( ( c & 0x80 ) == 0 || ( c & 0xE0 ) == 0xC0 ) {
+        len += 1;
+      } // ASCII (width 1) Latin/Greek (width 1)
+      else if ( ( c & 0xF0 ) == 0xE0 || ( c & 0xF8 ) == 0xF0 ) {
+        len += 2;
+      } // CJK (width 2) Emoji/Rare (width 2)
+    }
+  }
+  return len;
+}
+
+std::size_t get_node_text_len( const parser::DomNode& node ) // NOLINT(misc-no-recursion)
+{
+  std::size_t len = get_visible_length( decode_entities( node.text_content ) );
+  for ( const auto& child : node.children ) {
+    len += get_node_text_len( child );
+  }
+  return len;
+}
+
+void process_table_row_widths( const parser::DomNode& row, std::vector<std::size_t>& widths )
+{
+  std::size_t col_idx = 0;
+  for ( const auto& cell : row.children ) {
+    const std::size_t space_pos = cell.tag_name.find( ' ' );
+    const std::string tag
+      = ( space_pos == std::string::npos ) ? cell.tag_name : cell.tag_name.substr( 0, space_pos );
+    if ( tag == "td" || tag == "th" ) {
+      const std::size_t len = get_node_text_len( cell ) + 2;
+      if ( col_idx >= widths.size() ) {
+        widths.push_back( len );
+      } else if ( len > widths[col_idx] ) {
+        widths[col_idx] = len;
+      }
+      col_idx++;
+    }
+  }
+}
+
+std::vector<std::size_t> calc_table_widths( const parser::DomNode& table_node )
+{
+  std::vector<std::size_t> widths;
+  for ( const auto& child : table_node.children ) {
+    const std::size_t space_pos = child.tag_name.find( ' ' );
+    const std::string tag
+      = ( space_pos == std::string::npos ) ? child.tag_name : child.tag_name.substr( 0, space_pos );
+    if ( tag == "tr" ) {
+      process_table_row_widths( child, widths );
+    } else if ( tag == "tbody" || tag == "thead" ) {
+      for ( const auto& row : child.children ) {
+        if ( row.tag_name.starts_with( "tr" ) ) {
+          process_table_row_widths( row, widths );
+        }
+      }
+    }
+  }
+  for ( auto& w : widths ) {
+    w = std::min<std::size_t>( w, 30 );
+  }
+  return widths;
+}
+
+void render_table_row( const parser::DomNode& row, // NOLINT(misc-no-recursion)
+                       RenderResult& result,
+                       const FormContext& ctx,
+                       const std::vector<std::size_t>& widths )
+{
+  std::string& output = result.text;
+  output += "\033[90m|\033[0m ";
+  std::size_t col_idx = 0;
+  for ( const auto& cell : row.children ) {
+    const std::size_t cell_space = cell.tag_name.find( ' ' );
+    const std::string c_tag
+      = ( cell_space == std::string::npos ) ? cell.tag_name : cell.tag_name.substr( 0, cell_space );
+    if ( c_tag != "td" && c_tag != "th" ) {
+      continue;
+    }
+
+    const std::size_t text_start = output.size();
+    if ( c_tag == "th" ) {
+      output += "\033[1;36m";
+    }
+
+    for ( const auto& cell_child : cell.children ) {
+      render_node( cell_child, result, ctx );
+    }
+
+    if ( c_tag == "th" ) {
+      output += "\033[0m";
+    }
+
+    const std::string added = output.substr( text_start );
+    const std::size_t vis_len = get_visible_length( added );
+    const std::size_t tw = ( col_idx < widths.size() ) ? widths[col_idx] : 10;
+
+    if ( vis_len < tw ) {
+      output.append( tw - vis_len, ' ' );
+    }
+    output += " \033[90m|\033[0m ";
+    col_idx++;
+  }
+  output += "\n";
+}
+
+void render_table( const parser::DomNode& node, // NOLINT(misc-no-recursion)
+                   RenderResult& result,
+                   const FormContext& ctx )
+{
+  std::string& output = result.text;
+  const std::vector<std::size_t> widths = calc_table_widths( node );
+
+  output += "\n\033[90m+" + std::string( 78, '-' ) + "+\033[0m\n";
+
+  for ( const auto& child : node.children ) {
+    const std::size_t child_space = child.tag_name.find( ' ' );
+    const std::string child_tag
+      = ( child_space == std::string::npos ) ? child.tag_name : child.tag_name.substr( 0, child_space );
+    if ( child_tag == "tr" ) {
+      render_table_row( child, result, ctx, widths );
+    } else if ( child_tag == "tbody" || child_tag == "thead" ) {
+      for ( const auto& row : child.children ) {
+        if ( row.tag_name.starts_with( "tr" ) ) {
+          render_table_row( row, result, ctx, widths );
+        }
+      }
+    }
+  }
+  output += "\033[90m+" + std::string( 78, '-' ) + "+\033[0m\n";
+}
+
 void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
                   RenderResult& result,
                   FormContext ctx )
@@ -207,6 +351,11 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
   }
   if ( base_tag.empty() ) {
     output += decode_entities( node.text_content );
+    return;
+  }
+
+  if ( base_tag == "table" ) {
+    render_table( node, result, ctx );
     return;
   }
 
