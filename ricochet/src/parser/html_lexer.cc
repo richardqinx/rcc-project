@@ -36,7 +36,7 @@ enum class LexerState : std::uint8_t
 void emit_text( std::string& buffer, std::vector<HtmlToken>& tokens )
 {
   if ( buffer.empty() ) {
-    return; // 提前返回，减少 if 嵌套层级
+    return;
   }
 
   bool all_whitespace = true;

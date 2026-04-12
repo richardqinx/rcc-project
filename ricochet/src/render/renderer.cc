@@ -109,7 +109,7 @@ void render_link_end( const parser::DomNode& node, RenderResult& result )
   const std::string href = extract_attr( node.tag_name, "href" );
   if ( !href.empty() && !href.starts_with( "javascript:" ) && !href.starts_with( "#" ) ) {
     result.links.push_back( decode_entities( href ) );
-    result.text += " \033[7m[" + std::to_string( result.links.size() ) + "]\033[0m";
+    result.text += "\033[8m{L:" + std::to_string( result.links.size() ) + "}\033[0m";
   }
 }
 

@@ -243,7 +243,7 @@ PageData load_page( const HttpRequest& req )
 
 std::string build_footer( std::string_view url, std::size_t width )
 {
-  const std::string_view keys = " | [j/k]Scroll [n/N]Find [/]Nav [f]Link [i]In [r]Ref [H/L]Hist [b/B]Mark [q]Quit ";
+  const std::string_view keys = " | [j/k]Scroll [n/N]Find [/]Nav [f]Hint [i]In [r]Ref [H/L]Hist [b/B]Mark [q]Quit ";
   const std::string_view prefix = " URL: ";
 
   std::string footer;
@@ -378,39 +378,39 @@ std::string get_url_input( const tui::Terminal& terminal )
   return format_url( std::move( input ) );
 }
 
-std::string get_link_input( const tui::Terminal& terminal )
-{
-  auto [width, height] = terminal.get_size();
-  terminal.move_cursor( height, 1 );
-  std::cout << "\x1b[2K\033[7m Follow Link [#]: \033[0m ";
-  std::cout.flush();
+// std::string get_link_input( const tui::Terminal& terminal )
+// {
+//   auto [width, height] = terminal.get_size();
+//   terminal.move_cursor( height, 1 );
+//   std::cout << "\x1b[2K\033[7m Follow Link [#]: \033[0m ";
+//   std::cout.flush();
 
-  std::string num_input;
-  terminal.show_cursor( true );
-  while ( true ) {
-    const char ch = terminal.read_key();
-    if ( ch == '\r' || ch == '\n' ) {
-      break;
-    }
-    if ( ch == 27 ) {
-      num_input.clear();
-      break;
-    }
-    if ( ch == 127 || ch == 8 ) {
-      if ( !num_input.empty() ) {
-        num_input.pop_back();
-        std::cout << "\b \b";
-        std::cout.flush();
-      }
-    } else if ( std::isdigit( static_cast<unsigned char>( ch ) ) ) {
-      num_input += ch;
-      std::cout << ch;
-      std::cout.flush();
-    }
-  }
-  terminal.show_cursor( false );
-  return num_input;
-}
+//   std::string num_input;
+//   terminal.show_cursor( true );
+//   while ( true ) {
+//     const char ch = terminal.read_key();
+//     if ( ch == '\r' || ch == '\n' ) {
+//       break;
+//     }
+//     if ( ch == 27 ) {
+//       num_input.clear();
+//       break;
+//     }
+//     if ( ch == 127 || ch == 8 ) {
+//       if ( !num_input.empty() ) {
+//         num_input.pop_back();
+//         std::cout << "\b \b";
+//         std::cout.flush();
+//       }
+//     } else if ( std::isdigit( static_cast<unsigned char>( ch ) ) ) {
+//       num_input += ch;
+//       std::cout << ch;
+//       std::cout.flush();
+//     }
+//   }
+//   terminal.show_cursor( false );
+//   return num_input;
+// }
 
 std::string normalize_url( const std::string& target, const std::string& current_url )
 {
@@ -458,27 +458,85 @@ std::string strip_ddg_tracker( std::string target )
   return target;
 }
 
+std::string index_to_hint( std::size_t index )
+{
+  const std::string alphabet = "asdfghjklqwertyuiopzxcvbnm";
+  std::string hint;
+  hint += alphabet[( index / alphabet.length() ) % alphabet.length()];
+  hint += alphabet[index % alphabet.length()];
+  return hint;
+}
+
+void toggle_link_hints( PageData& page_data, bool show )
+{
+  const std::string hl_start = "\033[0;1;35;7m ";
+  const std::string hl_end = " \033[0m";
+
+  std::vector<std::string> formatted_hints;
+  if ( show ) {
+    formatted_hints.reserve( page_data.links.size() );
+    for ( std::size_t i = 0; i < page_data.links.size(); ++i ) {
+      std::string h = hl_start;
+      h += index_to_hint( i );
+      h += hl_end;
+      formatted_hints.push_back( std::move( h ) );
+    }
+  }
+
+  for ( auto& line : page_data.lines ) {
+    for ( std::size_t i = 0; i < page_data.links.size(); ++i ) {
+      const std::string marker = "{L:" + std::to_string( i + 1 ) + "}";
+      const std::size_t pos = line.find( marker );
+      if ( pos != std::string::npos ) {
+        if ( show ) {
+          line.replace( pos, marker.length(), formatted_hints[i] );
+        } else {
+          const std::size_t end_pos = line.find( hl_end, pos );
+          if ( end_pos != std::string::npos ) {
+            line.replace( pos, end_pos + hl_end.length() - pos, marker );
+          }
+        }
+      }
+    }
+  }
+}
+
 void handle_follow_link( const tui::Terminal& terminal,
-                         const std::vector<std::string>& links,
+                         PageData& page_data,
                          std::string& current_url,
+                         std::size_t& scroll_y, // NOLINT(bugprone-easily-swappable-parameters)
                          bool& navigate )
 {
-  const std::string num_input = get_link_input( terminal );
-  if ( !num_input.empty() ) {
-    try {
-      const std::size_t index = std::stoul( num_input );
-      if ( index > 0 && index <= links.size() ) {
-        std::string target = links[index - 1];
+  toggle_link_hints( page_data, true );
 
-        target = normalize_url( target, current_url );
-        target = strip_ddg_tracker( target );
+  draw_view( terminal, page_data.lines, scroll_y, current_url, page_data.title );
 
-        current_url = target;
-        navigate = true;
-      }
-    } catch ( const std::exception& e ) {
-      (void)e; // NOLINT
+  auto [w, h] = terminal.get_size();
+  terminal.move_cursor( h, 1 );
+  std::cout << "\x1b[2K\033[1;35;7m Follow Hint (2 keys): \033[0m ";
+  std::cout.flush();
+
+  std::string input;
+  input += terminal.read_key();
+  std::cout << input[0];
+  std::cout.flush();
+  input += terminal.read_key();
+
+  bool found = false;
+  for ( std::size_t i = 0; i < page_data.links.size(); ++i ) {
+    if ( index_to_hint( i ) == input ) {
+      std::string target = page_data.links[i];
+      target = normalize_url( target, current_url );
+      target = strip_ddg_tracker( target );
+      current_url = target;
+      navigate = true;
+      found = true;
+      break;
     }
+  }
+
+  if ( !found ) {
+    toggle_link_hints( page_data, false );
   }
 }
 
@@ -730,7 +788,7 @@ InputAction handle_form_input( const tui::Terminal& terminal,
 InputAction process_key( char c,
                          const tui::Terminal& terminal,
                          PageData& page_data,
-                         std::string current_url,
+                         std::string& current_url,
                          std::vector<HttpRequest>& history,
                          std::size_t& history_idx, // NOLINT(bugprone-easily-swappable-parameters)
                          std::size_t& scroll_y )   // NOLINT(bugprone-easily-swappable-parameters)
@@ -792,7 +850,7 @@ InputAction process_key( char c,
   if ( c == 'f' ) {
     const std::string old_url = current_url;
     bool nav = false;
-    handle_follow_link( terminal, page_data.links, current_url, nav );
+    handle_follow_link( terminal, page_data, current_url, scroll_y, nav );
     if ( nav && current_url != old_url ) {
       history.resize( history_idx + 1 );
       history.push_back( HttpRequest { .url = current_url, .method = "GET", .body = "" } );
@@ -852,7 +910,7 @@ int Browser::run( std::string_view initial_url )
 
   while ( true ) {
     const HttpRequest current_req = history[history_idx];
-    const std::string current_url = current_req.url;
+    std::string current_url = current_req.url;
     terminal.clear_screen();
     std::cout << "-> Fetching: " << current_req.url << "...\r\n";
     std::cout.flush();
