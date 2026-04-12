@@ -9,6 +9,19 @@ Modern browsing has become a minefield of non-free scripts, tracking pixels, and
 * **Minimalist:** Focused entirely on text and structure.
 * **Distraction-Free:** No ads, no popups, no auto-playing media. Just the data you came for.
 
+## Instructions
+- Keyboard-Driven Navigation: Fully controllable via Vim-style keybindings (j/k for scrolling, H/L for history).
+
+- Link Hinting: Press f to highlight all links with two-letter codes. Jump instantly without using a mouse or typing long numbers.
+
+- Privacy First: Industrial-grade Cookie Domain Isolation ensures your session data is never leaked across sites.
+
+- Fast Search: Built-in "Find in Page" (n/N) with real-time ANSI highlighting.
+
+- Persistent Data: Bookmarks and Browsing History are automatically saved to ~/.ricochet/ for a seamless experience.
+
+- Highly Configurable: Customize your User-Agent and default Homepage via a simple config file.
+
 ## Key Features
 - [x] **High-Performance C++ Core:** Native speed with minimal memory footprint.
 - [x] **Robust HTML5 Parser:** A custom, fault-tolerant DOM builder for the "wild" web.
@@ -23,6 +36,40 @@ Ricochet is built with a strictly modular approach:
 * **`Layout`**: Calculates box models and word-wrapping for terminal constraints.
 * **`TUI`**: An event-driven terminal UI handling viewport rendering and user input.
 
+## Usage
+```bash
+# Start with default homepage
+./build/bin/ricochet
+
+# Open a specific URL
+./build/bin/ricochet https://www.gnu.org
+
+# Use DuckDuckGo smart search
+./build/bin/ricochet "linux kernel news"
+```
+
+## Navigation
+| Key | Action |
+| :--- | :--- |
+| `j / k` | Scroll Down / Up |
+| `f` | Follow Link (Hint Mode) |
+| `n / N` | Find in Page / Next Match |
+| `H / L` | History Back / Forward |
+| `h` | View Browsing History |
+| `b / B` | Add Bookmark / View Bookmarks |
+| `/` | Open URL Prompt |
+| `i` | Form Input Mode |
+| `?` | Show Help Manual |
+| `q` | Quit |
+
+## Configuration
+Ricochet stores data in ~/.ricochet/. You can create config.txt to customize your experience:
+
+```plaintext
+homepage=https://v2ex.com
+user_agent=MyCustomBrowser/1.0
+```
+
 ## Getting Started
 
 ### Prerequisites
@@ -33,25 +80,34 @@ To build Ricochet, ensure your environment meets the following requirements:
     * `clang-format` for automated code styling.
     * `clang-tidy` for static analysis and linting.
 
-### Build Instructions
+### Building from Source
 Ricochet enforces out-of-source builds to keep the project structure clean. By default, the project builds in Debug mode with Address and Undefined Behavior sanitizers enabled.
 
+#### 1. Clone the repository
 ```bash
-# 1. Clone the repository
 git clone https://github.com/yourusername/ricochet.git
 cd ricochet
-
-# 2. Configure the project
-# This will generate compile commands and set the build type to Release
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-
-# 3. Compile the project using all available cores
-cmake --build build -j$(nproc)
-
-# 4. Launch Ricochet
-# The executable is located in the bin/ directory
-./build/bin/ricochet https://wikipedia.org 
 ```
+
+#### 2. Configure the project
+This will generate compile commands and set the build type to Release
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+```
+
+#### 3. Compile the project using all available cores
+```bash
+cmake --build build -j$(nproc)
+```
+
+### Install
+To install Ricochet to your system (defaulting to /usr/local/bin), run the following command with root privileges:
+
+```bash
+sudo cmake --install build
+```
+
+This will install the `ricochet` executable to the `bin` destination and required libraries to `lib`.
 
 ### Build Parameters & Configuration
 
@@ -94,15 +150,8 @@ To install the compiled binaries to your system, use:
 cmake --install build --prefix /usr/local
 ```
 This installs the `ricochet` binary to `bin` and supporting libraries to `lib`.
-## Navigation
-| Key | Action |
-| :--- | :--- |
-| `j / k` | Scroll Down / Up |
-| `Tab` | Cycle through links |
-| `Enter` | Follow selected link |
-| `b` | Go Back in history |
-| `u` | Enter new URL |
-| `q` | Quit Ricochet |
+
+
 
 ## Acknowledgments
 The low-level POSIX socket wrappers in `src/net/sys/` are adapted from the Minnow networking framework developed for Stanford University's CS144 course. These utilities are used gracefully to handle file descriptors and network interfaces.

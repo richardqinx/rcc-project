@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <fstream>
 #include <iostream>
 #include <span>
 #include <string_view>
@@ -42,13 +41,6 @@ int main( int argc, char* argv[] )
 
   ricochet::core::print_license_notice();
 
-  std::string start_url;
-  if ( args.size() < 2 ) {
-    start_url = ricochet::core::Browser::get_configured_homepage();
-  } else {
-    start_url = std::string( args[1] );
-  }
-
   if ( args.size() >= 2 && args[1] == "show" ) {
     if ( args.size() >= 3 && args[2] == "w" ) {
       ricochet::core::show_warranty();
@@ -63,9 +55,14 @@ int main( int argc, char* argv[] )
     return 1;
   }
 
-  if ( !start_url.starts_with( "http://" ) && !start_url.starts_with( "https://" ) ) {
-    start_url.insert( 0, "https://" );
+  std::string start_url;
+  if ( args.size() < 2 ) {
+    start_url = ricochet::core::Browser::get_configured_homepage();
+  } else {
+    start_url = std::string( args[1] );
   }
+
+  start_url = ricochet::core::Browser::format_url( std::move( start_url ) );
 
   try {
     return ricochet::core::Browser::run( start_url );

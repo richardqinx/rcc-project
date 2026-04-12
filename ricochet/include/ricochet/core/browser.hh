@@ -33,6 +33,7 @@ public:
   Browser( Browser&& ) = delete;
   Browser& operator=( Browser&& ) = delete;
 
+  static std::string format_url( std::string input );
   static std::string get_configured_homepage();
   static int run( std::string_view initial_url );
 };

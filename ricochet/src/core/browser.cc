@@ -412,30 +412,6 @@ void draw_view( const tui::Terminal& terminal,
   std::cout.flush();
 }
 
-std::string format_url( std::string input )
-{
-  if ( input.empty() ) {
-    return input;
-  }
-
-  if ( input.starts_with( "http://" ) || input.starts_with( "https://" ) ) {
-    return input;
-  }
-
-  const bool is_domain = input.contains( '.' ) && !input.contains( ' ' );
-  if ( is_domain ) {
-    input.insert( 0, "https://" );
-    return input;
-  }
-
-  for ( char& ch : input ) {
-    if ( ch == ' ' ) {
-      ch = '+';
-    }
-  }
-  return "https://lite.duckduckgo.com/lite/?q=" + input;
-}
-
 std::string get_url_input( const tui::Terminal& terminal )
 {
   auto [width, height] = terminal.get_size();
@@ -468,7 +444,7 @@ std::string get_url_input( const tui::Terminal& terminal )
   }
   terminal.show_cursor( false );
 
-  return format_url( std::move( input ) );
+  return Browser::format_url( std::move( input ) );
 }
 
 // std::string get_link_input( const tui::Terminal& terminal )
@@ -1002,6 +978,30 @@ std::vector<std::string> wrap_lines( const std::vector<std::string>& original_li
 }
 
 } // namespace
+
+std::string Browser::format_url( std::string input )
+{
+  if ( input.empty() ) {
+    return input;
+  }
+
+  if ( input.starts_with( "http://" ) || input.starts_with( "https://" ) ) {
+    return input;
+  }
+
+  const bool is_domain = input.contains( '.' ) && !input.contains( ' ' );
+  if ( is_domain ) {
+    input.insert( 0, "https://" );
+    return input;
+  }
+
+  for ( char& ch : input ) {
+    if ( ch == ' ' ) {
+      ch = '+';
+    }
+  }
+  return "https://lite.duckduckgo.com/lite/?q=" + input;
+}
 
 std::string Browser::get_configured_homepage()
 {
