@@ -174,24 +174,31 @@ std::string get_config_path( const std::string& filename )
   return dir + "/" + filename;
 }
 
-void load_cookies_from_file( std::unordered_map<std::string, std::string>& jar )
+using CookieJar = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
+
+void load_cookies_from_file( CookieJar& jar )
 {
   std::ifstream file( get_config_path( "cookies.txt" ) );
   if ( !file.is_open() ) {
     return;
   }
+
   std::string line;
   while ( std::getline( file, line ) ) {
-    const std::size_t tab_pos = line.find( '\t' );
-    if ( tab_pos != std::string::npos ) {
-      jar[line.substr( 0, tab_pos )] = line.substr( tab_pos + 1 );
+    const std::size_t t1 = line.find( '\t' );
+    if ( t1 == std::string::npos ) {
+      continue;
+    }
+    const std::size_t t2 = line.find( '\t', t1 + 1 );
+    if ( t2 != std::string::npos ) {
+      jar[line.substr( 0, t1 )][line.substr( t1 + 1, t2 - t1 - 1 )] = line.substr( t2 + 1 );
     }
   }
 }
 
-std::unordered_map<std::string, std::string>& get_cookie_jar()
+CookieJar& get_cookie_jar()
 {
-  static std::unordered_map<std::string, std::string> jar;
+  static CookieJar jar;
   static bool initialized = false;
   if ( !initialized ) {
     load_cookies_from_file( jar );
@@ -200,18 +207,22 @@ std::unordered_map<std::string, std::string>& get_cookie_jar()
   return jar;
 }
 
-void save_cookies_to_file( const std::unordered_map<std::string, std::string>& jar )
+void save_cookies_to_file( const CookieJar& jar )
 {
   std::ofstream file( get_config_path( "cookies.txt" ), std::ios::trunc );
   if ( !file.is_open() ) {
     return;
   }
-  for ( const auto& [k, v] : jar ) {
-    file << k << '\t' << v << '\n';
+
+  for ( const auto& [domain, cookies] : jar ) {
+    for ( const auto& [k, v] : cookies ) {
+      file << domain << '\t' << k << '\t' << v << '\n';
+    }
   }
 }
 
-void update_cookies( const std::string& raw_response )
+void update_cookies( const std::string& raw_response, // NOLINT(bugprone-easily-swappable-parameters)
+                     const std::string& host )
 {
   std::size_t pos = 0;
   bool updated = false;
@@ -231,7 +242,7 @@ void update_cookies( const std::string& raw_response )
     if ( eq_pos != std::string::npos ) {
       const std::string key = cookie_pair.substr( 0, eq_pos );
       const std::string val = cookie_pair.substr( eq_pos + 1 );
-      get_cookie_jar()[key] = val;
+      get_cookie_jar()[host][key] = val;
       updated = true;
     }
   }
@@ -240,15 +251,17 @@ void update_cookies( const std::string& raw_response )
   }
 }
 
-std::string build_cookie_header()
+std::string build_cookie_header( const std::string& host )
 {
   const auto& jar = get_cookie_jar();
-  if ( jar.empty() ) {
+  auto it = jar.find( host );
+  if ( it == jar.end() || it->second.empty() ) {
     return "";
   }
+
   std::string header = "Cookie: ";
   bool first = true;
-  for ( const auto& [k, v] : jar ) {
+  for ( const auto& [k, v] : it->second ) {
     if ( !first ) {
       header += "; ";
     }
@@ -347,7 +360,7 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
     const bool is_https = current_url.starts_with( "https://" );
     const std::string service = is_https ? "https" : "http";
 
-    const std::string cookie_header = build_cookie_header();
+    const std::string cookie_header = build_cookie_header( host );
 
     const FetchResult net_res
       = do_network_request( host, service, path, is_https, current_method, current_body, cookie_header );
@@ -360,7 +373,7 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
     const auto header_end = raw_response.find( "\r\n\r\n" );
     const std::string headers
       = ( header_end != std::string::npos ) ? raw_response.substr( 0, header_end ) : raw_response;
-    update_cookies( headers );
+    update_cookies( headers, host );
 
     if ( header_end != std::string::npos ) {
       response.body = raw_response.substr( header_end + 4 );
