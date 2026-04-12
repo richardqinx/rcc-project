@@ -154,6 +154,30 @@ bool is_heading_tag( std::string_view tag )
   return tag == "h1" || tag == "h2" || tag == "h3" || tag == "h4";
 }
 
+void render_input_node( const parser::DomNode& node,
+                        RenderResult& result,
+                        const FormContext& ctx,
+                        std::string& output )
+{
+  std::string type = extract_attr( node.tag_name, "type" );
+  const std::size_t space_pos = node.tag_name.find( ' ' );
+  const std::string base_tag
+    = ( space_pos == std::string::npos ) ? node.tag_name : node.tag_name.substr( 0, space_pos );
+  if ( base_tag == "button" && type.empty() ) {
+    type = "submit";
+  }
+  const std::string default_val = extract_attr( node.tag_name, "value" );
+  result.inputs.push_back( { extract_attr( node.tag_name, "name" ), ctx.action, ctx.method, default_val, type } );
+
+  std::string hint = build_input_hint( node.tag_name );
+  if ( base_tag == "button" ) {
+    hint = "Submit";
+  }
+  if ( hint != "hidden" ) {
+    output += " \033[7;33m[I" + std::to_string( result.inputs.size() ) + ":" + hint + "]\033[0m ";
+  }
+}
+
 void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
                   RenderResult& result,
                   FormContext ctx )
@@ -179,7 +203,7 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
   const bool is_header = is_heading_tag( base_tag );
   const bool is_link = ( base_tag == "a" );
   const bool is_list_item = ( base_tag == "li" );
-  const bool is_input = ( base_tag == "input" || base_tag == "textarea" );
+  const bool is_input = ( base_tag == "input" || base_tag == "textarea" || base_tag == "button" );
 
   if ( is_header ) {
     output += "\n\n\033[1;31m";
@@ -188,12 +212,7 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
   } else if ( is_list_item ) {
     output += "\n  • ";
   } else if ( is_input ) {
-    result.inputs.push_back( { extract_attr( node.tag_name, "name" ), ctx.action, ctx.method } );
-    const std::string hint = build_input_hint( node.tag_name );
-
-    if ( hint != "hidden" ) {
-      output += " \033[7;33m[I" + std::to_string( result.inputs.size() ) + ":" + hint + "]\033[0m ";
-    }
+    render_input_node( node, result, ctx, output );
   } else if ( base_tag == "p" || base_tag == "div" || is_header ) {
     if ( !output.empty() && output.back() != '\n' ) {
       output += "\n";

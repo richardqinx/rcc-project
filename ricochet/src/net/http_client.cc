@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <format>
 #include <string>
+#include <string_view>
 
 namespace ricochet::net {
 
@@ -169,22 +170,31 @@ struct FetchResult
 FetchResult do_network_request( const std::string& host,
                                 const std::string& service, // NOLINT(bugprone-easily-swappable-parameters)
                                 const std::string& path,    // NOLINT(bugprone-easily-swappable-parameters)
-                                bool is_https )
+                                bool is_https,
+                                const std::string& method, // NOLINT(bugprone-easily-swappable-parameters)
+                                const std::string& body )  // NOLINT(bugprone-easily-swappable-parameters)
 {
   FetchResult res;
   try {
     const Address server_addr( host, service );
-    const std::string request
-      = std::format( "GET {} HTTP/1.1\r\n"
+    std::string request
+      = std::format( "{} {} HTTP/1.1\r\n"
                      "Host: {}\r\n"
                      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                      "Chrome/124.0.0.0 Safari/537.36\r\n"
                      "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n"
                      "Accept-Language: en-US,en;q=0.9\r\n"
                      "DNT: 1\r\n"
-                     "Connection: close\r\n\r\n",
+                     "Connection: close\r\n",
+                     method,
                      path,
                      host );
+    if ( !body.empty() ) {
+      request += std::format( "Content-Length: {}\r\n"
+                              "Content-Type: application/x-www-form-urlencoded\r\n",
+                              body.length() );
+    }
+    request += "\r\n" + body;
 
     if ( is_https ) {
       SSLSocket ssl_socket;
@@ -217,10 +227,13 @@ FetchResult do_network_request( const std::string& host,
 
 } // namespace
 
-std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url ) const
+std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url, // NOLINT
+                                                            std::string_view method,
+                                                            std::string_view body ) const
 {
-  (void)this; // 完美绕过 static 方法警告，满足最严苛的 tidy 规则
   std::string current_url( url );
+  std::string current_method( method );
+  std::string current_body( body );
 
   for ( int redirect_count = 0; redirect_count < 5; ++redirect_count ) {
     const auto parsed_url = parse_url( current_url );
@@ -232,7 +245,7 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
     const bool is_https = current_url.starts_with( "https://" );
     const std::string service = is_https ? "https" : "http";
 
-    const FetchResult net_res = do_network_request( host, service, path, is_https );
+    const FetchResult net_res = do_network_request( host, service, path, is_https, current_method, current_body );
     if ( !net_res.error.empty() ) {
       return std::unexpected( net_res.error );
     }
@@ -258,6 +271,10 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
       const std::string next_url = extract_redirect_url( raw_response, is_https, host );
       if ( !next_url.empty() ) {
         current_url = next_url;
+        if ( response.status_code == 301 || response.status_code == 302 || response.status_code == 303 ) {
+          current_method = "GET";
+          current_body.clear();
+        }
         continue;
       }
     }

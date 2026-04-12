@@ -19,6 +19,7 @@
 #pragma once
 
 #include "ricochet/parser/dom_tree.hh"
+#include <string>
 
 namespace ricochet::render {
 
@@ -27,6 +28,8 @@ struct InputField
   std::string name;
   std::string action;
   std::string method;
+  std::string value {};
+  std::string type {};
 };
 struct RenderResult
 {

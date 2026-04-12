@@ -51,7 +51,9 @@ public:
    * @param url Target URL, for example "http://example.com"
    * @return Returns HttpResponse on success, returns an error message string on failure
    */
-  std::expected<HttpResponse, std::string> fetch( std::string_view url ) const;
+  std::expected<HttpResponse, std::string> fetch( std::string_view url,
+                                                  std::string_view method = "GET",
+                                                  std::string_view body = "" ) const;
 
 private:
 };

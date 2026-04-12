@@ -37,6 +37,13 @@ struct PageData
   std::string title;
 };
 
+struct HttpRequest
+{
+  std::string url {};
+  std::string method = "GET";
+  std::string body {};
+};
+
 namespace {
 
 std::string extract_title( const parser::DomNode& root_node )
@@ -79,13 +86,12 @@ std::string extract_title( const parser::DomNode& root_node )
   return "";
 }
 
-PageData load_page( std::string_view url )
+PageData load_page( const HttpRequest& req )
 {
   const net::HttpClient client;
-  auto response_result = client.fetch( url );
+  auto response_result = client.fetch( req.url, req.method, req.body );
   if ( !response_result.has_value() ) {
-    return {
-      .lines = { "[!] Failed to load: " + std::string( url ) }, .links = {}, .inputs = {}, .title = "Error" };
+    return { .lines = { "[!] Failed to load: " + req.url }, .links = {}, .inputs = {}, .title = "Error" };
   }
 
   const parser::HtmlLexer lexer;
@@ -150,7 +156,7 @@ void draw_view( const tui::Terminal& terminal,
   }
 
   std::string footer
-    = " URL: " + std::string( url ) + " | [j/k]Scroll [/]Jump [f]Follow [i]Input [H/L]History [q]Quit ";
+    = " URL: " + std::string( url ) + " | [j/k]Scroll [/]Jump [f]Follow [i]Input [r]Refresh [H/L]History [q]Quit ";
   if ( footer.size() < width ) {
     footer.append( width - footer.size(), ' ' );
   } else if ( footer.size() > width && width > 3 ) {
@@ -364,66 +370,96 @@ std::string get_terminal_input( const tui::Terminal& terminal, const std::string
   return input;
 }
 
+InputAction submit_form( const render::InputField& target_input,
+                         const std::vector<render::InputField>& inputs,
+                         const std::string& current_url,
+                         std::vector<HttpRequest>& history,
+                         std::size_t& history_idx )
+{
+  std::string body;
+  for ( const auto& in : inputs ) {
+    if ( in.action == target_input.action && !in.name.empty() && in.type != "submit" && in.type != "button" ) {
+      std::string encoded = in.value;
+      for ( char& ch : encoded ) {
+        if ( ch == ' ' ) {
+          ch = '+';
+        }
+      }
+      if ( !body.empty() ) {
+        body += "&";
+      }
+      body += in.name + "=" + encoded;
+    }
+  }
+  const std::string action
+    = target_input.action.empty() ? current_url : normalize_url( target_input.action, current_url );
+  HttpRequest next_req { .url = action, .method = "GET", .body = "" };
+  if ( target_input.method == "post" || target_input.method == "POST" ) {
+    next_req.method = "POST";
+    next_req.body = body;
+  } else {
+    const char sep = action.contains( '?' ) ? '&' : '?';
+    next_req.url += sep + body;
+  }
+  history.resize( history_idx + 1 );
+  history.push_back( next_req );
+  history_idx++;
+  return InputAction::Navigate;
+}
+
+void update_input_value( PageData& page_data, std::size_t index, const std::string& query )
+{
+  page_data.inputs[index - 1].value = query;
+  const std::string marker = "[I" + std::to_string( index ) + ":";
+  for ( auto& line : page_data.lines ) {
+    const std::size_t pos = line.find( marker );
+    if ( pos != std::string::npos ) {
+      const std::size_t end = line.find( "]", pos );
+      if ( end != std::string::npos ) {
+        line.replace( pos, end - pos + 1, "[I" + std::to_string( index ) + ":" + query + "]" );
+      }
+    }
+  }
+}
+
 InputAction handle_form_input( const tui::Terminal& terminal,
-                               const PageData& page_data,
-                               std::string& current_url,
-                               std::vector<std::string>& history,
+                               PageData& page_data,
+                               const std::string& current_url,
+                               std::vector<HttpRequest>& history,
                                std::size_t& history_idx )
 {
   const std::string num_input = get_terminal_input( terminal, "Select Input [#]:" );
   if ( num_input.empty() ) {
     return InputAction::None;
   }
-
   std::size_t index = 0;
   try {
     index = std::stoul( num_input );
   } catch ( ... ) {
-    (void)0;
+    return InputAction::None;
   }
   if ( index == 0 || index > page_data.inputs.size() ) {
     return InputAction::None;
+  }
+
+  const auto& target_input = page_data.inputs[index - 1];
+  if ( target_input.type == "submit" || target_input.type == "button" ) {
+    return submit_form( target_input, page_data.inputs, current_url, history, history_idx );
   }
 
   const std::string query = get_terminal_input( terminal, "Enter Text [I" + std::to_string( index ) + "]:" );
   if ( query.empty() ) {
     return InputAction::None;
   }
-
-  const auto& target_input = page_data.inputs[index - 1];
-  std::string encoded_query = query;
-  for ( char& ch : encoded_query ) {
-    if ( ch == ' ' ) {
-      ch = '+';
-    }
-  }
-
-  std::string action = target_input.action;
-  if ( action.empty() ) {
-    action = current_url;
-  } else {
-    action = normalize_url( action, current_url );
-  }
-
-  std::string param_name = target_input.name;
-  if ( param_name.empty() ) {
-    param_name = "q";
-  }
-
-  const char sep = action.contains( '?' ) ? '&' : '?';
-  const std::string target_url = action + sep + param_name + "=" + encoded_query;
-
-  history.resize( history_idx + 1 );
-  history.push_back( target_url );
-  history_idx++;
-  return InputAction::Navigate;
+  update_input_value( page_data, index, query );
+  return InputAction::None;
 }
 
 InputAction process_key( char c,
                          const tui::Terminal& terminal,
-                         const PageData& page_data,
-                         std::string& current_url,
-                         std::vector<std::string>& history,
+                         PageData& page_data,
+                         std::string current_url,
+                         std::vector<HttpRequest>& history,
                          std::size_t& history_idx, // NOLINT(bugprone-easily-swappable-parameters)
                          std::size_t& scroll_y )   // NOLINT(bugprone-easily-swappable-parameters)
 {
@@ -447,12 +483,15 @@ InputAction process_key( char c,
     history_idx++;
     return InputAction::Navigate;
   }
+  if ( c == 'r' ) {
+    return InputAction::Navigate;
+  }
 
   if ( c == '/' ) {
     const std::string next_url = get_url_input( terminal );
     if ( !next_url.empty() ) {
       history.resize( history_idx + 1 );
-      history.push_back( next_url );
+      history.push_back( HttpRequest { .url = next_url, .method = "GET", .body = "" } );
       history_idx++;
       return InputAction::Navigate;
     }
@@ -464,7 +503,7 @@ InputAction process_key( char c,
     handle_follow_link( terminal, page_data.links, current_url, nav );
     if ( nav && current_url != old_url ) {
       history.resize( history_idx + 1 );
-      history.push_back( current_url );
+      history.push_back( HttpRequest { .url = current_url, .method = "GET", .body = "" } );
       history_idx++;
       return InputAction::Navigate;
     }
@@ -513,19 +552,20 @@ std::vector<std::string> wrap_lines( const std::vector<std::string>& original_li
 
 int Browser::run( std::string_view initial_url )
 {
-  std::vector<std::string> history;
-  history.emplace_back( initial_url );
+  std::vector<HttpRequest> history;
+  history.emplace_back( HttpRequest { .url = std::string( initial_url ), .method = "GET", .body = "" } );
   std::size_t history_idx = 0;
   const tui::Terminal terminal;
   terminal.show_cursor( false );
 
   while ( true ) {
-    std::string current_url = history[history_idx];
+    const HttpRequest current_req = history[history_idx];
+    const std::string current_url = current_req.url;
     terminal.clear_screen();
-    std::cout << "-> Fetching: " << current_url << "...\r\n";
+    std::cout << "-> Fetching: " << current_req.url << "...\r\n";
     std::cout.flush();
 
-    auto page_data = load_page( current_url );
+    auto page_data = load_page( current_req );
 
     auto [term_width, term_height] = terminal.get_size();
     const std::size_t wrap_width = ( term_width > 1 ) ? ( term_width - 1 ) : 80;
