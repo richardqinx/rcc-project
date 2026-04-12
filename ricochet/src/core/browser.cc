@@ -23,10 +23,12 @@
 #include "ricochet/render/renderer.hh"
 #include "ricochet/tui/terminal.hh"
 #include <cstddef>
+#include <cstdlib>
 #include <exception>
 #include <fstream>
 #include <iostream>
 #include <ranges>
+#include <sys/stat.h>
 
 namespace ricochet::core {
 
@@ -46,6 +48,14 @@ struct HttpRequest
 };
 
 namespace {
+
+std::string get_config_path( const std::string& filename )
+{
+  const char* home = std::getenv( "HOME" ); // NOLINT(concurrency-mt-unsafe)
+  const std::string dir = ( home != nullptr ) ? std::string( home ) + "/.ricochet" : ".ricochet";
+  static_cast<void>( mkdir( dir.c_str(), 0755 ) );
+  return dir + "/" + filename;
+}
 
 std::string extract_title( const parser::DomNode& root_node )
 {
@@ -93,7 +103,7 @@ void save_bookmark( const std::string& title, // NOLINT(bugprone-easily-swappabl
   if ( url == "ricochet://bookmarks" ) {
     return;
   }
-  std::ofstream file( "bookmarks.txt", std::ios::app );
+  std::ofstream file( get_config_path( "bookmarks.txt" ), std::ios::app );
   if ( !file.is_open() ) {
     return;
   }
@@ -112,7 +122,7 @@ void save_bookmark( const std::string& title, // NOLINT(bugprone-easily-swappabl
 
 std::string generate_bookmarks_html()
 {
-  std::ifstream file( "bookmarks.txt" );
+  std::ifstream file( get_config_path( "bookmarks.txt" ) );
   std::string html = "<html><head><title>My Bookmarks</title></head><body><h1>Saved Bookmarks</h1><ul>";
   if ( !file.is_open() ) {
     html += "<li>No bookmarks found. Press 'b' on any page to add one!</li>";

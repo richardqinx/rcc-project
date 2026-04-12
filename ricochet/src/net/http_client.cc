@@ -23,9 +23,12 @@
 #include "ricochet/net/sys/socket.hh"
 
 #include <cstddef>
+#include <cstdlib>
 #include <format>
+#include <fstream>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
 #include <unordered_map>
 
 namespace ricochet::net {
@@ -163,15 +166,55 @@ std::string extract_redirect_url( const std::string& raw_response, bool is_https
   return "";
 }
 
+std::string get_config_path( const std::string& filename )
+{
+  const char* home = std::getenv( "HOME" ); // NOLINT(concurrency-mt-unsafe)
+  const std::string dir = ( home != nullptr ) ? std::string( home ) + "/.ricochet" : ".ricochet";
+  static_cast<void>( mkdir( dir.c_str(), 0755 ) );
+  return dir + "/" + filename;
+}
+
+void load_cookies_from_file( std::unordered_map<std::string, std::string>& jar )
+{
+  std::ifstream file( get_config_path( "cookies.txt" ) );
+  if ( !file.is_open() ) {
+    return;
+  }
+  std::string line;
+  while ( std::getline( file, line ) ) {
+    const std::size_t tab_pos = line.find( '\t' );
+    if ( tab_pos != std::string::npos ) {
+      jar[line.substr( 0, tab_pos )] = line.substr( tab_pos + 1 );
+    }
+  }
+}
+
 std::unordered_map<std::string, std::string>& get_cookie_jar()
 {
   static std::unordered_map<std::string, std::string> jar;
+  static bool initialized = false;
+  if ( !initialized ) {
+    load_cookies_from_file( jar );
+    initialized = true;
+  }
   return jar;
+}
+
+void save_cookies_to_file( const std::unordered_map<std::string, std::string>& jar )
+{
+  std::ofstream file( get_config_path( "cookies.txt" ), std::ios::trunc );
+  if ( !file.is_open() ) {
+    return;
+  }
+  for ( const auto& [k, v] : jar ) {
+    file << k << '\t' << v << '\n';
+  }
 }
 
 void update_cookies( const std::string& raw_response )
 {
   std::size_t pos = 0;
+  bool updated = false;
   while ( ( pos = raw_response.find( "Set-Cookie: ", pos ) ) != std::string::npos ) {
     pos += 12;
     const std::size_t end_pos = raw_response.find( '\r', pos );
@@ -189,7 +232,11 @@ void update_cookies( const std::string& raw_response )
       const std::string key = cookie_pair.substr( 0, eq_pos );
       const std::string val = cookie_pair.substr( eq_pos + 1 );
       get_cookie_jar()[key] = val;
+      updated = true;
     }
+  }
+  if ( updated ) {
+    save_cookies_to_file( get_cookie_jar() );
   }
 }
 
