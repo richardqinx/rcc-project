@@ -174,6 +174,40 @@ std::string get_config_path( const std::string& filename )
   return dir + "/" + filename;
 }
 
+struct BrowserConfig
+{
+  std::string user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/124.0.0.0 Safari/537.36";
+  std::string homepage = "https://wikipedia.org";
+};
+
+BrowserConfig& get_browser_config()
+{
+  static BrowserConfig config;
+  static bool loaded = false;
+  if ( !loaded ) {
+    std::ifstream file( get_config_path( "config.txt" ) );
+    if ( file.is_open() ) {
+      std::string line;
+      while ( std::getline( file, line ) ) {
+        const std::size_t eq = line.find( '=' );
+        if ( eq == std::string::npos ) {
+          continue;
+        }
+        const std::string key = line.substr( 0, eq );
+        const std::string val = line.substr( eq + 1 );
+        if ( key == "user_agent" ) {
+          config.user_agent = val;
+        } else if ( key == "homepage" ) {
+          config.homepage = val;
+        }
+      }
+    }
+    loaded = true;
+  }
+  return config;
+}
+
 using CookieJar = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
 
 void load_cookies_from_file( CookieJar& jar )
@@ -290,20 +324,19 @@ FetchResult do_network_request( const std::string& host,
   FetchResult res;
   try {
     const Address server_addr( host, service );
-    std::string request
-      = std::format( "{} {} HTTP/1.1\r\n"
-                     "Host: {}\r\n"
-                     "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                     "Chrome/124.0.0.0 Safari/537.36\r\n"
-                     "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n"
-                     "Accept-Language: en-US,en;q=0.9\r\n"
-                     "DNT: 1\r\n"
-                     "{}"
-                     "Connection: close\r\n",
-                     method,
-                     path,
-                     host,
-                     cookie_header );
+    std::string request = std::format( "{} {} HTTP/1.1\r\n"
+                                       "Host: {}\r\n"
+                                       "User-Agent: {}\r\n"
+                                       "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n"
+                                       "Accept-Language: en-US,en;q=0.9\r\n"
+                                       "DNT: 1\r\n"
+                                       "{}"
+                                       "Connection: close\r\n",
+                                       method,
+                                       path,
+                                       host,
+                                       get_browser_config().user_agent,
+                                       cookie_header );
     if ( !body.empty() ) {
       request += std::format( "Content-Length: {}\r\n"
                               "Content-Type: application/x-www-form-urlencoded\r\n",

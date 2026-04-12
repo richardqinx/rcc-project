@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <fstream>
 #include <iostream>
 #include <span>
 #include <string_view>
@@ -41,28 +42,27 @@ int main( int argc, char* argv[] )
 
   ricochet::core::print_license_notice();
 
+  std::string start_url;
   if ( args.size() < 2 ) {
-    std::cerr << "Error: No URL provided.\n";
+    start_url = ricochet::core::Browser::get_configured_homepage();
+  } else {
+    start_url = std::string( args[1] );
+  }
+
+  if ( args.size() >= 2 && args[1] == "show" ) {
+    if ( args.size() >= 3 && args[2] == "w" ) {
+      ricochet::core::show_warranty();
+      return 0;
+    }
+    if ( args.size() >= 3 && args[2] == "c" ) {
+      ricochet::core::show_copying();
+      return 0;
+    }
+    std::cerr << "Error: Invalid argument for show command.\n";
     print_usage( args[0] );
     return 1;
   }
 
-  const std::string_view input = args[1];
-
-  if ( input == "show" ) {
-    if ( args[2] == "w" ) {
-      ricochet::core::show_warranty();
-    } else if ( args[2] == "c" ) {
-      ricochet::core::show_copying();
-    } else {
-      std::cerr << "Error: Invalid argument for show command.\n";
-      print_usage( args[0] );
-      return 1;
-    }
-    return 0;
-  }
-
-  std::string start_url( input );
   if ( !start_url.starts_with( "http://" ) && !start_url.starts_with( "https://" ) ) {
     start_url.insert( 0, "https://" );
   }

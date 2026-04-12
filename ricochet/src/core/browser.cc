@@ -1003,6 +1003,21 @@ std::vector<std::string> wrap_lines( const std::vector<std::string>& original_li
 
 } // namespace
 
+std::string Browser::get_configured_homepage()
+{
+  std::ifstream file( get_config_path( "config.txt" ) );
+  if ( file.is_open() ) {
+    std::string line;
+    while ( std::getline( file, line ) ) {
+      const std::size_t eq = line.find( '=' );
+      if ( eq != std::string::npos && line.substr( 0, eq ) == "homepage" ) {
+        return line.substr( eq + 1 );
+      }
+    }
+  }
+  return "https://wikipedia.org";
+}
+
 int Browser::run( std::string_view initial_url )
 {
   std::vector<HttpRequest> history;
