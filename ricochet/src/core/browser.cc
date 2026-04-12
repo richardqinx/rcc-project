@@ -33,6 +33,7 @@ struct PageData
 {
   std::vector<std::string> lines;
   std::vector<std::string> links;
+  std::vector<std::string> inputs;
   std::string title;
 };
 
@@ -83,7 +84,8 @@ PageData load_page( std::string_view url )
   const net::HttpClient client;
   auto response_result = client.fetch( url );
   if ( !response_result.has_value() ) {
-    return { .lines = { "[!] Failed to load: " + std::string( url ) }, .links = {}, .title = "Error" };
+    return {
+      .lines = { "[!] Failed to load: " + std::string( url ) }, .links = {}, .inputs = {}, .title = "Error" };
   }
 
   const parser::HtmlLexer lexer;
@@ -105,7 +107,7 @@ PageData load_page( std::string_view url )
     start = end + 1;
   }
   const std::string title = extract_title( dom_root );
-  return { .lines = lines, .links = result.links, .title = title };
+  return { .lines = lines, .links = result.links, .inputs = result.inputs, .title = title };
 }
 
 void draw_view( const tui::Terminal& terminal,
@@ -147,7 +149,8 @@ void draw_view( const tui::Terminal& terminal,
     }
   }
 
-  std::string footer = " URL: " + std::string( url ) + " | [j/k]Scroll [/]Jump [f]Follow [H/L]History [q]Quit ";
+  std::string footer
+    = " URL: " + std::string( url ) + " | [j/k]Scroll [/]Jump [f]Follow [i]Input [H/L]History [q]Quit ";
   if ( footer.size() < width ) {
     footer.append( width - footer.size(), ' ' );
   } else if ( footer.size() > width && width > 3 ) {
@@ -327,6 +330,86 @@ enum class InputAction : std::uint8_t
   Navigate
 };
 
+std::string get_terminal_input( const tui::Terminal& terminal, const std::string& prompt )
+{
+  auto [width, height] = terminal.get_size();
+  terminal.move_cursor( height, 1 );
+  std::cout << "\x1b[2K\033[7m " << prompt << " \033[0m ";
+  std::cout.flush();
+
+  std::string input;
+  terminal.show_cursor( true );
+  while ( true ) {
+    const char ch = terminal.read_key();
+    if ( ch == '\r' || ch == '\n' ) {
+      break;
+    }
+    if ( ch == 27 ) {
+      input.clear();
+      break;
+    }
+    if ( ch == 127 || ch == 8 ) {
+      if ( !input.empty() ) {
+        input.pop_back();
+        std::cout << "\b \b";
+        std::cout.flush();
+      }
+    } else if ( std::isprint( static_cast<unsigned char>( ch ) ) ) {
+      input += ch;
+      std::cout << ch;
+      std::cout.flush();
+    }
+  }
+  terminal.show_cursor( false );
+  return input;
+}
+
+InputAction handle_form_input( const tui::Terminal& terminal,
+                               const PageData& page_data,
+                               std::string& current_url,
+                               std::vector<std::string>& history,
+                               std::size_t& history_idx )
+{
+  const std::string num_input = get_terminal_input( terminal, "Select Input [#]:" );
+  if ( num_input.empty() ) {
+    return InputAction::None;
+  }
+
+  std::size_t index = 0;
+  try {
+    index = std::stoul( num_input );
+  } catch ( ... ) {
+    (void)0;
+  }
+  if ( index == 0 || index > page_data.inputs.size() ) {
+    return InputAction::None;
+  }
+
+  const std::string query = get_terminal_input( terminal, "Enter Text [I" + std::to_string( index ) + "]:" );
+  if ( query.empty() ) {
+    return InputAction::None;
+  }
+
+  std::string target_url;
+  std::string encoded_query = query;
+  for ( char& ch : encoded_query ) {
+    if ( ch == ' ' ) {
+      ch = '+';
+    }
+  }
+
+  if ( current_url.contains( "wikipedia.org" ) ) {
+    target_url = "https://en.wikipedia.org/w/index.php?search=" + encoded_query;
+  } else {
+    target_url = "https://lite.duckduckgo.com/lite/?q=" + encoded_query;
+  }
+
+  history.resize( history_idx + 1 );
+  history.push_back( target_url );
+  history_idx++;
+  return InputAction::Navigate;
+}
+
 InputAction process_key( char c,
                          const tui::Terminal& terminal,
                          const PageData& page_data,
@@ -376,6 +459,10 @@ InputAction process_key( char c,
       history_idx++;
       return InputAction::Navigate;
     }
+  }
+
+  if ( c == 'i' && !page_data.inputs.empty() ) {
+    return handle_form_input( terminal, page_data, current_url, history, history_idx );
   }
   return InputAction::None;
 }

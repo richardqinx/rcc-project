@@ -26,6 +26,7 @@ struct RenderResult
 {
   std::string text {};
   std::vector<std::string> links {};
+  std::vector<std::string> inputs {};
 };
 
 class Renderer

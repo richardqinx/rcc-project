@@ -90,16 +90,28 @@ std::string extract_href( const std::string& tag_name )
   return "";
 }
 
-void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
-                  std::string& output,
-                  std::vector<std::string>& links )
+bool is_ignored_tag( std::string_view tag )
 {
+  return tag == "head" || tag == "style" || tag == "script" || tag == "meta" || tag == "title" || tag == "link";
+}
+
+bool is_heading_tag( std::string_view tag )
+{
+  return tag == "h1" || tag == "h2" || tag == "h3" || tag == "h4";
+}
+
+void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
+                  RenderResult& result )       // NOLINT(bugprone-easily-swappable-parameters)
+{
+  std::string& output = result.text;
+  std::vector<std::string>& links = result.links;
+  std::vector<std::string>& inputs = result.inputs;
+
   const std::size_t space_pos = node.tag_name.find( ' ' );
   const std::string base_tag
     = ( space_pos == std::string::npos ) ? node.tag_name : node.tag_name.substr( 0, space_pos );
 
-  if ( base_tag == "head" || base_tag == "style" || base_tag == "script" || base_tag == "meta"
-       || base_tag == "title" || base_tag == "link" ) {
+  if ( is_ignored_tag( base_tag ) ) {
     return;
   }
 
@@ -108,9 +120,10 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
     return;
   }
 
-  const bool is_header = ( base_tag == "h1" || base_tag == "h2" || base_tag == "h3" || base_tag == "h4" );
+  const bool is_header = is_heading_tag( base_tag );
   const bool is_link = ( base_tag == "a" );
   const bool is_list_item = ( base_tag == "li" );
+  const bool is_input = ( base_tag == "input" || base_tag == "textarea" );
 
   if ( is_header ) {
     output += "\n\n\033[1;31m";
@@ -118,6 +131,9 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
     output += "\033[4;34m";
   } else if ( is_list_item ) {
     output += "\n  • ";
+  } else if ( is_input ) {
+    inputs.emplace_back( "input_field" );
+    output += " \033[7;33m[I" + std::to_string( inputs.size() ) + "]\033[0m ";
   } else if ( base_tag == "p" || base_tag == "div" || is_header ) {
     if ( !output.empty() && output.back() != '\n' ) {
       output += "\n";
@@ -125,7 +141,7 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
   }
 
   for ( const auto& child : node.children ) {
-    render_node( child, output, links );
+    render_node( child, result );
   }
 
   if ( is_header ) {
@@ -161,7 +177,7 @@ RenderResult Renderer::render( // NOLINT(readability-convert-member-functions-to
   const parser::DomNode& node ) const
 {
   RenderResult result;
-  render_node( node, result.text, result.links );
+  render_node( node, result );
   return result;
 }
 
