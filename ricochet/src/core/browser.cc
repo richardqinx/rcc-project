@@ -24,6 +24,7 @@
 #include "ricochet/tui/terminal.hh"
 #include <cstddef>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <ranges>
 
@@ -86,19 +87,73 @@ std::string extract_title( const parser::DomNode& root_node )
   return "";
 }
 
+void save_bookmark( const std::string& title, // NOLINT(bugprone-easily-swappable-parameters)
+                    const std::string& url )
+{
+  if ( url == "ricochet://bookmarks" ) {
+    return;
+  }
+  std::ofstream file( "bookmarks.txt", std::ios::app );
+  if ( !file.is_open() ) {
+    return;
+  }
+
+  std::string safe_title = title;
+  if ( safe_title.empty() ) {
+    safe_title = url;
+  }
+  for ( char& c : safe_title ) {
+    if ( c == '\n' || c == '\r' || c == '\t' ) {
+      c = ' ';
+    }
+  }
+  file << url << '\t' << safe_title << '\n';
+}
+
+std::string generate_bookmarks_html()
+{
+  std::ifstream file( "bookmarks.txt" );
+  std::string html = "<html><head><title>My Bookmarks</title></head><body><h1>Saved Bookmarks</h1><ul>";
+  if ( !file.is_open() ) {
+    html += "<li>No bookmarks found. Press 'b' on any page to add one!</li>";
+  } else {
+    std::string line;
+    while ( std::getline( file, line ) ) {
+      const std::size_t tab_pos = line.find( '\t' );
+      if ( tab_pos != std::string::npos ) {
+        const std::string url = line.substr( 0, tab_pos );
+        const std::string title = line.substr( tab_pos + 1 );
+        html += "<li><a href=\"";
+        html += url;
+        html += "\">[Link] ";
+        html += title;
+        html += "</a></li>";
+      }
+    }
+  }
+  html += "</ul></body></html>";
+  return html;
+}
+
 PageData load_page( const HttpRequest& req )
 {
-  const net::HttpClient client;
-  auto response_result = client.fetch( req.url, req.method, req.body );
-  if ( !response_result.has_value() ) {
-    return { .lines = { "[!] Failed to load: " + req.url }, .links = {}, .inputs = {}, .title = "Error" };
+  std::string html_body;
+  if ( req.url == "ricochet://bookmarks" ) {
+    html_body = generate_bookmarks_html();
+  } else {
+    const net::HttpClient client;
+    auto response_result = client.fetch( req.url, req.method, req.body );
+    if ( !response_result.has_value() ) {
+      return { .lines = { "[!] Failed to load: " + req.url }, .links = {}, .inputs = {}, .title = "Error" };
+    }
+    html_body = response_result.value().body;
   }
 
   const parser::HtmlLexer lexer;
   const parser::TreeBuilder builder;
   const render::Renderer renderer;
 
-  const auto dom_root = builder.build( lexer.tokenize( response_result.value().body ) );
+  const auto dom_root = builder.build( lexer.tokenize( html_body ) );
   const render::RenderResult result = renderer.render( dom_root );
 
   std::vector<std::string> lines;
@@ -156,7 +211,7 @@ void draw_view( const tui::Terminal& terminal,
   }
 
   std::string footer
-    = " URL: " + std::string( url ) + " | [j/k]Scroll [/]Jump [f]Follow [i]Input [r]Refresh [H/L]History [q]Quit ";
+    = " URL: " + std::string( url ) + " | [j/k]Scroll [/]Jump [f]Follow [i]Input [b]Mark [B]Marks [q]Quit ";
   if ( footer.size() < width ) {
     footer.append( width - footer.size(), ' ' );
   } else if ( footer.size() > width && width > 3 ) {
@@ -536,6 +591,16 @@ InputAction process_key( char c,
     return InputAction::Navigate;
   }
   if ( c == 'r' ) {
+    return InputAction::Navigate;
+  }
+  if ( c == 'b' ) {
+    save_bookmark( page_data.title, current_url );
+    return InputAction::None;
+  }
+  if ( c == 'B' ) {
+    history.resize( history_idx + 1 );
+    history.push_back( HttpRequest { .url = "ricochet://bookmarks", .method = "GET", .body = "" } );
+    history_idx++;
     return InputAction::Navigate;
   }
 
