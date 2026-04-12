@@ -135,6 +135,53 @@ std::string generate_bookmarks_html()
   return html;
 }
 
+PageData process_binary_download( const HttpRequest& req, const net::HttpResponse& resp )
+{
+  std::string fname = "download.dat";
+  const std::size_t slash = req.url.rfind( '/' );
+  if ( slash != std::string::npos && slash + 1 < req.url.length() ) {
+    fname = req.url.substr( slash + 1 );
+    const std::size_t q_pos = fname.find( '?' );
+    if ( q_pos != std::string::npos ) {
+      fname = fname.substr( 0, q_pos );
+    }
+  }
+  if ( fname.empty() ) {
+    fname = "download.dat";
+  }
+
+  std::ofstream out( fname, std::ios::binary );
+  out.write( resp.body.data(), static_cast<std::streamsize>( resp.body.size() ) );
+  out.close();
+
+  return { .lines = { "\033[1;32m[ Download Complete ]\033[0m",
+                      "",
+                      "Saved File : " + fname,
+                      "File Type  : " + resp.content_type,
+                      "File Size  : " + std::to_string( resp.body.size() ) + " bytes",
+                      "",
+                      "Press 'H' to return to the previous page." },
+           .links = {},
+           .inputs = {},
+           .title = "Download Manager" };
+}
+
+std::vector<std::string> split_into_lines( const std::string& text )
+{
+  std::vector<std::string> lines;
+  std::size_t start = 0;
+  while ( start < text.length() ) {
+    const std::size_t end = text.find( '\n', start );
+    if ( end == std::string::npos ) {
+      lines.push_back( text.substr( start ) );
+      break;
+    }
+    lines.push_back( text.substr( start, end - start ) );
+    start = end + 1;
+  }
+  return lines;
+}
+
 PageData load_page( const HttpRequest& req )
 {
   std::string html_body;
@@ -146,6 +193,21 @@ PageData load_page( const HttpRequest& req )
     if ( !response_result.has_value() ) {
       return { .lines = { "[!] Failed to load: " + req.url }, .links = {}, .inputs = {}, .title = "Error" };
     }
+
+    const auto& resp = response_result.value();
+    std::string c_type = resp.content_type;
+    for ( char& c : c_type ) {
+      if ( c >= 'A' && c <= 'Z' ) {
+        c = static_cast<char>( c + 32 );
+      }
+    }
+
+    const bool is_text
+      = c_type.starts_with( "text/" ) || c_type.contains( "xml" ) || c_type.contains( "json" ) || c_type.empty();
+
+    if ( !is_text ) {
+      return process_binary_download( req, resp );
+    }
     html_body = response_result.value().body;
   }
 
@@ -155,20 +217,10 @@ PageData load_page( const HttpRequest& req )
 
   const auto dom_root = builder.build( lexer.tokenize( html_body ) );
   const render::RenderResult result = renderer.render( dom_root );
-
-  std::vector<std::string> lines;
-  std::size_t start = 0;
-  while ( start < result.text.length() ) {
-    const std::size_t end = result.text.find( '\n', start );
-    if ( end == std::string::npos ) {
-      lines.push_back( result.text.substr( start ) );
-      break;
-    }
-    lines.push_back( result.text.substr( start, end - start ) );
-    start = end + 1;
-  }
   const std::string title = extract_title( dom_root );
-  return { .lines = lines, .links = result.links, .inputs = result.inputs, .title = title };
+
+  return {
+    .lines = split_into_lines( result.text ), .links = result.links, .inputs = result.inputs, .title = title };
 }
 
 void draw_view( const tui::Terminal& terminal,

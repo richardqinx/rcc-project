@@ -314,6 +314,18 @@ std::expected<HttpResponse, std::string> HttpClient::fetch( std::string_view url
     const auto header_end = raw_response.find( "\r\n\r\n" );
     if ( header_end != std::string::npos ) {
       response.body = raw_response.substr( header_end + 4 );
+      const std::string headers = raw_response.substr( 0, header_end );
+      std::size_t ct_pos = headers.find( "Content-Type: " );
+      if ( ct_pos == std::string::npos ) {
+        ct_pos = headers.find( "content-type: " );
+      }
+      if ( ct_pos != std::string::npos ) {
+        ct_pos += 14;
+        const std::size_t end_pos = headers.find( '\r', ct_pos );
+        if ( end_pos != std::string::npos ) {
+          response.content_type = headers.substr( ct_pos, end_pos - ct_pos );
+        }
+      }
       if ( raw_response.size() >= 12 ) {
         try {
           response.status_code = std::stoi( raw_response.substr( 9, 3 ) );

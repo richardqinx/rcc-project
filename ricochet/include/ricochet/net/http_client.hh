@@ -33,6 +33,7 @@ struct HttpResponse
   int status_code { 0 };
   std::unordered_map<std::string, std::string> headers {};
   std::string body {};
+  std::string content_type {};
 };
 
 class HttpClient
