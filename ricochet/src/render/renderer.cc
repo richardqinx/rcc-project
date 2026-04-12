@@ -83,11 +83,14 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
 
   const bool is_header = ( base_tag == "h1" || base_tag == "h2" || base_tag == "h3" || base_tag == "h4" );
   const bool is_link = ( base_tag == "a" );
+  const bool is_list_item = ( base_tag == "li" );
 
   if ( is_header ) {
     output += "\n\n\033[1;31m";
   } else if ( is_link ) {
-    output += "\033[4;34m"; // 【核心修复】：必须是 output += ，绝对不能用 std::cout
+    output += "\033[4;34m";
+  } else if ( is_list_item ) {
+    output += "\n  • ";
   } else if ( base_tag == "p" || base_tag == "div" || is_header ) {
     if ( !output.empty() && output.back() != '\n' ) {
       output += "\n";
@@ -111,6 +114,17 @@ void render_node( const parser::DomNode& node, // NOLINT(misc-no-recursion)
 
   if ( base_tag == "h1" || base_tag == "p" || base_tag == "div" ) {
     output += "\n";
+  }
+
+  if ( base_tag == "img" ) {
+    std::size_t alt_pos = node.tag_name.find( "alt=\"" );
+    if ( alt_pos != std::string::npos ) {
+      alt_pos += 5;
+      const std::size_t alt_end = node.tag_name.find( '"', alt_pos );
+      output += " \033[90m[Image: " + node.tag_name.substr( alt_pos, alt_end - alt_pos ) + "]\033[0m ";
+    } else {
+      output += " \033[90m[IMAGE]\033[0m ";
+    }
   }
 }
 

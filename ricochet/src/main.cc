@@ -62,8 +62,13 @@ int main( int argc, char* argv[] )
     return 0;
   }
 
+  std::string start_url( input );
+  if ( !start_url.starts_with( "http://" ) && !start_url.starts_with( "https://" ) ) {
+    start_url.insert( 0, "https://" );
+  }
+
   try {
-    return ricochet::core::Browser::run( input );
+    return ricochet::core::Browser::run( start_url );
   } catch ( const std::exception& e ) {
     std::cerr << "Critical Error: " << e.what() << "\n";
     return 1;

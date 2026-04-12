@@ -44,6 +44,7 @@ Terminal::Terminal()
 
 Terminal::~Terminal()
 {
+  show_cursor( true );
   // RAII: restore terminal attributes when program exits
   tcsetattr( STDIN_FILENO, TCSAFLUSH, &original_termios_ );
 }

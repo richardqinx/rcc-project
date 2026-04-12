@@ -80,8 +80,32 @@ void draw_view( const tui::Terminal& terminal,
       std::cout << "~\r\n";
     }
   }
-  std::cout << "\033[7m URL: " << url << " | [j/k] Scroll [/] Jump [f] Follow [q] Quit \033[0m";
+  std::cout << "\033[7m URL: " << url << " | [j/k] Scroll [/] Jump [f] Follow [H/L] History [q] Quit \033[0m";
   std::cout.flush();
+}
+
+std::string format_url( std::string input )
+{
+  if ( input.empty() ) {
+    return input;
+  }
+
+  if ( input.starts_with( "http://" ) || input.starts_with( "https://" ) ) {
+    return input;
+  }
+
+  const bool is_domain = input.contains( '.' ) && !input.contains( ' ' );
+  if ( is_domain ) {
+    input.insert( 0, "https://" );
+    return input;
+  }
+
+  for ( char& ch : input ) {
+    if ( ch == ' ' ) {
+      ch = '+';
+    }
+  }
+  return "https://lite.duckduckgo.com/lite/?q=" + input;
 }
 
 std::string get_url_input( const tui::Terminal& terminal )
@@ -116,10 +140,7 @@ std::string get_url_input( const tui::Terminal& terminal )
   }
   terminal.show_cursor( false );
 
-  if ( !input.empty() && !input.starts_with( "http://" ) && !input.starts_with( "https://" ) ) {
-    input.insert( 0, "https://" );
-  }
-  return input;
+  return format_url( std::move( input ) );
 }
 
 std::string get_link_input( const tui::Terminal& terminal )
@@ -195,50 +216,100 @@ void handle_follow_link( const tui::Terminal& terminal,
   }
 }
 
+enum class InputAction : std::uint8_t
+{
+  None,
+  Quit,
+  Navigate
+};
+
+InputAction process_key( char c,
+                         const tui::Terminal& terminal,
+                         const PageData& page_data,
+                         std::string& current_url,
+                         std::vector<std::string>& history,
+                         std::size_t& history_idx, // NOLINT(bugprone-easily-swappable-parameters)
+                         std::size_t& scroll_y )   // NOLINT(bugprone-easily-swappable-parameters)
+{
+  auto [width, height] = terminal.get_size();
+  const std::size_t view_h = ( height > 1 ) ? ( height - 1 ) : 1;
+
+  if ( c == 'q' ) {
+    return InputAction::Quit;
+  }
+  if ( c == 'j' && scroll_y + view_h < page_data.lines.size() ) {
+    scroll_y++;
+  }
+  if ( c == 'k' && scroll_y > 0 ) {
+    scroll_y--;
+  }
+  if ( c == 'H' && history_idx > 0 ) {
+    history_idx--;
+    return InputAction::Navigate;
+  }
+  if ( c == 'L' && history_idx + 1 < history.size() ) {
+    history_idx++;
+    return InputAction::Navigate;
+  }
+
+  if ( c == '/' ) {
+    const std::string next_url = get_url_input( terminal );
+    if ( !next_url.empty() ) {
+      history.resize( history_idx + 1 );
+      history.push_back( next_url );
+      history_idx++;
+      return InputAction::Navigate;
+    }
+  }
+
+  if ( c == 'f' ) {
+    const std::string old_url = current_url;
+    bool nav = false;
+    handle_follow_link( terminal, page_data.links, current_url, nav );
+    if ( nav && current_url != old_url ) {
+      history.resize( history_idx + 1 );
+      history.push_back( current_url );
+      history_idx++;
+      return InputAction::Navigate;
+    }
+  }
+  return InputAction::None;
+}
+
 } // namespace
 
 int Browser::run( std::string_view initial_url )
 {
-  std::cout << "-> Fetching: " << initial_url << "...\n";
-
-  std::string current_url { initial_url };
+  std::vector<std::string> history;
+  history.emplace_back( initial_url );
+  std::size_t history_idx = 0;
   const tui::Terminal terminal;
-  terminal.clear_screen();
+  terminal.show_cursor( false );
 
-  while ( !current_url.empty() ) {
+  while ( true ) {
+    std::string current_url = history[history_idx];
+    terminal.clear_screen();
+    std::cout << "-> Fetching: " << current_url << "...\r\n";
+    std::cout.flush();
+
     auto page_data = load_page( current_url );
-    const auto& lines = page_data.lines;
-    const auto& links = page_data.links;
     std::size_t scroll_y = 0;
     bool navigate = false;
 
     while ( !navigate ) {
-      draw_view( terminal, lines, scroll_y, current_url );
-
+      draw_view( terminal, page_data.lines, scroll_y, current_url );
       const char c = terminal.read_key();
-      auto [width, height] = terminal.get_size();
-      const std::size_t view_h = ( height > 1 ) ? ( height - 1 ) : 1;
 
-      if ( c == 'q' ) {
+      const InputAction action = process_key( c, terminal, page_data, current_url, history, history_idx, scroll_y );
+      if ( action == InputAction::Quit ) {
         terminal.clear_screen();
         return 0;
       }
-      if ( c == 'j' && scroll_y + view_h < lines.size() ) {
-        scroll_y++;
-      } else if ( c == 'k' && scroll_y > 0 ) {
-        scroll_y--;
-      } else if ( c == '/' ) {
-        std::string next_url = get_url_input( terminal );
-        if ( !next_url.empty() ) {
-          current_url = std::move( next_url );
-          navigate = true;
-        }
-      } else if ( c == 'f' ) {
-        handle_follow_link( terminal, links, current_url, navigate );
+      if ( action == InputAction::Navigate ) {
+        navigate = true;
       }
     }
   }
-
   terminal.clear_screen();
   return 0;
 }
