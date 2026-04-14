@@ -35,3 +35,13 @@ install(TARGETS ricochet
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib
 )
+
+if(NOT TARGET uninstall)
+  configure_file(
+    "${PROJECT_SOURCE_DIR}/etc/cmake_uninstall.cmake.in"
+    "${PROJECT_BINARY_DIR}/cmake_uninstall.cmake"
+    IMMEDIATE @ONLY)
+
+  add_custom_target(uninstall
+    COMMAND ${CMAKE_COMMAND} -P "${PROJECT_BINARY_DIR}/cmake_uninstall.cmake")
+endif()
