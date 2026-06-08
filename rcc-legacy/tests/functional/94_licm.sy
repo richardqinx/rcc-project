@@ -1,0 +1,95 @@
+// LICM Phase A 回归覆盖:
+//   loop_invariant_global  — 全局只读 → 应被外提
+//   loop_writes_self       — 循环内写自己 → 不应外提
+//   loop_writes_other      — 循环内写"别处"的全局 → 应外提(no alias)
+//   loop_with_call         — 循环内有 call → 不应外提
+//   nested_loops           — 嵌套循环,外层不变 / 内层与外层 IV 共动
+//   array_index_dep        — 循环内对数组下标 store,可能 alias 同数组的 load → 不外提
+
+int g_const = 13;
+int g_other = 100;
+int g_writes = 5;
+int arr[16];
+
+int loop_invariant_global(int n) {
+    int s = 0;
+    int i = 0;
+    while (i < n) {
+        s = s + g_const;
+        i = i + 1;
+    }
+    return s;
+}
+
+int loop_writes_self(int n) {
+    int s = 0;
+    int i = 0;
+    while (i < n) {
+        s = s + g_writes;
+        g_writes = g_writes + 2;
+        i = i + 1;
+    }
+    return s;
+}
+
+int loop_writes_other(int n) {
+    int s = 0;
+    int i = 0;
+    while (i < n) {
+        s = s + g_const;
+        g_other = g_other + 1;
+        i = i + 1;
+    }
+    return s;
+}
+
+int leaf(int x) {
+    return x + 1;
+}
+
+int loop_with_call(int n) {
+    int s = 0;
+    int i = 0;
+    while (i < n) {
+        s = s + g_const + leaf(i);
+        i = i + 1;
+    }
+    return s;
+}
+
+int nested_loops(int n) {
+    int s = 0;
+    int i = 0;
+    while (i < n) {
+        int j = 0;
+        while (j < n) {
+            s = s + g_const;
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return s;
+}
+
+int array_index_dep(int n) {
+    int s = 0;
+    int i = 0;
+    while (i < n) {
+        arr[i] = g_const;
+        s = s + arr[0];
+        i = i + 1;
+    }
+    return s;
+}
+
+int main() {
+    putint(loop_invariant_global(10)); putch(10);   // 130
+    putint(loop_writes_self(4));       putch(10);   // 5+7+9+11=32
+    putint(g_writes);                  putch(10);   // 13
+    putint(loop_writes_other(5));      putch(10);   // 65
+    putint(g_other);                   putch(10);   // 105
+    putint(loop_with_call(4));         putch(10);   // (13+1)+(13+2)+(13+3)+(13+4)=62
+    putint(nested_loops(5));           putch(10);   // 13*25=325
+    putint(array_index_dep(3));        putch(10);   // arr[0]=13 全程, s=13+13+13=39
+    return 0;
+}

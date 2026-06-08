@@ -1,0 +1,18 @@
+// 回归用例: IRGen 二元运算类型提升必须识别浮点 RCon (c->flt=1)
+// 触发 (修前): `i * 1.0` 产 Kw mul -> isel fix_tmp_arg 断言炸
+float a;
+int main() {
+    int i;
+    i = 0;
+    while (i < 4) {
+        a = i * 1.0;
+        i = i + 1;
+    }
+    if (a > 2) {
+        putint(1);
+    } else {
+        putint(0);
+    }
+    putch(10);
+    return 0;
+}

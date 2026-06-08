@@ -1,0 +1,44 @@
+// 常量除法/取余 强度削弱回归覆盖:
+//   d ∈ {±1, ±2, ±4, ±3, ±7, ±10, ±25, ±100}
+//   x 取正、负、零
+//   div + mod 双路
+//   d = 7 命中 magic need_add 分支(M 作 i32 为负)
+
+int dump(int x, int d, int q, int r) {
+    putint(x); putch(32);
+    putint(d); putch(32);
+    putint(q); putch(32);
+    putint(r); putch(10);
+    return 0;
+}
+
+int run(int x) {
+    dump(x, 1, x / 1, x % 1);
+    dump(x, 0 - 1, x / (0 - 1), x % (0 - 1));
+    dump(x, 2, x / 2, x % 2);
+    dump(x, 0 - 2, x / (0 - 2), x % (0 - 2));
+    dump(x, 4, x / 4, x % 4);
+    dump(x, 0 - 4, x / (0 - 4), x % (0 - 4));
+    dump(x, 3, x / 3, x % 3);
+    dump(x, 0 - 3, x / (0 - 3), x % (0 - 3));
+    dump(x, 5, x / 5, x % 5);
+    dump(x, 7, x / 7, x % 7);
+    dump(x, 0 - 7, x / (0 - 7), x % (0 - 7));
+    dump(x, 10, x / 10, x % 10);
+    dump(x, 25, x / 25, x % 25);
+    dump(x, 100, x / 100, x % 100);
+    return 0;
+}
+
+int main() {
+    run(0);
+    run(1);
+    run(0 - 1);
+    run(100);
+    run(0 - 100);
+    run(2147483647);
+    run(0 - 2147483647);
+    run(123456789);
+    run(0 - 987654321);
+    return 0;
+}

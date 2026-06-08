@@ -1,0 +1,17 @@
+// 回归用例: rv64 全局符号取址走 `la` (medany), 而非 lui %hi/addi %lo (medlow)
+// 触发 (修前): bare-metal/高地址链接脚本下 R_RISCV_HI20 relocation truncated
+int g[10];
+int read_arr(int a[], int idx) {
+    return a[idx];
+}
+int main() {
+    int i;
+    i = 0;
+    while (i < 10) {
+        g[i] = i * i;
+        i = i + 1;
+    }
+    putint(read_arr(g, 7));
+    putch(10);
+    return 0;
+}
