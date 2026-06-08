@@ -1,0 +1,30 @@
+# Build
+build/
+cmake-build-*/
+.cache/
+compile_commands.json
+
+# Generated (Flex/Bison)
+*.yy.cc
+*.tab.cc
+*.tab.h
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary test outputs
+/tmp/
+*.s
+*.o
+*.elf
+
+# Data
+*.zip
+resources/
