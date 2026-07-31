@@ -1,16 +1,31 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-set(RCCBackendCodeGenTestSources CoreTypesTest.cpp)
+set(
+  RCCBackendCodeGenTestSources
+  CoreTypesTest.cpp
+  MachineValueTypesTest.cpp
+)
 
-add_executable(RCCBackendCodeGenTests ${RCCBackendCodeGenTestSources})
-rcc_backend_configure_target(RCCBackendCodeGenTests)
-target_link_libraries(RCCBackendCodeGenTests PRIVATE RCCBackend::CodeGen)
+add_executable(RCCBackendCodeGenCoreTypesTests CoreTypesTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenCoreTypesTests)
+target_link_libraries(RCCBackendCodeGenCoreTypesTests PRIVATE RCCBackend::CodeGen)
 
-add_test(NAME RCCBackend.CodeGen.CoreTypes COMMAND RCCBackendCodeGenTests)
+add_test(NAME RCCBackend.CodeGen.CoreTypes COMMAND RCCBackendCodeGenCoreTypesTests)
+
+add_executable(RCCBackendCodeGenMachineValueTypesTests MachineValueTypesTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineValueTypesTests)
+target_link_libraries(RCCBackendCodeGenMachineValueTypesTests PRIVATE RCCBackend::CodeGen)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineValueTypes
+  COMMAND RCCBackendCodeGenMachineValueTypesTests
+)
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
 )

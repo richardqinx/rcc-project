@@ -3,14 +3,20 @@
 set(
   RCCBackendCodeGenSources
   LowLevelType.cpp
+  MachineIRTypes.cpp
+  MachineMemOperand.cpp
   MachineFunctionProperties.cpp
   Register.cpp
+  RegisterMask.cpp
 )
 set(
   RCCBackendCodeGenHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineIRTypes.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionProperties.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/Register.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterMask.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/StableID.h"
 )
 
@@ -44,12 +50,18 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   ${RCCBackendCodeGenHeaders}
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
 )
