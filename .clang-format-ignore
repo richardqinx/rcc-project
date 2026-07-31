@@ -1,4 +1,11 @@
 # Do not attempt to format .td files; we have too many formatting needs across
 # the various files to allow automatic formatting.
 **/*.td
+
+# MIR and structured test inputs are compatibility fixtures, not C++ sources.
+**/*.mir
+**/test/Inputs/**
+
+# Generated files are formatted by their generator, if applicable.
+**/generated/**
 rcc-legacy/
