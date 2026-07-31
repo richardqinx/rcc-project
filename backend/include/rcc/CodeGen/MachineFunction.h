@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#ifndef RCC_CODEGEN_MACHINEFUNCTION_H
+#define RCC_CODEGEN_MACHINEFUNCTION_H
+
+#include "rcc/CodeGen/MachineFunctionProperties.h"
+#include "rcc/CodeGen/MachineRegisterInfo.h"
+#include "rcc/CodeGen/StableID.h"
+#include "rcc/Support/Error.h"
+
+#include <cstddef>
+#include <memory>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace rcc {
+
+class MachineArena;
+class MachineBasicBlock;
+class MachineCFGUpdater;
+class MachineInstr;
+class MachineMemOperand;
+struct MachineMemOperandDesc;
+class Opcode;
+
+class MachineFunction final {
+public:
+  [[nodiscard]] static Expected<std::unique_ptr<MachineFunction>>
+  create(std::string Name, MachineFunctionStableID StableID);
+
+  MachineFunction(const MachineFunction &) = delete;
+  MachineFunction &operator=(const MachineFunction &) = delete;
+  MachineFunction(MachineFunction &&) = delete;
+  MachineFunction &operator=(MachineFunction &&) = delete;
+  ~MachineFunction();
+
+  [[nodiscard]] std::string_view name() const noexcept {
+    return Name;
+  }
+
+  [[nodiscard]] MachineFunctionStableID stableID() const noexcept {
+    return StableID;
+  }
+
+  [[nodiscard]] MachineRegisterInfo &registerInfo() noexcept {
+    return RegInfo;
+  }
+
+  [[nodiscard]] const MachineRegisterInfo &registerInfo() const noexcept {
+    return RegInfo;
+  }
+
+  [[nodiscard]] MachineFunctionProperties &properties() noexcept {
+    return Properties;
+  }
+
+  [[nodiscard]] const MachineFunctionProperties &properties() const noexcept {
+    return Properties;
+  }
+
+  [[nodiscard]] Expected<MachineBasicBlock *> createBasicBlock();
+  [[nodiscard]] Expected<MachineInstr *> createInstruction(Opcode InstructionOpcode);
+  [[nodiscard]] Expected<const MachineMemOperand *>
+  createMemOperand(MachineMemOperandDesc Description);
+
+  [[nodiscard]] Expected<void> appendBlock(MachineBasicBlock &Block);
+  [[nodiscard]] Expected<void> insertBlockBefore(MachineBasicBlock &Position,
+                                                 MachineBasicBlock &Block);
+  [[nodiscard]] Expected<void> removeBlock(MachineBasicBlock &Block);
+
+  [[nodiscard]] MachineBasicBlock *firstBlock() noexcept {
+    return FirstBlock;
+  }
+
+  [[nodiscard]] const MachineBasicBlock *firstBlock() const noexcept {
+    return FirstBlock;
+  }
+
+  [[nodiscard]] MachineBasicBlock *lastBlock() noexcept {
+    return LastBlock;
+  }
+
+  [[nodiscard]] const MachineBasicBlock *lastBlock() const noexcept {
+    return LastBlock;
+  }
+
+  [[nodiscard]] std::size_t blockCount() const noexcept;
+  [[nodiscard]] std::span<MachineBasicBlock *const> allBlocks() const noexcept {
+    return AllBlocks;
+  }
+
+  [[nodiscard]] std::span<MachineInstr *const> allInstructions() const noexcept {
+    return AllInstructions;
+  }
+
+  [[nodiscard]] std::span<const MachineMemOperand *const> allMemOperands() const noexcept {
+    return AllMemOperands;
+  }
+
+  [[nodiscard]] bool ownsMemOperand(const MachineMemOperand &MemOperand) const noexcept;
+
+  [[nodiscard]] MachineCFGUpdater cfgUpdater() noexcept;
+  void renumberBlocks() noexcept;
+
+private:
+  MachineFunction(std::string Name, MachineFunctionStableID StableID);
+
+  std::string Name;
+  MachineFunctionStableID StableID;
+  MachineRegisterInfo RegInfo;
+  MachineFunctionProperties Properties;
+  MachineBasicBlock *FirstBlock = nullptr;
+  MachineBasicBlock *LastBlock = nullptr;
+  std::vector<MachineBasicBlock *> AllBlocks;
+  std::vector<MachineInstr *> AllInstructions;
+  std::vector<const MachineMemOperand *> AllMemOperands;
+  StableIDGenerator<MachineBlockStableID> BlockIDGenerator;
+  StableIDGenerator<MachineInstrStableID> InstrIDGenerator;
+  std::unique_ptr<MachineArena> Arena;
+
+  friend class MachineBasicBlock;
+  friend class MachineCFGUpdater;
+  friend class MachineInstr;
+};
+
+} // namespace rcc
+
+#endif // RCC_CODEGEN_MACHINEFUNCTION_H

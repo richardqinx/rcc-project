@@ -3,6 +3,7 @@
 set(
   RCCBackendCodeGenTestSources
   CoreTypesTest.cpp
+  MachineIRCoreTest.cpp
   MachineValueTypesTest.cpp
 )
 
@@ -21,11 +22,22 @@ add_test(
   COMMAND RCCBackendCodeGenMachineValueTypesTests
 )
 
+add_executable(RCCBackendCodeGenMachineIRCoreTests MachineIRCoreTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineIRCoreTests)
+target_link_libraries(RCCBackendCodeGenMachineIRCoreTests PRIVATE RCCBackend::CodeGen)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineIRCore
+  COMMAND RCCBackendCodeGenMachineIRCoreTests
+)
+
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
 )

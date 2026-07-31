@@ -207,6 +207,12 @@ struct MachineMemOperandDesc final {
 
 class MachineMemOperand final {
 public:
+  MachineMemOperand(const MachineMemOperand &) = default;
+  MachineMemOperand &operator=(const MachineMemOperand &) = default;
+  MachineMemOperand(MachineMemOperand &&) noexcept = default;
+  MachineMemOperand &operator=(MachineMemOperand &&) noexcept = default;
+  ~MachineMemOperand() = default;
+
   [[nodiscard]] static Expected<MachineMemOperand> create(MachineMemOperandDesc Description);
 
   [[nodiscard]] const MachineMemOperandDesc &description() const noexcept {
