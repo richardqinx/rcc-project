@@ -19,6 +19,7 @@ set(
   MachineInstr.cpp
   MachineJumpTableInfo.cpp
   MachineMemOperand.cpp
+  MachineMetadata.cpp
   MachineOperand.cpp
   MachineRegisterInfo.cpp
   MachineVerifier.cpp
@@ -50,6 +51,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineInstr.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineJumpTableInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemOperand.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMetadata.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineVerifier.h"
@@ -110,6 +112,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
@@ -141,6 +144,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"

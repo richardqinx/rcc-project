@@ -37,6 +37,9 @@ public:
     auto AttributeResult = Function.attributes().verify();
     if (!AttributeResult)
       return failWith("function attributes", AttributeResult.error());
+    auto MetadataResult = Function.metadata().verify();
+    if (!MetadataResult)
+      return failWith("machine metadata", MetadataResult.error());
     if (Function.targetState().hasValue()) {
       auto TargetStateResult = Function.targetState().verify();
       if (!TargetStateResult)

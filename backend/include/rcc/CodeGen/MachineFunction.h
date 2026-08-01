@@ -10,6 +10,7 @@
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineFunctionRecords.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
+#include "rcc/CodeGen/MachineMetadata.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/StableID.h"
 #include "rcc/CodeGen/TargetFunctionState.h"
@@ -108,6 +109,14 @@ public:
     return Records;
   }
 
+  [[nodiscard]] MachineMetadataInfo &metadata() noexcept {
+    return Metadata;
+  }
+
+  [[nodiscard]] const MachineMetadataInfo &metadata() const noexcept {
+    return Metadata;
+  }
+
   [[nodiscard]] const TargetFunctionState &targetState() const noexcept {
     return TargetState;
   }
@@ -189,6 +198,7 @@ private:
   MachineFunctionProperties Properties;
   MachineFunctionAttributes Attributes;
   MachineFunctionRecords Records;
+  MachineMetadataInfo Metadata;
   TargetFunctionState TargetState;
   MachineCompilationStatus CompilationStatus;
   MachineBasicBlock *FirstBlock = nullptr;

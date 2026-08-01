@@ -626,6 +626,10 @@ Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction 
   if (!Records)
     return std::unexpected(Records.error());
   Result.ClonedFunction->records() = std::move(*Records);
+  auto Metadata = Source.metadata().clone();
+  if (!Metadata)
+    return std::unexpected(Metadata.error());
+  Result.ClonedFunction->metadata() = std::move(*Metadata);
   Result.ClonedFunction->properties() = Source.properties();
   Result.ClonedFunction->attributes() = Source.attributes();
   auto DestinationVerification = MachineVerifier::verify(*Result.ClonedFunction, Target);
