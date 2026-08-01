@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <memory_resource>
 #include <new>
@@ -84,6 +85,19 @@ Expected<void> MachineFunction::setTargetState(TargetFunctionState State) {
     return std::unexpected(Verification.error());
   TargetState = std::move(State);
   return {};
+}
+
+Expected<std::uint32_t> MachineFunction::allocateDebugInstrNumber() {
+  if (DebugInstrNumberingCount == std::numeric_limits<std::uint32_t>::max()) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "machine debug instruction number space is exhausted");
+  }
+  ++DebugInstrNumberingCount;
+  return DebugInstrNumberingCount;
+}
+
+void MachineFunction::observeDebugInstrNumber(std::uint32_t Number) noexcept {
+  DebugInstrNumberingCount = std::max(DebugInstrNumberingCount, Number);
 }
 
 Expected<MachineBasicBlock *> MachineFunction::createBasicBlock() {

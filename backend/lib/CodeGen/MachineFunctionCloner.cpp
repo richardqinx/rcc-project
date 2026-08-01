@@ -388,6 +388,12 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
       }
       if (SourceInstruction->origin())
         NewInstruction->setOrigin(*SourceInstruction->origin());
+      if (SourceInstruction->debugInstrNumber() != 0) {
+        auto DebugNumberResult =
+            NewInstruction->setDebugInstrNumber(SourceInstruction->debugInstrNumber());
+        if (!DebugNumberResult)
+          return std::unexpected(DebugNumberResult.error());
+      }
 
       auto AppendResult = DestinationBlock->appendInstruction(*NewInstruction);
       if (!AppendResult)

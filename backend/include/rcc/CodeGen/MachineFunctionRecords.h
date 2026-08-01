@@ -18,6 +18,25 @@ namespace rcc {
 
 class MachineFunctionCloneContext;
 
+inline constexpr std::uint32_t MachineDebugMemoryOperandNumber = 1'000'000;
+
+struct MachineDebugValueReference final {
+  std::uint32_t InstructionNumber = 0;
+  std::uint32_t OperandNumber = 0;
+
+  friend constexpr bool operator==(MachineDebugValueReference Left,
+                                   MachineDebugValueReference Right) noexcept = default;
+};
+
+struct MachineDebugValueSubstitution final {
+  MachineDebugValueReference Source;
+  MachineDebugValueReference Destination;
+  SubRegIndex Subregister;
+
+  friend constexpr bool operator==(MachineDebugValueSubstitution Left,
+                                   MachineDebugValueSubstitution Right) noexcept = default;
+};
+
 struct MachineCallSiteArgument final {
   PhysicalRegister Reg;
   std::uint16_t ArgumentNumber = 0;
@@ -95,6 +114,14 @@ public:
 
   [[nodiscard]] Expected<void> addPrefetchTarget(MachinePrefetchTarget Target);
 
+  [[nodiscard]] std::span<const MachineDebugValueSubstitution>
+  debugValueSubstitutions() const noexcept {
+    return DebugValueSubstitutions;
+  }
+
+  [[nodiscard]] Expected<void>
+  addDebugValueSubstitution(MachineDebugValueSubstitution Substitution);
+
   [[nodiscard]] Expected<void> verify() const;
   [[nodiscard]] Expected<MachineFunctionRecords>
   clone(const MachineFunctionCloneContext &CloneContext) const;
@@ -107,6 +134,7 @@ private:
   std::vector<MachineCallSiteInfo> CallSites;
   std::vector<MachineCalledGlobal> CalledGlobals;
   std::vector<MachinePrefetchTarget> PrefetchTargets;
+  std::vector<MachineDebugValueSubstitution> DebugValueSubstitutions;
 };
 
 } // namespace rcc

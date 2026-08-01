@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -51,6 +52,30 @@ verifyCalleeSavedRegisters(std::span<const PhysicalRegister> Registers) {
   if (CalledGlobal.Callee.empty()) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "called-global record has an empty callee name");
+  }
+  return {};
+}
+
+[[nodiscard]] constexpr std::uint64_t
+debugReferenceKey(MachineDebugValueReference Reference) noexcept {
+  return (static_cast<std::uint64_t>(Reference.InstructionNumber) << 32U) |
+         static_cast<std::uint64_t>(Reference.OperandNumber);
+}
+
+[[nodiscard]] Expected<void>
+verifyDebugValueSubstitution(const MachineDebugValueSubstitution &Substitution) {
+  if (Substitution.Source.InstructionNumber == 0 ||
+      Substitution.Destination.InstructionNumber == 0) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "debug value substitution has a zero instruction number");
+  }
+  if (Substitution.Source.InstructionNumber == Substitution.Destination.InstructionNumber) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "debug value substitution cannot replace a value within one instruction");
+  }
+  if (Substitution.Source.OperandNumber == MachineDebugMemoryOperandNumber) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "debug value substitution cannot originate from the memory operand");
   }
   return {};
 }
@@ -102,6 +127,22 @@ Expected<void> MachineFunctionRecords::addPrefetchTarget(MachinePrefetchTarget T
   return {};
 }
 
+Expected<void>
+MachineFunctionRecords::addDebugValueSubstitution(MachineDebugValueSubstitution Substitution) {
+  auto Verification = verifyDebugValueSubstitution(Substitution);
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  if (std::ranges::any_of(DebugValueSubstitutions,
+                          [&Substitution](const MachineDebugValueSubstitution &Existing) {
+                            return Existing.Source == Substitution.Source;
+                          })) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "debug value source already has a substitution");
+  }
+  DebugValueSubstitutions.push_back(Substitution);
+  return {};
+}
+
 Expected<void> MachineFunctionRecords::verify() const {
   if (CalleeSavedRegisters) {
     auto CalleeSavedVerification = verifyCalleeSavedRegisters(*CalleeSavedRegisters);
@@ -137,6 +178,37 @@ Expected<void> MachineFunctionRecords::verify() const {
       return makeUnexpected(ErrorCode::VerificationError,
                             "prefetch target list contains a duplicate entry");
     }
+  }
+
+  std::unordered_map<std::uint64_t, std::uint64_t> DebugSubstitutionEdges;
+  for (const MachineDebugValueSubstitution &Substitution : DebugValueSubstitutions) {
+    auto SubstitutionVerification = verifyDebugValueSubstitution(Substitution);
+    if (!SubstitutionVerification)
+      return SubstitutionVerification;
+    const std::uint64_t Source = debugReferenceKey(Substitution.Source);
+    const std::uint64_t Destination = debugReferenceKey(Substitution.Destination);
+    if (!DebugSubstitutionEdges.emplace(Source, Destination).second) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "multiple debug substitutions have the same source");
+    }
+  }
+
+  std::unordered_set<std::uint64_t> CompletedDebugReferences;
+  for (const auto &Edge : DebugSubstitutionEdges) {
+    const std::uint64_t Start = Edge.first;
+    std::unordered_set<std::uint64_t> Path;
+    std::uint64_t Current = Start;
+    while (!CompletedDebugReferences.contains(Current)) {
+      const auto Position = DebugSubstitutionEdges.find(Current);
+      if (Position == DebugSubstitutionEdges.end())
+        break;
+      if (!Path.insert(Current).second) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "debug value substitutions contain a cycle");
+      }
+      Current = Position->second;
+    }
+    CompletedDebugReferences.insert(Path.begin(), Path.end());
   }
   return {};
 }
@@ -178,6 +250,11 @@ MachineFunctionRecords::clone(const MachineFunctionCloneContext &CloneContext) c
 
   for (const MachinePrefetchTarget Source : PrefetchTargets) {
     auto AddResult = Result.addPrefetchTarget(Source);
+    if (!AddResult)
+      return std::unexpected(AddResult.error());
+  }
+  for (const MachineDebugValueSubstitution Source : DebugValueSubstitutions) {
+    auto AddResult = Result.addDebugValueSubstitution(Source);
     if (!AddResult)
       return std::unexpected(AddResult.error());
   }

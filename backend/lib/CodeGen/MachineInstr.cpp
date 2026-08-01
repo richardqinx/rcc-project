@@ -8,7 +8,9 @@
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <utility>
 
@@ -28,6 +30,30 @@ Expected<void> MachineInstr::setOpcode(Opcode NewOpcode) {
     return makeUnexpected(ErrorCode::InvalidArgument, "machine opcode must be nonzero");
   InstructionOpcode = NewOpcode;
   return {};
+}
+
+Expected<void> MachineInstr::setDebugInstrNumber(std::uint64_t Number) {
+  if (Number == 0 || Number > std::numeric_limits<std::uint32_t>::max()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine debug instruction number must fit in nonzero uint32");
+  }
+  if (DebugInstrNumber != 0 && DebugInstrNumber != Number) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine instruction already has a different debug number");
+  }
+  DebugInstrNumber = static_cast<std::uint32_t>(Number);
+  OwnerFunction->observeDebugInstrNumber(DebugInstrNumber);
+  return {};
+}
+
+Expected<std::uint32_t> MachineInstr::assignDebugInstrNumber() {
+  if (DebugInstrNumber != 0)
+    return DebugInstrNumber;
+  auto Number = OwnerFunction->allocateDebugInstrNumber();
+  if (!Number)
+    return std::unexpected(Number.error());
+  DebugInstrNumber = *Number;
+  return DebugInstrNumber;
 }
 
 MachineOperand *MachineInstr::operandAt(std::size_t Index) noexcept {

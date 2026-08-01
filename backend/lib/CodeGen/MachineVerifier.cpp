@@ -396,6 +396,17 @@ private:
       if (!LinkedBlockProfileIDs.contains(Key))
         return fail("prefetch target references an unknown bb_id");
     }
+
+    if (!Records.debugValueSubstitutions().empty() &&
+        !Function.attributes().has(MachineFunctionAttribute::DebugInstrRef)) {
+      return fail("debug value substitutions require DebugInstrRef");
+    }
+    for (const MachineDebugValueSubstitution &Substitution : Records.debugValueSubstitutions()) {
+      if (Substitution.Subregister.value() != 0 &&
+          Target.registers().subRegIndex(Substitution.Subregister) == nullptr) {
+        return fail("debug value substitution references an unknown subregister index");
+      }
+    }
     return {};
   }
 
@@ -421,6 +432,14 @@ private:
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
     if (Descriptor == nullptr)
       return fail("live instruction uses an unregistered opcode");
+    if (Instruction.debugInstrNumber() != 0) {
+      if (Descriptor->Flags.has(InstructionFlag::Meta)) {
+        return fail("metadata instruction has a debug value tracking number");
+      }
+      if (!DebugInstructionNumbers.insert(Instruction.debugInstrNumber()).second) {
+        return fail("multiple instructions have the same debug value tracking number");
+      }
+    }
     auto DescriptorResult = Target.validateInstruction(Instruction, Function.registerInfo());
     if (!DescriptorResult)
       return failWith("instruction descriptor", DescriptorResult.error());
@@ -664,6 +683,7 @@ private:
   std::unordered_set<MachineInstrStableID> LinkedInstructionIDs;
   std::unordered_map<MachineInstrStableID, const MachineInstr *> LinkedInstructionsByID;
   std::unordered_set<std::uint64_t> LinkedBlockProfileIDs;
+  std::unordered_set<std::uint32_t> DebugInstructionNumbers;
   std::unordered_set<const MachineMemOperand *> RegisteredMemOperands;
   std::unordered_map<Register, std::size_t> VirtualDefCounts;
   bool HasPhi = false;

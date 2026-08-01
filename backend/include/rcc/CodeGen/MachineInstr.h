@@ -9,6 +9,7 @@
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <span>
@@ -132,6 +133,17 @@ public:
     Origin.reset();
   }
 
+  [[nodiscard]] std::uint32_t debugInstrNumber() const noexcept {
+    return DebugInstrNumber;
+  }
+
+  [[nodiscard]] Expected<void> setDebugInstrNumber(std::uint64_t Number);
+  [[nodiscard]] Expected<std::uint32_t> assignDebugInstrNumber();
+
+  void clearDebugInstrNumber() noexcept {
+    DebugInstrNumber = 0;
+  }
+
 private:
   MachineInstr(MachineFunction &OwnerFunction, Opcode InstructionOpcode,
                MachineInstrStableID StableID);
@@ -153,6 +165,7 @@ private:
   MachineInstrFlags Flags;
   std::optional<SourceLocation> Location;
   std::optional<OriginID> Origin;
+  std::uint32_t DebugInstrNumber = 0;
 
   friend class MachineArena;
   friend class MachineBasicBlock;

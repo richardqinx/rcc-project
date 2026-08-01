@@ -16,6 +16,7 @@
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
@@ -176,6 +177,8 @@ public:
 
 private:
   MachineFunction(std::string Name, MachineFunctionStableID StableID);
+  [[nodiscard]] Expected<std::uint32_t> allocateDebugInstrNumber();
+  void observeDebugInstrNumber(std::uint32_t Number) noexcept;
 
   std::string Name;
   MachineFunctionStableID StableID;
@@ -195,6 +198,7 @@ private:
   std::vector<const MachineMemOperand *> AllMemOperands;
   StableIDGenerator<MachineBlockStableID> BlockIDGenerator;
   StableIDGenerator<MachineInstrStableID> InstrIDGenerator;
+  std::uint32_t DebugInstrNumberingCount = 0;
   std::unique_ptr<MachineArena> Arena;
 
   friend class MachineBasicBlock;
