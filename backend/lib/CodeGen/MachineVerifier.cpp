@@ -54,6 +54,9 @@ public:
     auto LayoutResult = verifyBlockLayout();
     if (!LayoutResult)
       return LayoutResult;
+    auto RecordResult = verifyFunctionRecords();
+    if (!RecordResult)
+      return RecordResult;
     auto CompilationStatusResult = verifyCompilationStatus();
     if (!CompilationStatusResult)
       return CompilationStatusResult;
@@ -177,6 +180,12 @@ private:
       if (Block->denseNumber() != LayoutIndex || Block->layoutIndex() != LayoutIndex) {
         return fail("block dense number or layout index is stale");
       }
+      if (const auto &ProfileID = Block->attributes().profileID()) {
+        const std::uint64_t Key = (static_cast<std::uint64_t>(ProfileID->BaseID) << 32U) |
+                                  static_cast<std::uint64_t>(ProfileID->CloneID);
+        if (!LinkedBlockProfileIDs.insert(Key).second)
+          return fail("multiple linked blocks have the same bb_id");
+      }
 
       auto InstructionResult = verifyInstructionLayout(*Block);
       if (!InstructionResult)
@@ -237,6 +246,7 @@ private:
       if (!LinkedInstructions.insert(Instruction).second)
         return fail("instruction layout contains a cycle or duplicate instruction");
       LinkedInstructionIDs.insert(Instruction->stableID());
+      LinkedInstructionsByID.emplace(Instruction->stableID(), Instruction);
       if (Instruction->parent() != &Block || Instruction->previous() != Previous) {
         return fail("instruction parent or previous link is inconsistent");
       }
@@ -329,6 +339,62 @@ private:
           return fail("stack object lifetime references a detached or unknown instruction");
         }
       }
+    }
+    return {};
+  }
+
+  [[nodiscard]] Expected<void> verifyFunctionRecords() const {
+    const MachineFunctionRecords &Records = Function.records();
+    auto Verification = Records.verify();
+    if (!Verification)
+      return failWith("function records", Verification.error());
+
+    for (const PhysicalRegister Reg : Records.calleeSavedRegisters()) {
+      if (!Target.registers().isKnownPhysicalRegister(Reg))
+        return fail("callee-saved register list references an unknown physical register");
+    }
+
+    auto VerifyCall = [this](MachineInstrStableID ID,
+                             std::string_view Kind) -> Expected<const MachineInstr *> {
+      const auto Position = LinkedInstructionsByID.find(ID);
+      if (Position == LinkedInstructionsByID.end()) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "machine function '" + std::string(Function.name()) +
+                                  "': " + std::string(Kind) +
+                                  " references a detached or unknown instruction");
+      }
+      const InstructionDescriptor *Descriptor =
+          Target.instructionDescriptor(Position->second->opcode());
+      if (Descriptor == nullptr || !Descriptor->Flags.has(InstructionFlag::Call)) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "machine function '" + std::string(Function.name()) +
+                                  "': " + std::string(Kind) + " references a non-call instruction");
+      }
+      return Position->second;
+    };
+
+    for (const MachineCallSiteInfo &CallSite : Records.callSites()) {
+      auto Call = VerifyCall(CallSite.CallInstruction, "call-site record");
+      if (!Call)
+        return std::unexpected(Call.error());
+      for (const MachineCallSiteArgument &Argument : CallSite.ForwardedArguments) {
+        if (!Target.registers().isKnownPhysicalRegister(Argument.Reg)) {
+          return fail("call-site record references an unknown forwarded physical register");
+        }
+      }
+    }
+
+    for (const MachineCalledGlobal &CalledGlobal : Records.calledGlobals()) {
+      auto Call = VerifyCall(CalledGlobal.CallInstruction, "called-global record");
+      if (!Call)
+        return std::unexpected(Call.error());
+    }
+
+    for (const MachinePrefetchTarget &Prefetch : Records.prefetchTargets()) {
+      const std::uint64_t Key = (static_cast<std::uint64_t>(Prefetch.Block.BaseID) << 32U) |
+                                static_cast<std::uint64_t>(Prefetch.Block.CloneID);
+      if (!LinkedBlockProfileIDs.contains(Key))
+        return fail("prefetch target references an unknown bb_id");
     }
     return {};
   }
@@ -596,6 +662,8 @@ private:
   std::unordered_set<const MachineInstr *> RegisteredInstructions;
   std::unordered_set<const MachineInstr *> LinkedInstructions;
   std::unordered_set<MachineInstrStableID> LinkedInstructionIDs;
+  std::unordered_map<MachineInstrStableID, const MachineInstr *> LinkedInstructionsByID;
+  std::unordered_set<std::uint64_t> LinkedBlockProfileIDs;
   std::unordered_set<const MachineMemOperand *> RegisteredMemOperands;
   std::unordered_map<Register, std::size_t> VirtualDefCounts;
   bool HasPhi = false;

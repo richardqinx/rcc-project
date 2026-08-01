@@ -8,6 +8,7 @@
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunctionAttributes.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
+#include "rcc/CodeGen/MachineFunctionRecords.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/StableID.h"
@@ -98,6 +99,14 @@ public:
     return Attributes;
   }
 
+  [[nodiscard]] MachineFunctionRecords &records() noexcept {
+    return Records;
+  }
+
+  [[nodiscard]] const MachineFunctionRecords &records() const noexcept {
+    return Records;
+  }
+
   [[nodiscard]] const TargetFunctionState &targetState() const noexcept {
     return TargetState;
   }
@@ -176,6 +185,7 @@ private:
   MachineJumpTableInfo JumpTables;
   MachineFunctionProperties Properties;
   MachineFunctionAttributes Attributes;
+  MachineFunctionRecords Records;
   TargetFunctionState TargetState;
   MachineCompilationStatus CompilationStatus;
   MachineBasicBlock *FirstBlock = nullptr;

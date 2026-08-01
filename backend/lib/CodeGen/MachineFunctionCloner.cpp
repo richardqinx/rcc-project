@@ -616,6 +616,10 @@ Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction 
   if (!CompilationStatus)
     return std::unexpected(CompilationStatus.error());
   Result.ClonedFunction->compilationStatus() = std::move(*CompilationStatus);
+  auto Records = Source.records().clone(CloneContext);
+  if (!Records)
+    return std::unexpected(Records.error());
+  Result.ClonedFunction->records() = std::move(*Records);
   Result.ClonedFunction->properties() = Source.properties();
   Result.ClonedFunction->attributes() = Source.attributes();
   auto DestinationVerification = MachineVerifier::verify(*Result.ClonedFunction, Target);
