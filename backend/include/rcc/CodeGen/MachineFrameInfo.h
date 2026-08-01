@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEFRAMEINFO_H
 #define RCC_CODEGEN_MACHINEFRAMEINFO_H
 
+#include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/StableID.h"
@@ -95,6 +96,7 @@ struct StackObjectDesc final {
   bool IsAliased = false;
   bool AddressTaken = false;
   std::vector<StackObjectLifetimeRange> Lifetime;
+  std::optional<MachineVariableDebugInfo> DebugInfo;
   std::uint64_t TargetFlags = 0;
 
   friend bool operator==(const StackObjectDesc &Left, const StackObjectDesc &Right) = default;

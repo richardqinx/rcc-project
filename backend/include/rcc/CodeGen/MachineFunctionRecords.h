@@ -4,6 +4,7 @@
 #define RCC_CODEGEN_MACHINEFUNCTIONRECORDS_H
 
 #include "rcc/CodeGen/MachineBasicBlockAttributes.h"
+#include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/Register.h"
 #include "rcc/CodeGen/StableID.h"
 #include "rcc/Support/Error.h"
@@ -35,6 +36,14 @@ struct MachineDebugValueSubstitution final {
 
   friend constexpr bool operator==(MachineDebugValueSubstitution Left,
                                    MachineDebugValueSubstitution Right) noexcept = default;
+};
+
+struct MachineEntryValueInfo final {
+  PhysicalRegister Reg;
+  MachineVariableDebugInfo DebugInfo;
+
+  friend bool operator==(const MachineEntryValueInfo &Left,
+                         const MachineEntryValueInfo &Right) = default;
 };
 
 struct MachineCallSiteArgument final {
@@ -122,6 +131,12 @@ public:
   [[nodiscard]] Expected<void>
   addDebugValueSubstitution(MachineDebugValueSubstitution Substitution);
 
+  [[nodiscard]] std::span<const MachineEntryValueInfo> entryValues() const noexcept {
+    return EntryValues;
+  }
+
+  [[nodiscard]] Expected<void> addEntryValue(MachineEntryValueInfo EntryValue);
+
   [[nodiscard]] Expected<void> verify() const;
   [[nodiscard]] Expected<MachineFunctionRecords>
   clone(const MachineFunctionCloneContext &CloneContext) const;
@@ -135,6 +150,7 @@ private:
   std::vector<MachineCalledGlobal> CalledGlobals;
   std::vector<MachinePrefetchTarget> PrefetchTargets;
   std::vector<MachineDebugValueSubstitution> DebugValueSubstitutions;
+  std::vector<MachineEntryValueInfo> EntryValues;
 };
 
 } // namespace rcc

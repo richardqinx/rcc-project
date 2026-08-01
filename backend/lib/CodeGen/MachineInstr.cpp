@@ -148,6 +148,15 @@ Expected<void> MachineInstr::untieOperand(std::size_t Index) {
   return {};
 }
 
+Expected<void> MachineInstr::setDebugLocation(MachineDebugLocation NewLocation) {
+  if (!NewLocation.isValid()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine instruction debug location must be valid");
+  }
+  DebugLocation = std::move(NewLocation);
+  return {};
+}
+
 Expected<void> MachineInstr::addMemOperand(const MachineMemOperand &MemOperand) {
   if (!OwnerFunction->ownsMemOperand(MemOperand)) {
     return makeUnexpected(ErrorCode::InvalidArgument,

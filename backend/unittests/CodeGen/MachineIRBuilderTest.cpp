@@ -7,6 +7,7 @@
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
+#include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
@@ -208,6 +209,7 @@ void testTransactionalBuild(TestContext &Context) {
   if (!Incomplete)
     return;
   Context.expect(!Incomplete->tieOperands(0, 1) && !Incomplete->setSourceLocation({"", 0, 0, 0}) &&
+                     !Incomplete->setDebugLocation({}) &&
                      !Incomplete->setOrigin(rcc::OriginID::fromValue(0)),
                  "invalid pending metadata and tie indices must be rejected");
   Context.expect(!Incomplete->build(), "descriptor validation must reject a missing operand");
@@ -225,10 +227,27 @@ void testTransactionalBuild(TestContext &Context) {
                  "an explicit tie matching the descriptor default must be idempotent");
   Context.expect(Complete->setFlags({rcc::MachineInstrFlag::FrameSetup}).has_value(),
                  "valid instruction flags must be accepted");
+  auto InlineDebugLocation = rcc::MachineDILocation::create({
+      {
+          .Line = 11,
+          .Column = 2,
+          .Scope = rcc::MachineMetadataReference::embeddedIR(3),
+          .IsImplicitCode = false,
+          .AtomGroup = 0,
+          .AtomRank = 0,
+      },
+  });
+  Context.expect(InlineDebugLocation.has_value(),
+                 "builder debug location setup must be structurally valid");
+  if (!InlineDebugLocation)
+    return;
+  const rcc::MachineDebugLocation DebugLocation =
+      rcc::MachineDebugLocation::inlineLocation(*InlineDebugLocation);
   Context.expect(
       Complete->setSourceLocation(rcc::SourceLocation{"builder.mir", 7, 3, 1}).has_value() &&
+          Complete->setDebugLocation(DebugLocation).has_value() &&
           Complete->setOrigin(rcc::OriginID::fromValue(19)).has_value(),
-      "valid source and origin metadata must be accepted");
+      "valid parser source, debug location, and origin metadata must be accepted");
   auto Built = Complete->build();
   Context.expect(Built.has_value(), "valid pending instruction must build");
   if (!Built)
@@ -244,13 +263,14 @@ void testTransactionalBuild(TestContext &Context) {
                  "descriptor-default tie must be materialized bidirectionally");
   Context.expect(Instruction->flags().has(rcc::MachineInstrFlag::FrameSetup) &&
                      Instruction->sourceLocation() == rcc::SourceLocation{"builder.mir", 7, 3, 1} &&
+                     Instruction->debugLocation() == DebugLocation &&
                      Instruction->origin() == rcc::OriginID::fromValue(19),
                  "builder metadata must be preserved on the published instruction");
   Context.expect(Target->validateInstruction(*Instruction, Function->registerInfo()).has_value(),
                  "builder output must satisfy the shared instruction descriptor");
   Context.expect(!Complete->build(), "a successful pending builder must be single-use");
   Context.expect(!Complete->setFlags({}) && !Complete->clearSourceLocation() &&
-                     !Complete->clearOrigin(),
+                     !Complete->clearDebugLocation() && !Complete->clearOrigin(),
                  "all pending-builder mutators must reject use after publication");
   Context.expect(Function->registerInfo().verifyDefUseChains().has_value(),
                  "published builder operands must enter exact def-use chains");

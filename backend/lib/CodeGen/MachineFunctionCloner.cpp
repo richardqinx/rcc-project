@@ -386,6 +386,12 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
       if (SourceInstruction->sourceLocation()) {
         NewInstruction->setSourceLocation(*SourceInstruction->sourceLocation());
       }
+      if (SourceInstruction->debugLocation()) {
+        auto DebugLocationResult =
+            NewInstruction->setDebugLocation(*SourceInstruction->debugLocation());
+        if (!DebugLocationResult)
+          return std::unexpected(DebugLocationResult.error());
+      }
       if (SourceInstruction->origin())
         NewInstruction->setOrigin(*SourceInstruction->origin());
       if (SourceInstruction->debugInstrNumber() != 0) {

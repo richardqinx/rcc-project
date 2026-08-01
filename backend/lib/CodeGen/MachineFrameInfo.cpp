@@ -77,6 +77,11 @@ Expected<void> MachineFrameInfo::verifyDescription(const StackObjectDesc &Descri
                             "stack object lifetime boundaries must not be reused");
     }
   }
+  if (Description.DebugInfo) {
+    auto DebugInfoResult = Description.DebugInfo->verifyStructure();
+    if (!DebugInfoResult)
+      return DebugInfoResult;
+  }
   return {};
 }
 

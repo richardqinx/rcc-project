@@ -80,6 +80,14 @@ verifyDebugValueSubstitution(const MachineDebugValueSubstitution &Substitution) 
   return {};
 }
 
+[[nodiscard]] Expected<void> verifyEntryValue(const MachineEntryValueInfo &EntryValue) {
+  if (!EntryValue.Reg.isValid()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "entry-value record requires a physical register");
+  }
+  return EntryValue.DebugInfo.verifyStructure();
+}
+
 } // namespace
 
 Expected<void>
@@ -140,6 +148,14 @@ MachineFunctionRecords::addDebugValueSubstitution(MachineDebugValueSubstitution 
                           "debug value source already has a substitution");
   }
   DebugValueSubstitutions.push_back(Substitution);
+  return {};
+}
+
+Expected<void> MachineFunctionRecords::addEntryValue(MachineEntryValueInfo EntryValue) {
+  auto Verification = verifyEntryValue(EntryValue);
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  EntryValues.push_back(std::move(EntryValue));
   return {};
 }
 
@@ -210,6 +226,12 @@ Expected<void> MachineFunctionRecords::verify() const {
     }
     CompletedDebugReferences.insert(Path.begin(), Path.end());
   }
+
+  for (const MachineEntryValueInfo &EntryValue : EntryValues) {
+    auto EntryValueVerification = verifyEntryValue(EntryValue);
+    if (!EntryValueVerification)
+      return EntryValueVerification;
+  }
   return {};
 }
 
@@ -255,6 +277,11 @@ MachineFunctionRecords::clone(const MachineFunctionCloneContext &CloneContext) c
   }
   for (const MachineDebugValueSubstitution Source : DebugValueSubstitutions) {
     auto AddResult = Result.addDebugValueSubstitution(Source);
+    if (!AddResult)
+      return std::unexpected(AddResult.error());
+  }
+  for (const MachineEntryValueInfo &Source : EntryValues) {
+    auto AddResult = Result.addEntryValue(Source);
     if (!AddResult)
       return std::unexpected(AddResult.error());
   }

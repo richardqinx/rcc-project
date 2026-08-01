@@ -5,6 +5,7 @@
 #include "Target/TestTarget.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
+#include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
@@ -14,6 +15,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -120,6 +122,8 @@ void testValueValidation(TestContext &Context) {
                      .Flags = 0,
                  }),
                  "a called-global record must require a nonempty callee");
+  Context.expect(!Records.addEntryValue({}),
+                 "an entry-value record must require a physical register and debug metadata");
 
   const rcc::MachinePrefetchTarget Target{
       .Block = {.BaseID = 7, .CloneID = 3},
@@ -135,6 +139,9 @@ void testVerifierAndClone(TestContext &Context) {
   auto Function = createFunction(Context, 1, "records");
   if (!Target || Function == nullptr)
     return;
+  Context.expect(
+      Function->metadata().addNode({.Slot = 0, .IsDistinct = false, .Elements = {}}).has_value(),
+      "function record metadata setup must succeed");
 
   rcc::MachineBasicBlock *Block = appendBlock(Context, *Function);
   if (Block == nullptr)
@@ -175,6 +182,22 @@ void testVerifierAndClone(TestContext &Context) {
                      })
                      .has_value(),
                  "structured prefetch target information must be stored");
+  auto EntryLocation =
+      rcc::MachineDebugLocation::reference(rcc::MachineMetadataReference::embeddedIR(12));
+  Context.expect(EntryLocation.has_value(), "entry-value debug location must be representable");
+  if (!EntryLocation)
+    return;
+  const rcc::MachineEntryValueInfo EntryValue{
+      .Reg = G0,
+      .DebugInfo =
+          {
+              .Variable = rcc::MachineMetadataReference::embeddedIR(10),
+              .Expression = rcc::MachineMetadataValue::expression(rcc::MachineDIExpression{}),
+              .Location = *EntryLocation,
+          },
+  };
+  Context.expect(Function->records().addEntryValue(EntryValue).has_value(),
+                 "structured entry-value debug information must be stored");
   Context.expect(rcc::MachineVerifier::verify(*Function, *Target).has_value(),
                  "well-formed function records must pass unified verification");
 
@@ -190,24 +213,25 @@ void testVerifierAndClone(TestContext &Context) {
 
   const auto InstructionID = Clone->InstructionStableIDs.find(Call->stableID());
   const rcc::MachineFunctionRecords &ClonedRecords = Clone->ClonedFunction->records();
-  Context.expect(InstructionID != Clone->InstructionStableIDs.end() &&
-                     ClonedRecords.hasCalleeSavedRegisters() &&
-                     ClonedRecords.calleeSavedRegisters().size() == 2 &&
-                     ClonedRecords.callSites().size() == 1 &&
-                     ClonedRecords.callSites()[0].CallInstruction == InstructionID->second &&
-                     ClonedRecords.callSites()[0].ForwardedArguments.size() == 2 &&
-                     ClonedRecords.callSites()[0].ForwardedArguments[1].ArgumentNumber == 0 &&
-                     ClonedRecords.callSites()[0].CalleeTypeIDs ==
-                         std::vector<std::uint64_t>({0x11, 0x22}) &&
-                     ClonedRecords.calledGlobals().size() == 1 &&
-                     ClonedRecords.calledGlobals()[0].CallInstruction == InstructionID->second &&
-                     ClonedRecords.calledGlobals()[0].Callee == "callee" &&
-                     ClonedRecords.calledGlobals()[0].Flags == 5 &&
-                     ClonedRecords.prefetchTargets().size() == 1 &&
-                     ClonedRecords.prefetchTargets()[0].Block ==
-                         rcc::MachineBasicBlockProfileID{.BaseID = 19, .CloneID = 2} &&
-                     ClonedRecords.prefetchTargets()[0].CallsiteIndex == 8,
-                 "deep clone must preserve records and remap instruction StableIDs");
+  Context.expect(
+      InstructionID != Clone->InstructionStableIDs.end() &&
+          ClonedRecords.hasCalleeSavedRegisters() &&
+          ClonedRecords.calleeSavedRegisters().size() == 2 &&
+          ClonedRecords.callSites().size() == 1 &&
+          ClonedRecords.callSites()[0].CallInstruction == InstructionID->second &&
+          ClonedRecords.callSites()[0].ForwardedArguments.size() == 2 &&
+          ClonedRecords.callSites()[0].ForwardedArguments[1].ArgumentNumber == 0 &&
+          ClonedRecords.callSites()[0].CalleeTypeIDs == std::vector<std::uint64_t>({0x11, 0x22}) &&
+          ClonedRecords.calledGlobals().size() == 1 &&
+          ClonedRecords.calledGlobals()[0].CallInstruction == InstructionID->second &&
+          ClonedRecords.calledGlobals()[0].Callee == "callee" &&
+          ClonedRecords.calledGlobals()[0].Flags == 5 &&
+          ClonedRecords.prefetchTargets().size() == 1 &&
+          ClonedRecords.prefetchTargets()[0].Block ==
+              rcc::MachineBasicBlockProfileID{.BaseID = 19, .CloneID = 2} &&
+          ClonedRecords.prefetchTargets()[0].CallsiteIndex == 8 &&
+          ClonedRecords.entryValues().size() == 1 && ClonedRecords.entryValues()[0] == EntryValue,
+      "deep clone must preserve records and remap instruction StableIDs");
 }
 
 void testCrossReferenceFailures(TestContext &Context) {
@@ -305,6 +329,25 @@ void testCrossReferenceFailures(TestContext &Context) {
     Second->attributes().setProfileID({.BaseID = 3, .CloneID = 1});
     Context.expect(!rcc::MachineVerifier::verify(*Function, *Target),
                    "linked block bb_id values must be unique");
+  }
+
+  {
+    auto Function = createFunction(Context, 13, "entry-value-register");
+    if (Function == nullptr)
+      return;
+    Context.expect(Function->records()
+                           .addEntryValue({
+                               .Reg = phys(999),
+                               .DebugInfo =
+                                   {
+                                       .Variable = rcc::MachineMetadataReference::embeddedIR(1),
+                                       .Expression = std::nullopt,
+                                       .Location = std::nullopt,
+                                   },
+                           })
+                           .has_value() &&
+                       !rcc::MachineVerifier::verify(*Function, *Target),
+                   "entry-value records must reject target-unknown physical registers");
   }
 }
 

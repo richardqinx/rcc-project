@@ -121,6 +121,16 @@ public:
     Location.reset();
   }
 
+  [[nodiscard]] const std::optional<MachineDebugLocation> &debugLocation() const noexcept {
+    return DebugLocation;
+  }
+
+  [[nodiscard]] Expected<void> setDebugLocation(MachineDebugLocation NewLocation);
+
+  void clearDebugLocation() noexcept {
+    DebugLocation.reset();
+  }
+
   [[nodiscard]] std::optional<OriginID> origin() const noexcept {
     return Origin;
   }
@@ -164,6 +174,7 @@ private:
   std::vector<const MachineMemOperand *> MemOperands;
   MachineInstrFlags Flags;
   std::optional<SourceLocation> Location;
+  std::optional<MachineDebugLocation> DebugLocation;
   std::optional<OriginID> Origin;
   std::uint32_t DebugInstrNumber = 0;
 

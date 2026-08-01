@@ -111,4 +111,17 @@ Expected<MachineMetadataInfo> MachineMetadataInfo::clone() const {
   return Result;
 }
 
+Expected<void> verifyMachineMetadataReference(MachineMetadataReference Reference,
+                                              const MachineMetadataInfo &Metadata) {
+  if (!Reference.isValid()) {
+    return makeUnexpected(ErrorCode::VerificationError, "machine metadata reference is invalid");
+  }
+  if (Reference.scope() == MachineMetadataScope::MachineFunction &&
+      Metadata.node(Reference.slot()) == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "machine metadata reference uses an undefined function slot");
+  }
+  return {};
+}
+
 } // namespace rcc

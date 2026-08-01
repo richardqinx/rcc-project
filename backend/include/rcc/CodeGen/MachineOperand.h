@@ -4,6 +4,7 @@
 #define RCC_CODEGEN_MACHINEOPERAND_H
 
 #include "rcc/CodeGen/LowLevelType.h"
+#include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/Register.h"
 #include "rcc/CodeGen/RegisterMask.h"
@@ -176,7 +177,7 @@ struct RegisterMaskOperand final {
 };
 
 struct MetadataOperand final {
-  std::string Marker;
+  MachineMetadataValue Value;
 
   friend bool operator==(const MetadataOperand &Left, const MetadataOperand &Right) = default;
 };
@@ -247,7 +248,7 @@ public:
                                                              std::uint32_t TargetFlags = 0);
   [[nodiscard]] static Expected<MachineOperand>
   registerMask(std::shared_ptr<const RegisterMask> Mask, std::uint32_t TargetFlags = 0);
-  [[nodiscard]] static Expected<MachineOperand> metadata(std::string Marker,
+  [[nodiscard]] static Expected<MachineOperand> metadata(MachineMetadataValue Value,
                                                          std::uint32_t TargetFlags = 0);
   [[nodiscard]] static MachineOperand targetIndex(TargetIndex Index, std::int64_t Offset = 0,
                                                   std::uint32_t TargetFlags = 0);

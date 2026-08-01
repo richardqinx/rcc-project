@@ -272,6 +272,11 @@ private:
     if (Instruction.sourceLocation() && !Instruction.sourceLocation()->isValid()) {
       return fail("instruction has an invalid source location");
     }
+    if (Instruction.debugLocation()) {
+      auto DebugLocationResult = Instruction.debugLocation()->verify(Function.metadata());
+      if (!DebugLocationResult)
+        return failWith("instruction debug location", DebugLocationResult.error());
+    }
     if (Instruction.origin() && Instruction.origin()->value() == 0)
       return fail("instruction has an invalid origin ID");
 
@@ -293,9 +298,10 @@ private:
           Address != nullptr && (Address->FunctionName.empty() || Address->BlockName.empty())) {
         return fail("block-address operand has an incomplete name");
       }
-      if (const auto *Metadata = Operand.getIf<MetadataOperand>();
-          Metadata != nullptr && Metadata->Marker.empty()) {
-        return fail("metadata operand has an empty marker");
+      if (const auto *Metadata = Operand.getIf<MetadataOperand>(); Metadata != nullptr) {
+        auto MetadataResult = Metadata->Value.verify(Function.metadata());
+        if (!MetadataResult)
+          return failWith("metadata operand", MetadataResult.error());
       }
       if (const auto *Symbol = Operand.getIf<MCSymbolOperand>();
           Symbol != nullptr && Symbol->Name.empty()) {
@@ -342,6 +348,11 @@ private:
           return fail("stack object lifetime references a detached or unknown instruction");
         }
       }
+      if (Description->DebugInfo) {
+        auto DebugInfoResult = Description->DebugInfo->verify(Function.metadata());
+        if (!DebugInfoResult)
+          return failWith("stack object debug information", DebugInfoResult.error());
+      }
     }
     return {};
   }
@@ -355,6 +366,14 @@ private:
     for (const PhysicalRegister Reg : Records.calleeSavedRegisters()) {
       if (!Target.registers().isKnownPhysicalRegister(Reg))
         return fail("callee-saved register list references an unknown physical register");
+    }
+    for (const MachineEntryValueInfo &EntryValue : Records.entryValues()) {
+      if (!Target.registers().isKnownPhysicalRegister(EntryValue.Reg)) {
+        return fail("entry-value record references an unknown physical register");
+      }
+      auto DebugInfoResult = EntryValue.DebugInfo.verify(Function.metadata());
+      if (!DebugInfoResult)
+        return failWith("entry-value debug information", DebugInfoResult.error());
     }
 
     auto VerifyCall = [this](MachineInstrStableID ID,

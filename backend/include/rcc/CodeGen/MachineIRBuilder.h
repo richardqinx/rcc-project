@@ -70,7 +70,8 @@ public:
                                                std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addRegisterMask(std::shared_ptr<const RegisterMask> Mask,
                                                std::uint32_t TargetFlags = 0);
-  [[nodiscard]] Expected<void> addMetadata(std::string Marker, std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addMetadata(MachineMetadataValue Value,
+                                           std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addTargetIndex(TargetIndex Index, std::int64_t Offset = 0,
                                               std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addMCSymbol(std::string Name, std::int64_t Offset = 0,
@@ -83,6 +84,8 @@ public:
 
   [[nodiscard]] Expected<void> setSourceLocation(SourceLocation NewLocation);
   [[nodiscard]] Expected<void> clearSourceLocation();
+  [[nodiscard]] Expected<void> setDebugLocation(MachineDebugLocation NewLocation);
+  [[nodiscard]] Expected<void> clearDebugLocation();
 
   [[nodiscard]] Expected<void> setOrigin(OriginID NewOrigin);
   [[nodiscard]] Expected<void> clearOrigin();
@@ -116,6 +119,7 @@ private:
   std::vector<const MachineMemOperand *> MemOperands;
   MachineInstrFlags Flags;
   std::optional<SourceLocation> Location;
+  std::optional<MachineDebugLocation> DebugLocation;
   std::optional<OriginID> Origin;
   bool IsBuilt = false;
 

@@ -169,10 +169,18 @@ void testOperandKinds(TestContext &Context) {
   Context.expect(!rcc::MachineOperand::registerMask(nullptr),
                  "null register mask operand must be rejected");
 
-  auto Metadata = rcc::MachineOperand::metadata("source-marker");
-  Context.expect(Metadata && Metadata->kind() == rcc::MachineOperand::Kind::Metadata,
-                 "metadata operand must preserve its kind");
-  Context.expect(!rcc::MachineOperand::metadata(""), "empty metadata marker must be rejected");
+  auto MetadataReference =
+      rcc::MachineMetadataValue::reference(rcc::MachineMetadataReference::embeddedIR(0));
+  Context.expect(MetadataReference.has_value(),
+                 "a valid scoped metadata reference must form an operand value");
+  if (!MetadataReference)
+    return;
+  auto Metadata = rcc::MachineOperand::metadata(std::move(*MetadataReference));
+  Context.expect(Metadata && Metadata->kind() == rcc::MachineOperand::Kind::Metadata &&
+                     Metadata->getIf<rcc::MetadataOperand>()->Value.reference() != nullptr,
+                 "metadata operand must preserve its scoped semantic value");
+  Context.expect(!rcc::MachineOperand::metadata({}),
+                 "an unrepresented metadata operand value must be rejected");
 
   auto Target = rcc::MachineOperand::targetIndex(rcc::TargetIndex::fromValue(8), 9);
   Context.expect(Target.getIf<rcc::TargetIndexOperand>()->Offset == 9,

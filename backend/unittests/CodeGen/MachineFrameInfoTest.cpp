@@ -2,8 +2,11 @@
 
 #include "rcc/CodeGen/MachineFrameInfo.h"
 
+#include "rcc/CodeGen/MachineDebugInfo.h"
+
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <string_view>
 
 namespace {
@@ -129,6 +132,22 @@ void testInvalidDescriptions(TestContext &Context) {
       {rcc::MachineInstrStableID::fromValue(4), rcc::MachineInstrStableID::fromValue(4)});
   Context.expect(!Frame.createObject(InvalidLifetime),
                  "stack object lifetime must reject equal boundaries");
+
+  auto InvalidDebugInfo = fixedObject(8, 8);
+  InvalidDebugInfo.DebugInfo.emplace();
+  Context.expect(!Frame.createObject(InvalidDebugInfo),
+                 "stack object debug information must not be structurally empty");
+
+  auto DebugObject = fixedObject(8, 8);
+  DebugObject.DebugInfo = rcc::MachineVariableDebugInfo{
+      .Variable = rcc::MachineMetadataReference::embeddedIR(1),
+      .Expression = rcc::MachineMetadataValue::expression(rcc::MachineDIExpression{}),
+      .Location = std::nullopt,
+  };
+  auto DebugIndex = Frame.createObject(DebugObject);
+  Context.expect(DebugIndex.has_value() &&
+                     Frame.object(*DebugIndex)->description()->DebugInfo == DebugObject.DebugInfo,
+                 "stack object debug information must remain structured");
 
   Context.expect(!rcc::StackID::targetStack(4), "target stack IDs must not overlap built-in IDs");
   auto TargetStack = rcc::StackID::targetStack(256);

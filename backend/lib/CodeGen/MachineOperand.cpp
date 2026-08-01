@@ -158,11 +158,12 @@ Expected<MachineOperand> MachineOperand::registerMask(std::shared_ptr<const Regi
   return MachineOperand(Kind::RegisterMask, RegisterMaskOperand{std::move(Mask)}, TargetFlags);
 }
 
-Expected<MachineOperand> MachineOperand::metadata(std::string Marker, std::uint32_t TargetFlags) {
-  if (Marker.empty()) {
-    return makeUnexpected(ErrorCode::InvalidArgument, "metadata operand marker cannot be empty");
+Expected<MachineOperand> MachineOperand::metadata(MachineMetadataValue Value,
+                                                  std::uint32_t TargetFlags) {
+  if (!Value.isValid()) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "metadata operand value must be valid");
   }
-  return MachineOperand(Kind::Metadata, MetadataOperand{std::move(Marker)}, TargetFlags);
+  return MachineOperand(Kind::Metadata, MetadataOperand{std::move(Value)}, TargetFlags);
 }
 
 MachineOperand MachineOperand::targetIndex(TargetIndex Index, std::int64_t Offset,

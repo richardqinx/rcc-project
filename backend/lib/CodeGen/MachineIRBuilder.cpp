@@ -33,8 +33,8 @@ MachineInstrBuilder::MachineInstrBuilder(MachineInstrBuilder &&Other) noexcept
       ExplicitOperands(std::move(Other.ExplicitOperands)),
       ExtraImplicitOperands(std::move(Other.ExtraImplicitOperands)),
       RequestedTies(std::move(Other.RequestedTies)), MemOperands(std::move(Other.MemOperands)),
-      Flags(Other.Flags), Location(std::move(Other.Location)), Origin(Other.Origin),
-      IsBuilt(Other.IsBuilt) {
+      Flags(Other.Flags), Location(std::move(Other.Location)),
+      DebugLocation(std::move(Other.DebugLocation)), Origin(Other.Origin), IsBuilt(Other.IsBuilt) {
   Other.Function = nullptr;
   Other.Target = nullptr;
   Other.Descriptor = nullptr;
@@ -58,6 +58,7 @@ MachineInstrBuilder &MachineInstrBuilder::operator=(MachineInstrBuilder &&Other)
   MemOperands = std::move(Other.MemOperands);
   Flags = Other.Flags;
   Location = std::move(Other.Location);
+  DebugLocation = std::move(Other.DebugLocation);
   Origin = Other.Origin;
   IsBuilt = Other.IsBuilt;
 
@@ -219,8 +220,9 @@ Expected<void> MachineInstrBuilder::addRegisterMask(std::shared_ptr<const Regist
   return addOperand(std::move(*Operand));
 }
 
-Expected<void> MachineInstrBuilder::addMetadata(std::string Marker, std::uint32_t TargetFlags) {
-  auto Operand = MachineOperand::metadata(std::move(Marker), TargetFlags);
+Expected<void> MachineInstrBuilder::addMetadata(MachineMetadataValue Value,
+                                                std::uint32_t TargetFlags) {
+  auto Operand = MachineOperand::metadata(std::move(Value), TargetFlags);
   if (!Operand)
     return std::unexpected(Operand.error());
   return addOperand(std::move(*Operand));
@@ -298,6 +300,25 @@ Expected<void> MachineInstrBuilder::clearSourceLocation() {
   if (!Pending)
     return std::unexpected(Pending.error());
   Location.reset();
+  return {};
+}
+
+Expected<void> MachineInstrBuilder::setDebugLocation(MachineDebugLocation NewLocation) {
+  auto Pending = ensurePending();
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (!NewLocation.isValid()) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "builder debug location is invalid");
+  }
+  DebugLocation = std::move(NewLocation);
+  return {};
+}
+
+Expected<void> MachineInstrBuilder::clearDebugLocation() {
+  auto Pending = ensurePending();
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  DebugLocation.reset();
   return {};
 }
 
@@ -518,6 +539,11 @@ Expected<MachineInstr *> MachineInstrBuilder::build() {
   Result->setFlags(Flags);
   if (Location)
     Result->setSourceLocation(std::move(*Location));
+  if (DebugLocation) {
+    auto DebugLocationResult = Result->setDebugLocation(std::move(*DebugLocation));
+    if (!DebugLocationResult)
+      return std::unexpected(DebugLocationResult.error());
+  }
   if (Origin)
     Result->setOrigin(*Origin);
 

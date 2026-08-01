@@ -126,6 +126,9 @@ private:
   std::unordered_map<std::uint32_t, std::size_t> SlotToIndex;
 };
 
+[[nodiscard]] Expected<void> verifyMachineMetadataReference(MachineMetadataReference Reference,
+                                                            const MachineMetadataInfo &Metadata);
+
 } // namespace rcc
 
 #endif // RCC_CODEGEN_MACHINEMETADATA_H
