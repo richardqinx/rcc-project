@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-set(RCCBackendSupportSources Error.cpp)
+set(RCCBackendSupportSources Error.cpp TextDiagnostic.cpp YAML.cpp)
 set(
   RCCBackendSupportHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Support/Error.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Support/TextDiagnostic.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Support/YAML.h"
 )
 
 add_library(RCCBackendSupport ${RCCBackendSupportSources})
@@ -35,6 +37,12 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/Error.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TextDiagnostic.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/YAML.cpp"
   ${RCCBackendSupportHeaders}
 )
-rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/Error.cpp")
+rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/Error.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TextDiagnostic.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/YAML.cpp"
+)
