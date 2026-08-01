@@ -2,6 +2,7 @@
 
 set(
   RCCBackendCodeGenSources
+  CompilationUnit.cpp
   InstructionDescriptor.cpp
   LowLevelType.cpp
   MachineCompilationStatus.cpp
@@ -29,6 +30,7 @@ set(
 )
 set(
   RCCBackendCodeGenHeaders
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CompilationUnit.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCompilationStatus.h"
@@ -85,6 +87,7 @@ install(
 )
 
 rcc_backend_register_format_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
@@ -112,6 +115,7 @@ rcc_backend_register_format_files(
   ${RCCBackendCodeGenHeaders}
 )
 rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"

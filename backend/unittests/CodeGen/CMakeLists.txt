@@ -2,6 +2,7 @@
 
 set(
   RCCBackendCodeGenTestSources
+  CompilationUnitTest.cpp
   CoreTypesTest.cpp
   InstructionDescriptorTest.cpp
   MachineCompilationStatusTest.cpp
@@ -17,6 +18,15 @@ set(
   TargetConstantTest.cpp
   TargetFunctionStateTest.cpp
   TargetRegisterInfoTest.cpp
+)
+
+add_executable(RCCBackendCodeGenCompilationUnitTests CompilationUnitTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenCompilationUnitTests)
+target_link_libraries(RCCBackendCodeGenCompilationUnitTests PRIVATE RCCBackend::CodeGen)
+
+add_test(
+  NAME RCCBackend.CodeGen.CompilationUnit
+  COMMAND RCCBackendCodeGenCompilationUnitTests
 )
 
 add_executable(RCCBackendCodeGenCoreTypesTests CoreTypesTest.cpp)
@@ -188,6 +198,7 @@ add_test(
 )
 
 rcc_backend_register_format_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatusTest.cpp"
@@ -205,6 +216,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"
 )
 rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatusTest.cpp"

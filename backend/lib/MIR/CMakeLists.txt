@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+set(RCCBackendMIRSources EmbeddedIR.cpp)
+set(
+  RCCBackendMIRHeaders
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/EmbeddedIR.h"
+)
+
+add_library(RCCBackendMIR ${RCCBackendMIRSources})
+add_library(RCCBackend::MIR ALIAS RCCBackendMIR)
+
+rcc_backend_configure_target(RCCBackendMIR)
+
+target_include_directories(
+  RCCBackendMIR
+  PUBLIC
+    "$<BUILD_INTERFACE:${RCC_BACKEND_SOURCE_DIR}/include>"
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+)
+target_link_libraries(RCCBackendMIR PUBLIC RCCBackend::CodeGen)
+
+set_target_properties(
+  RCCBackendMIR
+  PROPERTIES
+    EXPORT_NAME MIR
+    OUTPUT_NAME RCCBackendMIR
+)
+
+install(
+  TARGETS RCCBackendMIR
+  EXPORT RCCBackendTargets
+  ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+rcc_backend_register_format_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
+  ${RCCBackendMIRHeaders}
+)
+rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp")
