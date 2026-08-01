@@ -4,12 +4,15 @@ set(
   RCCBackendCodeGenTestSources
   CoreTypesTest.cpp
   InstructionDescriptorTest.cpp
+  MachineConstantPoolTest.cpp
   MachineFrameInfoTest.cpp
   MachineFunctionClonerTest.cpp
   MachineIRBuilderTest.cpp
   MachineIRCoreTest.cpp
+  MachineJumpTableInfoTest.cpp
   MachineVerifierTest.cpp
   MachineValueTypesTest.cpp
+  TargetConstantTest.cpp
 )
 
 add_executable(RCCBackendCodeGenCoreTypesTests CoreTypesTest.cpp)
@@ -31,6 +34,15 @@ target_link_libraries(
 add_test(
   NAME RCCBackend.CodeGen.InstructionDescriptor
   COMMAND RCCBackendCodeGenInstructionDescriptorTests
+)
+
+add_executable(RCCBackendCodeGenMachineConstantPoolTests MachineConstantPoolTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineConstantPoolTests)
+target_link_libraries(RCCBackendCodeGenMachineConstantPoolTests PRIVATE RCCBackend::CodeGen)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineConstantPool
+  COMMAND RCCBackendCodeGenMachineConstantPoolTests
 )
 
 add_executable(RCCBackendCodeGenMachineFrameInfoTests MachineFrameInfoTest.cpp)
@@ -99,23 +111,47 @@ add_test(
   COMMAND RCCBackendCodeGenMachineIRCoreTests
 )
 
+add_executable(RCCBackendCodeGenMachineJumpTableInfoTests MachineJumpTableInfoTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineJumpTableInfoTests)
+target_link_libraries(RCCBackendCodeGenMachineJumpTableInfoTests PRIVATE RCCBackend::CodeGen)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineJumpTableInfo
+  COMMAND RCCBackendCodeGenMachineJumpTableInfoTests
+)
+
+add_executable(RCCBackendCodeGenTargetConstantTests TargetConstantTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenTargetConstantTests)
+target_link_libraries(RCCBackendCodeGenTargetConstantTests PRIVATE RCCBackend::CodeGen)
+
+add_test(
+  NAME RCCBackend.CodeGen.TargetConstant
+  COMMAND RCCBackendCodeGenTargetConstantTests
+)
+
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPoolTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionClonerTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilderTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPoolTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionClonerTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilderTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
 )

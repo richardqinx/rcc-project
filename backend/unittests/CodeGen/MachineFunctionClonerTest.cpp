@@ -6,17 +6,20 @@
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
+#include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -35,6 +38,8 @@ constexpr std::uint32_t CopyOpcode = 4;
 constexpr std::uint32_t FrameOpcode = 5;
 constexpr std::uint32_t BlockAddressOpcode = 6;
 constexpr std::uint32_t LoadOpcode = 7;
+constexpr std::uint32_t ConstantPoolOpcode = 8;
+constexpr std::uint32_t JumpTableOpcode = 9;
 
 class TestContext final {
 public:
@@ -106,6 +111,16 @@ private:
   Load.Flags.set(rcc::InstructionFlag::MayLoad);
   Load.RequiresMemoryOperands = true;
 
+  auto ConstantPool = instructionDescriptor(ConstantPoolOpcode, "TEST_CONSTANT_POOL");
+  rcc::OperandDescriptor ConstantPoolIndex;
+  ConstantPoolIndex.Kinds = {rcc::MachineOperand::Kind::ConstantPoolIndex};
+  ConstantPool.Operands.push_back(ConstantPoolIndex);
+
+  auto JumpTable = instructionDescriptor(JumpTableOpcode, "TEST_JUMP_TABLE");
+  rcc::OperandDescriptor JumpTableIndex;
+  JumpTableIndex.Kinds = {rcc::MachineOperand::Kind::JumpTableIndex};
+  JumpTable.Operands.push_back(JumpTableIndex);
+
   std::vector<rcc::InstructionDescriptor> Descriptors;
   Descriptors.push_back(std::move(Nop));
   Descriptors.push_back(std::move(Def));
@@ -114,6 +129,8 @@ private:
   Descriptors.push_back(std::move(Frame));
   Descriptors.push_back(std::move(BlockAddress));
   Descriptors.push_back(std::move(Load));
+  Descriptors.push_back(std::move(ConstantPool));
+  Descriptors.push_back(std::move(JumpTable));
   return rcc::InstructionSet::create(std::move(Descriptors));
 }
 
@@ -138,12 +155,12 @@ createFunction(TestContext &Context, std::string Name, std::uint64_t ID) {
   return *Block;
 }
 
-[[nodiscard]] rcc::MachineMemOperandDesc loadDescription(rcc::FrameIndex Index) {
+[[nodiscard]] rcc::MachineMemOperandDesc loadDescription(rcc::MemoryBase Base) {
   rcc::MachineMemOperandDesc Description;
   Description.Accesses = {rcc::MemoryAccessFlag::Load, rcc::MemoryAccessFlag::Dereferenceable};
   Description.Size = *rcc::MemorySize::fixed(8);
   Description.Align = *rcc::Alignment::create(8);
-  Description.Base = rcc::MemoryBase::frameIndex(Index);
+  Description.Base = std::move(Base);
   Description.Offset = -8;
   return Description;
 }
@@ -164,7 +181,9 @@ struct SourceFixture final {
   rcc::Register Value;
   rcc::Register CopyValue;
   rcc::FrameIndex StackSlot;
-  const rcc::MachineMemOperand *LoadMMO = nullptr;
+  rcc::ConstantPoolIndex Constant;
+  rcc::JumpTableIndex JumpTable;
+  std::vector<const rcc::MachineMemOperand *> LoadMMOs;
 };
 
 [[nodiscard]] bool populateSource(TestContext &Context, rcc::MachineFunction &Function,
@@ -202,6 +221,50 @@ struct SourceFixture final {
   Fixture.Exit = createBlock(Context, Function);
   if (Fixture.Entry == nullptr || Fixture.Exit == nullptr)
     return false;
+
+  rcc::MachineConstantPoolEntryDesc HistoricalConstant;
+  HistoricalConstant.Value =
+      rcc::GenericConstantData{"i32", std::vector<std::byte>(4, std::byte{1})};
+  HistoricalConstant.Size = 4;
+  HistoricalConstant.Align = *rcc::Alignment::create(4);
+  auto HistoricalConstantIndex = Function.constantPool().addEntry(std::move(HistoricalConstant));
+  Context.expect(HistoricalConstantIndex &&
+                     Function.constantPool().eraseEntry(*HistoricalConstantIndex).has_value(),
+                 "source constant pool history must contain a tombstone");
+
+  rcc::MachineConstantPoolEntryDesc Constant;
+  Constant.Value = rcc::BlockAddressConstant{std::string(Function.name()), "exit", 5};
+  Constant.Size = 8;
+  Constant.Align = *rcc::Alignment::create(8);
+  Constant.Relocation = rcc::ConstantPoolRelocationMode::Static;
+  auto ConstantIndex = Function.constantPool().addEntry(std::move(Constant));
+  Context.expect(ConstantIndex && Function.constantPool().freeze().has_value(),
+                 "source live constant pool entry must be frozen");
+  if (!ConstantIndex)
+    return false;
+  Fixture.Constant = *ConstantIndex;
+
+  rcc::MachineJumpTableDesc HistoricalJumpTable;
+  HistoricalJumpTable.EntrySize = 4;
+  HistoricalJumpTable.Align = *rcc::Alignment::create(4);
+  HistoricalJumpTable.Targets = {Fixture.Entry};
+  auto HistoricalJumpTableIndex =
+      Function.jumpTableInfo().createTable(std::move(HistoricalJumpTable));
+  Context.expect(HistoricalJumpTableIndex &&
+                     Function.jumpTableInfo().eraseTable(*HistoricalJumpTableIndex).has_value(),
+                 "source jump table history must contain a tombstone");
+
+  rcc::MachineJumpTableDesc JumpTable;
+  JumpTable.Encoding = rcc::JumpTableEntryEncoding::RelativeToTableBase;
+  JumpTable.EntrySize = 4;
+  JumpTable.Align = *rcc::Alignment::create(4);
+  JumpTable.Targets = {Fixture.Exit, Fixture.Entry, Fixture.Exit};
+  auto JumpTableIndex = Function.jumpTableInfo().createTable(std::move(JumpTable));
+  Context.expect(JumpTableIndex && Function.jumpTableInfo().freeze().has_value(),
+                 "source live jump table must be frozen");
+  if (!JumpTableIndex)
+    return false;
+  Fixture.JumpTable = *JumpTableIndex;
 
   auto Value = Function.registerInfo().createVirtualRegister(*Type);
   auto CopyValue = Function.registerInfo().createVirtualRegister(*Type);
@@ -260,20 +323,39 @@ struct SourceFixture final {
   Context.expect(Frame && Frame->addFrameIndex(Fixture.StackSlot, -8).has_value() && Frame->build(),
                  "source frame-index instruction must build");
 
+  auto ConstantPool = Builder.buildInstr(rcc::Opcode::fromValue(ConstantPoolOpcode));
+  Context.expect(ConstantPool && ConstantPool->addConstantPool(Fixture.Constant, 8).has_value() &&
+                     ConstantPool->build(),
+                 "source constant-pool instruction must build");
+
+  auto JumpTableInstruction = Builder.buildInstr(rcc::Opcode::fromValue(JumpTableOpcode));
+  Context.expect(JumpTableInstruction &&
+                     JumpTableInstruction->addJumpTable(Fixture.JumpTable).has_value() &&
+                     JumpTableInstruction->build(),
+                 "source jump-table instruction must build");
+
   auto Address = Builder.buildInstr(rcc::Opcode::fromValue(BlockAddressOpcode));
   Context.expect(
       Address && Address->addBlockAddress(std::string(Function.name()), "exit", 3).has_value() &&
           Address->build(),
       "source self block-address instruction must build");
 
-  auto MMO = Function.createMemOperand(loadDescription(Fixture.StackSlot));
-  Context.expect(MMO.has_value(), "source MMO must be created");
-  if (!MMO)
-    return false;
-  Fixture.LoadMMO = *MMO;
+  for (rcc::MemoryBase Base : {rcc::MemoryBase::frameIndex(Fixture.StackSlot),
+                               rcc::MemoryBase::constantPool(Fixture.Constant),
+                               rcc::MemoryBase::jumpTable(Fixture.JumpTable)}) {
+    auto MMO = Function.createMemOperand(loadDescription(std::move(Base)));
+    Context.expect(MMO.has_value(), "source MMO must be created");
+    if (!MMO)
+      return false;
+    Fixture.LoadMMOs.push_back(*MMO);
+  }
   auto Load = Builder.buildInstr(rcc::Opcode::fromValue(LoadOpcode));
-  Context.expect(Load && Load->addMemOperand(**MMO).has_value() && Load->build(),
-                 "source load with MMO must build");
+  if (!Load)
+    return false;
+  bool AddedAllMMOs = true;
+  for (const rcc::MachineMemOperand *MMO : Fixture.LoadMMOs)
+    AddedAllMMOs &= Load->addMemOperand(*MMO).has_value();
+  Context.expect(AddedAllMMOs && Load->build(), "source load with MMOs must build");
 
   rcc::MachineInstr *Definition = findInstruction(*Fixture.Entry, DefOpcode);
   rcc::MachineInstr *LoadInstruction = findInstruction(*Fixture.Exit, LoadOpcode);
@@ -322,13 +404,18 @@ void testDeepClone(TestContext &Context) {
                      rcc::MachineVerifier::verify(*Source, *InstructionSet).has_value(),
                  "source and destination must independently preserve valid properties");
   Context.expect(Source->allBlocks().size() == 3 && Destination.allBlocks().size() == 2 &&
-                     Source->allInstructions().size() == 7 &&
-                     Destination.allInstructions().size() == 6 &&
+                     Source->allInstructions().size() == 9 &&
+                     Destination.allInstructions().size() == 8 &&
                      Source->frameInfo().objects().size() == 2 &&
-                     Destination.frameInfo().objects().size() == 1,
+                     Destination.frameInfo().objects().size() == 1 &&
+                     Source->constantPool().entries().size() == 2 &&
+                     Destination.constantPool().entries().size() == 1 &&
+                     Source->jumpTableInfo().tables().size() == 2 &&
+                     Destination.jumpTableInfo().tables().size() == 1,
                  "clone must omit detached arena history");
-  Context.expect(Clone->BlockStableIDs.size() == 2 && Clone->InstructionStableIDs.size() == 6 &&
-                     Clone->VirtualRegisters.size() == 2,
+  Context.expect(Clone->BlockStableIDs.size() == 2 && Clone->InstructionStableIDs.size() == 8 &&
+                     Clone->VirtualRegisters.size() == 2 && Clone->FrameIndices.size() == 1 &&
+                     Clone->ConstantPoolIndices.size() == 1 && Clone->JumpTableIndices.size() == 1,
                  "clone must publish complete live identity mappings");
 
   rcc::MachineBasicBlock *DestinationEntry = Destination.firstBlock();
@@ -387,13 +474,18 @@ void testDeepClone(TestContext &Context) {
   rcc::MachineInstr *DestinationBranch = findInstruction(*DestinationEntry, BranchOpcode);
   rcc::MachineInstr *DestinationCopy = findInstruction(*DestinationExit, CopyOpcode);
   rcc::MachineInstr *DestinationFrame = findInstruction(*DestinationExit, FrameOpcode);
+  rcc::MachineInstr *DestinationConstantPool =
+      findInstruction(*DestinationExit, ConstantPoolOpcode);
+  rcc::MachineInstr *DestinationJumpTable = findInstruction(*DestinationExit, JumpTableOpcode);
   rcc::MachineInstr *DestinationAddress = findInstruction(*DestinationExit, BlockAddressOpcode);
   rcc::MachineInstr *DestinationLoad = findInstruction(*DestinationExit, LoadOpcode);
   Context.expect(DestinationDef && DestinationBranch && DestinationCopy && DestinationFrame &&
-                     DestinationAddress && DestinationLoad,
+                     DestinationConstantPool && DestinationJumpTable && DestinationAddress &&
+                     DestinationLoad,
                  "clone must preserve every live instruction");
   if (!DestinationDef || !DestinationBranch || !DestinationCopy || !DestinationFrame ||
-      !DestinationAddress || !DestinationLoad) {
+      !DestinationConstantPool || !DestinationJumpTable || !DestinationAddress ||
+      !DestinationLoad) {
     return;
   }
 
@@ -417,20 +509,73 @@ void testDeepClone(TestContext &Context) {
                      DestinationFrame->operandAt(0)->getIf<rcc::FrameIndexOperand>()->Index ==
                          FramePosition->second,
                  "clone must compact and remap frame indices");
+
+  const auto ConstantPosition = Clone->ConstantPoolIndices.find(Fixture.Constant);
+  const auto JumpTablePosition = Clone->JumpTableIndices.find(Fixture.JumpTable);
+  Context.expect(
+      ConstantPosition != Clone->ConstantPoolIndices.end() &&
+          JumpTablePosition != Clone->JumpTableIndices.end() &&
+          ConstantPosition->second == rcc::ConstantPoolIndex::fromValue(0) &&
+          JumpTablePosition->second == rcc::JumpTableIndex::fromValue(0) &&
+          DestinationConstantPool->operandAt(0)->getIf<rcc::ConstantPoolOperand>()->Index ==
+              ConstantPosition->second &&
+          DestinationJumpTable->operandAt(0)->getIf<rcc::JumpTableOperand>()->Index ==
+              JumpTablePosition->second,
+      "clone must compact and remap constant-pool and jump-table indices");
+
+  const rcc::MachineConstantPoolEntry *DestinationConstantEntry =
+      ConstantPosition == Clone->ConstantPoolIndices.end()
+          ? nullptr
+          : Destination.constantPool().entry(ConstantPosition->second);
+  const auto *DestinationPoolAddress =
+      DestinationConstantEntry == nullptr
+          ? nullptr
+          : std::get_if<rcc::BlockAddressConstant>(&DestinationConstantEntry->description()->Value);
+  Context.expect(Destination.constantPool().isFrozen() && DestinationPoolAddress != nullptr &&
+                     DestinationPoolAddress->FunctionName == "cloned_function" &&
+                     DestinationPoolAddress->BlockName == "exit",
+                 "clone must preserve frozen constant pool state and rewrite self addresses");
+
+  const rcc::MachineJumpTableEntry *DestinationJumpTableEntry =
+      JumpTablePosition == Clone->JumpTableIndices.end()
+          ? nullptr
+          : Destination.jumpTableInfo().table(JumpTablePosition->second);
+  const rcc::MachineJumpTableDesc *DestinationJumpDescription =
+      DestinationJumpTableEntry == nullptr ? nullptr : DestinationJumpTableEntry->description();
+  Context.expect(Destination.jumpTableInfo().isFrozen() && DestinationJumpDescription != nullptr &&
+                     DestinationJumpDescription->Targets.size() == 3 &&
+                     DestinationJumpDescription->Targets[0] == DestinationExit &&
+                     DestinationJumpDescription->Targets[1] == DestinationEntry &&
+                     DestinationJumpDescription->Targets[2] == DestinationExit,
+                 "clone must preserve jump-table order while remapping block targets");
+
   Context.expect(
       DestinationAddress->operandAt(0)->getIf<rcc::BlockAddressOperand>()->FunctionName ==
           "cloned_function",
       "clone must rewrite self block-address function names");
 
-  rcc::MachineMemOperandDesc ExpectedMMO = Fixture.LoadMMO->description();
-  if (FramePosition != Clone->FrameIndices.end())
-    ExpectedMMO.Base = rcc::MemoryBase::frameIndex(FramePosition->second);
-  Context.expect(DestinationLoad->memOperands().size() == 1 &&
-                     DestinationLoad->memOperands()[0] != Fixture.LoadMMO &&
-                     DestinationLoad->memOperands()[0]->description() == ExpectedMMO &&
-                     Destination.ownsMemOperand(*DestinationLoad->memOperands()[0]) &&
-                     !Source->ownsMemOperand(*DestinationLoad->memOperands()[0]),
-                 "clone must deep-copy MMO ownership while remapping frame semantics");
+  bool MMOsMatch = DestinationLoad->memOperands().size() == Fixture.LoadMMOs.size();
+  for (std::size_t Index = 0; MMOsMatch && Index < DestinationLoad->memOperands().size(); ++Index) {
+    rcc::MachineMemOperandDesc ExpectedMMO = Fixture.LoadMMOs[Index]->description();
+    if (const auto Frame = ExpectedMMO.Base.frameIndex();
+        Frame && FramePosition != Clone->FrameIndices.end()) {
+      ExpectedMMO.Base = rcc::MemoryBase::frameIndex(FramePosition->second);
+    }
+    if (const auto Constant = ExpectedMMO.Base.constantPoolIndex();
+        Constant && ConstantPosition != Clone->ConstantPoolIndices.end()) {
+      ExpectedMMO.Base = rcc::MemoryBase::constantPool(ConstantPosition->second);
+    }
+    if (const auto JumpTable = ExpectedMMO.Base.jumpTableIndex();
+        JumpTable && JumpTablePosition != Clone->JumpTableIndices.end()) {
+      ExpectedMMO.Base = rcc::MemoryBase::jumpTable(JumpTablePosition->second);
+    }
+
+    const rcc::MachineMemOperand *DestinationMMO = DestinationLoad->memOperands()[Index];
+    MMOsMatch =
+        DestinationMMO != Fixture.LoadMMOs[Index] && DestinationMMO->description() == ExpectedMMO &&
+        Destination.ownsMemOperand(*DestinationMMO) && !Source->ownsMemOperand(*DestinationMMO);
+  }
+  Context.expect(MMOsMatch, "clone must deep-copy MMO ownership while remapping every table base");
 
   const rcc::StackObject *DestinationStackSlot =
       FramePosition == Clone->FrameIndices.end()

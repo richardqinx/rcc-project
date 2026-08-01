@@ -342,6 +342,21 @@ Expected<void> MachineInstrBuilder::validateFrameReference(FrameIndex Index) con
   return {};
 }
 
+Expected<void> MachineInstrBuilder::validateConstantPoolReference(ConstantPoolIndex Index) const {
+  if (Function->constantPool().entry(Index) == nullptr) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "builder references an unknown constant pool entry");
+  }
+  return {};
+}
+
+Expected<void> MachineInstrBuilder::validateJumpTableReference(JumpTableIndex Index) const {
+  if (Function->jumpTableInfo().table(Index) == nullptr) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "builder references an unknown jump table");
+  }
+  return {};
+}
+
 Expected<void> MachineInstrBuilder::validateOperandOwnership(const MachineOperand &Operand) const {
   if (Operand.parent() != nullptr) {
     return makeUnexpected(ErrorCode::InvalidArgument,
@@ -363,6 +378,16 @@ Expected<void> MachineInstrBuilder::validateOperandOwnership(const MachineOperan
     auto FrameResult = validateFrameReference(Frame->Index);
     if (!FrameResult)
       return FrameResult;
+  }
+  if (const auto *Constant = Operand.getIf<ConstantPoolOperand>(); Constant != nullptr) {
+    auto ConstantResult = validateConstantPoolReference(Constant->Index);
+    if (!ConstantResult)
+      return ConstantResult;
+  }
+  if (const auto *JumpTable = Operand.getIf<JumpTableOperand>(); JumpTable != nullptr) {
+    auto JumpTableResult = validateJumpTableReference(JumpTable->Index);
+    if (!JumpTableResult)
+      return JumpTableResult;
   }
   return {};
 }
@@ -405,10 +430,21 @@ Expected<MachineInstr *> MachineInstrBuilder::build() {
       return std::unexpected(Ownership.error());
   }
   for (const MachineMemOperand *MemOperand : MemOperands) {
-    if (const auto Frame = MemOperand->description().Base.frameIndex()) {
+    const MemoryBase &Base = MemOperand->description().Base;
+    if (const auto Frame = Base.frameIndex()) {
       auto FrameResult = validateFrameReference(*Frame);
       if (!FrameResult)
         return std::unexpected(FrameResult.error());
+    }
+    if (const auto Constant = Base.constantPoolIndex()) {
+      auto ConstantResult = validateConstantPoolReference(*Constant);
+      if (!ConstantResult)
+        return std::unexpected(ConstantResult.error());
+    }
+    if (const auto JumpTable = Base.jumpTableIndex()) {
+      auto JumpTableResult = validateJumpTableReference(*JumpTable);
+      if (!JumpTableResult)
+        return std::unexpected(JumpTableResult.error());
     }
   }
 

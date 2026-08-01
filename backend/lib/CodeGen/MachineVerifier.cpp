@@ -40,9 +40,15 @@ public:
     auto FrameResult = Function.frameInfo().verify();
     if (!FrameResult)
       return failWith("frame info", FrameResult.error());
+    auto ConstantPoolResult = Function.constantPool().verify();
+    if (!ConstantPoolResult)
+      return failWith("constant pool", ConstantPoolResult.error());
     auto LayoutResult = verifyBlockLayout();
     if (!LayoutResult)
       return LayoutResult;
+    auto JumpTableResult = Function.jumpTableInfo().verify();
+    if (!JumpTableResult)
+      return failWith("jump table info", JumpTableResult.error());
     auto FrameLifetimeResult = verifyFrameLifetimes();
     if (!FrameLifetimeResult)
       return FrameLifetimeResult;
@@ -286,6 +292,18 @@ private:
     return {};
   }
 
+  [[nodiscard]] Expected<void> verifyConstantPoolIndex(ConstantPoolIndex Index) const {
+    if (Function.constantPool().entry(Index) == nullptr)
+      return fail("live instruction references an unknown constant pool entry");
+    return {};
+  }
+
+  [[nodiscard]] Expected<void> verifyJumpTableIndex(JumpTableIndex Index) const {
+    if (Function.jumpTableInfo().table(Index) == nullptr)
+      return fail("live instruction references an unknown jump table");
+    return {};
+  }
+
   [[nodiscard]] Expected<void> verifyFrameLifetimes() const {
     for (const StackObject &Object : Function.frameInfo().objects()) {
       const StackObjectDesc *Description = Object.description();
@@ -334,6 +352,16 @@ private:
         if (!FrameResult)
           return FrameResult;
       }
+      if (const auto *Constant = Operand.getIf<ConstantPoolOperand>(); Constant != nullptr) {
+        auto ConstantResult = verifyConstantPoolIndex(Constant->Index);
+        if (!ConstantResult)
+          return ConstantResult;
+      }
+      if (const auto *JumpTable = Operand.getIf<JumpTableOperand>(); JumpTable != nullptr) {
+        auto JumpTableResult = verifyJumpTableIndex(JumpTable->Index);
+        if (!JumpTableResult)
+          return JumpTableResult;
+      }
 
       if (const auto *Block = Operand.getIf<BasicBlockOperand>();
           Block != nullptr &&
@@ -364,10 +392,21 @@ private:
       }
     }
     for (const MachineMemOperand *MemOperand : Instruction.memOperands()) {
-      if (const auto Frame = MemOperand->description().Base.frameIndex()) {
+      const MemoryBase &Base = MemOperand->description().Base;
+      if (const auto Frame = Base.frameIndex()) {
         auto FrameResult = verifyFrameIndex(*Frame);
         if (!FrameResult)
           return FrameResult;
+      }
+      if (const auto Constant = Base.constantPoolIndex()) {
+        auto ConstantResult = verifyConstantPoolIndex(*Constant);
+        if (!ConstantResult)
+          return ConstantResult;
+      }
+      if (const auto JumpTable = Base.jumpTableIndex()) {
+        auto JumpTableResult = verifyJumpTableIndex(*JumpTable);
+        if (!JumpTableResult)
+          return JumpTableResult;
       }
     }
     return {};

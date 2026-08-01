@@ -6,10 +6,12 @@
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
+#include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 
@@ -32,6 +34,8 @@ constexpr std::uint32_t PhiOpcode = 5;
 constexpr std::uint32_t FrameOpcode = 6;
 constexpr std::uint32_t PseudoOpcode = 7;
 constexpr std::uint32_t NopOpcode = 8;
+constexpr std::uint32_t ConstantPoolOpcode = 9;
+constexpr std::uint32_t JumpTableOpcode = 10;
 
 class TestContext final {
 public:
@@ -114,6 +118,16 @@ private:
 
   auto Nop = instructionDescriptor(NopOpcode, "TEST_NOP");
 
+  auto ConstantPool = instructionDescriptor(ConstantPoolOpcode, "TEST_CONSTANT_POOL");
+  rcc::OperandDescriptor ConstantPoolIndex;
+  ConstantPoolIndex.Kinds = {rcc::MachineOperand::Kind::ConstantPoolIndex};
+  ConstantPool.Operands.push_back(ConstantPoolIndex);
+
+  auto JumpTable = instructionDescriptor(JumpTableOpcode, "TEST_JUMP_TABLE");
+  rcc::OperandDescriptor JumpTableIndex;
+  JumpTableIndex.Kinds = {rcc::MachineOperand::Kind::JumpTableIndex};
+  JumpTable.Operands.push_back(JumpTableIndex);
+
   std::vector<rcc::InstructionDescriptor> Descriptors;
   Descriptors.push_back(std::move(GenericDef));
   Descriptors.push_back(std::move(GenericUse));
@@ -123,6 +137,8 @@ private:
   Descriptors.push_back(std::move(Frame));
   Descriptors.push_back(std::move(Pseudo));
   Descriptors.push_back(std::move(Nop));
+  Descriptors.push_back(std::move(ConstantPool));
+  Descriptors.push_back(std::move(JumpTable));
   return rcc::InstructionSet::create(std::move(Descriptors));
 }
 
@@ -493,6 +509,53 @@ void testFrameStateFailures(TestContext &Context) {
                  "verifier must reject stack lifetimes that reference unknown instructions");
 }
 
+void testTableReferenceFailures(TestContext &Context) {
+  auto InstructionSet = createInstructionSet();
+  auto ConstantFunction = createFunction(Context, "constant_reference", 16);
+  rcc::MachineBasicBlock *ConstantBlock =
+      ConstantFunction ? createBlock(Context, *ConstantFunction) : nullptr;
+  if (!InstructionSet || !ConstantFunction || ConstantBlock == nullptr)
+    return;
+
+  rcc::MachineConstantPoolEntryDesc ConstantDescription;
+  ConstantDescription.Value =
+      rcc::GenericConstantData{"i32", std::vector<std::byte>(4, std::byte{1})};
+  ConstantDescription.Size = 4;
+  ConstantDescription.Align = *rcc::Alignment::create(4);
+  auto ConstantIndex = ConstantFunction->constantPool().addEntry(std::move(ConstantDescription));
+  rcc::MachineIRBuilder ConstantBuilder(*ConstantFunction, *InstructionSet);
+  Context.expect(ConstantIndex && ConstantBuilder.setInsertPoint(*ConstantBlock).has_value(),
+                 "constant-pool verifier setup must succeed");
+  if (!ConstantIndex)
+    return;
+  auto ConstantInstruction = ConstantBuilder.buildInstr(rcc::Opcode::fromValue(ConstantPoolOpcode));
+  Context.expect(ConstantInstruction &&
+                     ConstantInstruction->addConstantPool(*ConstantIndex).has_value() &&
+                     ConstantInstruction->build() &&
+                     ConstantFunction->constantPool().eraseEntry(*ConstantIndex).has_value() &&
+                     !rcc::MachineVerifier::verify(*ConstantFunction, *InstructionSet),
+                 "verifier must reject a tombstoned constant-pool reference");
+
+  auto JumpFunction = createFunction(Context, "jump_reference", 17);
+  rcc::MachineBasicBlock *JumpBlock = JumpFunction ? createBlock(Context, *JumpFunction) : nullptr;
+  if (!JumpFunction || JumpBlock == nullptr)
+    return;
+  rcc::MachineJumpTableDesc JumpDescription;
+  JumpDescription.Targets = {JumpBlock};
+  auto JumpIndex = JumpFunction->jumpTableInfo().createTable(std::move(JumpDescription));
+  rcc::MachineIRBuilder JumpBuilder(*JumpFunction, *InstructionSet);
+  Context.expect(JumpIndex && JumpBuilder.setInsertPoint(*JumpBlock).has_value(),
+                 "jump-table verifier setup must succeed");
+  if (!JumpIndex)
+    return;
+  auto JumpInstruction = JumpBuilder.buildInstr(rcc::Opcode::fromValue(JumpTableOpcode));
+  Context.expect(JumpInstruction && JumpInstruction->addJumpTable(*JumpIndex).has_value() &&
+                     JumpInstruction->build() &&
+                     JumpFunction->jumpTableInfo().eraseTable(*JumpIndex).has_value() &&
+                     !rcc::MachineVerifier::verify(*JumpFunction, *InstructionSet),
+                 "verifier must reject a tombstoned jump-table reference");
+}
+
 } // namespace
 
 int main() {
@@ -502,5 +565,6 @@ int main() {
   testPropertyFailures(Context);
   testSelectedStateAndPseudoDeadline(Context);
   testFrameStateFailures(Context);
+  testTableReferenceFailures(Context);
   return Context.result();
 }

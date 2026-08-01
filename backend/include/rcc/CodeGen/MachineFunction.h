@@ -3,8 +3,10 @@
 #ifndef RCC_CODEGEN_MACHINEFUNCTION_H
 #define RCC_CODEGEN_MACHINEFUNCTION_H
 
+#include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
+#include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/StableID.h"
 #include "rcc/Support/Error.h"
@@ -59,6 +61,22 @@ public:
 
   [[nodiscard]] const MachineFrameInfo &frameInfo() const noexcept {
     return FrameInfo;
+  }
+
+  [[nodiscard]] MachineConstantPool &constantPool() noexcept {
+    return ConstantPool;
+  }
+
+  [[nodiscard]] const MachineConstantPool &constantPool() const noexcept {
+    return ConstantPool;
+  }
+
+  [[nodiscard]] MachineJumpTableInfo &jumpTableInfo() noexcept {
+    return JumpTables;
+  }
+
+  [[nodiscard]] const MachineJumpTableInfo &jumpTableInfo() const noexcept {
+    return JumpTables;
   }
 
   [[nodiscard]] MachineFunctionProperties &properties() noexcept {
@@ -120,6 +138,8 @@ private:
   MachineFunctionStableID StableID;
   MachineRegisterInfo RegInfo;
   MachineFrameInfo FrameInfo;
+  MachineConstantPool ConstantPool;
+  MachineJumpTableInfo JumpTables;
   MachineFunctionProperties Properties;
   MachineBasicBlock *FirstBlock = nullptr;
   MachineBasicBlock *LastBlock = nullptr;

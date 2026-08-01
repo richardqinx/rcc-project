@@ -5,9 +5,11 @@
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
+#include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -100,16 +102,25 @@ struct CloneState final {
       return makeUnexpected(ErrorCode::VerificationError,
                             "source constant-pool operand is invalid");
     }
-    State.Result.ConstantPoolIndices.emplace(Constant->Index, Constant->Index);
-    return SourceOperand.cloneDetached();
+    const auto Position = State.Result.ConstantPoolIndices.find(Constant->Index);
+    if (Position == State.Result.ConstantPoolIndices.end()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "source operand references an unmapped constant pool entry");
+    }
+    return MachineOperand::constantPool(Position->second, Constant->Offset,
+                                        SourceOperand.targetFlags());
   }
   case MachineOperand::Kind::JumpTableIndex: {
     const auto *JumpTable = SourceOperand.getIf<JumpTableOperand>();
     if (JumpTable == nullptr) {
       return makeUnexpected(ErrorCode::VerificationError, "source jump-table operand is invalid");
     }
-    State.Result.JumpTableIndices.emplace(JumpTable->Index, JumpTable->Index);
-    return SourceOperand.cloneDetached();
+    const auto Position = State.Result.JumpTableIndices.find(JumpTable->Index);
+    if (Position == State.Result.JumpTableIndices.end()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "source operand references an unmapped jump table");
+    }
+    return MachineOperand::jumpTable(Position->second, SourceOperand.targetFlags());
   }
   case MachineOperand::Kind::Immediate:
   case MachineOperand::Kind::FloatingImmediate:
@@ -126,14 +137,6 @@ struct CloneState final {
   return makeUnexpected(ErrorCode::InternalError, "source operand kind is not handled");
 }
 
-void recordMemoryIndexMappings(const MachineMemOperandDesc &Description,
-                               MachineFunctionCloneResult &Result) {
-  if (const auto Constant = Description.Base.constantPoolIndex())
-    Result.ConstantPoolIndices.emplace(*Constant, *Constant);
-  if (const auto JumpTable = Description.Base.jumpTableIndex())
-    Result.JumpTableIndices.emplace(*JumpTable, *JumpTable);
-}
-
 [[nodiscard]] Expected<const MachineMemOperand *>
 cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
   const auto Existing = State.MemOperands.find(&SourceOperand);
@@ -141,7 +144,6 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
     return Existing->second;
 
   MachineMemOperandDesc Description = SourceOperand.description();
-  recordMemoryIndexMappings(Description, State.Result);
   if (const auto Frame = Description.Base.frameIndex()) {
     const auto Position = State.Result.FrameIndices.find(*Frame);
     if (Position == State.Result.FrameIndices.end()) {
@@ -149,6 +151,22 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
                             "source MMO references an unmapped frame index");
     }
     Description.Base = MemoryBase::frameIndex(Position->second);
+  }
+  if (const auto Constant = Description.Base.constantPoolIndex()) {
+    const auto Position = State.Result.ConstantPoolIndices.find(*Constant);
+    if (Position == State.Result.ConstantPoolIndices.end()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "source MMO references an unmapped constant pool entry");
+    }
+    Description.Base = MemoryBase::constantPool(Position->second);
+  }
+  if (const auto JumpTable = Description.Base.jumpTableIndex()) {
+    const auto Position = State.Result.JumpTableIndices.find(*JumpTable);
+    if (Position == State.Result.JumpTableIndices.end()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "source MMO references an unmapped jump table");
+    }
+    Description.Base = MemoryBase::jumpTable(Position->second);
   }
   auto DestinationOperand = State.Destination.createMemOperand(std::move(Description));
   if (!DestinationOperand)
@@ -235,6 +253,31 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
   return {};
 }
 
+[[nodiscard]] Expected<void> cloneConstantPool(CloneState &State) {
+  for (const MachineConstantPoolEntry &SourceEntry : State.Source.constantPool().entries()) {
+    if (SourceEntry.isTombstone())
+      continue;
+    auto Description = SourceEntry.cloneDescription();
+    if (!Description)
+      return std::unexpected(Description.error());
+    if (auto *Address = std::get_if<BlockAddressConstant>(&Description->Value);
+        Address != nullptr && Address->FunctionName == State.Source.name()) {
+      Address->FunctionName = std::string(State.Destination.name());
+    }
+
+    auto DestinationIndex = State.Destination.constantPool().addEntry(std::move(*Description));
+    if (!DestinationIndex)
+      return std::unexpected(DestinationIndex.error());
+    State.Result.ConstantPoolIndices.emplace(SourceEntry.index(), *DestinationIndex);
+  }
+  if (State.Source.constantPool().isFrozen()) {
+    auto FreezeResult = State.Destination.constantPool().freeze();
+    if (!FreezeResult)
+      return std::unexpected(FreezeResult.error());
+  }
+  return {};
+}
+
 [[nodiscard]] Expected<void> cloneBlocks(CloneState &State) {
   for (const MachineBasicBlock *SourceBlock = State.Source.firstBlock(); SourceBlock != nullptr;
        SourceBlock = SourceBlock->next()) {
@@ -252,6 +295,34 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
       if (!AddResult)
         return std::unexpected(AddResult.error());
     }
+  }
+  return {};
+}
+
+[[nodiscard]] Expected<void> cloneJumpTables(CloneState &State) {
+  for (const MachineJumpTableEntry &SourceEntry : State.Source.jumpTableInfo().tables()) {
+    const MachineJumpTableDesc *SourceDescription = SourceEntry.description();
+    if (SourceDescription == nullptr)
+      continue;
+    MachineJumpTableDesc DestinationDescription = *SourceDescription;
+    for (MachineBasicBlock *&Target : DestinationDescription.Targets) {
+      const auto Position = State.Blocks.find(Target);
+      if (Position == State.Blocks.end()) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "source jump table references an unmapped block");
+      }
+      Target = Position->second;
+    }
+    auto DestinationIndex =
+        State.Destination.jumpTableInfo().createTable(std::move(DestinationDescription));
+    if (!DestinationIndex)
+      return std::unexpected(DestinationIndex.error());
+    State.Result.JumpTableIndices.emplace(SourceEntry.index(), *DestinationIndex);
+  }
+  if (State.Source.jumpTableInfo().isFrozen()) {
+    auto FreezeResult = State.Destination.jumpTableInfo().freeze();
+    if (!FreezeResult)
+      return std::unexpected(FreezeResult.error());
   }
   return {};
 }
@@ -427,9 +498,15 @@ Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction 
   auto FrameResult = cloneFrameObjects(State);
   if (!FrameResult)
     return std::unexpected(FrameResult.error());
+  auto ConstantPoolResult = cloneConstantPool(State);
+  if (!ConstantPoolResult)
+    return std::unexpected(ConstantPoolResult.error());
   auto BlockResult = cloneBlocks(State);
   if (!BlockResult)
     return std::unexpected(BlockResult.error());
+  auto JumpTableResult = cloneJumpTables(State);
+  if (!JumpTableResult)
+    return std::unexpected(JumpTableResult.error());
   auto InstructionResult = cloneInstructions(State);
   if (!InstructionResult)
     return std::unexpected(InstructionResult.error());

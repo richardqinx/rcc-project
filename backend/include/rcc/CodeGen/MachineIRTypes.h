@@ -55,6 +55,9 @@ struct AssemblyFormatIDTag;
 struct SyncScopeIDTag;
 struct MemoryAliasSourceIDTag;
 struct OriginIDTag;
+struct TargetConstantTypeIDTag;
+struct TargetFunctionStateTypeIDTag;
+struct TargetRelocationKindIDTag;
 
 } // namespace detail
 
@@ -74,6 +77,9 @@ using AssemblyFormatID = MachineIndex<detail::AssemblyFormatIDTag>;
 using SyncScopeID = MachineIndex<detail::SyncScopeIDTag>;
 using MemoryAliasSourceID = MachineIndex<detail::MemoryAliasSourceIDTag, std::uint64_t>;
 using OriginID = MachineIndex<detail::OriginIDTag, std::uint64_t>;
+using TargetConstantTypeID = MachineIndex<detail::TargetConstantTypeIDTag, std::uint64_t>;
+using TargetFunctionStateTypeID = MachineIndex<detail::TargetFunctionStateTypeIDTag, std::uint64_t>;
+using TargetRelocationKindID = MachineIndex<detail::TargetRelocationKindIDTag>;
 
 class Opcode final {
 public:

@@ -64,7 +64,8 @@ MachineFunction::create(std::string Name, MachineFunctionStableID StableID) {
 }
 
 MachineFunction::MachineFunction(std::string Name, MachineFunctionStableID StableID)
-    : Name(std::move(Name)), StableID(StableID), Arena(std::make_unique<MachineArena>()) {}
+    : Name(std::move(Name)), StableID(StableID), JumpTables(*this),
+      Arena(std::make_unique<MachineArena>()) {}
 
 MachineFunction::~MachineFunction() {
   for (MachineBasicBlock *Block = FirstBlock; Block != nullptr; Block = Block->NextBlock) {

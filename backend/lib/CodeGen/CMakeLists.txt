@@ -6,12 +6,14 @@ set(
   LowLevelType.cpp
   MachineBasicBlock.cpp
   MachineCFGUpdater.cpp
+  MachineConstantPool.cpp
   MachineFrameInfo.cpp
   MachineFunction.cpp
   MachineFunctionCloner.cpp
   MachineIRTypes.cpp
   MachineIRBuilder.cpp
   MachineInstr.cpp
+  MachineJumpTableInfo.cpp
   MachineMemOperand.cpp
   MachineOperand.cpp
   MachineRegisterInfo.cpp
@@ -19,6 +21,7 @@ set(
   MachineFunctionProperties.cpp
   Register.cpp
   RegisterMask.cpp
+  TargetConstant.cpp
 )
 set(
   RCCBackendCodeGenHeaders
@@ -26,12 +29,14 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlock.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFGUpdater.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineConstantPool.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFrameInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunction.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionCloner.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineIRTypes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineIRBuilder.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineInstr.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineJumpTableInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
@@ -40,6 +45,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/Register.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterMask.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/StableID.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetConstant.h"
 )
 
 add_library(RCCBackendCodeGen ${RCCBackendCodeGenSources})
@@ -75,12 +81,14 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPool.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunction.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilder.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
@@ -88,6 +96,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
   ${RCCBackendCodeGenHeaders}
 )
 rcc_backend_register_tidy_files(
@@ -95,12 +104,14 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPool.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunction.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilder.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
@@ -108,4 +119,5 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
 )

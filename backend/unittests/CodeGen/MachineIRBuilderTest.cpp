@@ -5,8 +5,10 @@
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
+#include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -28,6 +30,8 @@ constexpr std::uint32_t LoadOpcode = 3;
 constexpr std::uint32_t NopOpcode = 4;
 constexpr std::uint32_t BranchOpcode = 5;
 constexpr std::uint32_t DynamicImplicitOpcode = 6;
+constexpr std::uint32_t ConstantPoolOpcode = 7;
+constexpr std::uint32_t JumpTableOpcode = 8;
 
 class TestContext final {
 public:
@@ -103,6 +107,16 @@ private:
   auto Dynamic = instructionDescriptor(DynamicImplicitOpcode, "TEST_DYNAMIC_IMPLICIT");
   Dynamic.AllowExtraImplicitOperands = true;
 
+  auto ConstantPool = instructionDescriptor(ConstantPoolOpcode, "TEST_CONSTANT_POOL");
+  rcc::OperandDescriptor ConstantPoolIndex;
+  ConstantPoolIndex.Kinds = {rcc::MachineOperand::Kind::ConstantPoolIndex};
+  ConstantPool.Operands.push_back(ConstantPoolIndex);
+
+  auto JumpTable = instructionDescriptor(JumpTableOpcode, "TEST_JUMP_TABLE");
+  rcc::OperandDescriptor JumpTableIndex;
+  JumpTableIndex.Kinds = {rcc::MachineOperand::Kind::JumpTableIndex};
+  JumpTable.Operands.push_back(JumpTableIndex);
+
   std::vector<rcc::InstructionDescriptor> Descriptors;
   Descriptors.push_back(std::move(Copy));
   Descriptors.push_back(std::move(Add));
@@ -110,6 +124,8 @@ private:
   Descriptors.push_back(std::move(Nop));
   Descriptors.push_back(std::move(Branch));
   Descriptors.push_back(std::move(Dynamic));
+  Descriptors.push_back(std::move(ConstantPool));
+  Descriptors.push_back(std::move(JumpTable));
   return rcc::InstructionSet::create(std::move(Descriptors));
 }
 
@@ -374,6 +390,53 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
                  "memory validation operands must be created");
   if (!LoadMemory || !StoreMemory || !ForeignMemory)
     return;
+
+  const std::size_t BeforeUnknownTableReferences = Function->allInstructions().size();
+  auto UnknownConstant = Builder.buildInstr(rcc::Opcode::fromValue(ConstantPoolOpcode));
+  auto UnknownJumpTable = Builder.buildInstr(rcc::Opcode::fromValue(JumpTableOpcode));
+  Context.expect(
+      UnknownConstant &&
+          UnknownConstant->addConstantPool(rcc::ConstantPoolIndex::fromValue(99)).has_value() &&
+          !UnknownConstant->build() && UnknownJumpTable &&
+          UnknownJumpTable->addJumpTable(rcc::JumpTableIndex::fromValue(99)).has_value() &&
+          !UnknownJumpTable->build() &&
+          Function->allInstructions().size() == BeforeUnknownTableReferences,
+      "builder must reject unknown constant-pool and jump-table indices before allocation");
+
+  rcc::MachineConstantPoolEntryDesc ConstantDescription;
+  ConstantDescription.Value =
+      rcc::GenericConstantData{"i64", std::vector<std::byte>(8, std::byte{0x2a})};
+  ConstantDescription.Size = 8;
+  ConstantDescription.Align = *rcc::Alignment::create(8);
+  auto ConstantIndex = Function->constantPool().addEntry(std::move(ConstantDescription));
+  rcc::MachineJumpTableDesc JumpDescription;
+  JumpDescription.Targets = {Block};
+  auto JumpIndex = Function->jumpTableInfo().createTable(std::move(JumpDescription));
+  Context.expect(ConstantIndex && JumpIndex, "builder table references must have owned entries");
+  if (!ConstantIndex || !JumpIndex)
+    return;
+
+  auto ConstantInstruction = Builder.buildInstr(rcc::Opcode::fromValue(ConstantPoolOpcode));
+  auto JumpInstruction = Builder.buildInstr(rcc::Opcode::fromValue(JumpTableOpcode));
+  Context.expect(
+      ConstantInstruction && ConstantInstruction->addConstantPool(*ConstantIndex, 4).has_value() &&
+          ConstantInstruction->build() && JumpInstruction &&
+          JumpInstruction->addJumpTable(*JumpIndex).has_value() && JumpInstruction->build(),
+      "builder must publish valid owned table references");
+
+  auto ConstantMemoryDescription = memoryDescription(rcc::MemoryAccessFlag::Load);
+  ConstantMemoryDescription.Base = rcc::MemoryBase::constantPool(*ConstantIndex);
+  auto JumpMemoryDescription = memoryDescription(rcc::MemoryAccessFlag::Load);
+  JumpMemoryDescription.Base = rcc::MemoryBase::jumpTable(*JumpIndex);
+  auto ConstantMemory = Function->createMemOperand(std::move(ConstantMemoryDescription));
+  auto JumpMemory = Function->createMemOperand(std::move(JumpMemoryDescription));
+  auto ConstantLoad = Builder.buildInstr(rcc::Opcode::fromValue(LoadOpcode));
+  auto JumpLoad = Builder.buildInstr(rcc::Opcode::fromValue(LoadOpcode));
+  Context.expect(ConstantMemory && JumpMemory && ConstantLoad &&
+                     ConstantLoad->addMemOperand(**ConstantMemory).has_value() &&
+                     ConstantLoad->build() && JumpLoad &&
+                     JumpLoad->addMemOperand(**JumpMemory).has_value() && JumpLoad->build(),
+                 "builder must validate constant-pool and jump-table MMO bases");
 
   auto Load = Builder.buildInstr(rcc::Opcode::fromValue(LoadOpcode));
   Context.expect(Load && Load->addMemOperand(**LoadMemory).has_value(),
