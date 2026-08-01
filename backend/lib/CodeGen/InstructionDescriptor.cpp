@@ -493,14 +493,6 @@ Expected<void> InstructionSet::validateOperand(const OperandDescriptor &Descript
       auto Info = RegInfo.virtualRegisterInfo(*Reg);
       if (!Info)
         return std::unexpected(Info.error());
-      if (Descriptor.RegBank && Info->get().Bank != Descriptor.RegBank) {
-        return makeUnexpected(ErrorCode::VerificationError,
-                              "virtual register bank does not match operand descriptor");
-      }
-      if (Descriptor.RegClass && Info->get().RegClass != Descriptor.RegClass) {
-        return makeUnexpected(ErrorCode::VerificationError,
-                              "virtual register class does not match operand descriptor");
-      }
     }
   }
 

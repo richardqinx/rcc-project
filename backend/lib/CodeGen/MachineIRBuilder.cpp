@@ -20,16 +20,15 @@
 
 namespace rcc {
 
-MachineInstrBuilder::MachineInstrBuilder(MachineFunction &Function,
-                                         const InstructionSet &Instructions,
+MachineInstrBuilder::MachineInstrBuilder(MachineFunction &Function, const TargetDescription &Target,
                                          const InstructionDescriptor &Descriptor,
                                          MachineBasicBlock &InsertBlock,
                                          MachineInstr *InsertBefore) noexcept
-    : Function(&Function), Instructions(&Instructions), Descriptor(&Descriptor),
-      InsertBlock(&InsertBlock), InsertBefore(InsertBefore) {}
+    : Function(&Function), Target(&Target), Descriptor(&Descriptor), InsertBlock(&InsertBlock),
+      InsertBefore(InsertBefore) {}
 
 MachineInstrBuilder::MachineInstrBuilder(MachineInstrBuilder &&Other) noexcept
-    : Function(Other.Function), Instructions(Other.Instructions), Descriptor(Other.Descriptor),
+    : Function(Other.Function), Target(Other.Target), Descriptor(Other.Descriptor),
       InsertBlock(Other.InsertBlock), InsertBefore(Other.InsertBefore),
       ExplicitOperands(std::move(Other.ExplicitOperands)),
       ExtraImplicitOperands(std::move(Other.ExtraImplicitOperands)),
@@ -37,7 +36,7 @@ MachineInstrBuilder::MachineInstrBuilder(MachineInstrBuilder &&Other) noexcept
       Flags(Other.Flags), Location(std::move(Other.Location)), Origin(Other.Origin),
       IsBuilt(Other.IsBuilt) {
   Other.Function = nullptr;
-  Other.Instructions = nullptr;
+  Other.Target = nullptr;
   Other.Descriptor = nullptr;
   Other.InsertBlock = nullptr;
   Other.InsertBefore = nullptr;
@@ -49,7 +48,7 @@ MachineInstrBuilder &MachineInstrBuilder::operator=(MachineInstrBuilder &&Other)
     return *this;
 
   Function = Other.Function;
-  Instructions = Other.Instructions;
+  Target = Other.Target;
   Descriptor = Other.Descriptor;
   InsertBlock = Other.InsertBlock;
   InsertBefore = Other.InsertBefore;
@@ -63,7 +62,7 @@ MachineInstrBuilder &MachineInstrBuilder::operator=(MachineInstrBuilder &&Other)
   IsBuilt = Other.IsBuilt;
 
   Other.Function = nullptr;
-  Other.Instructions = nullptr;
+  Other.Target = nullptr;
   Other.Descriptor = nullptr;
   Other.InsertBlock = nullptr;
   Other.InsertBefore = nullptr;
@@ -448,12 +447,12 @@ Expected<MachineInstr *> MachineInstrBuilder::build() {
     }
   }
 
-  auto ExplicitValidation = Instructions->validateExplicitOperands(
+  auto ExplicitValidation = Target->validateExplicitOperands(
       Descriptor->InstructionOpcode, ExplicitOperands, Function->registerInfo());
   if (!ExplicitValidation)
     return std::unexpected(ExplicitValidation.error());
 
-  auto DefaultImplicit = Instructions->createDefaultImplicitOperands(*Descriptor);
+  auto DefaultImplicit = Target->createDefaultImplicitOperands(*Descriptor);
   if (!DefaultImplicit)
     return std::unexpected(DefaultImplicit.error());
 
@@ -463,19 +462,23 @@ Expected<MachineInstr *> MachineInstrBuilder::build() {
     ImplicitOperands.push_back(&Operand);
   for (const MachineOperand &Operand : ExtraImplicitOperands)
     ImplicitOperands.push_back(&Operand);
-  auto ImplicitValidation =
-      Instructions->validateImplicitOperands(Descriptor->InstructionOpcode, ImplicitOperands);
+  auto ImplicitValidation = Target->validateImplicitOperands(
+      Descriptor->InstructionOpcode, ImplicitOperands, Function->registerInfo());
   if (!ImplicitValidation)
     return std::unexpected(ImplicitValidation.error());
 
   const std::vector<MachineOperandTie> Ties = collectOperandTies();
-  auto TieValidation =
-      Instructions->validateOperandTies(Descriptor->InstructionOpcode, ExplicitOperands, Ties);
+  auto TieValidation = Target->validateOperandTies(Descriptor->InstructionOpcode, ExplicitOperands,
+                                                   Ties, Function->registerInfo());
   if (!TieValidation)
     return std::unexpected(TieValidation.error());
 
-  auto MemoryValidation =
-      Instructions->validateMemOperands(Descriptor->InstructionOpcode, MemOperands);
+  auto EarlyClobberValidation =
+      Target->validateEarlyClobber(ExplicitOperands, ImplicitOperands, Ties);
+  if (!EarlyClobberValidation)
+    return std::unexpected(EarlyClobberValidation.error());
+
+  auto MemoryValidation = Target->validateMemOperands(Descriptor->InstructionOpcode, MemOperands);
   if (!MemoryValidation)
     return std::unexpected(MemoryValidation.error());
 
@@ -577,7 +580,7 @@ Expected<MachineInstrBuilder> MachineIRBuilder::buildInstr(Opcode InstructionOpc
   if (InsertBlock == nullptr) {
     return makeUnexpected(ErrorCode::InvalidArgument, "machine IR builder has no insertion point");
   }
-  const InstructionDescriptor *Descriptor = Instructions->descriptor(InstructionOpcode);
+  const InstructionDescriptor *Descriptor = Target->instructionDescriptor(InstructionOpcode);
   if (Descriptor == nullptr) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine IR builder opcode is not registered");
@@ -589,7 +592,7 @@ Expected<MachineInstrBuilder> MachineIRBuilder::buildInstr(Opcode InstructionOpc
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine IR builder insertion cursor is stale");
   }
-  return MachineInstrBuilder(*Function, *Instructions, *Descriptor, *InsertBlock, InsertBefore);
+  return MachineInstrBuilder(*Function, *Target, *Descriptor, *InsertBlock, InsertBefore);
 }
 
 } // namespace rcc

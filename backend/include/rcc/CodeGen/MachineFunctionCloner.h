@@ -15,10 +15,10 @@
 
 namespace rcc {
 
-class InstructionSet;
 class MachineBasicBlock;
 class MachineFunction;
 class MachineInstr;
+class TargetDescription;
 
 struct MachineFunctionCloneOptions final {
   MachineFunctionStableID NewStableID;
@@ -81,12 +81,12 @@ private:
   const std::unordered_map<const MachineInstr *, MachineInstr *> &Instructions;
 
   friend Expected<MachineFunctionCloneResult>
-  cloneMachineFunction(const MachineFunction &Source, const InstructionSet &Instructions,
+  cloneMachineFunction(const MachineFunction &Source, const TargetDescription &Target,
                        MachineFunctionCloneOptions Options);
 };
 
 [[nodiscard]] Expected<MachineFunctionCloneResult>
-cloneMachineFunction(const MachineFunction &Source, const InstructionSet &Instructions,
+cloneMachineFunction(const MachineFunction &Source, const TargetDescription &Target,
                      MachineFunctionCloneOptions Options);
 
 } // namespace rcc

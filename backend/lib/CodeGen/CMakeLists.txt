@@ -23,7 +23,9 @@ set(
   Register.cpp
   RegisterMask.cpp
   TargetConstant.cpp
+  TargetDescription.cpp
   TargetFunctionState.cpp
+  TargetRegisterInfo.cpp
 )
 set(
   RCCBackendCodeGenHeaders
@@ -49,7 +51,9 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterMask.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/StableID.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetConstant.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetDescription.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFunctionState.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetRegisterInfo.h"
 )
 
 add_library(RCCBackendCodeGen ${RCCBackendCodeGenSources})
@@ -102,7 +106,9 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetDescription.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfo.cpp"
   ${RCCBackendCodeGenHeaders}
 )
 rcc_backend_register_tidy_files(
@@ -127,5 +133,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetDescription.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfo.cpp"
 )

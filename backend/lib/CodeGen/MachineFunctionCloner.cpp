@@ -15,6 +15,7 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/MachineVerifier.h"
+#include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetFunctionState.h"
 
 #include <cstddef>
@@ -553,9 +554,9 @@ MachineFunctionCloneResult::operator=(MachineFunctionCloneResult &&) noexcept = 
 MachineFunctionCloneResult::~MachineFunctionCloneResult() = default;
 
 Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction &Source,
-                                                          const InstructionSet &Instructions,
+                                                          const TargetDescription &Target,
                                                           MachineFunctionCloneOptions Options) {
-  auto SourceVerification = MachineVerifier::verify(Source, Instructions);
+  auto SourceVerification = MachineVerifier::verify(Source, Target);
   if (!SourceVerification)
     return std::unexpected(SourceVerification.error());
   if (!Options.NewStableID.isValid()) {
@@ -615,7 +616,7 @@ Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction 
     return std::unexpected(CompilationStatus.error());
   Result.ClonedFunction->compilationStatus() = std::move(*CompilationStatus);
   Result.ClonedFunction->properties() = Source.properties();
-  auto DestinationVerification = MachineVerifier::verify(*Result.ClonedFunction, Instructions);
+  auto DestinationVerification = MachineVerifier::verify(*Result.ClonedFunction, Target);
   if (!DestinationVerification)
     return std::unexpected(DestinationVerification.error());
   return Result;

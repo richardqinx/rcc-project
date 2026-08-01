@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEVERIFIER_H
 #define RCC_CODEGEN_MACHINEVERIFIER_H
 
-#include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/Support/Error.h"
 
 #include <cstdint>
@@ -27,7 +27,7 @@ struct MachineVerifierOptions final {
 class MachineVerifier final {
 public:
   [[nodiscard]] static Expected<void> verify(const MachineFunction &Function,
-                                             const InstructionSet &Instructions,
+                                             const TargetDescription &Target,
                                              MachineVerifierOptions Options = {});
 };
 

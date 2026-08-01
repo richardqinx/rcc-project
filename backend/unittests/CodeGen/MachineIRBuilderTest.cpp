@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/MachineIRBuilder.h"
 
+#include "Target/TestTarget.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -66,7 +67,7 @@ private:
   return Descriptor;
 }
 
-[[nodiscard]] rcc::Expected<rcc::InstructionSet> createInstructionSet() {
+[[nodiscard]] rcc::Expected<rcc::TargetDescription> createTarget() {
   auto Copy = instructionDescriptor(CopyOpcode, "TEST_COPY");
   auto CopyDef = registerDescriptor(rcc::RegisterOperandRole::Def);
   auto CopyUse = registerDescriptor(rcc::RegisterOperandRole::Use);
@@ -126,7 +127,10 @@ private:
   Descriptors.push_back(std::move(Dynamic));
   Descriptors.push_back(std::move(ConstantPool));
   Descriptors.push_back(std::move(JumpTable));
-  return rcc::InstructionSet::create(std::move(Descriptors));
+  auto Instructions = rcc::InstructionSet::create(std::move(Descriptors));
+  if (!Instructions)
+    return std::unexpected(Instructions.error());
+  return rcc::test::createTestTargetDescription(std::move(*Instructions));
 }
 
 [[nodiscard]] std::unique_ptr<rcc::MachineFunction>
@@ -172,10 +176,10 @@ createFunction(TestContext &Context, std::string Name, std::uint64_t ID) {
 }
 
 void testTransactionalBuild(TestContext &Context) {
-  auto InstructionSet = createInstructionSet();
+  auto Target = createTarget();
   auto Function = createFunction(Context, "transactional", 1);
-  Context.expect(InstructionSet.has_value(), "builder instruction set must be valid");
-  if (!InstructionSet || !Function)
+  Context.expect(Target.has_value(), "builder target description must be valid");
+  if (!Target || !Function)
     return;
   rcc::MachineBasicBlock *Block = createBlock(Context, *Function);
   if (Block == nullptr)
@@ -188,7 +192,7 @@ void testTransactionalBuild(TestContext &Context) {
   if (!Destination || !Source)
     return;
 
-  rcc::MachineIRBuilder Builder(*Function, *InstructionSet);
+  rcc::MachineIRBuilder Builder(*Function, *Target);
   Context.expect(!Builder.buildInstr(rcc::Opcode::fromValue(CopyOpcode)),
                  "an unset insertion point must reject instruction construction");
   Context.expect(Function->allInstructions().empty(),
@@ -242,9 +246,8 @@ void testTransactionalBuild(TestContext &Context) {
                      Instruction->sourceLocation() == rcc::SourceLocation{"builder.mir", 7, 3, 1} &&
                      Instruction->origin() == rcc::OriginID::fromValue(19),
                  "builder metadata must be preserved on the published instruction");
-  Context.expect(
-      InstructionSet->validateInstruction(*Instruction, Function->registerInfo()).has_value(),
-      "builder output must satisfy the shared instruction descriptor");
+  Context.expect(Target->validateInstruction(*Instruction, Function->registerInfo()).has_value(),
+                 "builder output must satisfy the shared instruction descriptor");
   Context.expect(!Complete->build(), "a successful pending builder must be single-use");
   Context.expect(!Complete->setFlags({}) && !Complete->clearSourceLocation() &&
                      !Complete->clearOrigin(),
@@ -264,15 +267,15 @@ void testTransactionalBuild(TestContext &Context) {
 }
 
 void testInsertionOrdering(TestContext &Context) {
-  auto InstructionSet = createInstructionSet();
+  auto Target = createTarget();
   auto Function = createFunction(Context, "ordering", 2);
-  if (!InstructionSet || !Function)
+  if (!Target || !Function)
     return;
   rcc::MachineBasicBlock *Block = createBlock(Context, *Function);
   if (Block == nullptr)
     return;
 
-  rcc::MachineIRBuilder Builder(*Function, *InstructionSet);
+  rcc::MachineIRBuilder Builder(*Function, *Target);
   Context.expect(Builder.setInsertPoint(*Block).has_value(),
                  "ordering builder insertion point must be valid");
   rcc::MachineInstr *First = buildNop(Context, Builder);
@@ -298,10 +301,10 @@ void testInsertionOrdering(TestContext &Context) {
 }
 
 void testImplicitAndMemoryValidation(TestContext &Context) {
-  auto InstructionSet = createInstructionSet();
+  auto Target = createTarget();
   auto Function = createFunction(Context, "implicit_memory", 3);
   auto OtherFunction = createFunction(Context, "foreign", 4);
-  if (!InstructionSet || !Function || !OtherFunction)
+  if (!Target || !Function || !OtherFunction)
     return;
   rcc::MachineBasicBlock *Block = createBlock(Context, *Function);
   rcc::MachineBasicBlock *OtherBlock = createBlock(Context, *OtherFunction);
@@ -315,7 +318,7 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
   if (!Destination || !Source)
     return;
 
-  rcc::MachineIRBuilder Builder(*Function, *InstructionSet);
+  rcc::MachineIRBuilder Builder(*Function, *Target);
   Context.expect(Builder.setInsertPoint(*Block).has_value(),
                  "implicit test insertion point must be accepted");
 
@@ -334,9 +337,8 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
           (*BuiltAdd)->operandAt(3)->registerFlags().has(rcc::RegisterOperandFlag::Renamable) &&
           (*BuiltAdd)->operandAt(4)->isImplicit(),
       "default implicit defs and uses must follow explicit operands");
-  Context.expect(
-      InstructionSet->validateInstruction(**BuiltAdd, Function->registerInfo()).has_value(),
-      "default implicit builder output must pass shared validation");
+  Context.expect(Target->validateInstruction(**BuiltAdd, Function->registerInfo()).has_value(),
+                 "default implicit builder output must pass shared validation");
 
   const std::size_t BeforeRejectedImplicit = Function->allInstructions().size();
   auto ExtraImplicit = Builder.buildInstr(rcc::Opcode::fromValue(AddOpcode));
@@ -363,7 +365,7 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
   auto BuiltDynamic = Dynamic->build();
   Context.expect(
       BuiltDynamic.has_value() &&
-          InstructionSet->validateInstruction(**BuiltDynamic, Function->registerInfo()).has_value(),
+          Target->validateInstruction(**BuiltDynamic, Function->registerInfo()).has_value(),
       "dynamic implicit builder output must validate");
 
   const std::size_t BeforeMissingMemory = Function->allInstructions().size();
@@ -444,10 +446,9 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
   if (!Load)
     return;
   auto BuiltLoad = Load->build();
-  Context.expect(
-      BuiltLoad.has_value() &&
-          InstructionSet->validateInstruction(**BuiltLoad, Function->registerInfo()).has_value(),
-      "matching load MMO must build and validate");
+  Context.expect(BuiltLoad.has_value() &&
+                     Target->validateInstruction(**BuiltLoad, Function->registerInfo()).has_value(),
+                 "matching load MMO must build and validate");
 
   const std::size_t BeforeStoreMismatch = Function->allInstructions().size();
   auto StoreMismatch = Builder.buildInstr(rcc::Opcode::fromValue(LoadOpcode));
@@ -468,9 +469,9 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
 }
 
 void testStaleCursorsAndOwnedOperands(TestContext &Context) {
-  auto InstructionSet = createInstructionSet();
+  auto Target = createTarget();
   auto Function = createFunction(Context, "ownership", 5);
-  if (!InstructionSet || !Function)
+  if (!Target || !Function)
     return;
   rcc::MachineBasicBlock *Block = createBlock(Context, *Function);
   if (Block == nullptr)
@@ -482,7 +483,7 @@ void testStaleCursorsAndOwnedOperands(TestContext &Context) {
   if (!Destination || !Source)
     return;
 
-  rcc::MachineIRBuilder Builder(*Function, *InstructionSet);
+  rcc::MachineIRBuilder Builder(*Function, *Target);
   Context.expect(Builder.setInsertPoint(*Block).has_value(),
                  "ownership test insertion point must be valid");
   auto Copy = Builder.buildInstr(rcc::Opcode::fromValue(CopyOpcode));

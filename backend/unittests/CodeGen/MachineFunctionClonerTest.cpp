@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 
+#include "Target/TestTarget.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -176,7 +177,7 @@ struct CloneTargetState final {
   return Descriptor;
 }
 
-[[nodiscard]] rcc::Expected<rcc::InstructionSet> createInstructionSet() {
+[[nodiscard]] rcc::Expected<rcc::TargetDescription> createTarget() {
   auto Nop = instructionDescriptor(NopOpcode, "TEST_NOP");
 
   auto Def = instructionDescriptor(DefOpcode, "TEST_DEF");
@@ -233,7 +234,10 @@ struct CloneTargetState final {
   Descriptors.push_back(std::move(Load));
   Descriptors.push_back(std::move(ConstantPool));
   Descriptors.push_back(std::move(JumpTable));
-  return rcc::InstructionSet::create(std::move(Descriptors));
+  auto Instructions = rcc::InstructionSet::create(std::move(Descriptors));
+  if (!Instructions)
+    return std::unexpected(Instructions.error());
+  return rcc::test::createTestTargetDescription(std::move(*Instructions));
 }
 
 [[nodiscard]] std::unique_ptr<rcc::MachineFunction>
@@ -289,8 +293,7 @@ struct SourceFixture final {
 };
 
 [[nodiscard]] bool populateSource(TestContext &Context, rcc::MachineFunction &Function,
-                                  const rcc::InstructionSet &InstructionSet,
-                                  SourceFixture &Fixture) {
+                                  const rcc::TargetDescription &Target, SourceFixture &Fixture) {
   auto HistoricalBlock = Function.createBasicBlock();
   auto HistoricalInstruction = Function.createInstruction(rcc::Opcode::fromValue(NopOpcode));
   Context.expect(HistoricalBlock && HistoricalInstruction, "source arena history must be created");
@@ -393,7 +396,7 @@ struct SourceFixture final {
                      Fixture.Entry->addLiveIn(LiveIn).has_value(),
                  "source register configuration must be recorded");
 
-  rcc::MachineIRBuilder Builder(Function, InstructionSet);
+  rcc::MachineIRBuilder Builder(Function, Target);
   Context.expect(Builder.setInsertPoint(*Fixture.Entry).has_value(),
                  "source entry insertion point must be valid");
   auto Def = Builder.buildInstr(rcc::Opcode::fromValue(DefOpcode));
@@ -504,17 +507,17 @@ struct SourceFixture final {
 }
 
 void testDeepClone(TestContext &Context) {
-  auto InstructionSet = createInstructionSet();
+  auto Target = createTarget();
   auto Source = createFunction(Context, "source_function", 1);
   SourceFixture Fixture;
-  if (!InstructionSet || !Source || !populateSource(Context, *Source, *InstructionSet, Fixture)) {
+  if (!Target || !Source || !populateSource(Context, *Source, *Target, Fixture)) {
     return;
   }
-  Context.expect(rcc::MachineVerifier::verify(*Source, *InstructionSet).has_value(),
+  Context.expect(rcc::MachineVerifier::verify(*Source, *Target).has_value(),
                  "source function must verify before cloning");
 
   auto Clone = rcc::cloneMachineFunction(
-      *Source, *InstructionSet,
+      *Source, *Target,
       rcc::MachineFunctionCloneOptions{rcc::MachineFunctionStableID::fromValue(99),
                                        std::string("cloned_function")});
   Context.expect(Clone.has_value(), "valid source function must deep-clone");
@@ -526,8 +529,8 @@ void testDeepClone(TestContext &Context) {
                      Destination.stableID() == rcc::MachineFunctionStableID::fromValue(99),
                  "clone must use its explicit function identity");
   Context.expect(Destination.properties() == Source->properties() &&
-                     rcc::MachineVerifier::verify(Destination, *InstructionSet).has_value() &&
-                     rcc::MachineVerifier::verify(*Source, *InstructionSet).has_value(),
+                     rcc::MachineVerifier::verify(Destination, *Target).has_value() &&
+                     rcc::MachineVerifier::verify(*Source, *Target).has_value(),
                  "source and destination must independently preserve valid properties");
   Context.expect(Source->allBlocks().size() == 3 && Destination.allBlocks().size() == 2 &&
                      Source->allInstructions().size() == 9 &&
@@ -761,18 +764,18 @@ void testDeepClone(TestContext &Context) {
 }
 
 void testCloneFailures(TestContext &Context) {
-  auto InstructionSet = createInstructionSet();
+  auto Target = createTarget();
   auto Source = createFunction(Context, "failure_source", 2);
-  if (!InstructionSet || !Source)
+  if (!Target || !Source)
     return;
 
   Context.expect(
-      !rcc::cloneMachineFunction(*Source, *InstructionSet,
+      !rcc::cloneMachineFunction(*Source, *Target,
                                  rcc::MachineFunctionCloneOptions{
                                      rcc::MachineFunctionStableID::fromValue(0), std::nullopt}),
       "clone must reject an invalid destination StableID");
   Context.expect(
-      !rcc::cloneMachineFunction(*Source, *InstructionSet,
+      !rcc::cloneMachineFunction(*Source, *Target,
                                  rcc::MachineFunctionCloneOptions{
                                      rcc::MachineFunctionStableID::fromValue(3), std::string()}),
       "clone must reject an explicitly empty destination name");
@@ -784,7 +787,7 @@ void testCloneFailures(TestContext &Context) {
     Context.expect(Unknown && Block->appendInstruction(**Unknown).has_value(),
                    "invalid clone source must contain an unknown opcode");
     Context.expect(
-        !rcc::cloneMachineFunction(*Invalid, *InstructionSet,
+        !rcc::cloneMachineFunction(*Invalid, *Target,
                                    rcc::MachineFunctionCloneOptions{
                                        rcc::MachineFunctionStableID::fromValue(5), std::nullopt}),
         "clone must verify and reject an invalid source function");
@@ -800,7 +803,7 @@ void testCloneFailures(TestContext &Context) {
     Context.expect(State && UnmappedState->setTargetState(std::move(*State)).has_value(),
                    "unmapped target state negative test must be installed");
     Context.expect(
-        !rcc::cloneMachineFunction(*UnmappedState, *InstructionSet,
+        !rcc::cloneMachineFunction(*UnmappedState, *Target,
                                    rcc::MachineFunctionCloneOptions{
                                        rcc::MachineFunctionStableID::fromValue(7), std::nullopt}),
         "clone must reject target state that does not map its identities");

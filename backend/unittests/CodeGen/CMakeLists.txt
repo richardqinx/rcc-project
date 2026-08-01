@@ -12,9 +12,11 @@ set(
   MachineIRCoreTest.cpp
   MachineJumpTableInfoTest.cpp
   MachineVerifierTest.cpp
+  MachineVerifierTargetTest.cpp
   MachineValueTypesTest.cpp
   TargetConstantTest.cpp
   TargetFunctionStateTest.cpp
+  TargetRegisterInfoTest.cpp
 )
 
 add_executable(RCCBackendCodeGenCoreTypesTests CoreTypesTest.cpp)
@@ -78,7 +80,7 @@ add_executable(
 rcc_backend_configure_target(RCCBackendCodeGenMachineFunctionClonerTests)
 target_link_libraries(
   RCCBackendCodeGenMachineFunctionClonerTests
-  PRIVATE RCCBackend::CodeGen
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
 )
 
 add_test(
@@ -90,7 +92,7 @@ add_executable(RCCBackendCodeGenMachineIRBuilderTests MachineIRBuilderTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineIRBuilderTests)
 target_link_libraries(
   RCCBackendCodeGenMachineIRBuilderTests
-  PRIVATE RCCBackend::CodeGen
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
 )
 
 add_test(
@@ -102,12 +104,27 @@ add_executable(RCCBackendCodeGenMachineVerifierTests MachineVerifierTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineVerifierTests)
 target_link_libraries(
   RCCBackendCodeGenMachineVerifierTests
-  PRIVATE RCCBackend::CodeGen
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
 )
 
 add_test(
   NAME RCCBackend.CodeGen.MachineVerifier
   COMMAND RCCBackendCodeGenMachineVerifierTests
+)
+
+add_executable(
+  RCCBackendCodeGenMachineVerifierTargetTests
+  MachineVerifierTargetTest.cpp
+)
+rcc_backend_configure_target(RCCBackendCodeGenMachineVerifierTargetTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineVerifierTargetTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineVerifierTarget
+  COMMAND RCCBackendCodeGenMachineVerifierTargetTests
 )
 
 add_executable(RCCBackendCodeGenMachineValueTypesTests MachineValueTypesTest.cpp)
@@ -148,11 +165,26 @@ add_test(
 
 add_executable(RCCBackendCodeGenTargetFunctionStateTests TargetFunctionStateTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenTargetFunctionStateTests)
-target_link_libraries(RCCBackendCodeGenTargetFunctionStateTests PRIVATE RCCBackend::CodeGen)
+target_link_libraries(
+  RCCBackendCodeGenTargetFunctionStateTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
 
 add_test(
   NAME RCCBackend.CodeGen.TargetFunctionState
   COMMAND RCCBackendCodeGenTargetFunctionStateTests
+)
+
+add_executable(RCCBackendCodeGenTargetRegisterInfoTests TargetRegisterInfoTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenTargetRegisterInfoTests)
+target_link_libraries(
+  RCCBackendCodeGenTargetRegisterInfoTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.TargetRegisterInfo
+  COMMAND RCCBackendCodeGenTargetRegisterInfoTests
 )
 
 rcc_backend_register_format_files(
@@ -166,9 +198,11 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
@@ -181,7 +215,9 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"
 )

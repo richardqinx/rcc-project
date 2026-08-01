@@ -26,9 +26,9 @@ namespace {
 
 class FunctionVerifier final {
 public:
-  FunctionVerifier(const MachineFunction &Function, const InstructionSet &Instructions,
+  FunctionVerifier(const MachineFunction &Function, const TargetDescription &Target,
                    MachineVerifierOptions Options) noexcept
-      : Function(Function), Instructions(Instructions), Options(Options) {}
+      : Function(Function), Target(Target), Options(Options) {}
 
   [[nodiscard]] Expected<void> run() {
     if (Function.name().empty() || !Function.stableID().isValid())
@@ -346,10 +346,10 @@ private:
     if (!LocalResult)
       return LocalResult;
 
-    const InstructionDescriptor *Descriptor = Instructions.descriptor(Instruction.opcode());
+    const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
     if (Descriptor == nullptr)
       return fail("live instruction uses an unregistered opcode");
-    auto DescriptorResult = Instructions.validateInstruction(Instruction, Function.registerInfo());
+    auto DescriptorResult = Target.validateInstruction(Instruction, Function.registerInfo());
     if (!DescriptorResult)
       return failWith("instruction descriptor", DescriptorResult.error());
 
@@ -466,6 +466,9 @@ private:
           return fail("block live-in list contains invalid or duplicate entries");
         }
       }
+      auto TargetLiveInResult = Target.validateBlockLiveIns(*Block);
+      if (!TargetLiveInResult)
+        return failWith("block live-ins", TargetLiveInResult.error());
     }
     return {};
   }
@@ -509,6 +512,9 @@ private:
           return fail("virtual register has an invalid or duplicate allocation hint");
       }
     }
+    auto TargetResult = Target.validateRegisterInfo(RegInfo);
+    if (!TargetResult)
+      return failWith("target register info", TargetResult.error());
     return {};
   }
 
@@ -577,7 +583,7 @@ private:
   }
 
   const MachineFunction &Function;
-  const InstructionSet &Instructions;
+  const TargetDescription &Target;
   MachineVerifierOptions Options;
   std::unordered_set<const MachineBasicBlock *> RegisteredBlocks;
   std::unordered_set<const MachineBasicBlock *> LinkedBlocks;
@@ -600,9 +606,9 @@ private:
 } // namespace
 
 Expected<void> MachineVerifier::verify(const MachineFunction &Function,
-                                       const InstructionSet &Instructions,
+                                       const TargetDescription &Target,
                                        MachineVerifierOptions Options) {
-  return FunctionVerifier(Function, Instructions, Options).run();
+  return FunctionVerifier(Function, Target, Options).run();
 }
 
 } // namespace rcc

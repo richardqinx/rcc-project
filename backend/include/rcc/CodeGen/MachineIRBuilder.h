@@ -3,10 +3,10 @@
 #ifndef RCC_CODEGEN_MACHINEIRBUILDER_H
 #define RCC_CODEGEN_MACHINEIRBUILDER_H
 
-#include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/Register.h"
+#include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
@@ -90,7 +90,7 @@ public:
   [[nodiscard]] Expected<MachineInstr *> build();
 
 private:
-  MachineInstrBuilder(MachineFunction &Function, const InstructionSet &Instructions,
+  MachineInstrBuilder(MachineFunction &Function, const TargetDescription &Target,
                       const InstructionDescriptor &Descriptor, MachineBasicBlock &InsertBlock,
                       MachineInstr *InsertBefore) noexcept;
 
@@ -106,7 +106,7 @@ private:
                                               bool IsImplicit);
 
   MachineFunction *Function;
-  const InstructionSet *Instructions;
+  const TargetDescription *Target;
   const InstructionDescriptor *Descriptor;
   MachineBasicBlock *InsertBlock;
   MachineInstr *InsertBefore;
@@ -124,8 +124,8 @@ private:
 
 class MachineIRBuilder final {
 public:
-  MachineIRBuilder(MachineFunction &Function, const InstructionSet &Instructions) noexcept
-      : Function(&Function), Instructions(&Instructions) {}
+  MachineIRBuilder(MachineFunction &Function, const TargetDescription &Target) noexcept
+      : Function(&Function), Target(&Target) {}
   MachineIRBuilder(const MachineIRBuilder &) = delete;
   MachineIRBuilder &operator=(const MachineIRBuilder &) = delete;
   MachineIRBuilder(MachineIRBuilder &&) = delete;
@@ -154,7 +154,7 @@ private:
   [[nodiscard]] Expected<void> validateInstruction(const MachineInstr &Instruction) const;
 
   MachineFunction *Function;
-  const InstructionSet *Instructions;
+  const TargetDescription *Target;
   MachineBasicBlock *InsertBlock = nullptr;
   MachineInstr *InsertBefore = nullptr;
 };

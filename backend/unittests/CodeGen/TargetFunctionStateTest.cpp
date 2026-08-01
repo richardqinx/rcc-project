@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/TargetFunctionState.h"
 
+#include "Target/TestTarget.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
@@ -146,14 +147,17 @@ struct CollidingFunctionInfo final {
                          const CollidingFunctionInfo &Right) = default;
 };
 
-[[nodiscard]] rcc::Expected<rcc::InstructionSet> createInstructionSet() {
+[[nodiscard]] rcc::Expected<rcc::TargetDescription> createTarget() {
   rcc::InstructionDescriptor Descriptor;
   Descriptor.InstructionOpcode = rcc::Opcode::fromValue(1);
   Descriptor.Name = "TEST_NOP";
   Descriptor.Flags = {rcc::InstructionFlag::ProducesCode};
   std::vector<rcc::InstructionDescriptor> Descriptors;
   Descriptors.push_back(std::move(Descriptor));
-  return rcc::InstructionSet::create(std::move(Descriptors));
+  auto Instructions = rcc::InstructionSet::create(std::move(Descriptors));
+  if (!Instructions)
+    return std::unexpected(Instructions.error());
+  return rcc::test::createTestTargetDescription(std::move(*Instructions));
 }
 
 void testTargetFunctionStateContract(TestContext &Context) {
@@ -212,10 +216,10 @@ void testTargetFunctionStateFailures(TestContext &Context) {
 }
 
 void testMachineFunctionOwnershipAndVerification(TestContext &Context) {
-  auto InstructionSet = createInstructionSet();
+  auto Target = createTarget();
   auto Function =
       rcc::MachineFunction::create("target_state", rcc::MachineFunctionStableID::fromValue(1));
-  if (!InstructionSet || !Function)
+  if (!Target || !Function)
     return;
 
   Context.expect(!(*Function)->setTargetState(rcc::TargetFunctionState{}),
@@ -225,7 +229,7 @@ void testMachineFunctionOwnershipAndVerification(TestContext &Context) {
                  "machine function must accept one verified target state");
   Context.expect((*Function)->getTargetInfo<TestFunctionInfo>() != nullptr &&
                      (*Function)->getTargetInfo<CollidingFunctionInfo>() == nullptr &&
-                     rcc::MachineVerifier::verify(**Function, *InstructionSet).has_value(),
+                     rcc::MachineVerifier::verify(**Function, *Target).has_value(),
                  "machine function must expose and verify its strong target state");
 
   auto Replacement = rcc::TargetFunctionState::create(TestFunctionInfo{8192, true, "lp64d"});
@@ -236,7 +240,7 @@ void testMachineFunctionOwnershipAndVerification(TestContext &Context) {
   if (Info == nullptr)
     return;
   Info->CallingConvention.clear();
-  Context.expect(!rcc::MachineVerifier::verify(**Function, *InstructionSet),
+  Context.expect(!rcc::MachineVerifier::verify(**Function, *Target),
                  "machine verifier must reject invalid concrete target state");
 }
 
