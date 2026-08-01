@@ -35,16 +35,13 @@ public:
   [[nodiscard]] ObjectT *create(ArgumentTs &&...Arguments) {
     void *Storage = Resource.allocate(sizeof(ObjectT), alignof(ObjectT));
     ObjectT *Object = ::new (Storage) ObjectT(std::forward<ArgumentTs>(Arguments)...);
-    try {
-      Destructors.push_back(DestructorRecord{
-          Object,
-          [](void *RawObject) noexcept { std::destroy_at(static_cast<ObjectT *>(RawObject)); },
-      });
-    } catch (...) {
-      std::destroy_at(Object);
-      throw;
-    }
-    return Object;
+    auto DestroyObject = [](ObjectT *TypedObject) noexcept { std::destroy_at(TypedObject); };
+    std::unique_ptr<ObjectT, decltype(DestroyObject)> ConstructionGuard(Object, DestroyObject);
+    Destructors.push_back(DestructorRecord{
+        Object,
+        [](void *RawObject) noexcept { std::destroy_at(static_cast<ObjectT *>(RawObject)); },
+    });
+    return ConstructionGuard.release();
   }
 
 private:

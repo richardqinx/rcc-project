@@ -44,6 +44,12 @@ include(RCCBackendDeveloperTools)
 option(RCC_BACKEND_BUILD_TESTS "Build RCC Backend tests" "${BUILD_TESTING}")
 option(RCC_BACKEND_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(RCC_BACKEND_ENABLE_CLANG_TIDY "Run clang-tidy during each compilation" OFF)
+option(RCC_BACKEND_ENABLE_EH "Enable C++ exception handling" OFF)
+option(RCC_BACKEND_ENABLE_RTTI "Enable C++ run-time type information" OFF)
+
+if(RCC_BACKEND_ENABLE_EH AND NOT RCC_BACKEND_ENABLE_RTTI)
+  message(FATAL_ERROR "RCC Backend exception handling requires RTTI")
+endif()
 
 rcc_backend_initialize_toolchain()
 

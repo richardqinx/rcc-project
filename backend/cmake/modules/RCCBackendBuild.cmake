@@ -70,6 +70,18 @@ function(rcc_backend_configure_target Target)
       -Wformat=2
   )
 
+  if(RCC_BACKEND_ENABLE_EH)
+    target_compile_options("${Target}" PRIVATE -fexceptions)
+  else()
+    target_compile_options("${Target}" PRIVATE -fno-exceptions)
+  endif()
+
+  if(RCC_BACKEND_ENABLE_RTTI)
+    target_compile_options("${Target}" PRIVATE -frtti)
+  else()
+    target_compile_options("${Target}" PRIVATE -fno-rtti)
+  endif()
+
   if(RCC_BACKEND_WARNINGS_AS_ERRORS)
     target_compile_options("${Target}" PRIVATE -Werror)
   endif()
