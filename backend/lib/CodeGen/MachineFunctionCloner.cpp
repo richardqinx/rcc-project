@@ -5,6 +5,7 @@
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
+#include "rcc/CodeGen/MachineCompilationStatus.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -14,6 +15,7 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/MachineVerifier.h"
+#include "rcc/CodeGen/TargetFunctionState.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -463,6 +465,86 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
 
 } // namespace
 
+Expected<MachineBasicBlock *>
+MachineFunctionCloneContext::mapBlock(const MachineBasicBlock &SourceBlock) const {
+  const auto Position = Blocks.find(&SourceBlock);
+  if (Position == Blocks.end()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "target function state references an unmapped basic block");
+  }
+  return Position->second;
+}
+
+Expected<MachineInstr *>
+MachineFunctionCloneContext::mapInstruction(const MachineInstr &SourceInstruction) const {
+  const auto Position = Instructions.find(&SourceInstruction);
+  if (Position == Instructions.end()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "target function state references an unmapped instruction");
+  }
+  return Position->second;
+}
+
+Expected<MachineBlockStableID>
+MachineFunctionCloneContext::mapBlockStableID(MachineBlockStableID SourceID) const {
+  const auto Position = Result.BlockStableIDs.find(SourceID);
+  if (Position == Result.BlockStableIDs.end()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "target function state references an unmapped block StableID");
+  }
+  return Position->second;
+}
+
+Expected<MachineInstrStableID>
+MachineFunctionCloneContext::mapInstructionStableID(MachineInstrStableID SourceID) const {
+  const auto Position = Result.InstructionStableIDs.find(SourceID);
+  if (Position == Result.InstructionStableIDs.end()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "function state references an unmapped instruction StableID");
+  }
+  return Position->second;
+}
+
+Expected<Register> MachineFunctionCloneContext::mapRegister(Register SourceRegister) const {
+  if (!SourceRegister.isVirtual())
+    return SourceRegister;
+  const auto Position = Result.VirtualRegisters.find(SourceRegister);
+  if (Position == Result.VirtualRegisters.end()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "target function state references an unmapped virtual register");
+  }
+  return Position->second;
+}
+
+Expected<FrameIndex> MachineFunctionCloneContext::mapFrameIndex(FrameIndex SourceIndex) const {
+  const auto Position = Result.FrameIndices.find(SourceIndex);
+  if (Position == Result.FrameIndices.end()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "target function state references an unmapped frame index");
+  }
+  return Position->second;
+}
+
+Expected<ConstantPoolIndex>
+MachineFunctionCloneContext::mapConstantPoolIndex(ConstantPoolIndex SourceIndex) const {
+  const auto Position = Result.ConstantPoolIndices.find(SourceIndex);
+  if (Position == Result.ConstantPoolIndices.end()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "target function state references an unmapped constant pool entry");
+  }
+  return Position->second;
+}
+
+Expected<JumpTableIndex>
+MachineFunctionCloneContext::mapJumpTableIndex(JumpTableIndex SourceIndex) const {
+  const auto Position = Result.JumpTableIndices.find(SourceIndex);
+  if (Position == Result.JumpTableIndices.end()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "target function state references an unmapped jump table");
+  }
+  return Position->second;
+}
+
 MachineFunctionCloneResult::MachineFunctionCloneResult() = default;
 MachineFunctionCloneResult::MachineFunctionCloneResult(MachineFunctionCloneResult &&) noexcept =
     default;
@@ -517,6 +599,21 @@ Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction 
   if (!CFGResult)
     return std::unexpected(CFGResult.error());
 
+  const MachineFunctionCloneContext CloneContext(Source, *Result.ClonedFunction, Result,
+                                                 State.Blocks, State.Instructions);
+  if (Source.targetState().hasValue()) {
+    auto TargetState = Source.targetState().clone(CloneContext);
+    if (!TargetState)
+      return std::unexpected(TargetState.error());
+    auto InstallResult = Result.ClonedFunction->setTargetState(std::move(*TargetState));
+    if (!InstallResult)
+      return std::unexpected(InstallResult.error());
+  }
+
+  auto CompilationStatus = Source.compilationStatus().clone(CloneContext);
+  if (!CompilationStatus)
+    return std::unexpected(CompilationStatus.error());
+  Result.ClonedFunction->compilationStatus() = std::move(*CompilationStatus);
   Result.ClonedFunction->properties() = Source.properties();
   auto DestinationVerification = MachineVerifier::verify(*Result.ClonedFunction, Instructions);
   if (!DestinationVerification)

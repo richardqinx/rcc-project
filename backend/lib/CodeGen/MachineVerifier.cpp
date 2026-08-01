@@ -34,6 +34,11 @@ public:
     if (Function.name().empty() || !Function.stableID().isValid())
       return fail("function identity is invalid");
 
+    if (Function.targetState().hasValue()) {
+      auto TargetStateResult = Function.targetState().verify();
+      if (!TargetStateResult)
+        return failWith("target function state", TargetStateResult.error());
+    }
     auto CatalogResult = catalogArenaObjects();
     if (!CatalogResult)
       return CatalogResult;
@@ -46,6 +51,9 @@ public:
     auto LayoutResult = verifyBlockLayout();
     if (!LayoutResult)
       return LayoutResult;
+    auto CompilationStatusResult = verifyCompilationStatus();
+    if (!CompilationStatusResult)
+      return CompilationStatusResult;
     auto JumpTableResult = Function.jumpTableInfo().verify();
     if (!JumpTableResult)
       return failWith("jump table info", JumpTableResult.error());
@@ -315,6 +323,20 @@ private:
           return fail("stack object lifetime references a detached or unknown instruction");
         }
       }
+    }
+    return {};
+  }
+
+  [[nodiscard]] Expected<void> verifyCompilationStatus() const {
+    const MachineCompilationStatus &Status = Function.compilationStatus();
+    auto Verification = Status.verify();
+    if (!Verification)
+      return failWith("compilation status", Verification.error());
+
+    const MachineCompilationFailure *Failure = Status.failure();
+    if (Failure != nullptr && Failure->FailureInstruction &&
+        !LinkedInstructionIDs.contains(*Failure->FailureInstruction)) {
+      return fail("compilation failure references a detached or unknown instruction");
     }
     return {};
   }

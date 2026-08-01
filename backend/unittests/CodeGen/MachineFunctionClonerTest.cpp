@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
+#include "rcc/CodeGen/MachineCompilationStatus.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -17,6 +18,7 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/MachineVerifier.h"
+#include "rcc/CodeGen/TargetFunctionState.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -24,6 +26,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -56,6 +59,105 @@ public:
 
 private:
   int FailureCount = 0;
+};
+
+void appendLittleEndian(std::vector<std::byte> &Bytes, std::uint64_t Value, std::size_t Width) {
+  for (std::size_t Index = 0; Index < Width; ++Index)
+    Bytes.push_back(static_cast<std::byte>((Value >> (Index * 8U)) & 0xffU));
+}
+
+[[nodiscard]] std::uint64_t readLittleEndian(std::span<const std::byte> Bytes, std::size_t Offset,
+                                             std::size_t Width) {
+  std::uint64_t Value = 0;
+  for (std::size_t Index = 0; Index < Width; ++Index) {
+    Value |= std::to_integer<std::uint64_t>(Bytes[Offset + Index]) << (Index * 8U);
+  }
+  return Value;
+}
+
+struct CloneTargetState final {
+  rcc::MachineBlockStableID Block;
+  rcc::MachineInstrStableID Instruction;
+  rcc::Register TrackedRegister;
+  rcc::FrameIndex Frame;
+  rcc::ConstantPoolIndex Constant;
+  rcc::JumpTableIndex JumpTable;
+
+  [[nodiscard]] static constexpr rcc::TargetFunctionStateTypeID stableTypeID() noexcept {
+    return rcc::TargetFunctionStateTypeID::fromValue(0x524343434c4f4e45ULL);
+  }
+
+  [[nodiscard]] static constexpr std::uint32_t schemaVersion() noexcept {
+    return 1;
+  }
+
+  [[nodiscard]] rcc::Expected<void> verify() const {
+    if (!Block.isValid() || !Instruction.isValid() || TrackedRegister.isNoRegister()) {
+      return rcc::makeUnexpected(rcc::ErrorCode::VerificationError,
+                                 "clone target state has an invalid identity");
+    }
+    return {};
+  }
+
+  [[nodiscard]] rcc::Expected<CloneTargetState>
+  clone(const rcc::MachineFunctionCloneContext &Context) const {
+    auto MappedBlock = Context.mapBlockStableID(Block);
+    if (!MappedBlock)
+      return std::unexpected(MappedBlock.error());
+    auto MappedInstruction = Context.mapInstructionStableID(Instruction);
+    if (!MappedInstruction)
+      return std::unexpected(MappedInstruction.error());
+    auto MappedRegister = Context.mapRegister(TrackedRegister);
+    if (!MappedRegister)
+      return std::unexpected(MappedRegister.error());
+    auto MappedFrame = Context.mapFrameIndex(Frame);
+    if (!MappedFrame)
+      return std::unexpected(MappedFrame.error());
+    auto MappedConstant = Context.mapConstantPoolIndex(Constant);
+    if (!MappedConstant)
+      return std::unexpected(MappedConstant.error());
+    auto MappedJumpTable = Context.mapJumpTableIndex(JumpTable);
+    if (!MappedJumpTable)
+      return std::unexpected(MappedJumpTable.error());
+    return CloneTargetState{*MappedBlock, *MappedInstruction, *MappedRegister,
+                            *MappedFrame, *MappedConstant,    *MappedJumpTable};
+  }
+
+  [[nodiscard]] std::string print() const {
+    return "clone-target-state";
+  }
+
+  [[nodiscard]] rcc::Expected<std::vector<std::byte>> encode() const {
+    std::vector<std::byte> Payload;
+    Payload.reserve(32);
+    appendLittleEndian(Payload, Block.value(), 8);
+    appendLittleEndian(Payload, Instruction.value(), 8);
+    appendLittleEndian(Payload, TrackedRegister.opaqueValue(), 4);
+    appendLittleEndian(Payload, Frame.value(), 4);
+    appendLittleEndian(Payload, Constant.value(), 4);
+    appendLittleEndian(Payload, JumpTable.value(), 4);
+    return Payload;
+  }
+
+  [[nodiscard]] static rcc::Expected<CloneTargetState> decode(std::uint32_t Version,
+                                                              std::span<const std::byte> Payload) {
+    if (Version != schemaVersion() || Payload.size() != 32) {
+      return rcc::makeUnexpected(rcc::ErrorCode::ParseError,
+                                 "clone target state encoding is invalid");
+    }
+    return CloneTargetState{
+        rcc::MachineBlockStableID::fromValue(readLittleEndian(Payload, 0, 8)),
+        rcc::MachineInstrStableID::fromValue(readLittleEndian(Payload, 8, 8)),
+        rcc::Register(static_cast<std::uint32_t>(readLittleEndian(Payload, 16, 4))),
+        rcc::FrameIndex::fromValue(static_cast<std::uint32_t>(readLittleEndian(Payload, 20, 4))),
+        rcc::ConstantPoolIndex::fromValue(
+            static_cast<std::uint32_t>(readLittleEndian(Payload, 24, 4))),
+        rcc::JumpTableIndex::fromValue(
+            static_cast<std::uint32_t>(readLittleEndian(Payload, 28, 4))),
+    };
+  }
+
+  friend bool operator==(const CloneTargetState &Left, const CloneTargetState &Right) = default;
 };
 
 [[nodiscard]] rcc::OperandDescriptor registerDescriptor(rcc::RegisterOperandRole Role) {
@@ -371,6 +473,30 @@ struct SourceFixture final {
                      Function.frameInfo().freeze(32, *rcc::Alignment::create(16)).has_value(),
                  "source frame metadata must be finalized");
 
+  auto TargetState = rcc::TargetFunctionState::create(
+      CloneTargetState{Fixture.Entry->stableID(), LoadInstruction->stableID(), Fixture.Value,
+                       Fixture.StackSlot, Fixture.Constant, Fixture.JumpTable});
+  Context.expect(TargetState.has_value(), "source target function state must be created");
+  if (!TargetState)
+    return false;
+  Context.expect(Function.setTargetState(std::move(*TargetState)).has_value(),
+                 "source target function state must be installed");
+
+  rcc::MachineCompilationFailure Failure;
+  Failure.Diagnostic.Code = rcc::ErrorCode::Unsupported;
+  Failure.Diagnostic.Message = "test instruction selection failed";
+  Failure.Diagnostic.Location = rcc::SourceLocation{"source.mir", 12, 5, 0};
+  Failure.FailurePass = "test-instruction-select";
+  Failure.FailureInstruction = LoadInstruction->stableID();
+  Failure.FailureStage = rcc::PipelineStage::Selected;
+  Failure.FailureRule = "test-load-pattern";
+  Failure.Target = "test64";
+  Failure.Subtarget = "test64+feature";
+  Context.expect(Function.compilationStatus()
+                     .fail(rcc::MachineCompilationState::SelectionFailed, std::move(Failure))
+                     .has_value(),
+                 "source structured compilation failure must be recorded");
+
   Function.properties().set(rcc::MachineFunctionProperty::IsSSA);
   Function.properties().set(rcc::MachineFunctionProperty::TracksLiveness);
   Function.properties().set(rcc::MachineFunctionProperty::NoPHIs);
@@ -597,6 +723,41 @@ void testDeepClone(TestContext &Context) {
   Context.expect(SourceDef != nullptr && InstructionID != Clone->InstructionStableIDs.end() &&
                      InstructionID->second == DestinationDef->stableID(),
                  "instruction StableID mapping must identify cloned instructions");
+
+  rcc::MachineInstr *SourceLoad = findInstruction(*Fixture.Exit, LoadOpcode);
+  const auto LoadID = SourceLoad == nullptr
+                          ? Clone->InstructionStableIDs.end()
+                          : Clone->InstructionStableIDs.find(SourceLoad->stableID());
+  const CloneTargetState *SourceTarget = Source->getTargetInfo<CloneTargetState>();
+  const CloneTargetState *DestinationTarget = Destination.getTargetInfo<CloneTargetState>();
+  Context.expect(SourceLoad != nullptr && LoadID != Clone->InstructionStableIDs.end() &&
+                     SourceTarget != nullptr && DestinationTarget != nullptr &&
+                     SourceTarget != DestinationTarget && EntryID != Clone->BlockStableIDs.end() &&
+                     FramePosition != Clone->FrameIndices.end() &&
+                     ConstantPosition != Clone->ConstantPoolIndices.end() &&
+                     JumpTablePosition != Clone->JumpTableIndices.end() &&
+                     DestinationTarget->Block == EntryID->second &&
+                     DestinationTarget->Instruction == LoadID->second &&
+                     DestinationTarget->TrackedRegister == NewValue &&
+                     DestinationTarget->Frame == FramePosition->second &&
+                     DestinationTarget->Constant == ConstantPosition->second &&
+                     DestinationTarget->JumpTable == JumpTablePosition->second,
+                 "clone must strongly clone target state through every identity mapping");
+
+  const rcc::MachineCompilationFailure *SourceFailure = Source->compilationStatus().failure();
+  const rcc::MachineCompilationFailure *DestinationFailure =
+      Destination.compilationStatus().failure();
+  Context.expect(SourceFailure != nullptr && DestinationFailure != nullptr &&
+                     Destination.compilationStatus().state() ==
+                         rcc::MachineCompilationState::SelectionFailed &&
+                     DestinationFailure->FailureInstruction == DestinationLoad->stableID() &&
+                     DestinationFailure->Diagnostic == SourceFailure->Diagnostic &&
+                     DestinationFailure->FailurePass == SourceFailure->FailurePass &&
+                     DestinationFailure->FailureStage == SourceFailure->FailureStage &&
+                     DestinationFailure->FailureRule == SourceFailure->FailureRule &&
+                     DestinationFailure->Target == SourceFailure->Target &&
+                     DestinationFailure->Subtarget == SourceFailure->Subtarget,
+                 "clone must preserve compilation failure details and remap its instruction");
 }
 
 void testCloneFailures(TestContext &Context) {
@@ -627,6 +788,22 @@ void testCloneFailures(TestContext &Context) {
                                    rcc::MachineFunctionCloneOptions{
                                        rcc::MachineFunctionStableID::fromValue(5), std::nullopt}),
         "clone must verify and reject an invalid source function");
+  }
+
+  auto UnmappedState = createFunction(Context, "unmapped_target_state", 6);
+  auto Physical = rcc::Register::makePhysical(1);
+  if (UnmappedState && Physical) {
+    auto State = rcc::TargetFunctionState::create(CloneTargetState{
+        rcc::MachineBlockStableID::fromValue(99), rcc::MachineInstrStableID::fromValue(99),
+        *Physical, rcc::FrameIndex::fromValue(0), rcc::ConstantPoolIndex::fromValue(0),
+        rcc::JumpTableIndex::fromValue(0)});
+    Context.expect(State && UnmappedState->setTargetState(std::move(*State)).has_value(),
+                   "unmapped target state negative test must be installed");
+    Context.expect(
+        !rcc::cloneMachineFunction(*UnmappedState, *InstructionSet,
+                                   rcc::MachineFunctionCloneOptions{
+                                       rcc::MachineFunctionStableID::fromValue(7), std::nullopt}),
+        "clone must reject target state that does not map its identities");
   }
 }
 

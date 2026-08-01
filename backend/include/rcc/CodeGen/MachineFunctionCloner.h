@@ -16,7 +16,9 @@
 namespace rcc {
 
 class InstructionSet;
+class MachineBasicBlock;
 class MachineFunction;
+class MachineInstr;
 
 struct MachineFunctionCloneOptions final {
   MachineFunctionStableID NewStableID;
@@ -38,6 +40,49 @@ struct MachineFunctionCloneResult final {
   std::unordered_map<FrameIndex, FrameIndex> FrameIndices;
   std::unordered_map<ConstantPoolIndex, ConstantPoolIndex> ConstantPoolIndices;
   std::unordered_map<JumpTableIndex, JumpTableIndex> JumpTableIndices;
+};
+
+class MachineFunctionCloneContext final {
+public:
+  [[nodiscard]] const MachineFunction &sourceFunction() const noexcept {
+    return Source;
+  }
+
+  [[nodiscard]] MachineFunction &destinationFunction() const noexcept {
+    return Destination;
+  }
+
+  [[nodiscard]] Expected<MachineBasicBlock *> mapBlock(const MachineBasicBlock &SourceBlock) const;
+  [[nodiscard]] Expected<MachineInstr *>
+  mapInstruction(const MachineInstr &SourceInstruction) const;
+  [[nodiscard]] Expected<MachineBlockStableID>
+  mapBlockStableID(MachineBlockStableID SourceID) const;
+  [[nodiscard]] Expected<MachineInstrStableID>
+  mapInstructionStableID(MachineInstrStableID SourceID) const;
+  [[nodiscard]] Expected<Register> mapRegister(Register SourceRegister) const;
+  [[nodiscard]] Expected<FrameIndex> mapFrameIndex(FrameIndex SourceIndex) const;
+  [[nodiscard]] Expected<ConstantPoolIndex>
+  mapConstantPoolIndex(ConstantPoolIndex SourceIndex) const;
+  [[nodiscard]] Expected<JumpTableIndex> mapJumpTableIndex(JumpTableIndex SourceIndex) const;
+
+private:
+  MachineFunctionCloneContext(
+      const MachineFunction &Source, MachineFunction &Destination,
+      const MachineFunctionCloneResult &Result,
+      const std::unordered_map<const MachineBasicBlock *, MachineBasicBlock *> &Blocks,
+      const std::unordered_map<const MachineInstr *, MachineInstr *> &Instructions) noexcept
+      : Source(Source), Destination(Destination), Result(Result), Blocks(Blocks),
+        Instructions(Instructions) {}
+
+  const MachineFunction &Source;
+  MachineFunction &Destination;
+  const MachineFunctionCloneResult &Result;
+  const std::unordered_map<const MachineBasicBlock *, MachineBasicBlock *> &Blocks;
+  const std::unordered_map<const MachineInstr *, MachineInstr *> &Instructions;
+
+  friend Expected<MachineFunctionCloneResult>
+  cloneMachineFunction(const MachineFunction &Source, const InstructionSet &Instructions,
+                       MachineFunctionCloneOptions Options);
 };
 
 [[nodiscard]] Expected<MachineFunctionCloneResult>

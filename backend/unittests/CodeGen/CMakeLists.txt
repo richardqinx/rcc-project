@@ -4,6 +4,7 @@ set(
   RCCBackendCodeGenTestSources
   CoreTypesTest.cpp
   InstructionDescriptorTest.cpp
+  MachineCompilationStatusTest.cpp
   MachineConstantPoolTest.cpp
   MachineFrameInfoTest.cpp
   MachineFunctionClonerTest.cpp
@@ -13,6 +14,7 @@ set(
   MachineVerifierTest.cpp
   MachineValueTypesTest.cpp
   TargetConstantTest.cpp
+  TargetFunctionStateTest.cpp
 )
 
 add_executable(RCCBackendCodeGenCoreTypesTests CoreTypesTest.cpp)
@@ -34,6 +36,21 @@ target_link_libraries(
 add_test(
   NAME RCCBackend.CodeGen.InstructionDescriptor
   COMMAND RCCBackendCodeGenInstructionDescriptorTests
+)
+
+add_executable(
+  RCCBackendCodeGenMachineCompilationStatusTests
+  MachineCompilationStatusTest.cpp
+)
+rcc_backend_configure_target(RCCBackendCodeGenMachineCompilationStatusTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineCompilationStatusTests
+  PRIVATE RCCBackend::CodeGen
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineCompilationStatus
+  COMMAND RCCBackendCodeGenMachineCompilationStatusTests
 )
 
 add_executable(RCCBackendCodeGenMachineConstantPoolTests MachineConstantPoolTest.cpp)
@@ -129,9 +146,19 @@ add_test(
   COMMAND RCCBackendCodeGenTargetConstantTests
 )
 
+add_executable(RCCBackendCodeGenTargetFunctionStateTests TargetFunctionStateTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenTargetFunctionStateTests)
+target_link_libraries(RCCBackendCodeGenTargetFunctionStateTests PRIVATE RCCBackend::CodeGen)
+
+add_test(
+  NAME RCCBackend.CodeGen.TargetFunctionState
+  COMMAND RCCBackendCodeGenTargetFunctionStateTests
+)
+
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatusTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPoolTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionClonerTest.cpp"
@@ -141,10 +168,12 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatusTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPoolTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionClonerTest.cpp"
@@ -154,4 +183,5 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
 )

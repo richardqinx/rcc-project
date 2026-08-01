@@ -3,12 +3,14 @@
 #ifndef RCC_CODEGEN_MACHINEFUNCTION_H
 #define RCC_CODEGEN_MACHINEFUNCTION_H
 
+#include "rcc/CodeGen/MachineCompilationStatus.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/StableID.h"
+#include "rcc/CodeGen/TargetFunctionState.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
@@ -87,6 +89,29 @@ public:
     return Properties;
   }
 
+  [[nodiscard]] const TargetFunctionState &targetState() const noexcept {
+    return TargetState;
+  }
+
+  [[nodiscard]] Expected<void> setTargetState(TargetFunctionState State);
+
+  template <TargetFunctionStateValue ValueT> [[nodiscard]] ValueT *getTargetInfo() noexcept {
+    return TargetState.getIf<ValueT>();
+  }
+
+  template <TargetFunctionStateValue ValueT>
+  [[nodiscard]] const ValueT *getTargetInfo() const noexcept {
+    return TargetState.getIf<ValueT>();
+  }
+
+  [[nodiscard]] MachineCompilationStatus &compilationStatus() noexcept {
+    return CompilationStatus;
+  }
+
+  [[nodiscard]] const MachineCompilationStatus &compilationStatus() const noexcept {
+    return CompilationStatus;
+  }
+
   [[nodiscard]] Expected<MachineBasicBlock *> createBasicBlock();
   [[nodiscard]] Expected<MachineInstr *> createInstruction(Opcode InstructionOpcode);
   [[nodiscard]] Expected<const MachineMemOperand *>
@@ -141,6 +166,8 @@ private:
   MachineConstantPool ConstantPool;
   MachineJumpTableInfo JumpTables;
   MachineFunctionProperties Properties;
+  TargetFunctionState TargetState;
+  MachineCompilationStatus CompilationStatus;
   MachineBasicBlock *FirstBlock = nullptr;
   MachineBasicBlock *LastBlock = nullptr;
   std::vector<MachineBasicBlock *> AllBlocks;

@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
+#include "rcc/CodeGen/MachineCompilationStatus.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
@@ -556,6 +557,48 @@ void testTableReferenceFailures(TestContext &Context) {
                  "verifier must reject a tombstoned jump-table reference");
 }
 
+void testCompilationStatusReferences(TestContext &Context) {
+  auto InstructionSet = createInstructionSet();
+  auto Unknown = createFunction(Context, "unknown_failure_instruction", 18);
+  if (!InstructionSet || !Unknown)
+    return;
+
+  rcc::MachineCompilationFailure UnknownFailure;
+  UnknownFailure.Diagnostic.Code = rcc::ErrorCode::Unsupported;
+  UnknownFailure.Diagnostic.Message = "selection failed";
+  UnknownFailure.FailureInstruction = rcc::MachineInstrStableID::fromValue(99);
+  UnknownFailure.FailureStage = rcc::PipelineStage::Selected;
+  Context.expect(
+      Unknown->compilationStatus()
+              .fail(rcc::MachineCompilationState::SelectionFailed, std::move(UnknownFailure))
+              .has_value() &&
+          !rcc::MachineVerifier::verify(*Unknown, *InstructionSet),
+      "verifier must reject compilation status that references an unknown instruction");
+
+  auto Live = createFunction(Context, "live_failure_instruction", 19);
+  rcc::MachineBasicBlock *Block = Live ? createBlock(Context, *Live) : nullptr;
+  if (!Live || Block == nullptr)
+    return;
+  rcc::MachineIRBuilder Builder(*Live, *InstructionSet);
+  Context.expect(Builder.setInsertPoint(*Block).has_value(),
+                 "live failure instruction insertion point must be valid");
+  rcc::MachineInstr *Instruction = buildNoOperand(Context, Builder, NopOpcode);
+  if (Instruction == nullptr)
+    return;
+
+  rcc::MachineCompilationFailure LiveFailure;
+  LiveFailure.Diagnostic.Code = rcc::ErrorCode::Unsupported;
+  LiveFailure.Diagnostic.Message = "finalization failed";
+  LiveFailure.FailureInstruction = Instruction->stableID();
+  LiveFailure.FailureStage = rcc::PipelineStage::PostRAFinalized;
+  Context.expect(
+      Live->compilationStatus()
+              .fail(rcc::MachineCompilationState::FinalizationFailed, std::move(LiveFailure))
+              .has_value() &&
+          rcc::MachineVerifier::verify(*Live, *InstructionSet).has_value(),
+      "verifier must accept a structurally valid failed function");
+}
+
 } // namespace
 
 int main() {
@@ -566,5 +609,6 @@ int main() {
   testSelectedStateAndPseudoDeadline(Context);
   testFrameStateFailures(Context);
   testTableReferenceFailures(Context);
+  testCompilationStatusReferences(Context);
   return Context.result();
 }

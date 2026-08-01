@@ -75,6 +75,17 @@ MachineFunction::~MachineFunction() {
   }
 }
 
+Expected<void> MachineFunction::setTargetState(TargetFunctionState State) {
+  if (TargetState.hasValue()) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "machine function already has target state");
+  }
+  auto Verification = State.verify();
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  TargetState = std::move(State);
+  return {};
+}
+
 Expected<MachineBasicBlock *> MachineFunction::createBasicBlock() {
   auto ID = BlockIDGenerator.allocate();
   if (!ID)

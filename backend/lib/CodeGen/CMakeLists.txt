@@ -4,6 +4,7 @@ set(
   RCCBackendCodeGenSources
   InstructionDescriptor.cpp
   LowLevelType.cpp
+  MachineCompilationStatus.cpp
   MachineBasicBlock.cpp
   MachineCFGUpdater.cpp
   MachineConstantPool.cpp
@@ -22,11 +23,13 @@ set(
   Register.cpp
   RegisterMask.cpp
   TargetConstant.cpp
+  TargetFunctionState.cpp
 )
 set(
   RCCBackendCodeGenHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCompilationStatus.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlock.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFGUpdater.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineConstantPool.h"
@@ -46,6 +49,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterMask.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/StableID.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetConstant.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFunctionState.h"
 )
 
 add_library(RCCBackendCodeGen ${RCCBackendCodeGenSources})
@@ -79,6 +83,7 @@ install(
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPool.cpp"
@@ -97,11 +102,13 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
   ${RCCBackendCodeGenHeaders}
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPool.cpp"
@@ -120,4 +127,5 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
 )
