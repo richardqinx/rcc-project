@@ -23,6 +23,7 @@
 namespace rcc {
 
 class MachineInstr;
+class MachineMemOperand;
 class MachineRegisterInfo;
 
 class OperandKindSet final {
@@ -217,6 +218,13 @@ struct ImmediatePredicate final {
   std::function<bool(const MachineOperand &)> Predicate;
 };
 
+struct MachineOperandTie final {
+  std::size_t DefOperand;
+  std::size_t UseOperand;
+
+  friend bool operator==(MachineOperandTie Left, MachineOperandTie Right) noexcept = default;
+};
+
 class InstructionSet final {
 public:
   [[nodiscard]] static Expected<InstructionSet>
@@ -232,6 +240,15 @@ public:
   [[nodiscard]] Expected<void> validateExplicitOperands(Opcode InstructionOpcode,
                                                         std::span<const MachineOperand> Operands,
                                                         const MachineRegisterInfo &RegInfo) const;
+  [[nodiscard]] Expected<void> validateOperandTies(Opcode InstructionOpcode,
+                                                   std::span<const MachineOperand> ExplicitOperands,
+                                                   std::span<const MachineOperandTie> Ties) const;
+  [[nodiscard]] Expected<void>
+  validateImplicitOperands(Opcode InstructionOpcode,
+                           std::span<const MachineOperand *const> ImplicitOperands) const;
+  [[nodiscard]] Expected<void>
+  validateMemOperands(Opcode InstructionOpcode,
+                      std::span<const MachineMemOperand *const> MemOperands) const;
   [[nodiscard]] Expected<void> validateInstruction(const MachineInstr &Instruction,
                                                    const MachineRegisterInfo &RegInfo) const;
 
@@ -248,6 +265,15 @@ private:
   [[nodiscard]] Expected<void> validateExplicitOperands(const InstructionDescriptor &Descriptor,
                                                         std::span<const MachineOperand> Operands,
                                                         const MachineRegisterInfo &RegInfo) const;
+  [[nodiscard]] Expected<void> validateOperandTies(const InstructionDescriptor &Descriptor,
+                                                   std::span<const MachineOperand> ExplicitOperands,
+                                                   std::span<const MachineOperandTie> Ties) const;
+  [[nodiscard]] Expected<void>
+  validateImplicitOperands(const InstructionDescriptor &Descriptor,
+                           std::span<const MachineOperand *const> ImplicitOperands) const;
+  [[nodiscard]] Expected<void>
+  validateMemOperands(const InstructionDescriptor &Descriptor,
+                      std::span<const MachineMemOperand *const> MemOperands) const;
   [[nodiscard]] Expected<void> validateOperand(const OperandDescriptor &Descriptor,
                                                const MachineOperand &Operand,
                                                const MachineRegisterInfo &RegInfo) const;

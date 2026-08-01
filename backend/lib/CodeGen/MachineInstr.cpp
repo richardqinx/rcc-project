@@ -46,11 +46,11 @@ void MachineInstr::reserveOperands(std::size_t Capacity) {
   Operands.reserve(Capacity);
 }
 
-Expected<void> MachineInstr::addOperand(MachineOperand Operand) {
+Expected<void> MachineInstr::addOperand(MachineOperand &&Operand) {
   return insertOperand(Operands.size(), std::move(Operand));
 }
 
-Expected<void> MachineInstr::insertOperand(std::size_t Index, MachineOperand Operand) {
+Expected<void> MachineInstr::insertOperand(std::size_t Index, MachineOperand &&Operand) {
   if (Index > Operands.size())
     return makeUnexpected(ErrorCode::InvalidArgument, "operand insertion index is out of range");
   if (Operand.Parent != nullptr)
@@ -93,9 +93,9 @@ Expected<void> MachineInstr::tieOperands(std::size_t DefIndex, std::size_t UseIn
   MachineOperand &DefOperand = Operands[DefIndex];
   MachineOperand &UseOperand = Operands[UseIndex];
   if (!DefOperand.isRegister() || !UseOperand.isRegister() || !DefOperand.isDef() ||
-      !UseOperand.isUse()) {
+      DefOperand.isUse() || !UseOperand.isUse() || UseOperand.isDef()) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "tie must connect a register definition and use");
+                          "tie must connect a pure register definition and use");
   }
   if (DefOperand.TiedOperandIndex || UseOperand.TiedOperandIndex) {
     return makeUnexpected(ErrorCode::InvalidArgument,

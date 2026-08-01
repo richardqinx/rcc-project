@@ -87,8 +87,8 @@ public:
   }
 
   void reserveOperands(std::size_t Capacity);
-  [[nodiscard]] Expected<void> addOperand(MachineOperand Operand);
-  [[nodiscard]] Expected<void> insertOperand(std::size_t Index, MachineOperand Operand);
+  [[nodiscard]] Expected<void> addOperand(MachineOperand &&Operand);
+  [[nodiscard]] Expected<void> insertOperand(std::size_t Index, MachineOperand &&Operand);
   [[nodiscard]] Expected<void> eraseOperand(std::size_t Index);
 
   [[nodiscard]] Expected<void> tieOperands(std::size_t DefIndex, std::size_t UseIndex);

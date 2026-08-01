@@ -35,6 +35,14 @@ namespace {
          (Left == RegisterOperandRole::Use && Right == RegisterOperandRole::Def);
 }
 
+[[nodiscard]] bool isPureDef(const MachineOperand &Operand) noexcept {
+  return Operand.isRegister() && Operand.isDef() && !Operand.isUse();
+}
+
+[[nodiscard]] bool isPureUse(const MachineOperand &Operand) noexcept {
+  return Operand.isRegister() && Operand.isUse() && !Operand.isDef();
+}
+
 [[nodiscard]] Expected<void> validateDescriptorStructure(const InstructionDescriptor &Descriptor) {
   if (!Descriptor.InstructionOpcode.isValid())
     return makeUnexpected(ErrorCode::InvalidArgument, "instruction descriptor opcode is invalid");
@@ -320,6 +328,133 @@ Expected<void> InstructionSet::validateExplicitOperands(Opcode InstructionOpcode
   return validateExplicitOperands(*Descriptor, Operands, RegInfo);
 }
 
+Expected<void> InstructionSet::validateOperandTies(const InstructionDescriptor &Descriptor,
+                                                   std::span<const MachineOperand> ExplicitOperands,
+                                                   std::span<const MachineOperandTie> Ties) const {
+  std::vector<std::optional<std::size_t>> Partners(ExplicitOperands.size());
+  for (const MachineOperandTie Tie : Ties) {
+    if (Tie.DefOperand >= ExplicitOperands.size() || Tie.UseOperand >= ExplicitOperands.size() ||
+        Tie.DefOperand == Tie.UseOperand || !isPureDef(ExplicitOperands[Tie.DefOperand]) ||
+        !isPureUse(ExplicitOperands[Tie.UseOperand])) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "instruction tie must connect an in-range pure register def and use");
+    }
+    if (Partners[Tie.DefOperand] || Partners[Tie.UseOperand]) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "instruction operand participates in duplicate or conflicting ties");
+    }
+    Partners[Tie.DefOperand] = Tie.UseOperand;
+    Partners[Tie.UseOperand] = Tie.DefOperand;
+  }
+
+  for (std::size_t Index = 0; Index < Descriptor.Operands.size(); ++Index) {
+    const OperandDescriptor &Operand = Descriptor.Operands[Index];
+    if (Operand.DefaultTiedOperand &&
+        (Index >= Partners.size() || Partners[Index] != Operand.DefaultTiedOperand)) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "required descriptor tie is not materialized");
+    }
+  }
+  return {};
+}
+
+Expected<void> InstructionSet::validateOperandTies(Opcode InstructionOpcode,
+                                                   std::span<const MachineOperand> ExplicitOperands,
+                                                   std::span<const MachineOperandTie> Ties) const {
+  const InstructionDescriptor *Descriptor = descriptor(InstructionOpcode);
+  if (Descriptor == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError, "instruction opcode is not registered");
+  }
+  return validateOperandTies(*Descriptor, ExplicitOperands, Ties);
+}
+
+Expected<void> InstructionSet::validateImplicitOperands(
+    const InstructionDescriptor &Descriptor,
+    std::span<const MachineOperand *const> ImplicitOperands) const {
+  const std::size_t DefaultCount = Descriptor.ImplicitDefs.size() + Descriptor.ImplicitUses.size();
+  if (ImplicitOperands.size() < DefaultCount ||
+      (!Descriptor.AllowExtraImplicitOperands && ImplicitOperands.size() != DefaultCount)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "instruction implicit operand count does not match its descriptor");
+  }
+
+  std::size_t Index = 0;
+  auto ValidateDefault = [&](const ImplicitRegisterDescriptor &Implicit,
+                             bool IsDef) -> Expected<void> {
+    const MachineOperand *Operand = ImplicitOperands[Index++];
+    const Register *Reg = Operand == nullptr ? nullptr : Operand->getIf<Register>();
+    if (Reg == nullptr || Reg->physicalRegister() != Implicit.Reg || Operand->isDef() != IsDef ||
+        Operand->isUse() == IsDef || !Operand->isImplicit() ||
+        Operand->registerFlags().has(RegisterOperandFlag::EarlyClobber) != Implicit.EarlyClobber ||
+        Operand->registerFlags().has(RegisterOperandFlag::Renamable) != Implicit.Renamable) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "default implicit register operand does not match its descriptor");
+    }
+    return {};
+  };
+
+  for (const ImplicitRegisterDescriptor &Implicit : Descriptor.ImplicitDefs) {
+    auto Validation = ValidateDefault(Implicit, true);
+    if (!Validation)
+      return std::unexpected(Validation.error());
+  }
+  for (const ImplicitRegisterDescriptor &Implicit : Descriptor.ImplicitUses) {
+    auto Validation = ValidateDefault(Implicit, false);
+    if (!Validation)
+      return std::unexpected(Validation.error());
+  }
+  for (; Index < ImplicitOperands.size(); ++Index) {
+    const MachineOperand *Operand = ImplicitOperands[Index];
+    if (Operand == nullptr || !Operand->isRegister() || !Operand->isImplicit()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "dynamic implicit operand must be an implicit register");
+    }
+  }
+  return {};
+}
+
+Expected<void> InstructionSet::validateImplicitOperands(
+    Opcode InstructionOpcode, std::span<const MachineOperand *const> ImplicitOperands) const {
+  const InstructionDescriptor *Descriptor = descriptor(InstructionOpcode);
+  if (Descriptor == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError, "instruction opcode is not registered");
+  }
+  return validateImplicitOperands(*Descriptor, ImplicitOperands);
+}
+
+Expected<void>
+InstructionSet::validateMemOperands(const InstructionDescriptor &Descriptor,
+                                    std::span<const MachineMemOperand *const> MemOperands) const {
+  const bool MayLoad = Descriptor.Flags.has(InstructionFlag::MayLoad);
+  const bool MayStore = Descriptor.Flags.has(InstructionFlag::MayStore);
+  if (Descriptor.RequiresMemoryOperands && MemOperands.empty()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "memory instruction is missing MachineMemOperand");
+  }
+  if (!MayLoad && !MayStore && !MemOperands.empty()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "non-memory instruction carries MachineMemOperand");
+  }
+  for (const MachineMemOperand *MemOperand : MemOperands) {
+    if (MemOperand == nullptr || (MemOperand->isLoad() && !MayLoad) ||
+        (MemOperand->isStore() && !MayStore)) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "MachineMemOperand access conflicts with instruction descriptor");
+    }
+  }
+  return {};
+}
+
+Expected<void>
+InstructionSet::validateMemOperands(Opcode InstructionOpcode,
+                                    std::span<const MachineMemOperand *const> MemOperands) const {
+  const InstructionDescriptor *Descriptor = descriptor(InstructionOpcode);
+  if (Descriptor == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError, "instruction opcode is not registered");
+  }
+  return validateMemOperands(*Descriptor, MemOperands);
+}
+
 Expected<void> InstructionSet::validateOperand(const OperandDescriptor &Descriptor,
                                                const MachineOperand &Operand,
                                                const MachineRegisterInfo &RegInfo) const {
@@ -402,86 +537,42 @@ Expected<void> InstructionSet::validateInstruction(const MachineInstr &Instructi
   if (!ExplicitValidation)
     return std::unexpected(ExplicitValidation.error());
 
+  std::vector<MachineOperandTie> Ties;
   for (std::size_t Index = 0; Index < ExplicitCount; ++Index) {
     const MachineOperand &Operand = AllOperands[Index];
-    const OperandDescriptor &OperandDesc = descriptorForOperand(*Descriptor, Index);
-    if (OperandDesc.DefaultTiedOperand &&
-        Operand.tiedOperandIndex() != OperandDesc.DefaultTiedOperand) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "required descriptor tie is not materialized");
-    }
     if (!Operand.tiedOperandIndex())
       continue;
     const std::size_t OtherIndex = *Operand.tiedOperandIndex();
-    if (OtherIndex >= ExplicitCount || AllOperands[OtherIndex].tiedOperandIndex() != Index ||
-        !Operand.isRegister() || !AllOperands[OtherIndex].isRegister() ||
-        Operand.isDef() == AllOperands[OtherIndex].isDef() ||
-        Operand.isUse() == AllOperands[OtherIndex].isUse()) {
+    if (OtherIndex >= ExplicitCount || AllOperands[OtherIndex].tiedOperandIndex() != Index) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "instruction operand tie is invalid or not reciprocal");
+                            "instruction operand tie is out of range or not reciprocal");
     }
+    if (Index > OtherIndex)
+      continue;
+    if (isPureUse(Operand) && isPureDef(AllOperands[OtherIndex]))
+      Ties.push_back(MachineOperandTie{OtherIndex, Index});
+    else
+      Ties.push_back(MachineOperandTie{Index, OtherIndex});
   }
 
-  const std::size_t DefaultImplicitCount =
-      Descriptor->ImplicitDefs.size() + Descriptor->ImplicitUses.size();
-  const std::size_t ActualImplicitCount = AllOperands.size() - ExplicitCount;
-  if (ActualImplicitCount < DefaultImplicitCount ||
-      (!Descriptor->AllowExtraImplicitOperands && ActualImplicitCount != DefaultImplicitCount)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "instruction implicit operand count does not match its descriptor");
-  }
+  auto TieValidation = validateOperandTies(*Descriptor, AllOperands.first(ExplicitCount), Ties);
+  if (!TieValidation)
+    return std::unexpected(TieValidation.error());
 
-  std::size_t ImplicitIndex = ExplicitCount;
-  auto ValidateImplicit = [&](const ImplicitRegisterDescriptor &Implicit,
-                              bool IsDef) -> Expected<void> {
-    const MachineOperand &Operand = AllOperands[ImplicitIndex++];
-    const auto Reg = Operand.registerValue();
-    if (!Reg || Reg->physicalRegister() != Implicit.Reg || Operand.isDef() != IsDef ||
-        Operand.isUse() == IsDef || !Operand.isImplicit() ||
-        Operand.registerFlags().has(RegisterOperandFlag::EarlyClobber) != Implicit.EarlyClobber ||
-        Operand.registerFlags().has(RegisterOperandFlag::Renamable) != Implicit.Renamable) {
+  std::vector<const MachineOperand *> ImplicitOperands;
+  ImplicitOperands.reserve(AllOperands.size() - ExplicitCount);
+  for (std::size_t Index = ExplicitCount; Index < AllOperands.size(); ++Index) {
+    if (AllOperands[Index].tiedOperandIndex()) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "default implicit register operand does not match its descriptor");
+                            "implicit register operand cannot participate in a tie");
     }
-    return {};
-  };
-
-  for (const ImplicitRegisterDescriptor &Implicit : Descriptor->ImplicitDefs) {
-    auto Validation = ValidateImplicit(Implicit, true);
-    if (!Validation)
-      return std::unexpected(Validation.error());
-  }
-  for (const ImplicitRegisterDescriptor &Implicit : Descriptor->ImplicitUses) {
-    auto Validation = ValidateImplicit(Implicit, false);
-    if (!Validation)
-      return std::unexpected(Validation.error());
-  }
-  for (; ImplicitIndex < AllOperands.size(); ++ImplicitIndex) {
-    if (!AllOperands[ImplicitIndex].isRegister() || !AllOperands[ImplicitIndex].isImplicit()) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "dynamic implicit operand must be an implicit register");
-    }
+    ImplicitOperands.push_back(&AllOperands[Index]);
   }
 
-  const bool MayLoad = Descriptor->Flags.has(InstructionFlag::MayLoad);
-  const bool MayStore = Descriptor->Flags.has(InstructionFlag::MayStore);
-  if (Descriptor->RequiresMemoryOperands && Instruction.memOperands().empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "memory instruction is missing MachineMemOperand");
-  }
-  for (const MachineMemOperand *MemOperand : Instruction.memOperands()) {
-    if (MemOperand == nullptr || (MemOperand->isLoad() && !MayLoad) ||
-        (MemOperand->isStore() && !MayStore)) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "MachineMemOperand access conflicts with instruction descriptor");
-    }
-  }
-  if (!MayLoad && !MayStore && !Instruction.memOperands().empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "non-memory instruction carries MachineMemOperand");
-  }
-
-  return {};
+  auto ImplicitValidation = validateImplicitOperands(*Descriptor, ImplicitOperands);
+  if (!ImplicitValidation)
+    return std::unexpected(ImplicitValidation.error());
+  return validateMemOperands(*Descriptor, Instruction.memOperands());
 }
 
 Expected<std::vector<MachineOperand>>
