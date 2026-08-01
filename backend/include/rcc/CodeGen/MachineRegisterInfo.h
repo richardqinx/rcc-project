@@ -108,6 +108,9 @@ public:
   [[nodiscard]] Expected<void> eraseVirtualRegister(Register Reg);
 
   [[nodiscard]] bool isKnownVirtualRegister(Register Reg) const noexcept;
+  [[nodiscard]] std::span<const VirtualRegisterInfo> virtualRegisters() const noexcept {
+    return VirtualRegisters;
+  }
   [[nodiscard]] Expected<std::reference_wrapper<VirtualRegisterInfo>>
   virtualRegisterInfo(Register Reg);
   [[nodiscard]] Expected<std::reference_wrapper<const VirtualRegisterInfo>>
@@ -146,6 +149,7 @@ public:
   [[nodiscard]] Expected<std::size_t> replaceRegWith(Register OldReg, Register NewReg);
 
   [[nodiscard]] Expected<void> verifyDefUseChains() const;
+  [[nodiscard]] bool isLinkedOperand(const MachineOperand &Operand) const noexcept;
 
 private:
   struct RegOperandListHead final {

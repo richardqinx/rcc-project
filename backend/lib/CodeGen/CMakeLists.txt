@@ -13,6 +13,7 @@ set(
   MachineMemOperand.cpp
   MachineOperand.cpp
   MachineRegisterInfo.cpp
+  MachineVerifier.cpp
   MachineFunctionProperties.cpp
   Register.cpp
   RegisterMask.cpp
@@ -30,6 +31,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineVerifier.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionProperties.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/Register.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterMask.h"
@@ -76,6 +78,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
@@ -93,6 +96,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"

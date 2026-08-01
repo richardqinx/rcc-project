@@ -6,6 +6,7 @@ set(
   InstructionDescriptorTest.cpp
   MachineIRBuilderTest.cpp
   MachineIRCoreTest.cpp
+  MachineVerifierTest.cpp
   MachineValueTypesTest.cpp
 )
 
@@ -42,6 +43,18 @@ add_test(
   COMMAND RCCBackendCodeGenMachineIRBuilderTests
 )
 
+add_executable(RCCBackendCodeGenMachineVerifierTests MachineVerifierTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineVerifierTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineVerifierTests
+  PRIVATE RCCBackend::CodeGen
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineVerifier
+  COMMAND RCCBackendCodeGenMachineVerifierTests
+)
+
 add_executable(RCCBackendCodeGenMachineValueTypesTests MachineValueTypesTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineValueTypesTests)
 target_link_libraries(RCCBackendCodeGenMachineValueTypesTests PRIVATE RCCBackend::CodeGen)
@@ -65,6 +78,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilderTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
 )
 rcc_backend_register_tidy_files(
@@ -72,5 +86,6 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilderTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
 )

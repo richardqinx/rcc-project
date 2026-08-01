@@ -2,6 +2,8 @@
 
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 
+#include "rcc/CodeGen/MachineFunction.h"
+#include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 
 #include <algorithm>
@@ -312,6 +314,16 @@ Expected<void> MachineRegisterInfo::verifyDefUseChains() const {
   std::unordered_set<const MachineOperand *> SeenOperands;
 
   for (const auto &[Reg, HeadStorage] : DefUseHeads) {
+    if (!HeadStorage) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "register def-use table contains null head storage");
+    }
+    if (HeadStorage->Head == nullptr)
+      continue;
+    if (Reg.isNoRegister() || (Reg.isVirtual() && !isKnownVirtualRegister(Reg))) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "register def-use chain is keyed by an invalid register");
+    }
     MachineOperand *const *ExpectedPreviousLink = &HeadStorage->Head;
     for (MachineOperand *Operand = HeadStorage->Head; Operand != nullptr;
          Operand = Operand->NextRegOperand) {
@@ -327,11 +339,21 @@ Expected<void> MachineRegisterInfo::verifyDefUseChains() const {
         return makeUnexpected(ErrorCode::VerificationError,
                               "register def-use chain back-link is corrupt");
       }
+      if (Operand->Parent == nullptr || !Operand->Parent->isLinked() ||
+          &Operand->Parent->function().registerInfo() != this) {
+        return makeUnexpected(
+            ErrorCode::VerificationError,
+            "register def-use chain contains an operand outside its function layout");
+      }
       ExpectedPreviousLink = &Operand->NextRegOperand;
     }
   }
 
   return {};
+}
+
+bool MachineRegisterInfo::isLinkedOperand(const MachineOperand &Operand) const noexcept {
+  return Operand.LinkedRegInfo == this && Operand.PreviousRegLink != nullptr;
 }
 
 MachineOperand *MachineRegisterInfo::headFor(Register Reg) const noexcept {
