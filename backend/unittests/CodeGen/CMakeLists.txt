@@ -3,6 +3,7 @@
 set(
   RCCBackendCodeGenTestSources
   CoreTypesTest.cpp
+  InstructionDescriptorTest.cpp
   MachineIRCoreTest.cpp
   MachineValueTypesTest.cpp
 )
@@ -12,6 +13,21 @@ rcc_backend_configure_target(RCCBackendCodeGenCoreTypesTests)
 target_link_libraries(RCCBackendCodeGenCoreTypesTests PRIVATE RCCBackend::CodeGen)
 
 add_test(NAME RCCBackend.CodeGen.CoreTypes COMMAND RCCBackendCodeGenCoreTypesTests)
+
+add_executable(
+  RCCBackendCodeGenInstructionDescriptorTests
+  InstructionDescriptorTest.cpp
+)
+rcc_backend_configure_target(RCCBackendCodeGenInstructionDescriptorTests)
+target_link_libraries(
+  RCCBackendCodeGenInstructionDescriptorTests
+  PRIVATE RCCBackend::CodeGen
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.InstructionDescriptor
+  COMMAND RCCBackendCodeGenInstructionDescriptorTests
+)
 
 add_executable(RCCBackendCodeGenMachineValueTypesTests MachineValueTypesTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineValueTypesTests)
@@ -33,11 +49,13 @@ add_test(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
 )

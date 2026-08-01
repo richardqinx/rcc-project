@@ -213,6 +213,7 @@ public:
     Metadata,
     TargetIndex,
     MCSymbol,
+    Count,
   };
 
   MachineOperand(const MachineOperand &) = delete;
