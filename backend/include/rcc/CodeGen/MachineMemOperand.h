@@ -80,24 +80,6 @@ enum class AtomicOrdering : std::uint8_t {
   SequentiallyConsistent,
 };
 
-class Alignment final {
-public:
-  constexpr Alignment() noexcept = default;
-
-  [[nodiscard]] static Expected<Alignment> create(std::uint64_t Bytes);
-
-  [[nodiscard]] constexpr std::uint64_t bytes() const noexcept {
-    return Bytes;
-  }
-
-  friend constexpr bool operator==(Alignment Left, Alignment Right) noexcept = default;
-
-private:
-  explicit constexpr Alignment(std::uint64_t Bytes) noexcept : Bytes(Bytes) {}
-
-  std::uint64_t Bytes = 1;
-};
-
 class MemorySize final {
 public:
   enum class Kind : std::uint8_t {

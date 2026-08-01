@@ -9,6 +9,7 @@ set(
   MachineConstantPoolTest.cpp
   MachineFrameInfoTest.cpp
   MachineFunctionClonerTest.cpp
+  MachineIRAttributesTest.cpp
   MachineIRBuilderTest.cpp
   MachineIRCoreTest.cpp
   MachineJumpTableInfoTest.cpp
@@ -110,6 +111,18 @@ add_test(
   COMMAND RCCBackendCodeGenMachineIRBuilderTests
 )
 
+add_executable(RCCBackendCodeGenMachineIRAttributesTests MachineIRAttributesTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineIRAttributesTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineIRAttributesTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineIRAttributes
+  COMMAND RCCBackendCodeGenMachineIRAttributesTests
+)
+
 add_executable(RCCBackendCodeGenMachineVerifierTests MachineVerifierTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineVerifierTests)
 target_link_libraries(
@@ -205,6 +218,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPoolTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionClonerTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRAttributesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilderTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
@@ -223,6 +237,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPoolTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionClonerTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRAttributesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilderTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"

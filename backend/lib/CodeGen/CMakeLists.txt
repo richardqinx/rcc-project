@@ -5,12 +5,14 @@ set(
   CompilationUnit.cpp
   InstructionDescriptor.cpp
   LowLevelType.cpp
+  MachineBasicBlockAttributes.cpp
   MachineCompilationStatus.cpp
   MachineBasicBlock.cpp
   MachineCFGUpdater.cpp
   MachineConstantPool.cpp
   MachineFrameInfo.cpp
   MachineFunction.cpp
+  MachineFunctionAttributes.cpp
   MachineFunctionCloner.cpp
   MachineIRTypes.cpp
   MachineIRBuilder.cpp
@@ -33,12 +35,14 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CompilationUnit.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlockAttributes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCompilationStatus.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlock.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFGUpdater.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineConstantPool.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFrameInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunction.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionAttributes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionCloner.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineIRTypes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineIRBuilder.h"
@@ -90,12 +94,14 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlockAttributes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPool.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunction.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionAttributes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilder.cpp"
@@ -118,12 +124,14 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlockAttributes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPool.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunction.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionAttributes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilder.cpp"

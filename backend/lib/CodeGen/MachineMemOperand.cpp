@@ -2,7 +2,6 @@
 
 #include "rcc/CodeGen/MachineMemOperand.h"
 
-#include <bit>
 #include <utility>
 
 namespace rcc {
@@ -117,13 +116,6 @@ namespace {
 MemoryAccessFlags::MemoryAccessFlags(std::initializer_list<MemoryAccessFlag> Flags) noexcept {
   for (const MemoryAccessFlag Flag : Flags)
     set(Flag);
-}
-
-Expected<Alignment> Alignment::create(std::uint64_t Bytes) {
-  if (!std::has_single_bit(Bytes)) {
-    return makeUnexpected(ErrorCode::InvalidArgument, "alignment must be a nonzero power of two");
-  }
-  return Alignment(Bytes);
 }
 
 Expected<MemorySize> MemorySize::fixed(std::uint64_t Bytes) {

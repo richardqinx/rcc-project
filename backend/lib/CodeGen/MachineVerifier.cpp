@@ -34,6 +34,9 @@ public:
     if (Function.name().empty() || !Function.stableID().isValid())
       return fail("function identity is invalid");
 
+    auto AttributeResult = Function.attributes().verify();
+    if (!AttributeResult)
+      return failWith("function attributes", AttributeResult.error());
     if (Function.targetState().hasValue()) {
       auto TargetStateResult = Function.targetState().verify();
       if (!TargetStateResult)
@@ -134,6 +137,9 @@ private:
       if (!Block->stableID().isValid() || !BlockIDs.insert(Block->stableID()).second) {
         return fail("arena block registry contains an invalid or duplicate StableID");
       }
+      auto AttributeResult = Block->attributes().verify();
+      if (!AttributeResult)
+        return failWith("basic block attributes", AttributeResult.error());
     }
 
     std::unordered_set<MachineInstrStableID> InstructionIDs;

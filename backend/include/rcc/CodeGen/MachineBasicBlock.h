@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEBASICBLOCK_H
 #define RCC_CODEGEN_MACHINEBASICBLOCK_H
 
+#include "rcc/CodeGen/MachineBasicBlockAttributes.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/Register.h"
 #include "rcc/CodeGen/StableID.h"
@@ -124,6 +125,14 @@ public:
     return LayoutIndex;
   }
 
+  [[nodiscard]] MachineBasicBlockAttributes &attributes() noexcept {
+    return Attributes;
+  }
+
+  [[nodiscard]] const MachineBasicBlockAttributes &attributes() const noexcept {
+    return Attributes;
+  }
+
 private:
   MachineBasicBlock(MachineFunction &OwnerFunction, MachineBlockStableID StableID)
       : OwnerFunction(&OwnerFunction), StableID(StableID) {}
@@ -138,6 +147,7 @@ private:
   std::vector<MachineBasicBlock *> Predecessors;
   std::vector<MachineSuccessor> Successors;
   std::vector<MachineBasicBlockLiveIn> LiveIns;
+  MachineBasicBlockAttributes Attributes;
   std::optional<std::uint32_t> DenseNumber;
   std::optional<std::uint32_t> LayoutIndex;
 

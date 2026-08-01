@@ -2,7 +2,16 @@
 
 #include "rcc/CodeGen/MachineIRTypes.h"
 
+#include <bit>
+
 namespace rcc {
+
+Expected<Alignment> Alignment::create(std::uint64_t Bytes) {
+  if (!std::has_single_bit(Bytes)) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "alignment must be a nonzero power of two");
+  }
+  return Alignment(Bytes);
+}
 
 Expected<BranchProbability> BranchProbability::fromFraction(std::uint32_t Numerator,
                                                             std::uint32_t Denominator) {

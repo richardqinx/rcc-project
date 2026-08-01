@@ -290,6 +290,7 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
     auto AppendResult = State.Destination.appendBlock(**DestinationBlock);
     if (!AppendResult)
       return std::unexpected(AppendResult.error());
+    (*DestinationBlock)->attributes() = SourceBlock->attributes();
     State.Blocks.emplace(SourceBlock, *DestinationBlock);
     State.Result.BlockStableIDs.emplace(SourceBlock->stableID(), (*DestinationBlock)->stableID());
 
@@ -616,6 +617,7 @@ Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction 
     return std::unexpected(CompilationStatus.error());
   Result.ClonedFunction->compilationStatus() = std::move(*CompilationStatus);
   Result.ClonedFunction->properties() = Source.properties();
+  Result.ClonedFunction->attributes() = Source.attributes();
   auto DestinationVerification = MachineVerifier::verify(*Result.ClonedFunction, Target);
   if (!DestinationVerification)
     return std::unexpected(DestinationVerification.error());

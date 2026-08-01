@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/MachineCompilationStatus.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
+#include "rcc/CodeGen/MachineFunctionAttributes.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -89,6 +90,14 @@ public:
     return Properties;
   }
 
+  [[nodiscard]] MachineFunctionAttributes &attributes() noexcept {
+    return Attributes;
+  }
+
+  [[nodiscard]] const MachineFunctionAttributes &attributes() const noexcept {
+    return Attributes;
+  }
+
   [[nodiscard]] const TargetFunctionState &targetState() const noexcept {
     return TargetState;
   }
@@ -166,6 +175,7 @@ private:
   MachineConstantPool ConstantPool;
   MachineJumpTableInfo JumpTables;
   MachineFunctionProperties Properties;
+  MachineFunctionAttributes Attributes;
   TargetFunctionState TargetState;
   MachineCompilationStatus CompilationStatus;
   MachineBasicBlock *FirstBlock = nullptr;

@@ -83,6 +83,24 @@ using TargetConstantTypeID = MachineIndex<detail::TargetConstantTypeIDTag, std::
 using TargetFunctionStateTypeID = MachineIndex<detail::TargetFunctionStateTypeIDTag, std::uint64_t>;
 using TargetRelocationKindID = MachineIndex<detail::TargetRelocationKindIDTag>;
 
+class Alignment final {
+public:
+  constexpr Alignment() noexcept = default;
+
+  [[nodiscard]] static Expected<Alignment> create(std::uint64_t Bytes);
+
+  [[nodiscard]] constexpr std::uint64_t bytes() const noexcept {
+    return Bytes;
+  }
+
+  friend constexpr bool operator==(Alignment Left, Alignment Right) noexcept = default;
+
+private:
+  explicit constexpr Alignment(std::uint64_t Bytes) noexcept : Bytes(Bytes) {}
+
+  std::uint64_t Bytes = 1;
+};
+
 class Opcode final {
 public:
   constexpr Opcode() noexcept = default;
@@ -215,6 +233,12 @@ enum class MachineInstrFlag : std::uint8_t {
   BundledWithSucc,
   NoMerge,
   Unpredictable,
+  NoConvergent,
+  NonNeg,
+  Disjoint,
+  NoUSWrap,
+  SameSign,
+  InBounds,
   Count,
 };
 
@@ -268,6 +292,7 @@ struct SourceLocation final {
 };
 
 static_assert(sizeof(Opcode) == sizeof(std::uint32_t));
+static_assert(sizeof(Alignment) == sizeof(std::uint64_t));
 static_assert(sizeof(FrameIndex) == sizeof(std::uint32_t));
 static_assert(sizeof(MemoryAliasSourceID) == sizeof(std::uint64_t));
 static_assert(std::is_trivially_copyable_v<Opcode>);
