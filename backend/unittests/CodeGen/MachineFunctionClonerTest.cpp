@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
+#include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
@@ -137,12 +138,12 @@ createFunction(TestContext &Context, std::string Name, std::uint64_t ID) {
   return *Block;
 }
 
-[[nodiscard]] rcc::MachineMemOperandDesc loadDescription() {
+[[nodiscard]] rcc::MachineMemOperandDesc loadDescription(rcc::FrameIndex Index) {
   rcc::MachineMemOperandDesc Description;
   Description.Accesses = {rcc::MemoryAccessFlag::Load, rcc::MemoryAccessFlag::Dereferenceable};
   Description.Size = *rcc::MemorySize::fixed(8);
   Description.Align = *rcc::Alignment::create(8);
-  Description.Base = rcc::MemoryBase::frameIndex(rcc::FrameIndex::fromValue(4));
+  Description.Base = rcc::MemoryBase::frameIndex(Index);
   Description.Offset = -8;
   return Description;
 }
@@ -162,6 +163,7 @@ struct SourceFixture final {
   rcc::MachineBasicBlock *Exit = nullptr;
   rcc::Register Value;
   rcc::Register CopyValue;
+  rcc::FrameIndex StackSlot;
   const rcc::MachineMemOperand *LoadMMO = nullptr;
 };
 
@@ -176,6 +178,25 @@ struct SourceFixture final {
   auto Tombstone = Function.registerInfo().createVirtualRegister(*Type);
   Context.expect(Tombstone && Function.registerInfo().eraseVirtualRegister(*Tombstone).has_value(),
                  "source vreg history must contain a tombstone");
+
+  rcc::StackObjectDesc HistoricalFrame;
+  HistoricalFrame.Size = 4;
+  HistoricalFrame.Align = *rcc::Alignment::create(4);
+  auto HistoricalFrameIndex = Function.frameInfo().createObject(HistoricalFrame);
+  Context.expect(HistoricalFrameIndex &&
+                     Function.frameInfo().eraseObject(*HistoricalFrameIndex).has_value(),
+                 "source frame history must contain a tombstone");
+
+  rcc::StackObjectDesc StackSlot;
+  StackSlot.Kind = rcc::StackObjectKind::SpillSlot;
+  StackSlot.Size = 8;
+  StackSlot.Align = *rcc::Alignment::create(8);
+  StackSlot.Offset = -16;
+  auto StackSlotIndex = Function.frameInfo().createObject(StackSlot);
+  Context.expect(StackSlotIndex.has_value(), "source live stack object must be created");
+  if (!StackSlotIndex)
+    return false;
+  Fixture.StackSlot = *StackSlotIndex;
 
   Fixture.Entry = createBlock(Context, Function);
   Fixture.Exit = createBlock(Context, Function);
@@ -236,8 +257,7 @@ struct SourceFixture final {
                  "source tied copy must build");
 
   auto Frame = Builder.buildInstr(rcc::Opcode::fromValue(FrameOpcode));
-  Context.expect(Frame && Frame->addFrameIndex(rcc::FrameIndex::fromValue(4), -8).has_value() &&
-                     Frame->build(),
+  Context.expect(Frame && Frame->addFrameIndex(Fixture.StackSlot, -8).has_value() && Frame->build(),
                  "source frame-index instruction must build");
 
   auto Address = Builder.buildInstr(rcc::Opcode::fromValue(BlockAddressOpcode));
@@ -246,7 +266,7 @@ struct SourceFixture final {
           Address->build(),
       "source self block-address instruction must build");
 
-  auto MMO = Function.createMemOperand(loadDescription());
+  auto MMO = Function.createMemOperand(loadDescription(Fixture.StackSlot));
   Context.expect(MMO.has_value(), "source MMO must be created");
   if (!MMO)
     return false;
@@ -254,6 +274,20 @@ struct SourceFixture final {
   auto Load = Builder.buildInstr(rcc::Opcode::fromValue(LoadOpcode));
   Context.expect(Load && Load->addMemOperand(**MMO).has_value() && Load->build(),
                  "source load with MMO must build");
+
+  rcc::MachineInstr *Definition = findInstruction(*Fixture.Entry, DefOpcode);
+  rcc::MachineInstr *LoadInstruction = findInstruction(*Fixture.Exit, LoadOpcode);
+  const rcc::StackObject *Object = Function.frameInfo().object(Fixture.StackSlot);
+  if (Definition == nullptr || LoadInstruction == nullptr || Object == nullptr)
+    return false;
+  rcc::StackObjectDesc UpdatedStackSlot = *Object->description();
+  UpdatedStackSlot.Lifetime.push_back({Definition->stableID(), LoadInstruction->stableID()});
+  Context.expect(Function.frameInfo()
+                         .updateObject(Fixture.StackSlot, std::move(UpdatedStackSlot))
+                         .has_value() &&
+                     Function.frameInfo().setMaxCallFrameSize(16).has_value() &&
+                     Function.frameInfo().freeze(32, *rcc::Alignment::create(16)).has_value(),
+                 "source frame metadata must be finalized");
 
   Function.properties().set(rcc::MachineFunctionProperty::IsSSA);
   Function.properties().set(rcc::MachineFunctionProperty::TracksLiveness);
@@ -289,7 +323,9 @@ void testDeepClone(TestContext &Context) {
                  "source and destination must independently preserve valid properties");
   Context.expect(Source->allBlocks().size() == 3 && Destination.allBlocks().size() == 2 &&
                      Source->allInstructions().size() == 7 &&
-                     Destination.allInstructions().size() == 6,
+                     Destination.allInstructions().size() == 6 &&
+                     Source->frameInfo().objects().size() == 2 &&
+                     Destination.frameInfo().objects().size() == 1,
                  "clone must omit detached arena history");
   Context.expect(Clone->BlockStableIDs.size() == 2 && Clone->InstructionStableIDs.size() == 6 &&
                      Clone->VirtualRegisters.size() == 2,
@@ -375,21 +411,39 @@ void testDeepClone(TestContext &Context) {
                      DestinationCopy->operandAt(0)->tiedOperandIndex() == 1 &&
                      DestinationCopy->operandAt(1)->tiedOperandIndex() == 0,
                  "clone must remap tied registers and rebuild ties");
-  Context.expect(DestinationFrame->operandAt(0)->getIf<rcc::FrameIndexOperand>()->Index ==
-                         rcc::FrameIndex::fromValue(4) &&
-                     Clone->FrameIndices.contains(rcc::FrameIndex::fromValue(4)),
-                 "clone must preserve and map frame indices");
+  const auto FramePosition = Clone->FrameIndices.find(Fixture.StackSlot);
+  Context.expect(FramePosition != Clone->FrameIndices.end() &&
+                     FramePosition->second == rcc::FrameIndex::fromValue(0) &&
+                     DestinationFrame->operandAt(0)->getIf<rcc::FrameIndexOperand>()->Index ==
+                         FramePosition->second,
+                 "clone must compact and remap frame indices");
   Context.expect(
       DestinationAddress->operandAt(0)->getIf<rcc::BlockAddressOperand>()->FunctionName ==
           "cloned_function",
       "clone must rewrite self block-address function names");
 
+  rcc::MachineMemOperandDesc ExpectedMMO = Fixture.LoadMMO->description();
+  if (FramePosition != Clone->FrameIndices.end())
+    ExpectedMMO.Base = rcc::MemoryBase::frameIndex(FramePosition->second);
   Context.expect(DestinationLoad->memOperands().size() == 1 &&
                      DestinationLoad->memOperands()[0] != Fixture.LoadMMO &&
-                     *DestinationLoad->memOperands()[0] == *Fixture.LoadMMO &&
+                     DestinationLoad->memOperands()[0]->description() == ExpectedMMO &&
                      Destination.ownsMemOperand(*DestinationLoad->memOperands()[0]) &&
                      !Source->ownsMemOperand(*DestinationLoad->memOperands()[0]),
-                 "clone must deep-copy MMO ownership while preserving semantics");
+                 "clone must deep-copy MMO ownership while remapping frame semantics");
+
+  const rcc::StackObject *DestinationStackSlot =
+      FramePosition == Clone->FrameIndices.end()
+          ? nullptr
+          : Destination.frameInfo().object(FramePosition->second);
+  Context.expect(
+      DestinationStackSlot != nullptr && Destination.frameInfo().isFrozen() &&
+          Destination.frameInfo().staticStackSize() == 32 &&
+          Destination.frameInfo().maxCallFrameSize() == 16 &&
+          DestinationStackSlot->description()->Lifetime.size() == 1 &&
+          DestinationStackSlot->description()->Lifetime[0].Begin == DestinationDef->stableID() &&
+          DestinationStackSlot->description()->Lifetime[0].End == DestinationLoad->stableID(),
+      "clone must preserve frozen frame layout and remap instruction lifetimes");
 
   rcc::MachineInstr *SourceDef = findInstruction(*Fixture.Entry, DefOpcode);
   const auto InstructionID = SourceDef == nullptr

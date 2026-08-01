@@ -96,6 +96,7 @@ private:
 
   [[nodiscard]] Expected<void> ensurePending() const;
   [[nodiscard]] Expected<void> validateInsertionPoint() const;
+  [[nodiscard]] Expected<void> validateFrameReference(FrameIndex Index) const;
   [[nodiscard]] Expected<void> validateOperandOwnership(const MachineOperand &Operand) const;
   [[nodiscard]] std::vector<MachineOperandTie> collectOperandTies() const;
   [[nodiscard]] Expected<void> appendRegister(Register Reg, RegisterOperandFlags Flags,

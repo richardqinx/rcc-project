@@ -3,6 +3,7 @@
 #include "rcc/CodeGen/MachineVerifier.h"
 
 #include "rcc/CodeGen/MachineBasicBlock.h"
+#include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineInstr.h"
@@ -36,9 +37,15 @@ public:
     auto CatalogResult = catalogArenaObjects();
     if (!CatalogResult)
       return CatalogResult;
+    auto FrameResult = Function.frameInfo().verify();
+    if (!FrameResult)
+      return failWith("frame info", FrameResult.error());
     auto LayoutResult = verifyBlockLayout();
     if (!LayoutResult)
       return LayoutResult;
+    auto FrameLifetimeResult = verifyFrameLifetimes();
+    if (!FrameLifetimeResult)
+      return FrameLifetimeResult;
     auto CFGResult = verifyCFG();
     if (!CFGResult)
       return CFGResult;
@@ -209,6 +216,7 @@ private:
         return fail("block layout references an unregistered instruction");
       if (!LinkedInstructions.insert(Instruction).second)
         return fail("instruction layout contains a cycle or duplicate instruction");
+      LinkedInstructionIDs.insert(Instruction->stableID());
       if (Instruction->parent() != &Block || Instruction->previous() != Previous) {
         return fail("instruction parent or previous link is inconsistent");
       }
@@ -270,6 +278,29 @@ private:
     return {};
   }
 
+  [[nodiscard]] Expected<void> verifyFrameIndex(FrameIndex Index) const {
+    const StackObject *Object = Function.frameInfo().object(Index);
+    const StackObjectDesc *Description = Object == nullptr ? nullptr : Object->description();
+    if (Description == nullptr || Description->IsDead)
+      return fail("live instruction references an unknown or dead stack object");
+    return {};
+  }
+
+  [[nodiscard]] Expected<void> verifyFrameLifetimes() const {
+    for (const StackObject &Object : Function.frameInfo().objects()) {
+      const StackObjectDesc *Description = Object.description();
+      if (Description == nullptr)
+        continue;
+      for (const StackObjectLifetimeRange &Range : Description->Lifetime) {
+        if (!LinkedInstructionIDs.contains(Range.Begin) ||
+            !LinkedInstructionIDs.contains(Range.End)) {
+          return fail("stack object lifetime references a detached or unknown instruction");
+        }
+      }
+    }
+    return {};
+  }
+
   [[nodiscard]] Expected<void> verifyLiveInstruction(const MachineInstr &Instruction) {
     auto LocalResult = verifyInstructionLocalState(Instruction);
     if (!LocalResult)
@@ -297,8 +328,12 @@ private:
     const auto Operands = Instruction.operands();
     for (std::size_t Index = 0; Index < Operands.size(); ++Index) {
       const MachineOperand &Operand = Operands[Index];
-      if (Operand.kind() == MachineOperand::Kind::FrameIndex)
+      if (const auto *Frame = Operand.getIf<FrameIndexOperand>(); Frame != nullptr) {
         HasFrameIndex = true;
+        auto FrameResult = verifyFrameIndex(Frame->Index);
+        if (!FrameResult)
+          return FrameResult;
+      }
 
       if (const auto *Block = Operand.getIf<BasicBlockOperand>();
           Block != nullptr &&
@@ -326,6 +361,13 @@ private:
         const Register *OtherReg = Other == nullptr ? nullptr : Other->getIf<Register>();
         if (OtherReg == nullptr || *OtherReg != *Reg)
           HasUnrewrittenTie = true;
+      }
+    }
+    for (const MachineMemOperand *MemOperand : Instruction.memOperands()) {
+      if (const auto Frame = MemOperand->description().Base.frameIndex()) {
+        auto FrameResult = verifyFrameIndex(*Frame);
+        if (!FrameResult)
+          return FrameResult;
       }
     }
     return {};
@@ -480,6 +522,7 @@ private:
   std::unordered_set<const MachineBasicBlock *> LinkedBlocks;
   std::unordered_set<const MachineInstr *> RegisteredInstructions;
   std::unordered_set<const MachineInstr *> LinkedInstructions;
+  std::unordered_set<MachineInstrStableID> LinkedInstructionIDs;
   std::unordered_set<const MachineMemOperand *> RegisteredMemOperands;
   std::unordered_map<Register, std::size_t> VirtualDefCounts;
   bool HasPhi = false;

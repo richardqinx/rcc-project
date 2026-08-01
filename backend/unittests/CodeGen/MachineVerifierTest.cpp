@@ -346,12 +346,17 @@ void testPropertyFailures(TestContext &Context) {
   auto Frame = createFunction(Context, "frame_index", 9);
   rcc::MachineBasicBlock *FrameBlock = Frame ? createBlock(Context, *Frame) : nullptr;
   if (Frame && FrameBlock != nullptr) {
+    rcc::StackObjectDesc StackSlot;
+    StackSlot.Size = 8;
+    StackSlot.Align = *rcc::Alignment::create(8);
+    auto FrameIndex = Frame->frameInfo().createObject(StackSlot);
     rcc::MachineIRBuilder Builder(*Frame, *InstructionSet);
-    Context.expect(Builder.setInsertPoint(*FrameBlock).has_value(),
+    Context.expect(FrameIndex && Builder.setInsertPoint(*FrameBlock).has_value(),
                    "frame-index negative test setup must succeed");
+    if (!FrameIndex)
+      return;
     auto Pending = Builder.buildInstr(rcc::Opcode::fromValue(FrameOpcode));
-    Context.expect(Pending && Pending->addFrameIndex(rcc::FrameIndex::fromValue(0)).has_value() &&
-                       Pending->build(),
+    Context.expect(Pending && Pending->addFrameIndex(*FrameIndex).has_value() && Pending->build(),
                    "frame-index negative test instruction must build");
     Frame->properties().set(rcc::MachineFunctionProperty::NoFrameIndices);
     Context.expect(!rcc::MachineVerifier::verify(*Frame, *InstructionSet),
@@ -447,6 +452,47 @@ void testSelectedStateAndPseudoDeadline(TestContext &Context) {
   }
 }
 
+void testFrameStateFailures(TestContext &Context) {
+  auto InstructionSet = createInstructionSet();
+  auto Function = createFunction(Context, "frame_references", 14);
+  rcc::MachineBasicBlock *Block = Function ? createBlock(Context, *Function) : nullptr;
+  if (!InstructionSet || !Function || Block == nullptr)
+    return;
+
+  rcc::MachineIRBuilder Builder(*Function, *InstructionSet);
+  Context.expect(Builder.setInsertPoint(*Block).has_value(),
+                 "frame reference insertion point must be valid");
+  auto Unknown = Builder.buildInstr(rcc::Opcode::fromValue(FrameOpcode));
+  Context.expect(Unknown && Unknown->addFrameIndex(rcc::FrameIndex::fromValue(99)).has_value() &&
+                     !Unknown->build() && Function->allInstructions().empty(),
+                 "builder must reject an unknown frame index before instruction allocation");
+
+  rcc::StackObjectDesc StackSlot;
+  StackSlot.Size = 8;
+  StackSlot.Align = *rcc::Alignment::create(8);
+  auto FrameIndex = Function->frameInfo().createObject(StackSlot);
+  if (!FrameIndex)
+    return;
+  auto Live = Builder.buildInstr(rcc::Opcode::fromValue(FrameOpcode));
+  Context.expect(Live && Live->addFrameIndex(*FrameIndex).has_value() && Live->build(),
+                 "known live frame index must build");
+  Context.expect(Function->frameInfo().markObjectDead(*FrameIndex).has_value() &&
+                     !rcc::MachineVerifier::verify(*Function, *InstructionSet),
+                 "verifier must reject an instruction that references a dead stack object");
+
+  auto Lifetime = createFunction(Context, "frame_lifetime", 15);
+  if (!Lifetime)
+    return;
+  rcc::StackObjectDesc LifetimeSlot;
+  LifetimeSlot.Size = 8;
+  LifetimeSlot.Align = *rcc::Alignment::create(8);
+  LifetimeSlot.Lifetime.push_back(
+      {rcc::MachineInstrStableID::fromValue(1), rcc::MachineInstrStableID::fromValue(2)});
+  Context.expect(Lifetime->frameInfo().createObject(LifetimeSlot).has_value() &&
+                     !rcc::MachineVerifier::verify(*Lifetime, *InstructionSet),
+                 "verifier must reject stack lifetimes that reference unknown instructions");
+}
+
 } // namespace
 
 int main() {
@@ -455,5 +501,6 @@ int main() {
   testReachableStructuralFailures(Context);
   testPropertyFailures(Context);
   testSelectedStateAndPseudoDeadline(Context);
+  testFrameStateFailures(Context);
   return Context.result();
 }

@@ -3,6 +3,7 @@
 #include "rcc/CodeGen/MachineIRBuilder.h"
 
 #include "rcc/CodeGen/MachineBasicBlock.h"
+#include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
@@ -332,6 +333,15 @@ Expected<void> MachineInstrBuilder::validateInsertionPoint() const {
   return {};
 }
 
+Expected<void> MachineInstrBuilder::validateFrameReference(FrameIndex Index) const {
+  const StackObject *Object = Function->frameInfo().object(Index);
+  if (Object == nullptr || Object->description()->IsDead) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "builder references an unknown or dead stack object");
+  }
+  return {};
+}
+
 Expected<void> MachineInstrBuilder::validateOperandOwnership(const MachineOperand &Operand) const {
   if (Operand.parent() != nullptr) {
     return makeUnexpected(ErrorCode::InvalidArgument,
@@ -348,6 +358,11 @@ Expected<void> MachineInstrBuilder::validateOperandOwnership(const MachineOperan
       !Function->registerInfo().isKnownVirtualRegister(*Reg)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "builder operand references an unknown virtual register");
+  }
+  if (const auto *Frame = Operand.getIf<FrameIndexOperand>(); Frame != nullptr) {
+    auto FrameResult = validateFrameReference(Frame->Index);
+    if (!FrameResult)
+      return FrameResult;
   }
   return {};
 }
@@ -388,6 +403,13 @@ Expected<MachineInstr *> MachineInstrBuilder::build() {
     auto Ownership = validateOperandOwnership(Operand);
     if (!Ownership)
       return std::unexpected(Ownership.error());
+  }
+  for (const MachineMemOperand *MemOperand : MemOperands) {
+    if (const auto Frame = MemOperand->description().Base.frameIndex()) {
+      auto FrameResult = validateFrameReference(*Frame);
+      if (!FrameResult)
+        return std::unexpected(FrameResult.error());
+    }
   }
 
   auto ExplicitValidation = Instructions->validateExplicitOperands(

@@ -356,6 +356,16 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
                      Function->allInstructions().size() == BeforeMissingMemory,
                  "missing required MMO must fail before instruction allocation");
 
+  rcc::StackObjectDesc StackSlot;
+  StackSlot.Size = 8;
+  StackSlot.Align = *rcc::Alignment::create(8);
+  auto FrameIndex = Function->frameInfo().createObject(StackSlot);
+  auto ForeignFrameIndex = OtherFunction->frameInfo().createObject(StackSlot);
+  Context.expect(FrameIndex && ForeignFrameIndex,
+                 "memory validation stack objects must be created");
+  if (!FrameIndex || !ForeignFrameIndex)
+    return;
+
   auto LoadMemory = Function->createMemOperand(memoryDescription(rcc::MemoryAccessFlag::Load));
   auto StoreMemory = Function->createMemOperand(memoryDescription(rcc::MemoryAccessFlag::Store));
   auto ForeignMemory =

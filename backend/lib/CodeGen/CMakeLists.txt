@@ -6,6 +6,7 @@ set(
   LowLevelType.cpp
   MachineBasicBlock.cpp
   MachineCFGUpdater.cpp
+  MachineFrameInfo.cpp
   MachineFunction.cpp
   MachineFunctionCloner.cpp
   MachineIRTypes.cpp
@@ -25,6 +26,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlock.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFGUpdater.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFrameInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunction.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionCloner.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineIRTypes.h"
@@ -73,6 +75,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunction.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
@@ -92,6 +95,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunction.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"

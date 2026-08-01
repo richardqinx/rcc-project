@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEFUNCTION_H
 #define RCC_CODEGEN_MACHINEFUNCTION_H
 
+#include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/StableID.h"
@@ -50,6 +51,14 @@ public:
 
   [[nodiscard]] const MachineRegisterInfo &registerInfo() const noexcept {
     return RegInfo;
+  }
+
+  [[nodiscard]] MachineFrameInfo &frameInfo() noexcept {
+    return FrameInfo;
+  }
+
+  [[nodiscard]] const MachineFrameInfo &frameInfo() const noexcept {
+    return FrameInfo;
   }
 
   [[nodiscard]] MachineFunctionProperties &properties() noexcept {
@@ -110,6 +119,7 @@ private:
   std::string Name;
   MachineFunctionStableID StableID;
   MachineRegisterInfo RegInfo;
+  MachineFrameInfo FrameInfo;
   MachineFunctionProperties Properties;
   MachineBasicBlock *FirstBlock = nullptr;
   MachineBasicBlock *LastBlock = nullptr;

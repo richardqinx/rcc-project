@@ -5,6 +5,7 @@
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
+#include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
@@ -86,8 +87,12 @@ struct CloneState final {
     if (Frame == nullptr) {
       return makeUnexpected(ErrorCode::VerificationError, "source frame-index operand is invalid");
     }
-    State.Result.FrameIndices.emplace(Frame->Index, Frame->Index);
-    return SourceOperand.cloneDetached();
+    const auto Position = State.Result.FrameIndices.find(Frame->Index);
+    if (Position == State.Result.FrameIndices.end()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "source operand references an unmapped frame index");
+    }
+    return MachineOperand::frameIndex(Position->second, Frame->Offset, SourceOperand.targetFlags());
   }
   case MachineOperand::Kind::ConstantPoolIndex: {
     const auto *Constant = SourceOperand.getIf<ConstantPoolOperand>();
@@ -123,8 +128,6 @@ struct CloneState final {
 
 void recordMemoryIndexMappings(const MachineMemOperandDesc &Description,
                                MachineFunctionCloneResult &Result) {
-  if (const auto Frame = Description.Base.frameIndex())
-    Result.FrameIndices.emplace(*Frame, *Frame);
   if (const auto Constant = Description.Base.constantPoolIndex())
     Result.ConstantPoolIndices.emplace(*Constant, *Constant);
   if (const auto JumpTable = Description.Base.jumpTableIndex())
@@ -139,6 +142,14 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
 
   MachineMemOperandDesc Description = SourceOperand.description();
   recordMemoryIndexMappings(Description, State.Result);
+  if (const auto Frame = Description.Base.frameIndex()) {
+    const auto Position = State.Result.FrameIndices.find(*Frame);
+    if (Position == State.Result.FrameIndices.end()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "source MMO references an unmapped frame index");
+    }
+    Description.Base = MemoryBase::frameIndex(Position->second);
+  }
   auto DestinationOperand = State.Destination.createMemOperand(std::move(Description));
   if (!DestinationOperand)
     return std::unexpected(DestinationOperand.error());
@@ -204,6 +215,23 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
     if (!ReserveResult)
       return std::unexpected(ReserveResult.error());
   }
+  return {};
+}
+
+[[nodiscard]] Expected<void> cloneFrameObjects(CloneState &State) {
+  for (const StackObject &SourceObject : State.Source.frameInfo().objects()) {
+    const StackObjectDesc *Description = SourceObject.description();
+    if (Description == nullptr)
+      continue;
+    auto DestinationIndex = State.Destination.frameInfo().createObject(*Description);
+    if (!DestinationIndex)
+      return std::unexpected(DestinationIndex.error());
+    State.Result.FrameIndices.emplace(SourceObject.index(), *DestinationIndex);
+  }
+  auto CallFrameResult = State.Destination.frameInfo().setMaxCallFrameSize(
+      State.Source.frameInfo().maxCallFrameSize());
+  if (!CallFrameResult)
+    return std::unexpected(CallFrameResult.error());
   return {};
 }
 
@@ -294,6 +322,49 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
   return {};
 }
 
+[[nodiscard]] Expected<void> finalizeFrameClone(CloneState &State) {
+  for (const StackObject &SourceObject : State.Source.frameInfo().objects()) {
+    const StackObjectDesc *SourceDescription = SourceObject.description();
+    if (SourceDescription == nullptr)
+      continue;
+    const auto FramePosition = State.Result.FrameIndices.find(SourceObject.index());
+    if (FramePosition == State.Result.FrameIndices.end()) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "source stack object was not mapped before frame finalization");
+    }
+
+    StackObjectDesc DestinationDescription = *SourceDescription;
+    for (StackObjectLifetimeRange &Range : DestinationDescription.Lifetime) {
+      const auto Begin = State.Result.InstructionStableIDs.find(Range.Begin);
+      const auto End = State.Result.InstructionStableIDs.find(Range.End);
+      if (Begin == State.Result.InstructionStableIDs.end() ||
+          End == State.Result.InstructionStableIDs.end()) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "source stack lifetime references an unmapped instruction");
+      }
+      Range.Begin = Begin->second;
+      Range.End = End->second;
+    }
+    auto UpdateResult = State.Destination.frameInfo().updateObject(
+        FramePosition->second, std::move(DestinationDescription));
+    if (!UpdateResult)
+      return std::unexpected(UpdateResult.error());
+  }
+
+  if (State.Source.frameInfo().isFrozen()) {
+    const auto StackSize = State.Source.frameInfo().staticStackSize();
+    if (!StackSize) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "verified frozen source frame has no static stack size");
+    }
+    auto FreezeResult =
+        State.Destination.frameInfo().freeze(*StackSize, State.Source.frameInfo().stackAlignment());
+    if (!FreezeResult)
+      return std::unexpected(FreezeResult.error());
+  }
+  return {};
+}
+
 [[nodiscard]] Expected<void> cloneCFG(CloneState &State) {
   MachineCFGUpdater Updater = State.Destination.cfgUpdater();
   for (const MachineBasicBlock *SourceBlock = State.Source.firstBlock(); SourceBlock != nullptr;
@@ -353,12 +424,18 @@ Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction 
   auto RegisterResult = cloneRegisterConfiguration(State);
   if (!RegisterResult)
     return std::unexpected(RegisterResult.error());
+  auto FrameResult = cloneFrameObjects(State);
+  if (!FrameResult)
+    return std::unexpected(FrameResult.error());
   auto BlockResult = cloneBlocks(State);
   if (!BlockResult)
     return std::unexpected(BlockResult.error());
   auto InstructionResult = cloneInstructions(State);
   if (!InstructionResult)
     return std::unexpected(InstructionResult.error());
+  auto FrameFinalizationResult = finalizeFrameClone(State);
+  if (!FrameFinalizationResult)
+    return std::unexpected(FrameFinalizationResult.error());
   auto CFGResult = cloneCFG(State);
   if (!CFGResult)
     return std::unexpected(CFGResult.error());
