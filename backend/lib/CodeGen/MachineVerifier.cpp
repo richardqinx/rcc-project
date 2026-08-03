@@ -12,11 +12,13 @@
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -306,6 +308,29 @@ private:
       if (!DebugLocationResult)
         return failWith("instruction debug location", DebugLocationResult.error());
     }
+    const auto VerifyAttachment = [this](const std::optional<MachineMetadataReference> &Reference,
+                                         std::string_view Name) -> Expected<void> {
+      if (!Reference)
+        return {};
+      auto Verification = verifyMachineMetadataReference(*Reference, Function.metadata());
+      if (!Verification)
+        return failWith(Name, Verification.error());
+      return {};
+    };
+    if (auto Verification =
+            VerifyAttachment(Instruction.heapAllocMarker(), "instruction heap-allocation marker");
+        !Verification) {
+      return Verification;
+    }
+    if (auto Verification =
+            VerifyAttachment(Instruction.pcSections(), "instruction PC sections metadata");
+        !Verification) {
+      return Verification;
+    }
+    if (auto Verification = VerifyAttachment(Instruction.mmra(), "instruction MMRA metadata");
+        !Verification) {
+      return Verification;
+    }
     if (Instruction.origin() && Instruction.origin()->value() == 0)
       return fail("instruction has an invalid origin ID");
 
@@ -363,6 +388,19 @@ private:
     for (const MachineMemOperand *MemOperand : Instruction.memOperands()) {
       if (MemOperand == nullptr || !RegisteredMemOperands.contains(MemOperand)) {
         return fail("instruction references a foreign or null MMO");
+      }
+      const MachineMemOperandDesc &Description = MemOperand->description();
+      const std::array MetadataReferences{
+          Description.TBAA,          Description.AliasScope,
+          Description.NoAlias,       Description.NoAliasAddressSpace,
+          Description.RangeMetadata,
+      };
+      for (const auto &Reference : MetadataReferences) {
+        if (!Reference)
+          continue;
+        auto Verification = verifyMachineMetadataReference(*Reference, Function.metadata());
+        if (!Verification)
+          return failWith("machine memory operand metadata", Verification.error());
       }
     }
     return {};

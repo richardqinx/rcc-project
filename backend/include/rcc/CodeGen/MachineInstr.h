@@ -13,6 +13,8 @@
 #include <functional>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -154,6 +156,56 @@ public:
     DebugInstrNumber = 0;
   }
 
+  [[nodiscard]] std::optional<std::string_view> preInstrSymbol() const noexcept;
+  [[nodiscard]] Expected<void> setPreInstrSymbol(std::string Symbol);
+  void clearPreInstrSymbol() noexcept {
+    PreInstrSymbol.reset();
+  }
+
+  [[nodiscard]] std::optional<std::string_view> postInstrSymbol() const noexcept;
+  [[nodiscard]] Expected<void> setPostInstrSymbol(std::string Symbol);
+  void clearPostInstrSymbol() noexcept {
+    PostInstrSymbol.reset();
+  }
+
+  [[nodiscard]] const std::optional<MachineMetadataReference> &heapAllocMarker() const noexcept {
+    return HeapAllocMarker;
+  }
+  [[nodiscard]] Expected<void> setHeapAllocMarker(MachineMetadataReference Marker);
+  void clearHeapAllocMarker() noexcept {
+    HeapAllocMarker.reset();
+  }
+
+  [[nodiscard]] const std::optional<MachineMetadataReference> &pcSections() const noexcept {
+    return PCSections;
+  }
+  [[nodiscard]] Expected<void> setPCSections(MachineMetadataReference Sections);
+  void clearPCSections() noexcept {
+    PCSections.reset();
+  }
+
+  [[nodiscard]] const std::optional<MachineMetadataReference> &mmra() const noexcept {
+    return MMRA;
+  }
+  [[nodiscard]] Expected<void> setMMRA(MachineMetadataReference Metadata);
+  void clearMMRA() noexcept {
+    MMRA.reset();
+  }
+
+  [[nodiscard]] std::optional<std::uint32_t> cfiType() const noexcept {
+    return CFIType;
+  }
+  [[nodiscard]] Expected<void> setCFIType(std::uint64_t Type);
+  void clearCFIType() noexcept {
+    CFIType.reset();
+  }
+
+  [[nodiscard]] std::optional<std::string_view> deactivationSymbol() const noexcept;
+  [[nodiscard]] Expected<void> setDeactivationSymbol(std::string Symbol);
+  void clearDeactivationSymbol() noexcept {
+    DeactivationSymbol.reset();
+  }
+
 private:
   MachineInstr(MachineFunction &OwnerFunction, Opcode InstructionOpcode,
                MachineInstrStableID StableID);
@@ -177,6 +229,13 @@ private:
   std::optional<MachineDebugLocation> DebugLocation;
   std::optional<OriginID> Origin;
   std::uint32_t DebugInstrNumber = 0;
+  std::optional<std::string> PreInstrSymbol;
+  std::optional<std::string> PostInstrSymbol;
+  std::optional<MachineMetadataReference> HeapAllocMarker;
+  std::optional<MachineMetadataReference> PCSections;
+  std::optional<MachineMetadataReference> MMRA;
+  std::optional<std::uint32_t> CFIType;
+  std::optional<std::string> DeactivationSymbol;
 
   friend class MachineArena;
   friend class MachineBasicBlock;

@@ -5,6 +5,7 @@
 
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
+#include "rcc/CodeGen/MachineMetadata.h"
 
 #include <cstdint>
 #include <initializer_list>
@@ -138,6 +139,14 @@ public:
     JumpTable,
     GlobalSymbol,
     ExternalSymbol,
+    IRValue,
+    Stack,
+    GOT,
+    ConstantPoolPseudo,
+    JumpTablePseudo,
+    CallEntryGlobal,
+    CallEntryExternal,
+    Custom,
   };
 
   MemoryBase() = default;
@@ -147,6 +156,14 @@ public:
   [[nodiscard]] static MemoryBase jumpTable(JumpTableIndex Index);
   [[nodiscard]] static MemoryBase globalSymbol(std::string Name);
   [[nodiscard]] static MemoryBase externalSymbol(std::string Name);
+  [[nodiscard]] static MemoryBase irValue(std::string Name);
+  [[nodiscard]] static MemoryBase stack();
+  [[nodiscard]] static MemoryBase got();
+  [[nodiscard]] static MemoryBase constantPoolPseudo();
+  [[nodiscard]] static MemoryBase jumpTablePseudo();
+  [[nodiscard]] static MemoryBase callEntryGlobal(std::string Name);
+  [[nodiscard]] static MemoryBase callEntryExternal(std::string Name);
+  [[nodiscard]] static MemoryBase custom(std::string Name);
 
   [[nodiscard]] Kind kind() const noexcept {
     return BaseKind;
@@ -177,11 +194,17 @@ struct MachineMemOperandDesc final {
   SyncScopeID SyncScope;
   MemorySize Size;
   Alignment Align;
+  std::optional<Alignment> BaseAlign;
   std::uint32_t AddressSpace = 0;
   MemoryBase Base;
   std::int64_t Offset = 0;
   std::optional<MemoryOffsetRange> OffsetRange;
   std::optional<MemoryAliasSourceID> AliasSource;
+  std::optional<MachineMetadataReference> TBAA;
+  std::optional<MachineMetadataReference> AliasScope;
+  std::optional<MachineMetadataReference> NoAlias;
+  std::optional<MachineMetadataReference> NoAliasAddressSpace;
+  std::optional<MachineMetadataReference> RangeMetadata;
   std::uint16_t TargetFlags = 0;
 
   friend bool operator==(const MachineMemOperandDesc &Left,

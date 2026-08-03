@@ -414,6 +414,45 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
         if (!DebugNumberResult)
           return std::unexpected(DebugNumberResult.error());
       }
+      if (SourceInstruction->preInstrSymbol()) {
+        auto SymbolResult =
+            NewInstruction->setPreInstrSymbol(std::string(*SourceInstruction->preInstrSymbol()));
+        if (!SymbolResult)
+          return std::unexpected(SymbolResult.error());
+      }
+      if (SourceInstruction->postInstrSymbol()) {
+        auto SymbolResult =
+            NewInstruction->setPostInstrSymbol(std::string(*SourceInstruction->postInstrSymbol()));
+        if (!SymbolResult)
+          return std::unexpected(SymbolResult.error());
+      }
+      if (SourceInstruction->heapAllocMarker()) {
+        auto MarkerResult =
+            NewInstruction->setHeapAllocMarker(*SourceInstruction->heapAllocMarker());
+        if (!MarkerResult)
+          return std::unexpected(MarkerResult.error());
+      }
+      if (SourceInstruction->pcSections()) {
+        auto SectionsResult = NewInstruction->setPCSections(*SourceInstruction->pcSections());
+        if (!SectionsResult)
+          return std::unexpected(SectionsResult.error());
+      }
+      if (SourceInstruction->mmra()) {
+        auto MMRAResult = NewInstruction->setMMRA(*SourceInstruction->mmra());
+        if (!MMRAResult)
+          return std::unexpected(MMRAResult.error());
+      }
+      if (SourceInstruction->cfiType()) {
+        auto TypeResult = NewInstruction->setCFIType(*SourceInstruction->cfiType());
+        if (!TypeResult)
+          return std::unexpected(TypeResult.error());
+      }
+      if (SourceInstruction->deactivationSymbol()) {
+        auto SymbolResult = NewInstruction->setDeactivationSymbol(
+            std::string(*SourceInstruction->deactivationSymbol()));
+        if (!SymbolResult)
+          return std::unexpected(SymbolResult.error());
+      }
 
       auto AppendResult = DestinationBlock->appendInstruction(*NewInstruction);
       if (!AppendResult)

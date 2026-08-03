@@ -569,14 +569,25 @@ private:
       ++Offset;
     const std::string_view Number = slice(NumberBegin, Offset);
 
-    std::size_t NameBegin = Offset;
-    if (peek() == '.') {
-      ++Offset;
-      NameBegin = Offset;
-      while (!atEnd() && isIdentifierCharacter(peek()))
-        ++Offset;
+    if (peek() != '.') {
+      return stringToken(IsReference ? MITokenKind::MachineBasicBlock
+                                     : MITokenKind::MachineBasicBlockLabel,
+                         Begin, Offset, {}, Number);
     }
 
+    ++Offset;
+    const std::size_t NameBegin = Offset;
+    if (peek() == '"') {
+      auto Quoted = scanQuotedString(Offset);
+      if (!Quoted)
+        return token(MITokenKind::Error, Begin, Offset);
+      Offset = Quoted->End;
+      return ownedStringToken(IsReference ? MITokenKind::MachineBasicBlock
+                                          : MITokenKind::MachineBasicBlockLabel,
+                              Begin, Offset, std::move(Quoted->Value), Number);
+    }
+    while (!atEnd() && isIdentifierCharacter(peek()))
+      ++Offset;
     return stringToken(IsReference ? MITokenKind::MachineBasicBlock
                                    : MITokenKind::MachineBasicBlockLabel,
                        Begin, Offset, slice(NameBegin, Offset), Number);
@@ -597,13 +608,20 @@ private:
     if (!HasOptionalName)
       return token(Kind, Begin, Offset, Number);
 
-    std::size_t NameBegin = Offset;
-    if (peek() == '.') {
-      ++Offset;
-      NameBegin = Offset;
-      while (!atEnd() && isIdentifierCharacter(peek()))
-        ++Offset;
+    if (peek() != '.')
+      return stringToken(Kind, Begin, Offset, {}, Number);
+
+    ++Offset;
+    const std::size_t NameBegin = Offset;
+    if (peek() == '"') {
+      auto Quoted = scanQuotedString(Offset);
+      if (!Quoted)
+        return token(MITokenKind::Error, Begin, Offset);
+      Offset = Quoted->End;
+      return ownedStringToken(Kind, Begin, Offset, std::move(Quoted->Value), Number);
     }
+    while (!atEnd() && isIdentifierCharacter(peek()))
+      ++Offset;
     return stringToken(Kind, Begin, Offset, slice(NameBegin, Offset), Number);
   }
 

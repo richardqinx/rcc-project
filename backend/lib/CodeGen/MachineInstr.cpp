@@ -12,6 +12,8 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace rcc {
@@ -154,6 +156,73 @@ Expected<void> MachineInstr::setDebugLocation(MachineDebugLocation NewLocation) 
                           "machine instruction debug location must be valid");
   }
   DebugLocation = std::move(NewLocation);
+  return {};
+}
+
+std::optional<std::string_view> MachineInstr::preInstrSymbol() const noexcept {
+  if (!PreInstrSymbol)
+    return std::nullopt;
+  return *PreInstrSymbol;
+}
+
+Expected<void> MachineInstr::setPreInstrSymbol(std::string Symbol) {
+  if (Symbol.empty())
+    return makeUnexpected(ErrorCode::InvalidArgument, "pre-instruction symbol cannot be empty");
+  PreInstrSymbol = std::move(Symbol);
+  return {};
+}
+
+std::optional<std::string_view> MachineInstr::postInstrSymbol() const noexcept {
+  if (!PostInstrSymbol)
+    return std::nullopt;
+  return *PostInstrSymbol;
+}
+
+Expected<void> MachineInstr::setPostInstrSymbol(std::string Symbol) {
+  if (Symbol.empty())
+    return makeUnexpected(ErrorCode::InvalidArgument, "post-instruction symbol cannot be empty");
+  PostInstrSymbol = std::move(Symbol);
+  return {};
+}
+
+Expected<void> MachineInstr::setHeapAllocMarker(MachineMetadataReference Marker) {
+  if (!Marker.isValid())
+    return makeUnexpected(ErrorCode::InvalidArgument, "heap-allocation marker must be valid");
+  HeapAllocMarker = Marker;
+  return {};
+}
+
+Expected<void> MachineInstr::setPCSections(MachineMetadataReference Sections) {
+  if (!Sections.isValid())
+    return makeUnexpected(ErrorCode::InvalidArgument, "PC sections metadata must be valid");
+  PCSections = Sections;
+  return {};
+}
+
+Expected<void> MachineInstr::setMMRA(MachineMetadataReference Metadata) {
+  if (!Metadata.isValid())
+    return makeUnexpected(ErrorCode::InvalidArgument, "MMRA metadata must be valid");
+  MMRA = Metadata;
+  return {};
+}
+
+Expected<void> MachineInstr::setCFIType(std::uint64_t Type) {
+  if (Type == 0 || Type > std::numeric_limits<std::uint32_t>::max())
+    return makeUnexpected(ErrorCode::InvalidArgument, "CFI type must fit in nonzero uint32");
+  CFIType = static_cast<std::uint32_t>(Type);
+  return {};
+}
+
+std::optional<std::string_view> MachineInstr::deactivationSymbol() const noexcept {
+  if (!DeactivationSymbol)
+    return std::nullopt;
+  return *DeactivationSymbol;
+}
+
+Expected<void> MachineInstr::setDeactivationSymbol(std::string Symbol) {
+  if (Symbol.empty())
+    return makeUnexpected(ErrorCode::InvalidArgument, "deactivation symbol cannot be empty");
+  DeactivationSymbol = std::move(Symbol);
   return {};
 }
 

@@ -266,8 +266,14 @@ createFunction(TestContext &Context, std::string Name, std::uint64_t ID) {
   Description.Accesses = {rcc::MemoryAccessFlag::Load, rcc::MemoryAccessFlag::Dereferenceable};
   Description.Size = *rcc::MemorySize::fixed(8);
   Description.Align = *rcc::Alignment::create(8);
+  Description.BaseAlign = *rcc::Alignment::create(16);
   Description.Base = std::move(Base);
   Description.Offset = -8;
+  Description.TBAA = rcc::MachineMetadataReference::embeddedIR(10);
+  Description.AliasScope = rcc::MachineMetadataReference::embeddedIR(11);
+  Description.NoAlias = rcc::MachineMetadataReference::embeddedIR(12);
+  Description.NoAliasAddressSpace = rcc::MachineMetadataReference::embeddedIR(13);
+  Description.RangeMetadata = rcc::MachineMetadataReference::embeddedIR(14);
   Description.TargetFlags = 0x3;
   return Description;
 }
@@ -469,6 +475,16 @@ struct SourceFixture final {
   const rcc::StackObject *Object = Function.frameInfo().object(Fixture.StackSlot);
   if (Definition == nullptr || LoadInstruction == nullptr || Object == nullptr)
     return false;
+  Context.expect(
+      Definition->setPreInstrSymbol("before").has_value() &&
+          Definition->setPostInstrSymbol("after").has_value() &&
+          Definition->setHeapAllocMarker(rcc::MachineMetadataReference::embeddedIR(20))
+              .has_value() &&
+          Definition->setPCSections(rcc::MachineMetadataReference::embeddedIR(21)).has_value() &&
+          Definition->setMMRA(rcc::MachineMetadataReference::embeddedIR(22)).has_value() &&
+          Definition->setCFIType(23).has_value() &&
+          Definition->setDeactivationSymbol("guard").has_value(),
+      "source instruction attachments must be recorded");
   rcc::StackObjectDesc UpdatedStackSlot = *Object->description();
   UpdatedStackSlot.Lifetime.push_back({Definition->stableID(), LoadInstruction->stableID()});
   Context.expect(Function.frameInfo()
@@ -621,12 +637,18 @@ void testDeepClone(TestContext &Context) {
     return;
   }
 
-  Context.expect(DestinationDef->operandAt(0)->registerValue() == NewValue &&
-                     DestinationDef->flags().has(rcc::MachineInstrFlag::NoMerge) &&
-                     DestinationDef->sourceLocation() ==
-                         rcc::SourceLocation{"source.mir", 9, 4, 2} &&
-                     DestinationDef->origin() == rcc::OriginID::fromValue(77),
-                 "clone must remap register operands and preserve instruction metadata");
+  Context.expect(
+      DestinationDef->operandAt(0)->registerValue() == NewValue &&
+          DestinationDef->flags().has(rcc::MachineInstrFlag::NoMerge) &&
+          DestinationDef->sourceLocation() == rcc::SourceLocation{"source.mir", 9, 4, 2} &&
+          DestinationDef->origin() == rcc::OriginID::fromValue(77) &&
+          DestinationDef->preInstrSymbol() == "before" &&
+          DestinationDef->postInstrSymbol() == "after" &&
+          DestinationDef->heapAllocMarker() == rcc::MachineMetadataReference::embeddedIR(20) &&
+          DestinationDef->pcSections() == rcc::MachineMetadataReference::embeddedIR(21) &&
+          DestinationDef->mmra() == rcc::MachineMetadataReference::embeddedIR(22) &&
+          DestinationDef->cfiType() == 23 && DestinationDef->deactivationSymbol() == "guard",
+      "clone must remap register operands and preserve instruction metadata");
   Context.expect(DestinationBranch->operandAt(0)->getIf<rcc::BasicBlockOperand>()->Block ==
                      DestinationExit,
                  "clone must remap basic-block operands");

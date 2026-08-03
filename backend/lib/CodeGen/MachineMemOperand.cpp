@@ -2,6 +2,9 @@
 
 #include "rcc/CodeGen/MachineMemOperand.h"
 
+#include <algorithm>
+#include <array>
+#include <ranges>
 #include <utility>
 
 namespace rcc {
@@ -160,6 +163,38 @@ MemoryBase MemoryBase::externalSymbol(std::string Name) {
   return MemoryBase(Kind::ExternalSymbol, std::move(Name));
 }
 
+MemoryBase MemoryBase::irValue(std::string Name) {
+  return MemoryBase(Kind::IRValue, std::move(Name));
+}
+
+MemoryBase MemoryBase::stack() {
+  return MemoryBase(Kind::Stack, std::monostate{});
+}
+
+MemoryBase MemoryBase::got() {
+  return MemoryBase(Kind::GOT, std::monostate{});
+}
+
+MemoryBase MemoryBase::constantPoolPseudo() {
+  return MemoryBase(Kind::ConstantPoolPseudo, std::monostate{});
+}
+
+MemoryBase MemoryBase::jumpTablePseudo() {
+  return MemoryBase(Kind::JumpTablePseudo, std::monostate{});
+}
+
+MemoryBase MemoryBase::callEntryGlobal(std::string Name) {
+  return MemoryBase(Kind::CallEntryGlobal, std::move(Name));
+}
+
+MemoryBase MemoryBase::callEntryExternal(std::string Name) {
+  return MemoryBase(Kind::CallEntryExternal, std::move(Name));
+}
+
+MemoryBase MemoryBase::custom(std::string Name) {
+  return MemoryBase(Kind::Custom, std::move(Name));
+}
+
 std::optional<FrameIndex> MemoryBase::frameIndex() const noexcept {
   if (BaseKind != Kind::FrameIndex)
     return std::nullopt;
@@ -179,8 +214,11 @@ std::optional<JumpTableIndex> MemoryBase::jumpTableIndex() const noexcept {
 }
 
 std::optional<std::string_view> MemoryBase::symbolName() const noexcept {
-  if (BaseKind != Kind::GlobalSymbol && BaseKind != Kind::ExternalSymbol)
+  if (BaseKind != Kind::GlobalSymbol && BaseKind != Kind::ExternalSymbol &&
+      BaseKind != Kind::IRValue && BaseKind != Kind::CallEntryGlobal &&
+      BaseKind != Kind::CallEntryExternal && BaseKind != Kind::Custom) {
     return std::nullopt;
+  }
   return std::get<std::string>(Value);
 }
 
@@ -195,6 +233,10 @@ Expected<MachineMemOperand> MachineMemOperand::create(MachineMemOperandDesc Desc
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine memory operand address space must fit in 24 bits");
   }
+  if (Description.BaseAlign && Description.BaseAlign->bytes() < Description.Align.bytes()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine memory operand base alignment cannot be smaller than alignment");
+  }
   if (Description.Accesses.has(MemoryAccessFlag::Invariant) && (!IsLoad || IsStore)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "invariant memory operands must be load-only");
@@ -207,6 +249,17 @@ Expected<MachineMemOperand> MachineMemOperand::create(MachineMemOperandDesc Desc
   const auto SymbolName = Description.Base.symbolName();
   if (SymbolName && SymbolName->empty()) {
     return makeUnexpected(ErrorCode::InvalidArgument, "memory base symbol name cannot be empty");
+  }
+  const std::array MetadataReferences{
+      Description.TBAA,          Description.AliasScope,
+      Description.NoAlias,       Description.NoAliasAddressSpace,
+      Description.RangeMetadata,
+  };
+  if (std::ranges::any_of(MetadataReferences, [](const auto &Reference) {
+        return Reference.has_value() && !Reference->isValid();
+      })) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine memory operand contains an invalid metadata reference");
   }
 
   return MachineMemOperand(std::move(Description));

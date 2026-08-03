@@ -4,11 +4,15 @@ set(
   RCCBackendMIRSources
   EmbeddedIR.cpp
   MILexer.cpp
+  MIParser.cpp
+  MIPrinter.cpp
 )
 set(
   RCCBackendMIRHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/EmbeddedIR.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/MILexer.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/MIParser.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/MIPrinter.h"
 )
 
 add_library(RCCBackendMIR ${RCCBackendMIRSources})
@@ -42,9 +46,13 @@ install(
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MILexer.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MIParser.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MIPrinter.cpp"
   ${RCCBackendMIRHeaders}
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MILexer.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MIParser.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MIPrinter.cpp"
 )
