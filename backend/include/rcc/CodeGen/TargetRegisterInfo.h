@@ -129,8 +129,18 @@ public:
   [[nodiscard]] const PhysicalRegisterDesc *physicalRegister(PhysicalRegister Reg) const noexcept;
   [[nodiscard]] const PhysicalRegisterDesc *physicalRegister(std::string_view Name) const noexcept;
   [[nodiscard]] const SubRegIndexDesc *subRegIndex(SubRegIndex Index) const noexcept;
+  [[nodiscard]] const SubRegIndexDesc *subRegIndex(std::string_view Name) const noexcept;
   [[nodiscard]] const RegisterClassDesc *registerClass(RegisterClassID ID) const noexcept;
+  [[nodiscard]] const RegisterClassDesc *registerClass(std::string_view Name) const noexcept;
   [[nodiscard]] const RegisterBankDesc *registerBank(RegisterBankID ID) const noexcept;
+  [[nodiscard]] const RegisterBankDesc *registerBank(std::string_view Name) const noexcept;
+
+  [[nodiscard]] std::optional<std::string_view>
+  physicalRegisterMIRName(PhysicalRegister Reg) const noexcept;
+  [[nodiscard]] std::optional<std::string_view>
+  registerClassMIRName(RegisterClassID ID) const noexcept;
+  [[nodiscard]] std::optional<std::string_view>
+  registerBankMIRName(RegisterBankID ID) const noexcept;
 
   [[nodiscard]] bool isKnownPhysicalRegister(PhysicalRegister Reg) const noexcept {
     return physicalRegister(Reg) != nullptr;
@@ -177,14 +187,20 @@ private:
   std::unordered_map<PhysicalRegister, std::size_t> RegisterToIndex;
   std::unordered_map<std::string, std::size_t> RegisterNameToIndex;
   std::unordered_map<SubRegIndex, std::size_t> SubRegIndexToIndex;
+  std::unordered_map<std::string, std::size_t> SubRegNameToIndex;
   std::unordered_map<RegisterClassID, std::size_t> ClassToIndex;
+  std::unordered_map<std::string, std::size_t> ClassNameToIndex;
   std::unordered_map<RegisterBankID, std::size_t> BankToIndex;
+  std::unordered_map<std::string, std::size_t> BankNameToIndex;
   std::unordered_map<std::uint64_t, PhysicalRegister> SubRegisterMap;
   std::unordered_map<std::uint64_t, SubRegIndex> CompositionMap;
   std::unordered_map<std::uint64_t, RegisterClassID> SubRegClassMap;
   std::unordered_set<std::uint64_t> SubclassRelations;
   std::vector<std::vector<PhysicalRegister>> Aliases;
   std::vector<std::vector<PhysicalRegister>> SuperRegisters;
+  std::vector<std::string> RegisterMIRNames;
+  std::vector<std::string> ClassMIRNames;
+  std::vector<std::string> BankMIRNames;
 };
 
 } // namespace rcc

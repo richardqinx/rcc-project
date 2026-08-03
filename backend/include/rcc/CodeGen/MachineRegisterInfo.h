@@ -83,6 +83,7 @@ struct VirtualRegisterInfo final {
   std::optional<RegisterBankID> Bank;
   std::optional<RegisterClassID> RegClass;
   std::vector<PhysicalRegister> AllocationHints;
+  std::uint8_t TargetFlags = 0;
   bool IsTombstone = false;
 };
 
@@ -123,6 +124,8 @@ public:
   [[nodiscard]] Expected<void> setRegisterClass(Register Reg, RegisterClassID RegClass);
   [[nodiscard]] Expected<void> clearRegisterClass(Register Reg);
   [[nodiscard]] Expected<void> addAllocationHint(Register Reg, PhysicalRegister Hint);
+  [[nodiscard]] Expected<void> setTargetRegisterFlags(Register Reg, std::uint8_t Flags);
+  [[nodiscard]] Expected<void> clearTargetRegisterFlags(Register Reg);
   void clearAllVirtualRegisterTypes() noexcept;
 
   [[nodiscard]] Expected<void>

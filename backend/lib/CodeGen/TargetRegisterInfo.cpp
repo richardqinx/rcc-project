@@ -26,6 +26,15 @@ namespace {
   return Value != 0 && std::has_single_bit(Value);
 }
 
+[[nodiscard]] std::string lowerASCII(std::string_view Name) {
+  std::string Result(Name);
+  for (char &Character : Result) {
+    if (Character >= 'A' && Character <= 'Z')
+      Character = static_cast<char>(Character - 'A' + 'a');
+  }
+  return Result;
+}
+
 template <typename RangeT, typename ValueT>
 [[nodiscard]] bool contains(const RangeT &Range, const ValueT &Value) {
   return std::ranges::find(Range, Value) != std::ranges::end(Range);
@@ -64,10 +73,13 @@ Expected<TargetRegisterInfo> TargetRegisterInfo::create(TargetRegisterInfoDesc D
     if (!Register.Reg.isValid() || Register.Name.empty()) {
       return invalidDescription("physical register requires a valid number and name");
     }
+    std::string MIRName = lowerASCII(Register.Name);
     if (!Result.RegisterToIndex.emplace(Register.Reg, Index).second ||
-        !Result.RegisterNameToIndex.emplace(Register.Name, Index).second) {
-      return invalidDescription("physical register numbers and names must be unique");
+        !Result.RegisterNameToIndex.emplace(MIRName, Index).second) {
+      return invalidDescription(
+          "physical register numbers and names must be unique case-insensitively");
     }
+    Result.RegisterMIRNames.push_back(std::move(MIRName));
   }
 
   std::unordered_set<std::string> SubRegNames;
@@ -81,32 +93,36 @@ Expected<TargetRegisterInfo> TargetRegisterInfo::create(TargetRegisterInfoDesc D
           "subregister index requires a nonzero ID, name, lanes, and valid bit range");
     }
     if (!Result.SubRegIndexToIndex.emplace(SubReg.ID, Index).second ||
-        !SubRegNames.insert(SubReg.Name).second) {
+        !SubRegNames.insert(SubReg.Name).second ||
+        !Result.SubRegNameToIndex.emplace(SubReg.Name, Index).second) {
       return invalidDescription("subregister index IDs and names must be unique");
     }
   }
 
-  std::unordered_set<std::string> ClassNames;
   for (std::size_t Index = 0; Index < Result.Description.RegisterClasses.size(); ++Index) {
     const RegisterClassDesc &Class = Result.Description.RegisterClasses[Index];
     if (Class.ID.value() == 0 || Class.Name.empty()) {
       return invalidDescription("register class requires a nonzero ID and name");
     }
+    std::string MIRName = lowerASCII(Class.Name);
     if (!Result.ClassToIndex.emplace(Class.ID, Index).second ||
-        !ClassNames.insert(Class.Name).second) {
-      return invalidDescription("register class IDs and names must be unique");
+        !Result.ClassNameToIndex.emplace(MIRName, Index).second) {
+      return invalidDescription("register class IDs and names must be unique case-insensitively");
     }
+    Result.ClassMIRNames.push_back(std::move(MIRName));
   }
 
-  std::unordered_set<std::string> BankNames;
   for (std::size_t Index = 0; Index < Result.Description.RegisterBanks.size(); ++Index) {
     const RegisterBankDesc &Bank = Result.Description.RegisterBanks[Index];
     if (Bank.ID.value() == 0 || Bank.Name.empty() || Bank.MaximumSizeInBits == 0) {
       return invalidDescription("register bank requires a nonzero ID, name, and maximum size");
     }
-    if (!Result.BankToIndex.emplace(Bank.ID, Index).second || !BankNames.insert(Bank.Name).second) {
-      return invalidDescription("register bank IDs and names must be unique");
+    std::string MIRName = lowerASCII(Bank.Name);
+    if (!Result.BankToIndex.emplace(Bank.ID, Index).second ||
+        !Result.BankNameToIndex.emplace(MIRName, Index).second) {
+      return invalidDescription("register bank IDs and names must be unique case-insensitively");
     }
+    Result.BankMIRNames.push_back(std::move(MIRName));
   }
 
   std::unordered_set<RegisterUnitID> ReferencedUnits;
@@ -443,14 +459,55 @@ const SubRegIndexDesc *TargetRegisterInfo::subRegIndex(SubRegIndex Index) const 
                                               : &Description.SubRegIndices[Position->second];
 }
 
+const SubRegIndexDesc *TargetRegisterInfo::subRegIndex(std::string_view Name) const noexcept {
+  const auto Position = SubRegNameToIndex.find(std::string(Name));
+  return Position == SubRegNameToIndex.end() ? nullptr
+                                             : &Description.SubRegIndices[Position->second];
+}
+
 const RegisterClassDesc *TargetRegisterInfo::registerClass(RegisterClassID ID) const noexcept {
   const auto Position = ClassToIndex.find(ID);
   return Position == ClassToIndex.end() ? nullptr : &Description.RegisterClasses[Position->second];
 }
 
+const RegisterClassDesc *TargetRegisterInfo::registerClass(std::string_view Name) const noexcept {
+  const auto Position = ClassNameToIndex.find(std::string(Name));
+  return Position == ClassNameToIndex.end() ? nullptr
+                                            : &Description.RegisterClasses[Position->second];
+}
+
 const RegisterBankDesc *TargetRegisterInfo::registerBank(RegisterBankID ID) const noexcept {
   const auto Position = BankToIndex.find(ID);
   return Position == BankToIndex.end() ? nullptr : &Description.RegisterBanks[Position->second];
+}
+
+const RegisterBankDesc *TargetRegisterInfo::registerBank(std::string_view Name) const noexcept {
+  const auto Position = BankNameToIndex.find(std::string(Name));
+  return Position == BankNameToIndex.end() ? nullptr : &Description.RegisterBanks[Position->second];
+}
+
+std::optional<std::string_view>
+TargetRegisterInfo::physicalRegisterMIRName(PhysicalRegister Reg) const noexcept {
+  const auto Position = RegisterToIndex.find(Reg);
+  if (Position == RegisterToIndex.end())
+    return std::nullopt;
+  return RegisterMIRNames[Position->second];
+}
+
+std::optional<std::string_view>
+TargetRegisterInfo::registerClassMIRName(RegisterClassID ID) const noexcept {
+  const auto Position = ClassToIndex.find(ID);
+  if (Position == ClassToIndex.end())
+    return std::nullopt;
+  return ClassMIRNames[Position->second];
+}
+
+std::optional<std::string_view>
+TargetRegisterInfo::registerBankMIRName(RegisterBankID ID) const noexcept {
+  const auto Position = BankToIndex.find(ID);
+  if (Position == BankToIndex.end())
+    return std::nullopt;
+  return BankMIRNames[Position->second];
 }
 
 LaneMask TargetRegisterInfo::registerLaneMask(PhysicalRegister Reg) const noexcept {

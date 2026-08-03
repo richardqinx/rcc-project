@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 #include "rcc/Support/Error.h"
 
@@ -56,6 +57,7 @@ struct TestRegisterClass final {
 
 [[nodiscard]] TargetRegisterInfoDesc createTestTargetRegisterInfoDescription();
 [[nodiscard]] Expected<TargetRegisterInfo> createTestTargetRegisterInfo();
+[[nodiscard]] TargetMIRTextInfoDesc createTestTargetMIRTextInfoDescription();
 [[nodiscard]] Expected<TargetDescription> createTestTargetDescription(InstructionSet Instructions);
 [[nodiscard]] std::shared_ptr<const RegisterMask> createTestCallPreservedMask();
 

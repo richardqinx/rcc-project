@@ -94,6 +94,7 @@ Expected<void> MachineRegisterInfo::eraseVirtualRegister(Register Reg) {
   Info->get().Bank.reset();
   Info->get().RegClass.reset();
   Info->get().AllocationHints.clear();
+  Info->get().TargetFlags = 0;
   return {};
 }
 
@@ -186,6 +187,18 @@ Expected<void> MachineRegisterInfo::addAllocationHint(Register Reg, PhysicalRegi
   if (std::ranges::find(Hints, Hint) == Hints.end())
     Hints.push_back(Hint);
   return {};
+}
+
+Expected<void> MachineRegisterInfo::setTargetRegisterFlags(Register Reg, std::uint8_t Flags) {
+  auto Info = virtualRegisterInfo(Reg);
+  if (!Info)
+    return std::unexpected(Info.error());
+  Info->get().TargetFlags = Flags;
+  return {};
+}
+
+Expected<void> MachineRegisterInfo::clearTargetRegisterFlags(Register Reg) {
+  return setTargetRegisterFlags(Reg, 0);
 }
 
 void MachineRegisterInfo::clearAllVirtualRegisterTypes() noexcept {

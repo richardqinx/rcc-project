@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -38,45 +39,57 @@ public:
     return StackID(DefaultStackValue);
   }
 
-  [[nodiscard]] static constexpr StackID safeStack() noexcept {
-    return StackID(SafeStackValue);
-  }
-
-  [[nodiscard]] static constexpr StackID shadowCallStack() noexcept {
-    return StackID(ShadowCallStackValue);
+  [[nodiscard]] static constexpr StackID sgprSpillStack() noexcept {
+    return StackID(SGPRSpillStackValue);
   }
 
   [[nodiscard]] static constexpr StackID scalableVectorStack() noexcept {
     return StackID(ScalableVectorStackValue);
   }
 
-  [[nodiscard]] static Expected<StackID> targetStack(std::uint32_t Value);
+  [[nodiscard]] static constexpr StackID wasmLocalStack() noexcept {
+    return StackID(WasmLocalStackValue);
+  }
+
+  [[nodiscard]] static constexpr StackID scalablePredicateVectorStack() noexcept {
+    return StackID(ScalablePredicateVectorStackValue);
+  }
+
+  [[nodiscard]] static constexpr StackID noAllocStack() noexcept {
+    return StackID(NoAllocStackValue);
+  }
+
+  [[nodiscard]] static Expected<StackID> fromValue(std::uint32_t Value);
 
   [[nodiscard]] constexpr std::uint32_t value() const noexcept {
     return Value;
   }
 
-  [[nodiscard]] constexpr bool isTargetStack() const noexcept {
-    return Value >= FirstTargetStackValue;
+  [[nodiscard]] constexpr bool isSpecialStack() const noexcept {
+    return Value != DefaultStackValue;
   }
 
   [[nodiscard]] constexpr bool isValid() const noexcept {
-    return Value <= ScalableVectorStackValue || isTargetStack();
+    return Value <= ScalablePredicateVectorStackValue || Value == NoAllocStackValue;
   }
 
   friend constexpr bool operator==(StackID Left, StackID Right) noexcept = default;
 
 private:
   static constexpr std::uint32_t DefaultStackValue = 0;
-  static constexpr std::uint32_t SafeStackValue = 1;
-  static constexpr std::uint32_t ShadowCallStackValue = 2;
-  static constexpr std::uint32_t ScalableVectorStackValue = 3;
-  static constexpr std::uint32_t FirstTargetStackValue = 256;
+  static constexpr std::uint32_t SGPRSpillStackValue = 1;
+  static constexpr std::uint32_t ScalableVectorStackValue = 2;
+  static constexpr std::uint32_t WasmLocalStackValue = 3;
+  static constexpr std::uint32_t ScalablePredicateVectorStackValue = 4;
+  static constexpr std::uint32_t NoAllocStackValue = 255;
 
   explicit constexpr StackID(std::uint32_t Value) noexcept : Value(Value) {}
 
   std::uint32_t Value = DefaultStackValue;
 };
+
+[[nodiscard]] std::optional<StackID> parseStackIDName(std::string_view Name) noexcept;
+[[nodiscard]] std::string_view getStackIDName(StackID ID) noexcept;
 
 struct StackObjectLifetimeRange final {
   MachineInstrStableID Begin;

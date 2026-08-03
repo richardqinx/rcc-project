@@ -43,10 +43,17 @@ public:
     auto CFIResult = Function.cfiInfo().verify();
     if (!CFIResult)
       return failWith("CFI information", CFIResult.error());
+    auto TargetCFIResult = Target.validateCFIInfo(Function.cfiInfo());
+    if (!TargetCFIResult)
+      return failWith("target CFI information", TargetCFIResult.error());
     if (Function.targetState().hasValue()) {
       auto TargetStateResult = Function.targetState().verify();
       if (!TargetStateResult)
         return failWith("target function state", TargetStateResult.error());
+      const auto RequiredType = Target.mirText().functionStateType();
+      if (RequiredType && Function.targetState().typeID() != RequiredType) {
+        return fail("target function state does not match the target MIR schema");
+      }
     }
     auto CatalogResult = catalogArenaObjects();
     if (!CatalogResult)
@@ -54,6 +61,9 @@ public:
     auto FrameResult = Function.frameInfo().verify();
     if (!FrameResult)
       return failWith("frame info", FrameResult.error());
+    auto TargetFrameResult = Target.validateFrameInfo(Function.frameInfo());
+    if (!TargetFrameResult)
+      return failWith("target frame info", TargetFrameResult.error());
     auto ConstantPoolResult = Function.constantPool().verify();
     if (!ConstantPoolResult)
       return failWith("constant pool", ConstantPoolResult.error());
@@ -652,7 +662,8 @@ private:
 
     for (const VirtualRegisterInfo &Info : RegInfo.virtualRegisters()) {
       if (Info.IsTombstone) {
-        if (Info.Type || Info.Bank || Info.RegClass || !Info.AllocationHints.empty()) {
+        if (Info.Type || Info.Bank || Info.RegClass || !Info.AllocationHints.empty() ||
+            Info.TargetFlags != 0) {
           return fail("virtual-register tombstone retains semantic state");
         }
         continue;

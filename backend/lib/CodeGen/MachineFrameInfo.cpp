@@ -5,17 +5,49 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
 namespace rcc {
 
-Expected<StackID> StackID::targetStack(std::uint32_t Value) {
-  if (Value < FirstTargetStackValue) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "target stack ID must not overlap a built-in stack ID");
-  }
-  return StackID(Value);
+Expected<StackID> StackID::fromValue(std::uint32_t Value) {
+  StackID Result(Value);
+  if (!Result.isValid())
+    return makeUnexpected(ErrorCode::InvalidArgument, "stack ID is not serializable in LLVM MIR");
+  return Result;
+}
+
+std::optional<StackID> parseStackIDName(std::string_view Name) noexcept {
+  if (Name == "default")
+    return StackID::defaultStack();
+  if (Name == "sgpr-spill")
+    return StackID::sgprSpillStack();
+  if (Name == "scalable-vector")
+    return StackID::scalableVectorStack();
+  if (Name == "scalable-predicate-vector")
+    return StackID::scalablePredicateVectorStack();
+  if (Name == "wasm-local")
+    return StackID::wasmLocalStack();
+  if (Name == "noalloc")
+    return StackID::noAllocStack();
+  return std::nullopt;
+}
+
+std::string_view getStackIDName(StackID ID) noexcept {
+  if (ID == StackID::defaultStack())
+    return "default";
+  if (ID == StackID::sgprSpillStack())
+    return "sgpr-spill";
+  if (ID == StackID::scalableVectorStack())
+    return "scalable-vector";
+  if (ID == StackID::scalablePredicateVectorStack())
+    return "scalable-predicate-vector";
+  if (ID == StackID::wasmLocalStack())
+    return "wasm-local";
+  if (ID == StackID::noAllocStack())
+    return "noalloc";
+  return "unknown";
 }
 
 bool StackObject::isSpill() const noexcept {
@@ -59,10 +91,11 @@ Expected<void> MachineFrameInfo::verifyDescription(const StackObjectDesc &Descri
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "fixed ABI stack objects require a fixed offset");
   }
-  if (Description.Kind == StackObjectKind::Target && !Description.Stack.isTargetStack() &&
+  if (Description.Kind == StackObjectKind::Target && !Description.Stack.isSpecialStack() &&
       Description.TargetFlags == 0) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "target stack objects require a target stack ID or nonzero target flags");
+    return makeUnexpected(
+        ErrorCode::InvalidArgument,
+        "target stack objects require a special stack ID or nonzero target flags");
   }
 
   std::unordered_set<MachineInstrStableID> LifetimeBoundaries;

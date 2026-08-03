@@ -4,7 +4,10 @@
 
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
+#include "rcc/CodeGen/MachineCFIInfo.h"
+#include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 
@@ -47,9 +50,19 @@ namespace {
 } // namespace
 
 Expected<TargetDescription> TargetDescription::create(InstructionSet Instructions,
-                                                      TargetRegisterInfo Registers) {
+                                                      TargetRegisterInfo Registers,
+                                                      TargetMIRTextInfoDesc MIRTextDescription) {
+  auto MIRText = TargetMIRTextInfo::create(std::move(MIRTextDescription), Registers);
+  if (!MIRText)
+    return std::unexpected(MIRText.error());
+
   for (const InstructionDescriptor &Instruction : Instructions.descriptors()) {
     for (const OperandDescriptor &Operand : Instruction.Operands) {
+      if ((Operand.AllowedTargetFlags & ~MIRText->serializableOperandFlagMask()) != 0) {
+        return makeUnexpected(
+            ErrorCode::InvalidArgument,
+            "instruction operand allows a target flag outside the MIR text schema");
+      }
       if (Operand.RegClass && Registers.registerClass(*Operand.RegClass) == nullptr) {
         return makeUnexpected(ErrorCode::InvalidArgument,
                               "instruction operand references an unknown target register class");
@@ -103,7 +116,7 @@ Expected<TargetDescription> TargetDescription::create(InstructionSet Instruction
     }
   }
 
-  return TargetDescription(std::move(Instructions), std::move(Registers));
+  return TargetDescription(std::move(Instructions), std::move(Registers), std::move(*MIRText));
 }
 
 Expected<void> TargetDescription::validateVirtualRegister(Register Reg,
@@ -112,6 +125,10 @@ Expected<void> TargetDescription::validateVirtualRegister(Register Reg,
     return makeUnexpected(ErrorCode::InternalError,
                           "target virtual-register validation received a non-virtual register");
   }
+
+  auto TargetFlagValidation = MIRText.validateVirtualRegisterFlags(Info.TargetFlags);
+  if (!TargetFlagValidation)
+    return std::unexpected(TargetFlagValidation.error());
 
   const RegisterBankDesc *Bank = nullptr;
   if (Info.Bank) {
@@ -196,6 +213,21 @@ TargetDescription::effectiveRegisterClass(const MachineOperand &Operand,
 Expected<void> TargetDescription::validateTargetOperand(const OperandDescriptor *Descriptor,
                                                         const MachineOperand &Operand,
                                                         const MachineRegisterInfo &RegInfo) const {
+  auto TargetFlagValidation = MIRText.validateOperandFlags(Operand.targetFlags());
+  if (!TargetFlagValidation)
+    return std::unexpected(TargetFlagValidation.error());
+
+  if (const auto *Index = Operand.getIf<TargetIndexOperand>();
+      Index != nullptr && !MIRText.targetIndexName(Index->Index)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "target-index operand is not registered for MIR serialization");
+  }
+  if (const auto *Intrinsic = Operand.getIf<IntrinsicOperand>();
+      Intrinsic != nullptr && !MIRText.intrinsicName(Intrinsic->ID)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "intrinsic operand is not registered for MIR serialization");
+  }
+
   if (const auto *Mask = Operand.getIf<RegisterMaskOperand>(); Mask != nullptr) {
     if (!Mask->Mask) {
       return makeUnexpected(ErrorCode::VerificationError,
@@ -296,6 +328,104 @@ Expected<void> TargetDescription::validateTargetOperand(const OperandDescriptor 
     if (!EffectiveClass || !Registers.isSubclass(*EffectiveClass, *Descriptor->RegClass)) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "virtual register class does not satisfy the operand descriptor");
+    }
+  }
+  return {};
+}
+
+Expected<void> TargetDescription::validateMemOperands(
+    Opcode InstructionOpcode, std::span<const MachineMemOperand *const> MemOperands) const {
+  auto DescriptorValidation = Instructions.validateMemOperands(InstructionOpcode, MemOperands);
+  if (!DescriptorValidation)
+    return std::unexpected(DescriptorValidation.error());
+  for (const MachineMemOperand *MemOperand : MemOperands) {
+    if (MemOperand == nullptr)
+      continue;
+    auto TargetFlagValidation =
+        MIRText.validateMachineMemOperandFlags(MemOperand->description().TargetFlags);
+    if (!TargetFlagValidation)
+      return std::unexpected(TargetFlagValidation.error());
+  }
+  return {};
+}
+
+Expected<void> TargetDescription::validateCFIInfo(const MachineCFIInfo &Info) const {
+  auto ValidateRegister = [this](DwarfRegisterNumber Register) -> Expected<void> {
+    if (!MIRText.physicalRegister(Register.value())) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "CFI instruction references an unmapped DWARF register");
+    }
+    return {};
+  };
+
+  for (const MachineCFIInstruction &Instruction : Info.instructions()) {
+    if (const auto *Rule = Instruction.getIf<MachineCFIRegisterRule>()) {
+      auto Result = ValidateRegister(Rule->Register);
+      if (!Result)
+        return Result;
+    }
+    if (const auto *Rule = Instruction.getIf<MachineCFIRegisterOffsetRule>()) {
+      auto Result = ValidateRegister(Rule->Register);
+      if (!Result)
+        return Result;
+    }
+    if (const auto *Rule = Instruction.getIf<MachineCFIRegisterRegisterRule>()) {
+      auto RegisterResult = ValidateRegister(Rule->Register);
+      if (!RegisterResult)
+        return RegisterResult;
+      auto SourceResult = ValidateRegister(Rule->SourceRegister);
+      if (!SourceResult)
+        return SourceResult;
+    }
+    if (const auto *Rule = Instruction.getIf<MachineCFIAddressSpaceCFARule>()) {
+      auto Result = ValidateRegister(Rule->Register);
+      if (!Result)
+        return Result;
+    }
+    if (const auto *Rule = Instruction.getIf<MachineCFIRegisterPairRule>()) {
+      for (const DwarfRegisterNumber Register :
+           {Rule->Register, Rule->FirstRegister, Rule->SecondRegister}) {
+        auto Result = ValidateRegister(Register);
+        if (!Result)
+          return Result;
+      }
+    }
+    if (const auto *Rule = Instruction.getIf<MachineCFIVectorRegistersRule>()) {
+      auto Result = ValidateRegister(Rule->Register);
+      if (!Result)
+        return Result;
+      for (const MachineCFIVectorRegisterLane &Lane : Rule->VectorRegisters) {
+        Result = ValidateRegister(Lane.Register);
+        if (!Result)
+          return Result;
+      }
+    }
+    if (const auto *Rule = Instruction.getIf<MachineCFIVectorOffsetRule>()) {
+      auto RegisterResult = ValidateRegister(Rule->Register);
+      if (!RegisterResult)
+        return RegisterResult;
+      auto MaskResult = ValidateRegister(Rule->MaskRegister);
+      if (!MaskResult)
+        return MaskResult;
+    }
+    if (const auto *Rule = Instruction.getIf<MachineCFIVectorRegisterMaskRule>()) {
+      for (const DwarfRegisterNumber Register :
+           {Rule->Register, Rule->SpillRegister, Rule->MaskRegister}) {
+        auto Result = ValidateRegister(Register);
+        if (!Result)
+          return Result;
+      }
+    }
+  }
+  return {};
+}
+
+Expected<void> TargetDescription::validateFrameInfo(const MachineFrameInfo &Info) const {
+  for (const StackObject &Object : Info.objects()) {
+    const StackObjectDesc *Description = Object.description();
+    if (Description != nullptr && !MIRText.supportsStackID(Description->Stack)) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "stack object uses a stack ID unsupported by the target");
     }
   }
   return {};

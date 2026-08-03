@@ -182,6 +182,7 @@ struct MachineMemOperandDesc final {
   std::int64_t Offset = 0;
   std::optional<MemoryOffsetRange> OffsetRange;
   std::optional<MemoryAliasSourceID> AliasSource;
+  std::uint16_t TargetFlags = 0;
 
   friend bool operator==(const MachineMemOperandDesc &Left,
                          const MachineMemOperandDesc &Right) = default;

@@ -4,6 +4,7 @@
 #define RCC_CODEGEN_TARGETDESCRIPTION_H
 
 #include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 #include "rcc/Support/Error.h"
 
@@ -15,6 +16,8 @@
 namespace rcc {
 
 class MachineBasicBlock;
+class MachineCFIInfo;
+class MachineFrameInfo;
 class MachineInstr;
 class MachineMemOperand;
 class MachineRegisterInfo;
@@ -29,7 +32,8 @@ public:
   ~TargetDescription() = default;
 
   [[nodiscard]] static Expected<TargetDescription> create(InstructionSet Instructions,
-                                                          TargetRegisterInfo Registers);
+                                                          TargetRegisterInfo Registers,
+                                                          TargetMIRTextInfoDesc MIRText = {});
 
   [[nodiscard]] const InstructionSet &instructions() const noexcept {
     return Instructions;
@@ -37,6 +41,10 @@ public:
 
   [[nodiscard]] const TargetRegisterInfo &registers() const noexcept {
     return Registers;
+  }
+
+  [[nodiscard]] const TargetMIRTextInfo &mirText() const noexcept {
+    return MIRText;
   }
 
   [[nodiscard]] const InstructionDescriptor *
@@ -61,11 +69,11 @@ public:
                        std::span<const MachineOperandTie> Ties) const;
   [[nodiscard]] Expected<void>
   validateMemOperands(Opcode InstructionOpcode,
-                      std::span<const MachineMemOperand *const> MemOperands) const {
-    return Instructions.validateMemOperands(InstructionOpcode, MemOperands);
-  }
+                      std::span<const MachineMemOperand *const> MemOperands) const;
   [[nodiscard]] Expected<void> validateInstruction(const MachineInstr &Instruction,
                                                    const MachineRegisterInfo &RegInfo) const;
+  [[nodiscard]] Expected<void> validateCFIInfo(const MachineCFIInfo &Info) const;
+  [[nodiscard]] Expected<void> validateFrameInfo(const MachineFrameInfo &Info) const;
   [[nodiscard]] Expected<void> validateRegisterInfo(const MachineRegisterInfo &RegInfo) const;
   [[nodiscard]] Expected<void> validateBlockLiveIns(const MachineBasicBlock &Block) const;
 
@@ -75,8 +83,10 @@ public:
   }
 
 private:
-  TargetDescription(InstructionSet Instructions, TargetRegisterInfo Registers)
-      : Instructions(std::move(Instructions)), Registers(std::move(Registers)) {}
+  TargetDescription(InstructionSet Instructions, TargetRegisterInfo Registers,
+                    TargetMIRTextInfo MIRText)
+      : Instructions(std::move(Instructions)), Registers(std::move(Registers)),
+        MIRText(std::move(MIRText)) {}
 
   [[nodiscard]] Expected<void> validateTargetOperand(const OperandDescriptor *Descriptor,
                                                      const MachineOperand &Operand,
@@ -91,6 +101,7 @@ private:
 
   InstructionSet Instructions;
   TargetRegisterInfo Registers;
+  TargetMIRTextInfo MIRText;
 };
 
 } // namespace rcc

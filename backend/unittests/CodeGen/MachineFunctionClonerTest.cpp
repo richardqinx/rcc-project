@@ -268,6 +268,7 @@ createFunction(TestContext &Context, std::string Name, std::uint64_t ID) {
   Description.Align = *rcc::Alignment::create(8);
   Description.Base = std::move(Base);
   Description.Offset = -8;
+  Description.TargetFlags = 0x3;
   return Description;
 }
 
@@ -383,7 +384,8 @@ struct SourceFixture final {
   const auto RegClass = rcc::RegisterClassID::fromValue(2);
   for (const rcc::Register Reg : {Fixture.Value, Fixture.CopyValue}) {
     Context.expect(Function.registerInfo().setRegisterBank(Reg, Bank).has_value() &&
-                       Function.registerInfo().setRegisterClass(Reg, RegClass).has_value(),
+                       Function.registerInfo().setRegisterClass(Reg, RegClass).has_value() &&
+                       Function.registerInfo().setTargetRegisterFlags(Reg, 0x3).has_value(),
                    "source vreg constraints must be recorded");
   }
 
@@ -591,7 +593,8 @@ void testDeepClone(TestContext &Context) {
                      SourceInfo->get().Type == DestinationInfo->get().Type &&
                      SourceInfo->get().Bank == DestinationInfo->get().Bank &&
                      SourceInfo->get().RegClass == DestinationInfo->get().RegClass &&
-                     SourceInfo->get().AllocationHints == DestinationInfo->get().AllocationHints,
+                     SourceInfo->get().AllocationHints == DestinationInfo->get().AllocationHints &&
+                     SourceInfo->get().TargetFlags == DestinationInfo->get().TargetFlags,
                  "clone must preserve vreg type and allocation constraints");
   Context.expect(Destination.registerInfo().liveIns().size() == 1 &&
                      Destination.registerInfo().liveIns()[0].InitialVirtualRegister == NewValue &&

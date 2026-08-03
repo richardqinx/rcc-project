@@ -32,6 +32,7 @@ set(
   TargetConstant.cpp
   TargetDescription.cpp
   TargetFunctionState.cpp
+  TargetMIRTextInfo.cpp
   TargetRegisterInfo.cpp
 )
 set(
@@ -67,6 +68,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetConstant.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetDescription.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFunctionState.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetMIRTextInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetRegisterInfo.h"
 )
 
@@ -129,6 +131,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetDescription.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfo.cpp"
   ${RCCBackendCodeGenHeaders}
 )
@@ -163,5 +166,6 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetDescription.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfo.cpp"
 )

@@ -22,6 +22,7 @@ set(
   MachineValueTypesTest.cpp
   TargetConstantTest.cpp
   TargetFunctionStateTest.cpp
+  TargetMIRTextInfoTest.cpp
   TargetRegisterInfoTest.cpp
 )
 
@@ -253,6 +254,18 @@ add_test(
   COMMAND RCCBackendCodeGenTargetFunctionStateTests
 )
 
+add_executable(RCCBackendCodeGenTargetMIRTextInfoTests TargetMIRTextInfoTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenTargetMIRTextInfoTests)
+target_link_libraries(
+  RCCBackendCodeGenTargetMIRTextInfoTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.TargetMIRTextInfo
+  COMMAND RCCBackendCodeGenTargetMIRTextInfoTests
+)
+
 add_executable(RCCBackendCodeGenTargetRegisterInfoTests TargetRegisterInfoTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenTargetRegisterInfoTests)
 target_link_libraries(
@@ -286,6 +299,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"
 )
 rcc_backend_register_tidy_files(
@@ -309,5 +323,6 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"
 )

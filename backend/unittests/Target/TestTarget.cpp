@@ -156,11 +156,50 @@ Expected<TargetRegisterInfo> createTestTargetRegisterInfo() {
   return TargetRegisterInfo::create(createTestTargetRegisterInfoDescription());
 }
 
+TargetMIRTextInfoDesc createTestTargetMIRTextInfoDescription() {
+  TargetMIRTextInfoDesc Description;
+  Description.RegisterMasks = {
+      {"Test-Preserved", createTestCallPreservedMask()},
+  };
+  Description.TargetIndices = {
+      {"test-index", TargetIndex::fromValue(0)},
+  };
+  Description.DirectOperandFlagMask = 0x3;
+  Description.DirectOperandFlags = {
+      {"test-direct-one", 0x1},
+      {"test-direct-two", 0x2},
+      {"test-direct-three", 0x3},
+  };
+  Description.BitmaskOperandFlags = {
+      {"test-bit-four", 0x4},
+      {"test-bit-eight", 0x8},
+  };
+  Description.MachineMemOperandFlags = {
+      {"test-mmo-one", 0x1},
+      {"test-mmo-two", 0x2},
+  };
+  Description.VirtualRegisterFlags = {
+      {"test-vreg-one", 0x1},
+      {"test-vreg-two", 0x2},
+  };
+  Description.Intrinsics = {
+      {"llvm.test.seven", IntrinsicID::fromValue(7)},
+      {"llvm.test.seventeen", IntrinsicID::fromValue(17)},
+  };
+
+  for (const PhysicalRegisterDesc &Register :
+       createTestTargetRegisterInfoDescription().PhysicalRegisters) {
+    Description.CFIRegisters.push_back({Register.Reg, Register.Reg.number(), true});
+  }
+  return Description;
+}
+
 Expected<TargetDescription> createTestTargetDescription(InstructionSet Instructions) {
   auto Registers = createTestTargetRegisterInfo();
   if (!Registers)
     return std::unexpected(Registers.error());
-  return TargetDescription::create(std::move(Instructions), std::move(*Registers));
+  return TargetDescription::create(std::move(Instructions), std::move(*Registers),
+                                   createTestTargetMIRTextInfoDescription());
 }
 
 std::shared_ptr<const RegisterMask> createTestCallPreservedMask() {

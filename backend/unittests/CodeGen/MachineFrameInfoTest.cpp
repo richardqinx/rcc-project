@@ -149,15 +149,24 @@ void testInvalidDescriptions(TestContext &Context) {
                      Frame.object(*DebugIndex)->description()->DebugInfo == DebugObject.DebugInfo,
                  "stack object debug information must remain structured");
 
-  Context.expect(!rcc::StackID::targetStack(4), "target stack IDs must not overlap built-in IDs");
-  auto TargetStack = rcc::StackID::targetStack(256);
+  Context.expect(
+      rcc::StackID::fromValue(0) && rcc::StackID::fromValue(4) && rcc::StackID::fromValue(255) &&
+          !rcc::StackID::fromValue(5) && !rcc::StackID::fromValue(256) &&
+          rcc::parseStackIDName("sgpr-spill") == rcc::StackID::sgprSpillStack() &&
+          rcc::parseStackIDName("scalable-vector") == rcc::StackID::scalableVectorStack() &&
+          rcc::parseStackIDName("scalable-predicate-vector") ==
+              rcc::StackID::scalablePredicateVectorStack() &&
+          rcc::parseStackIDName("wasm-local") == rcc::StackID::wasmLocalStack() &&
+          rcc::parseStackIDName("noalloc") == rcc::StackID::noAllocStack() &&
+          !rcc::parseStackIDName("safe") &&
+          rcc::getStackIDName(rcc::StackID::noAllocStack()) == "noalloc",
+      "stack IDs and names must match the fixed LLVM MIR enumeration");
+
   auto Target = fixedObject(8, 8);
   Target.Kind = rcc::StackObjectKind::Target;
-  if (TargetStack)
-    Target.Stack = *TargetStack;
+  Target.Stack = rcc::StackID::sgprSpillStack();
   auto TargetIndex = Frame.createObject(Target);
-  Context.expect(TargetStack && TargetIndex,
-                 "target stack identity must admit target stack objects");
+  Context.expect(TargetIndex.has_value(), "special stack identity must admit target stack objects");
 
   auto Unresolved = Frame.createObject(fixedObject(8, 8));
   Context.expect(Unresolved && !Frame.freeze(16, *rcc::Alignment::create(8)) && !Frame.isFrozen() &&

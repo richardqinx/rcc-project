@@ -214,6 +214,12 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
       if (!SetResult)
         return std::unexpected(SetResult.error());
     }
+    if (SourceInfo.TargetFlags != 0) {
+      auto SetResult = State.Destination.registerInfo().setTargetRegisterFlags(
+          *DestinationReg, SourceInfo.TargetFlags);
+      if (!SetResult)
+        return std::unexpected(SetResult.error());
+    }
     for (const PhysicalRegister Hint : SourceInfo.AllocationHints) {
       auto AddResult = State.Destination.registerInfo().addAllocationHint(*DestinationReg, Hint);
       if (!AddResult)
