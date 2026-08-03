@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-set(RCCBackendMIRSources EmbeddedIR.cpp)
+set(
+  RCCBackendMIRSources
+  EmbeddedIR.cpp
+  MILexer.cpp
+)
 set(
   RCCBackendMIRHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/EmbeddedIR.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/MILexer.h"
 )
 
 add_library(RCCBackendMIR ${RCCBackendMIRSources})
@@ -36,6 +41,10 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MILexer.cpp"
   ${RCCBackendMIRHeaders}
 )
-rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp")
+rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MILexer.cpp"
+)
