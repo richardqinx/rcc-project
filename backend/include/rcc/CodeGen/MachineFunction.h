@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEFUNCTION_H
 #define RCC_CODEGEN_MACHINEFUNCTION_H
 
+#include "rcc/CodeGen/MachineCFIInfo.h"
 #include "rcc/CodeGen/MachineCompilationStatus.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
@@ -117,6 +118,14 @@ public:
     return Metadata;
   }
 
+  [[nodiscard]] MachineCFIInfo &cfiInfo() noexcept {
+    return CFIInfo;
+  }
+
+  [[nodiscard]] const MachineCFIInfo &cfiInfo() const noexcept {
+    return CFIInfo;
+  }
+
   [[nodiscard]] const TargetFunctionState &targetState() const noexcept {
     return TargetState;
   }
@@ -199,6 +208,7 @@ private:
   MachineFunctionAttributes Attributes;
   MachineFunctionRecords Records;
   MachineMetadataInfo Metadata;
+  MachineCFIInfo CFIInfo;
   TargetFunctionState TargetState;
   MachineCompilationStatus CompilationStatus;
   MachineBasicBlock *FirstBlock = nullptr;

@@ -203,6 +203,13 @@ Expected<void> TargetDescription::validateTargetOperand(const OperandDescriptor 
     }
     return Registers.validateRegisterMask(*Mask->Mask);
   }
+  if (const auto *Mask = Operand.getIf<LiveOutRegisterMaskOperand>(); Mask != nullptr) {
+    if (!Mask->Mask) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "live-out register-mask operand contains a null mask");
+    }
+    return Registers.validateRegisterMask(*Mask->Mask);
+  }
 
   const Register *Reg = Operand.getIf<Register>();
   if (Reg == nullptr)

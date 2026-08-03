@@ -21,6 +21,7 @@
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace rcc {
 
@@ -56,6 +57,39 @@ private:
   FloatSemantics Semantics;
   std::array<std::uint64_t, 2> Words;
   std::uint8_t WordCount;
+};
+
+class IntegerImmediate final {
+public:
+  static constexpr std::uint32_t MaxBitWidth = std::uint32_t{1} << 23U;
+
+  [[nodiscard]] static Expected<IntegerImmediate> create(std::uint32_t BitWidth,
+                                                         std::span<const std::uint64_t> Words);
+  [[nodiscard]] static Expected<IntegerImmediate> fromUnsigned(std::uint32_t BitWidth,
+                                                               std::uint64_t Value);
+  [[nodiscard]] static Expected<IntegerImmediate> fromSigned(std::uint32_t BitWidth,
+                                                             std::int64_t Value);
+
+  [[nodiscard]] std::uint32_t bitWidth() const noexcept {
+    return BitWidth;
+  }
+
+  [[nodiscard]] std::span<const std::uint64_t> words() const noexcept {
+    return Words;
+  }
+
+  [[nodiscard]] bool isZero() const noexcept;
+  [[nodiscard]] bool isNegative() const noexcept;
+  [[nodiscard]] Expected<void> verify() const;
+
+  friend bool operator==(const IntegerImmediate &Left, const IntegerImmediate &Right) = default;
+
+private:
+  IntegerImmediate(std::uint32_t BitWidth, std::vector<std::uint64_t> Words)
+      : BitWidth(BitWidth), Words(std::move(Words)) {}
+
+  std::uint32_t BitWidth;
+  std::vector<std::uint64_t> Words;
 };
 
 enum class RegisterOperandFlag : std::uint8_t {
@@ -113,6 +147,13 @@ struct FloatingImmediateOperand final {
 
   friend bool operator==(const FloatingImmediateOperand &Left,
                          const FloatingImmediateOperand &Right) = default;
+};
+
+struct IntegerImmediateOperand final {
+  IntegerImmediate Value;
+
+  friend bool operator==(const IntegerImmediateOperand &Left,
+                         const IntegerImmediateOperand &Right) = default;
 };
 
 struct BasicBlockOperand final {
@@ -176,6 +217,13 @@ struct RegisterMaskOperand final {
                          const RegisterMaskOperand &Right) = default;
 };
 
+struct LiveOutRegisterMaskOperand final {
+  std::shared_ptr<const RegisterMask> Mask;
+
+  friend bool operator==(const LiveOutRegisterMaskOperand &Left,
+                         const LiveOutRegisterMaskOperand &Right) = default;
+};
+
 struct MetadataOperand final {
   MachineMetadataValue Value;
 
@@ -197,11 +245,106 @@ struct MCSymbolOperand final {
   friend bool operator==(const MCSymbolOperand &Left, const MCSymbolOperand &Right) = default;
 };
 
+struct CFIIndexOperand final {
+  CFIInstructionIndex Index;
+
+  friend constexpr bool operator==(CFIIndexOperand Left, CFIIndexOperand Right) noexcept = default;
+};
+
+struct IntrinsicOperand final {
+  IntrinsicID ID;
+
+  friend constexpr bool operator==(IntrinsicOperand Left,
+                                   IntrinsicOperand Right) noexcept = default;
+};
+
+enum class IntegerPredicate : std::uint8_t {
+  Equal,
+  NotEqual,
+  SignedGreaterThan,
+  SignedGreaterEqual,
+  SignedLessThan,
+  SignedLessEqual,
+  UnsignedGreaterThan,
+  UnsignedGreaterEqual,
+  UnsignedLessThan,
+  UnsignedLessEqual,
+  Count,
+};
+
+enum class FloatingPredicate : std::uint8_t {
+  AlwaysFalse,
+  OrderedEqual,
+  OrderedGreaterThan,
+  OrderedGreaterEqual,
+  OrderedLessThan,
+  OrderedLessEqual,
+  OrderedNotEqual,
+  Ordered,
+  Unordered,
+  UnorderedEqual,
+  UnorderedGreaterThan,
+  UnorderedGreaterEqual,
+  UnorderedLessThan,
+  UnorderedLessEqual,
+  UnorderedNotEqual,
+  AlwaysTrue,
+  Count,
+};
+
+class PredicateOperand final {
+public:
+  explicit PredicateOperand(IntegerPredicate Predicate) : Value(Predicate) {}
+  explicit PredicateOperand(FloatingPredicate Predicate) : Value(Predicate) {}
+
+  [[nodiscard]] bool isInteger() const noexcept {
+    return std::holds_alternative<IntegerPredicate>(Value);
+  }
+
+  [[nodiscard]] const IntegerPredicate *integerPredicate() const noexcept {
+    return std::get_if<IntegerPredicate>(&Value);
+  }
+
+  [[nodiscard]] const FloatingPredicate *floatingPredicate() const noexcept {
+    return std::get_if<FloatingPredicate>(&Value);
+  }
+
+  [[nodiscard]] Expected<void> verify() const;
+
+  friend bool operator==(const PredicateOperand &Left, const PredicateOperand &Right) = default;
+
+private:
+  std::variant<IntegerPredicate, FloatingPredicate> Value;
+};
+
+struct ShuffleMaskOperand final {
+  static constexpr std::int32_t Undef = -1;
+
+  std::vector<std::int32_t> Elements;
+
+  friend bool operator==(const ShuffleMaskOperand &Left, const ShuffleMaskOperand &Right) = default;
+};
+
+struct DebugInstrRefOperand final {
+  std::uint32_t InstructionNumber = 0;
+  std::uint32_t OperandNumber = 0;
+
+  friend constexpr bool operator==(DebugInstrRefOperand Left,
+                                   DebugInstrRefOperand Right) noexcept = default;
+};
+
+struct LaneMaskOperand final {
+  LaneMask Mask;
+
+  friend constexpr bool operator==(LaneMaskOperand Left, LaneMaskOperand Right) noexcept = default;
+};
+
 class MachineOperand final {
 public:
   enum class Kind : std::uint8_t {
     Register,
     Immediate,
+    IntegerImmediate,
     FloatingImmediate,
     BasicBlock,
     FrameIndex,
@@ -211,9 +354,16 @@ public:
     ExternalSymbol,
     BlockAddress,
     RegisterMask,
+    LiveOutRegisterMask,
     Metadata,
     TargetIndex,
     MCSymbol,
+    CFIIndex,
+    Intrinsic,
+    Predicate,
+    ShuffleMask,
+    DebugInstrRef,
+    LaneMask,
     Count,
   };
 
@@ -228,6 +378,8 @@ public:
                                                                 SubRegIndex SubReg = {},
                                                                 std::uint32_t TargetFlags = 0);
   [[nodiscard]] static MachineOperand immediate(std::int64_t Value, std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static MachineOperand integerImmediate(IntegerImmediate Value,
+                                                       std::uint32_t TargetFlags = 0);
   [[nodiscard]] static MachineOperand floatingImmediate(FloatingPointBits Bits,
                                                         std::uint32_t TargetFlags = 0);
   [[nodiscard]] static MachineOperand basicBlock(MachineBasicBlock &Block,
@@ -248,12 +400,28 @@ public:
                                                              std::uint32_t TargetFlags = 0);
   [[nodiscard]] static Expected<MachineOperand>
   registerMask(std::shared_ptr<const RegisterMask> Mask, std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static Expected<MachineOperand>
+  liveOutRegisterMask(std::shared_ptr<const RegisterMask> Mask, std::uint32_t TargetFlags = 0);
   [[nodiscard]] static Expected<MachineOperand> metadata(MachineMetadataValue Value,
                                                          std::uint32_t TargetFlags = 0);
   [[nodiscard]] static MachineOperand targetIndex(TargetIndex Index, std::int64_t Offset = 0,
                                                   std::uint32_t TargetFlags = 0);
   [[nodiscard]] static Expected<MachineOperand> mcSymbol(std::string Name, std::int64_t Offset = 0,
                                                          std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static MachineOperand cfiIndex(CFIInstructionIndex Index,
+                                               std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static Expected<MachineOperand> intrinsic(IntrinsicID ID,
+                                                          std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static Expected<MachineOperand> integerPredicate(IntegerPredicate Predicate,
+                                                                 std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static Expected<MachineOperand> floatingPredicate(FloatingPredicate Predicate,
+                                                                  std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static Expected<MachineOperand> shuffleMask(std::vector<std::int32_t> Elements,
+                                                            std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static Expected<MachineOperand> debugInstrRef(std::uint64_t InstructionNumber,
+                                                              std::uint64_t OperandNumber,
+                                                              std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static MachineOperand laneMask(LaneMask Mask, std::uint32_t TargetFlags = 0);
 
   [[nodiscard]] Kind kind() const noexcept {
     return OperandKind;
@@ -307,10 +475,12 @@ public:
 
 private:
   using OperandStorage =
-      std::variant<Register, std::int64_t, FloatingImmediateOperand, BasicBlockOperand,
-                   FrameIndexOperand, ConstantPoolOperand, JumpTableOperand, GlobalSymbolOperand,
-                   ExternalSymbolOperand, BlockAddressOperand, RegisterMaskOperand, MetadataOperand,
-                   TargetIndexOperand, MCSymbolOperand>;
+      std::variant<Register, std::int64_t, IntegerImmediateOperand, FloatingImmediateOperand,
+                   BasicBlockOperand, FrameIndexOperand, ConstantPoolOperand, JumpTableOperand,
+                   GlobalSymbolOperand, ExternalSymbolOperand, BlockAddressOperand,
+                   RegisterMaskOperand, LiveOutRegisterMaskOperand, MetadataOperand,
+                   TargetIndexOperand, MCSymbolOperand, CFIIndexOperand, IntrinsicOperand,
+                   PredicateOperand, ShuffleMaskOperand, DebugInstrRefOperand, LaneMaskOperand>;
 
   MachineOperand(Kind OperandKind, OperandStorage Storage, std::uint32_t TargetFlags = 0)
       : OperandKind(OperandKind), Storage(std::move(Storage)), TargetFlags(TargetFlags) {}

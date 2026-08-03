@@ -162,6 +162,11 @@ Expected<void> MachineInstrBuilder::addImmediate(std::int64_t Value, std::uint32
   return addOperand(MachineOperand::immediate(Value, TargetFlags));
 }
 
+Expected<void> MachineInstrBuilder::addIntegerImmediate(IntegerImmediate Value,
+                                                        std::uint32_t TargetFlags) {
+  return addOperand(MachineOperand::integerImmediate(std::move(Value), TargetFlags));
+}
+
 Expected<void> MachineInstrBuilder::addFloatingImmediate(FloatingPointBits Bits,
                                                          std::uint32_t TargetFlags) {
   return addOperand(MachineOperand::floatingImmediate(Bits, TargetFlags));
@@ -220,6 +225,14 @@ Expected<void> MachineInstrBuilder::addRegisterMask(std::shared_ptr<const Regist
   return addOperand(std::move(*Operand));
 }
 
+Expected<void> MachineInstrBuilder::addLiveOutRegisterMask(std::shared_ptr<const RegisterMask> Mask,
+                                                           std::uint32_t TargetFlags) {
+  auto Operand = MachineOperand::liveOutRegisterMask(std::move(Mask), TargetFlags);
+  if (!Operand)
+    return std::unexpected(Operand.error());
+  return addOperand(std::move(*Operand));
+}
+
 Expected<void> MachineInstrBuilder::addMetadata(MachineMetadataValue Value,
                                                 std::uint32_t TargetFlags) {
   auto Operand = MachineOperand::metadata(std::move(Value), TargetFlags);
@@ -239,6 +252,55 @@ Expected<void> MachineInstrBuilder::addMCSymbol(std::string Name, std::int64_t O
   if (!Operand)
     return std::unexpected(Operand.error());
   return addOperand(std::move(*Operand));
+}
+
+Expected<void> MachineInstrBuilder::addCFIInstruction(CFIInstructionIndex Index,
+                                                      std::uint32_t TargetFlags) {
+  return addOperand(MachineOperand::cfiIndex(Index, TargetFlags));
+}
+
+Expected<void> MachineInstrBuilder::addIntrinsic(IntrinsicID ID, std::uint32_t TargetFlags) {
+  auto Operand = MachineOperand::intrinsic(ID, TargetFlags);
+  if (!Operand)
+    return std::unexpected(Operand.error());
+  return addOperand(std::move(*Operand));
+}
+
+Expected<void> MachineInstrBuilder::addIntegerPredicate(IntegerPredicate Predicate,
+                                                        std::uint32_t TargetFlags) {
+  auto Operand = MachineOperand::integerPredicate(Predicate, TargetFlags);
+  if (!Operand)
+    return std::unexpected(Operand.error());
+  return addOperand(std::move(*Operand));
+}
+
+Expected<void> MachineInstrBuilder::addFloatingPredicate(FloatingPredicate Predicate,
+                                                         std::uint32_t TargetFlags) {
+  auto Operand = MachineOperand::floatingPredicate(Predicate, TargetFlags);
+  if (!Operand)
+    return std::unexpected(Operand.error());
+  return addOperand(std::move(*Operand));
+}
+
+Expected<void> MachineInstrBuilder::addShuffleMask(std::vector<std::int32_t> Elements,
+                                                   std::uint32_t TargetFlags) {
+  auto Operand = MachineOperand::shuffleMask(std::move(Elements), TargetFlags);
+  if (!Operand)
+    return std::unexpected(Operand.error());
+  return addOperand(std::move(*Operand));
+}
+
+Expected<void> MachineInstrBuilder::addDebugInstrRef(std::uint64_t InstructionNumber,
+                                                     std::uint64_t OperandNumber,
+                                                     std::uint32_t TargetFlags) {
+  auto Operand = MachineOperand::debugInstrRef(InstructionNumber, OperandNumber, TargetFlags);
+  if (!Operand)
+    return std::unexpected(Operand.error());
+  return addOperand(std::move(*Operand));
+}
+
+Expected<void> MachineInstrBuilder::addLaneMask(LaneMask Mask, std::uint32_t TargetFlags) {
+  return addOperand(MachineOperand::laneMask(Mask, TargetFlags));
 }
 
 Expected<void> MachineInstrBuilder::tieOperands(std::size_t DefOperand, std::size_t UseOperand) {
@@ -377,6 +439,14 @@ Expected<void> MachineInstrBuilder::validateJumpTableReference(JumpTableIndex In
   return {};
 }
 
+Expected<void> MachineInstrBuilder::validateCFIReference(CFIInstructionIndex Index) const {
+  if (Function->cfiInfo().instruction(Index) == nullptr) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "builder references an unknown CFI instruction");
+  }
+  return {};
+}
+
 Expected<void> MachineInstrBuilder::validateOperandOwnership(const MachineOperand &Operand) const {
   if (Operand.parent() != nullptr) {
     return makeUnexpected(ErrorCode::InvalidArgument,
@@ -408,6 +478,11 @@ Expected<void> MachineInstrBuilder::validateOperandOwnership(const MachineOperan
     auto JumpTableResult = validateJumpTableReference(JumpTable->Index);
     if (!JumpTableResult)
       return JumpTableResult;
+  }
+  if (const auto *CFI = Operand.getIf<CFIIndexOperand>(); CFI != nullptr) {
+    auto CFIResult = validateCFIReference(CFI->Index);
+    if (!CFIResult)
+      return CFIResult;
   }
   return {};
 }

@@ -16,6 +16,7 @@ set(
   MachineIRCoreTest.cpp
   MachineJumpTableInfoTest.cpp
   MachineMetadataTest.cpp
+  MachineOperandTest.cpp
   MachineVerifierTest.cpp
   MachineVerifierTargetTest.cpp
   MachineValueTypesTest.cpp
@@ -219,6 +220,18 @@ add_test(
   COMMAND RCCBackendCodeGenMachineMetadataTests
 )
 
+add_executable(RCCBackendCodeGenMachineOperandTests MachineOperandTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineOperandTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineOperandTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineOperand
+  COMMAND RCCBackendCodeGenMachineOperandTests
+)
+
 add_executable(RCCBackendCodeGenTargetConstantTests TargetConstantTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenTargetConstantTests)
 target_link_libraries(RCCBackendCodeGenTargetConstantTests PRIVATE RCCBackend::CodeGen)
@@ -267,6 +280,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
@@ -289,6 +303,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"

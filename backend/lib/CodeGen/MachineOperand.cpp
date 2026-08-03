@@ -9,11 +9,103 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <span>
 #include <utility>
+#include <vector>
 
 namespace rcc {
+namespace {
+
+[[nodiscard]] constexpr std::size_t integerWordCount(std::uint32_t BitWidth) noexcept {
+  return (static_cast<std::size_t>(BitWidth) + 63U) / 64U;
+}
+
+[[nodiscard]] constexpr std::uint64_t integerHighWordMask(std::uint32_t BitWidth) noexcept {
+  const std::uint32_t UsedBits = BitWidth % 64U;
+  if (UsedBits == 0)
+    return std::numeric_limits<std::uint64_t>::max();
+  return (std::uint64_t{1} << UsedBits) - 1U;
+}
+
+[[nodiscard]] Expected<void> verifyIntegerImmediate(std::uint32_t BitWidth,
+                                                    std::span<const std::uint64_t> Words,
+                                                    ErrorCode Code) {
+  if (BitWidth == 0 || BitWidth > IntegerImmediate::MaxBitWidth) {
+    return makeUnexpected(Code, "integer immediate bit width is outside the supported range");
+  }
+  if (Words.size() != integerWordCount(BitWidth)) {
+    return makeUnexpected(Code, "integer immediate bit pattern has the wrong word count");
+  }
+  if ((Words.back() & ~integerHighWordMask(BitWidth)) != 0) {
+    return makeUnexpected(Code, "integer immediate has nonzero bits above its declared width");
+  }
+  return {};
+}
+
+} // namespace
+
+Expected<IntegerImmediate> IntegerImmediate::create(std::uint32_t BitWidth,
+                                                    std::span<const std::uint64_t> Words) {
+  auto Verification = verifyIntegerImmediate(BitWidth, Words, ErrorCode::InvalidArgument);
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  return IntegerImmediate(BitWidth, std::vector<std::uint64_t>(Words.begin(), Words.end()));
+}
+
+Expected<IntegerImmediate> IntegerImmediate::fromUnsigned(std::uint32_t BitWidth,
+                                                          std::uint64_t Value) {
+  if (BitWidth == 0 || BitWidth > MaxBitWidth) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "integer immediate bit width is outside the supported range");
+  }
+  if (BitWidth < 64U && (Value >> BitWidth) != 0) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "unsigned value does not fit the integer immediate bit width");
+  }
+
+  std::vector<std::uint64_t> Words(integerWordCount(BitWidth), 0);
+  Words.front() = Value;
+  return create(BitWidth, Words);
+}
+
+Expected<IntegerImmediate> IntegerImmediate::fromSigned(std::uint32_t BitWidth,
+                                                        std::int64_t Value) {
+  if (BitWidth == 0 || BitWidth > MaxBitWidth) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "integer immediate bit width is outside the supported range");
+  }
+  if (BitWidth < 64U) {
+    const std::uint32_t MagnitudeBits = BitWidth - 1U;
+    const std::int64_t Minimum = -(std::int64_t{1} << MagnitudeBits);
+    const std::int64_t Maximum = (std::int64_t{1} << MagnitudeBits) - 1;
+    if (Value < Minimum || Value > Maximum) {
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "signed value does not fit the integer immediate bit width");
+    }
+  }
+
+  const std::uint64_t Fill =
+      Value < 0 ? std::numeric_limits<std::uint64_t>::max() : std::uint64_t{0};
+  std::vector<std::uint64_t> Words(integerWordCount(BitWidth), Fill);
+  Words.front() = static_cast<std::uint64_t>(Value);
+  Words.back() &= integerHighWordMask(BitWidth);
+  return create(BitWidth, Words);
+}
+
+bool IntegerImmediate::isZero() const noexcept {
+  return std::ranges::all_of(Words, [](std::uint64_t Word) { return Word == 0; });
+}
+
+bool IntegerImmediate::isNegative() const noexcept {
+  const std::uint32_t SignBit = BitWidth - 1U;
+  return (Words[SignBit / 64U] & (std::uint64_t{1} << (SignBit % 64U))) != 0;
+}
+
+Expected<void> IntegerImmediate::verify() const {
+  return verifyIntegerImmediate(BitWidth, Words, ErrorCode::VerificationError);
+}
 
 Expected<FloatingPointBits> FloatingPointBits::create(FloatSemantics Semantics,
                                                       std::span<const std::uint64_t> Words) {
@@ -43,6 +135,20 @@ RegisterOperandFlags::RegisterOperandFlags(
     std::initializer_list<RegisterOperandFlag> Flags) noexcept {
   for (const RegisterOperandFlag Flag : Flags)
     set(Flag);
+}
+
+Expected<void> PredicateOperand::verify() const {
+  if (const auto *Integer = integerPredicate();
+      Integer != nullptr &&
+      static_cast<std::uint8_t>(*Integer) < static_cast<std::uint8_t>(IntegerPredicate::Count)) {
+    return {};
+  }
+  if (const auto *Floating = floatingPredicate();
+      Floating != nullptr &&
+      static_cast<std::uint8_t>(*Floating) < static_cast<std::uint8_t>(FloatingPredicate::Count)) {
+    return {};
+  }
+  return makeUnexpected(ErrorCode::VerificationError, "predicate operand contains an invalid kind");
 }
 
 Expected<void> MachineOperand::verifyRegisterFlags(RegisterOperandFlags Flags) {
@@ -94,6 +200,11 @@ Expected<MachineOperand> MachineOperand::registerOperand(Register Reg, RegisterO
 
 MachineOperand MachineOperand::immediate(std::int64_t Value, std::uint32_t TargetFlags) {
   return MachineOperand(Kind::Immediate, Value, TargetFlags);
+}
+
+MachineOperand MachineOperand::integerImmediate(IntegerImmediate Value, std::uint32_t TargetFlags) {
+  return MachineOperand(Kind::IntegerImmediate, IntegerImmediateOperand{std::move(Value)},
+                        TargetFlags);
 }
 
 MachineOperand MachineOperand::floatingImmediate(FloatingPointBits Bits,
@@ -158,6 +269,17 @@ Expected<MachineOperand> MachineOperand::registerMask(std::shared_ptr<const Regi
   return MachineOperand(Kind::RegisterMask, RegisterMaskOperand{std::move(Mask)}, TargetFlags);
 }
 
+Expected<MachineOperand>
+MachineOperand::liveOutRegisterMask(std::shared_ptr<const RegisterMask> Mask,
+                                    std::uint32_t TargetFlags) {
+  if (!Mask) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "live-out register-mask operand cannot be null");
+  }
+  return MachineOperand(Kind::LiveOutRegisterMask, LiveOutRegisterMaskOperand{std::move(Mask)},
+                        TargetFlags);
+}
+
 Expected<MachineOperand> MachineOperand::metadata(MachineMetadataValue Value,
                                                   std::uint32_t TargetFlags) {
   if (!Value.isValid()) {
@@ -177,6 +299,65 @@ Expected<MachineOperand> MachineOperand::mcSymbol(std::string Name, std::int64_t
     return makeUnexpected(ErrorCode::InvalidArgument, "MC symbol operand name cannot be empty");
   }
   return MachineOperand(Kind::MCSymbol, MCSymbolOperand{std::move(Name), Offset}, TargetFlags);
+}
+
+MachineOperand MachineOperand::cfiIndex(CFIInstructionIndex Index, std::uint32_t TargetFlags) {
+  return MachineOperand(Kind::CFIIndex, CFIIndexOperand{Index}, TargetFlags);
+}
+
+Expected<MachineOperand> MachineOperand::intrinsic(IntrinsicID ID, std::uint32_t TargetFlags) {
+  if (ID.value() == 0) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "intrinsic operand ID must be nonzero");
+  }
+  return MachineOperand(Kind::Intrinsic, IntrinsicOperand{ID}, TargetFlags);
+}
+
+Expected<MachineOperand> MachineOperand::integerPredicate(IntegerPredicate Predicate,
+                                                          std::uint32_t TargetFlags) {
+  PredicateOperand Value(Predicate);
+  auto Verification = Value.verify();
+  if (!Verification)
+    return makeUnexpected(ErrorCode::InvalidArgument, "integer predicate operand is invalid");
+  return MachineOperand(Kind::Predicate, Value, TargetFlags);
+}
+
+Expected<MachineOperand> MachineOperand::floatingPredicate(FloatingPredicate Predicate,
+                                                           std::uint32_t TargetFlags) {
+  PredicateOperand Value(Predicate);
+  auto Verification = Value.verify();
+  if (!Verification)
+    return makeUnexpected(ErrorCode::InvalidArgument, "floating predicate operand is invalid");
+  return MachineOperand(Kind::Predicate, Value, TargetFlags);
+}
+
+Expected<MachineOperand> MachineOperand::shuffleMask(std::vector<std::int32_t> Elements,
+                                                     std::uint32_t TargetFlags) {
+  if (Elements.size() < 2) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "shuffle-mask operand requires at least two elements");
+  }
+  return MachineOperand(Kind::ShuffleMask, ShuffleMaskOperand{std::move(Elements)}, TargetFlags);
+}
+
+Expected<MachineOperand> MachineOperand::debugInstrRef(std::uint64_t InstructionNumber,
+                                                       std::uint64_t OperandNumber,
+                                                       std::uint32_t TargetFlags) {
+  if (InstructionNumber > std::numeric_limits<std::uint32_t>::max()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "debug instruction reference instruction number must fit in uint32");
+  }
+  if (OperandNumber > std::numeric_limits<std::uint32_t>::max()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "debug instruction reference operand number must fit in uint32");
+  }
+  return MachineOperand(Kind::DebugInstrRef,
+                        DebugInstrRefOperand{static_cast<std::uint32_t>(InstructionNumber),
+                                             static_cast<std::uint32_t>(OperandNumber)},
+                        TargetFlags);
+}
+
+MachineOperand MachineOperand::laneMask(LaneMask Mask, std::uint32_t TargetFlags) {
+  return MachineOperand(Kind::LaneMask, LaneMaskOperand{Mask}, TargetFlags);
 }
 
 MachineOperand::MachineOperand(MachineOperand &&Other) noexcept

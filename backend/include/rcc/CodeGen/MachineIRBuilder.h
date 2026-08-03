@@ -52,6 +52,8 @@ public:
                                               std::uint32_t TargetFlags = 0);
 
   [[nodiscard]] Expected<void> addImmediate(std::int64_t Value, std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addIntegerImmediate(IntegerImmediate Value,
+                                                   std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addFloatingImmediate(FloatingPointBits Bits,
                                                     std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addBasicBlock(MachineBasicBlock &Block,
@@ -70,12 +72,27 @@ public:
                                                std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addRegisterMask(std::shared_ptr<const RegisterMask> Mask,
                                                std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addLiveOutRegisterMask(std::shared_ptr<const RegisterMask> Mask,
+                                                      std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addMetadata(MachineMetadataValue Value,
                                            std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addTargetIndex(TargetIndex Index, std::int64_t Offset = 0,
                                               std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addMCSymbol(std::string Name, std::int64_t Offset = 0,
                                            std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addCFIInstruction(CFIInstructionIndex Index,
+                                                 std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addIntrinsic(IntrinsicID ID, std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addIntegerPredicate(IntegerPredicate Predicate,
+                                                   std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addFloatingPredicate(FloatingPredicate Predicate,
+                                                    std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addShuffleMask(std::vector<std::int32_t> Elements,
+                                              std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addDebugInstrRef(std::uint64_t InstructionNumber,
+                                                std::uint64_t OperandNumber,
+                                                std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addLaneMask(LaneMask Mask, std::uint32_t TargetFlags = 0);
 
   [[nodiscard]] Expected<void> tieOperands(std::size_t DefOperand, std::size_t UseOperand);
   [[nodiscard]] Expected<void> addMemOperand(const MachineMemOperand &MemOperand);
@@ -102,6 +119,7 @@ private:
   [[nodiscard]] Expected<void> validateFrameReference(FrameIndex Index) const;
   [[nodiscard]] Expected<void> validateConstantPoolReference(ConstantPoolIndex Index) const;
   [[nodiscard]] Expected<void> validateJumpTableReference(JumpTableIndex Index) const;
+  [[nodiscard]] Expected<void> validateCFIReference(CFIInstructionIndex Index) const;
   [[nodiscard]] Expected<void> validateOperandOwnership(const MachineOperand &Operand) const;
   [[nodiscard]] std::vector<MachineOperandTie> collectOperandTies() const;
   [[nodiscard]] Expected<void> appendRegister(Register Reg, RegisterOperandFlags Flags,

@@ -592,7 +592,7 @@ Expected<void> TargetRegisterInfo::validateRegisterMask(const RegisterMask &Mask
       const auto Reg = PhysicalRegister::create(RegisterNumber);
       if (!Reg || !isKnownPhysicalRegister(*Reg)) {
         return makeUnexpected(ErrorCode::VerificationError,
-                              "register mask preserves an unknown physical register");
+                              "register mask contains an unknown physical register");
       }
       Word &= Word - 1;
     }

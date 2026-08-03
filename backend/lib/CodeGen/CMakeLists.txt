@@ -6,6 +6,7 @@ set(
   InstructionDescriptor.cpp
   LowLevelType.cpp
   MachineBasicBlockAttributes.cpp
+  MachineCFIInfo.cpp
   MachineCompilationStatus.cpp
   MachineBasicBlock.cpp
   MachineCFGUpdater.cpp
@@ -39,6 +40,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlockAttributes.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFIInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCompilationStatus.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlock.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFGUpdater.h"
@@ -101,6 +103,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlockAttributes.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFIInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
@@ -134,6 +137,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlockAttributes.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFIInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"

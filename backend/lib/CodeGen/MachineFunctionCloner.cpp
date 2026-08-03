@@ -126,13 +126,21 @@ struct CloneState final {
     return MachineOperand::jumpTable(Position->second, SourceOperand.targetFlags());
   }
   case MachineOperand::Kind::Immediate:
+  case MachineOperand::Kind::IntegerImmediate:
   case MachineOperand::Kind::FloatingImmediate:
   case MachineOperand::Kind::GlobalSymbol:
   case MachineOperand::Kind::ExternalSymbol:
   case MachineOperand::Kind::RegisterMask:
+  case MachineOperand::Kind::LiveOutRegisterMask:
   case MachineOperand::Kind::Metadata:
   case MachineOperand::Kind::TargetIndex:
   case MachineOperand::Kind::MCSymbol:
+  case MachineOperand::Kind::CFIIndex:
+  case MachineOperand::Kind::Intrinsic:
+  case MachineOperand::Kind::Predicate:
+  case MachineOperand::Kind::ShuffleMask:
+  case MachineOperand::Kind::DebugInstrRef:
+  case MachineOperand::Kind::LaneMask:
     return SourceOperand.cloneDetached();
   case MachineOperand::Kind::Count:
     return makeUnexpected(ErrorCode::VerificationError, "source operand has an invalid kind");
@@ -636,6 +644,10 @@ Expected<MachineFunctionCloneResult> cloneMachineFunction(const MachineFunction 
   if (!Metadata)
     return std::unexpected(Metadata.error());
   Result.ClonedFunction->metadata() = std::move(*Metadata);
+  auto CFIInfo = Source.cfiInfo().clone();
+  if (!CFIInfo)
+    return std::unexpected(CFIInfo.error());
+  Result.ClonedFunction->cfiInfo() = std::move(*CFIInfo);
   Result.ClonedFunction->properties() = Source.properties();
   Result.ClonedFunction->attributes() = Source.attributes();
   auto DestinationVerification = MachineVerifier::verify(*Result.ClonedFunction, Target);

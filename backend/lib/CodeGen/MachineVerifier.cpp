@@ -40,6 +40,9 @@ public:
     auto MetadataResult = Function.metadata().verify();
     if (!MetadataResult)
       return failWith("machine metadata", MetadataResult.error());
+    auto CFIResult = Function.cfiInfo().verify();
+    if (!CFIResult)
+      return failWith("CFI information", CFIResult.error());
     if (Function.targetState().hasValue()) {
       auto TargetStateResult = Function.targetState().verify();
       if (!TargetStateResult)
@@ -103,6 +106,8 @@ private:
       return Operand.getIf<Register>() != nullptr;
     case MachineOperand::Kind::Immediate:
       return Operand.getIf<std::int64_t>() != nullptr;
+    case MachineOperand::Kind::IntegerImmediate:
+      return Operand.getIf<IntegerImmediateOperand>() != nullptr;
     case MachineOperand::Kind::FloatingImmediate:
       return Operand.getIf<FloatingImmediateOperand>() != nullptr;
     case MachineOperand::Kind::BasicBlock:
@@ -121,12 +126,26 @@ private:
       return Operand.getIf<BlockAddressOperand>() != nullptr;
     case MachineOperand::Kind::RegisterMask:
       return Operand.getIf<RegisterMaskOperand>() != nullptr;
+    case MachineOperand::Kind::LiveOutRegisterMask:
+      return Operand.getIf<LiveOutRegisterMaskOperand>() != nullptr;
     case MachineOperand::Kind::Metadata:
       return Operand.getIf<MetadataOperand>() != nullptr;
     case MachineOperand::Kind::TargetIndex:
       return Operand.getIf<TargetIndexOperand>() != nullptr;
     case MachineOperand::Kind::MCSymbol:
       return Operand.getIf<MCSymbolOperand>() != nullptr;
+    case MachineOperand::Kind::CFIIndex:
+      return Operand.getIf<CFIIndexOperand>() != nullptr;
+    case MachineOperand::Kind::Intrinsic:
+      return Operand.getIf<IntrinsicOperand>() != nullptr;
+    case MachineOperand::Kind::Predicate:
+      return Operand.getIf<PredicateOperand>() != nullptr;
+    case MachineOperand::Kind::ShuffleMask:
+      return Operand.getIf<ShuffleMaskOperand>() != nullptr;
+    case MachineOperand::Kind::DebugInstrRef:
+      return Operand.getIf<DebugInstrRefOperand>() != nullptr;
+    case MachineOperand::Kind::LaneMask:
+      return Operand.getIf<LaneMaskOperand>() != nullptr;
     case MachineOperand::Kind::Count:
       return false;
     }
@@ -286,6 +305,15 @@ private:
       if (const auto *Mask = Operand.getIf<RegisterMaskOperand>(); Mask != nullptr && !Mask->Mask) {
         return fail("register-mask operand contains a null mask");
       }
+      if (const auto *Mask = Operand.getIf<LiveOutRegisterMaskOperand>();
+          Mask != nullptr && !Mask->Mask) {
+        return fail("live-out register-mask operand contains a null mask");
+      }
+      if (const auto *Integer = Operand.getIf<IntegerImmediateOperand>(); Integer != nullptr) {
+        auto IntegerResult = Integer->Value.verify();
+        if (!IntegerResult)
+          return failWith("integer immediate operand", IntegerResult.error());
+      }
       if (const auto *Global = Operand.getIf<GlobalSymbolOperand>();
           Global != nullptr && Global->Name.empty()) {
         return fail("global symbol operand has an empty name");
@@ -306,6 +334,19 @@ private:
       if (const auto *Symbol = Operand.getIf<MCSymbolOperand>();
           Symbol != nullptr && Symbol->Name.empty()) {
         return fail("MC symbol operand has an empty name");
+      }
+      if (const auto *Intrinsic = Operand.getIf<IntrinsicOperand>();
+          Intrinsic != nullptr && Intrinsic->ID.value() == 0) {
+        return fail("intrinsic operand has an invalid ID");
+      }
+      if (const auto *Predicate = Operand.getIf<PredicateOperand>(); Predicate != nullptr) {
+        auto PredicateResult = Predicate->verify();
+        if (!PredicateResult)
+          return failWith("predicate operand", PredicateResult.error());
+      }
+      if (const auto *Shuffle = Operand.getIf<ShuffleMaskOperand>();
+          Shuffle != nullptr && Shuffle->Elements.size() < 2) {
+        return fail("shuffle-mask operand has fewer than two elements");
       }
     }
 
@@ -496,6 +537,10 @@ private:
         auto JumpTableResult = verifyJumpTableIndex(JumpTable->Index);
         if (!JumpTableResult)
           return JumpTableResult;
+      }
+      if (const auto *CFI = Operand.getIf<CFIIndexOperand>();
+          CFI != nullptr && Function.cfiInfo().instruction(CFI->Index) == nullptr) {
+        return fail("live instruction references an unknown CFI instruction");
       }
 
       if (const auto *Block = Operand.getIf<BasicBlockOperand>();
