@@ -54,6 +54,8 @@ endif()
 rcc_backend_initialize_toolchain()
 
 add_subdirectory(lib)
+add_subdirectory(tools)
+add_subdirectory(lib/Target)
 
 if(RCC_BACKEND_BUILD_TESTS)
   enable_testing()

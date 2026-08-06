@@ -75,9 +75,18 @@ Expected<TargetRegisterInfo> TargetRegisterInfo::create(TargetRegisterInfoDesc D
     }
     std::string MIRName = lowerASCII(Register.Name);
     if (!Result.RegisterToIndex.emplace(Register.Reg, Index).second ||
+        Result.AlternativeRegisterNameToIndex.contains(MIRName) ||
         !Result.RegisterNameToIndex.emplace(MIRName, Index).second) {
       return invalidDescription(
           "physical register numbers and names must be unique case-insensitively");
+    }
+    for (const std::string &AlternativeName : Register.AlternativeNames) {
+      const std::string NormalizedName = lowerASCII(AlternativeName);
+      if (AlternativeName.empty() || Result.RegisterNameToIndex.contains(NormalizedName) ||
+          !Result.AlternativeRegisterNameToIndex.emplace(NormalizedName, Index).second) {
+        return invalidDescription(
+            "physical register alternative names must be nonempty and unique case-insensitively");
+      }
     }
     Result.RegisterMIRNames.push_back(std::move(MIRName));
   }
@@ -275,9 +284,13 @@ Expected<TargetRegisterInfo> TargetRegisterInfo::create(TargetRegisterInfoDesc D
 
     std::unordered_set<PhysicalRegister> AllocationRegisters;
     for (const PhysicalRegister Reg : Class.AllocationOrder) {
-      if (!Members.contains(Reg) || !AllocationRegisters.insert(Reg).second) {
+      const PhysicalRegisterDesc *Register = Result.physicalRegister(Reg);
+      const bool IsUnavailable =
+          Register != nullptr &&
+          (Register->IsConstant || Register->IsArtificial || Register->IsReserved);
+      if (!Members.contains(Reg) || IsUnavailable || !AllocationRegisters.insert(Reg).second) {
         return invalidDescription(
-            "register class allocation order must contain unique class members");
+            "register class allocation order must contain unique allocatable class members");
       }
     }
     if ((Class.Allocatable && Class.AllocationOrder.empty()) ||
@@ -451,6 +464,19 @@ TargetRegisterInfo::physicalRegister(std::string_view Name) const noexcept {
   const auto Position = RegisterNameToIndex.find(std::string(Name));
   return Position == RegisterNameToIndex.end() ? nullptr
                                                : &Description.PhysicalRegisters[Position->second];
+}
+
+const PhysicalRegisterDesc *
+TargetRegisterInfo::physicalRegisterByAlternativeName(std::string_view Name) const noexcept {
+  const auto Position = AlternativeRegisterNameToIndex.find(lowerASCII(Name));
+  return Position == AlternativeRegisterNameToIndex.end()
+             ? nullptr
+             : &Description.PhysicalRegisters[Position->second];
+}
+
+bool TargetRegisterInfo::isReservedRegister(PhysicalRegister Reg) const noexcept {
+  const PhysicalRegisterDesc *Register = physicalRegister(Reg);
+  return Register != nullptr && Register->IsReserved;
 }
 
 const SubRegIndexDesc *TargetRegisterInfo::subRegIndex(SubRegIndex Index) const noexcept {

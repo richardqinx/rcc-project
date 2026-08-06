@@ -25,7 +25,8 @@ namespace {
 [[nodiscard]] PhysicalRegisterDesc physicalRegister(std::uint32_t Number, const char *Name,
                                                     std::uint32_t Encoding,
                                                     std::vector<RegisterUnitLane> Units) {
-  return PhysicalRegisterDesc{phys(Number), Name, Encoding, std::move(Units)};
+  return PhysicalRegisterDesc{phys(Number), Name,  Encoding, std::move(Units),
+                              false,        false, false,    {}};
 }
 
 [[nodiscard]] RegisterClassDesc

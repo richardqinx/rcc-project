@@ -38,6 +38,8 @@ struct PhysicalRegisterDesc final {
   std::vector<RegisterUnitLane> Units;
   bool IsConstant = false;
   bool IsArtificial = false;
+  bool IsReserved = false;
+  std::vector<std::string> AlternativeNames;
 };
 
 struct SubRegIndexDesc final {
@@ -128,6 +130,8 @@ public:
   [[nodiscard]] const RegisterUnitDesc *registerUnit(RegisterUnitID ID) const noexcept;
   [[nodiscard]] const PhysicalRegisterDesc *physicalRegister(PhysicalRegister Reg) const noexcept;
   [[nodiscard]] const PhysicalRegisterDesc *physicalRegister(std::string_view Name) const noexcept;
+  [[nodiscard]] const PhysicalRegisterDesc *
+  physicalRegisterByAlternativeName(std::string_view Name) const noexcept;
   [[nodiscard]] const SubRegIndexDesc *subRegIndex(SubRegIndex Index) const noexcept;
   [[nodiscard]] const SubRegIndexDesc *subRegIndex(std::string_view Name) const noexcept;
   [[nodiscard]] const RegisterClassDesc *registerClass(RegisterClassID ID) const noexcept;
@@ -145,6 +149,8 @@ public:
   [[nodiscard]] bool isKnownPhysicalRegister(PhysicalRegister Reg) const noexcept {
     return physicalRegister(Reg) != nullptr;
   }
+
+  [[nodiscard]] bool isReservedRegister(PhysicalRegister Reg) const noexcept;
 
   [[nodiscard]] LaneMask registerLaneMask(PhysicalRegister Reg) const noexcept;
   [[nodiscard]] bool isValidLaneMask(PhysicalRegister Reg, LaneMask Lanes) const noexcept;
@@ -186,6 +192,7 @@ private:
   std::unordered_map<RegisterUnitID, std::size_t> UnitToIndex;
   std::unordered_map<PhysicalRegister, std::size_t> RegisterToIndex;
   std::unordered_map<std::string, std::size_t> RegisterNameToIndex;
+  std::unordered_map<std::string, std::size_t> AlternativeRegisterNameToIndex;
   std::unordered_map<SubRegIndex, std::size_t> SubRegIndexToIndex;
   std::unordered_map<std::string, std::size_t> SubRegNameToIndex;
   std::unordered_map<RegisterClassID, std::size_t> ClassToIndex;

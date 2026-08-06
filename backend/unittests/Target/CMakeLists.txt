@@ -10,8 +10,27 @@ target_include_directories(
 )
 target_link_libraries(RCCBackendTestTarget PUBLIC RCCBackend::CodeGen)
 
+add_executable(RCCBackendDescriptionGeneratorTests DescriptionGeneratorTest.cpp)
+rcc_backend_configure_target(RCCBackendDescriptionGeneratorTests)
+target_link_libraries(
+  RCCBackendDescriptionGeneratorTests
+  PRIVATE RCCBackendDescriptionGeneratorCore
+)
+add_test(NAME RCCBackendDescriptionGeneratorTests COMMAND RCCBackendDescriptionGeneratorTests)
+
+add_executable(RCCBackendRISCVTargetTests RISCVTargetTest.cpp)
+rcc_backend_configure_target(RCCBackendRISCVTargetTests)
+target_link_libraries(RCCBackendRISCVTargetTests PRIVATE RCCBackend::RISCV)
+add_test(NAME RCCBackendRISCVTargetTests COMMAND RCCBackendRISCVTargetTests)
+
 rcc_backend_register_format_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/DescriptionGeneratorTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.h"
 )
-rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp")
+rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/DescriptionGeneratorTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
+)

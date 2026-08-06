@@ -175,10 +175,10 @@ Expected<void> TargetDescription::validateVirtualRegister(Register Reg,
       return makeUnexpected(ErrorCode::VerificationError,
                             "virtual register allocation hint names an unknown physical register");
     }
-    if (HintDesc->IsConstant || HintDesc->IsArtificial) {
+    if (HintDesc->IsConstant || HintDesc->IsArtificial || HintDesc->IsReserved) {
       return makeUnexpected(
           ErrorCode::VerificationError,
-          "virtual register allocation hint names a constant or artificial register");
+          "virtual register allocation hint names a constant, artificial, or reserved register");
     }
     if (Info.RegClass && !Registers.registerClassContains(*Info.RegClass, Hint)) {
       return makeUnexpected(ErrorCode::VerificationError,
@@ -283,7 +283,8 @@ Expected<void> TargetDescription::validateTargetOperand(const OperandDescriptor 
           return Registers.regsOverlap(Reserved, PhysRegValue);
         });
     if (Operand.registerFlags().has(RegisterOperandFlag::Renamable) &&
-        (IsReservedOrAlias || PhysRegDesc->IsConstant || PhysRegDesc->IsArtificial)) {
+        (IsReservedOrAlias || PhysRegDesc->IsConstant || PhysRegDesc->IsArtificial ||
+         PhysRegDesc->IsReserved)) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "fixed physical register operand cannot be renamable");
     }
@@ -718,9 +719,15 @@ Expected<void> TargetDescription::validateRegisterInfo(const MachineRegisterInfo
     if (!Validation)
       return std::unexpected(Validation.error());
     for (const PhysicalRegister Hint : Info.AllocationHints) {
-      if (std::ranges::any_of(RegInfo.reservedRegisters(), [this, Hint](PhysicalRegister Reserved) {
+      const bool IsStaticReservedOrAlias = std::ranges::any_of(
+          Registers.physicalRegisters(), [this, Hint](const PhysicalRegisterDesc &Register) {
+            return Register.IsReserved && Registers.regsOverlap(Register.Reg, Hint);
+          });
+      const bool IsFunctionReservedOrAlias =
+          std::ranges::any_of(RegInfo.reservedRegisters(), [this, Hint](PhysicalRegister Reserved) {
             return Registers.regsOverlap(Reserved, Hint);
-          })) {
+          });
+      if (IsStaticReservedOrAlias || IsFunctionReservedOrAlias) {
         return makeUnexpected(
             ErrorCode::VerificationError,
             "virtual register allocation hint overlaps a reserved physical register");

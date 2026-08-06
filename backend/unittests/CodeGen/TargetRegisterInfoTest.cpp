@@ -168,6 +168,19 @@ void testDescriptionRejection(TestContext &Context) {
   }
   {
     auto Description = rcc::test::createTestTargetRegisterInfoDescription();
+    Description.PhysicalRegisters.front().AlternativeNames = {"later-name"};
+    Description.PhysicalRegisters[1].Name = "later-name";
+    Context.expect(!rcc::TargetRegisterInfo::create(std::move(Description)),
+                   "canonical register names must not collide with earlier ABI aliases");
+  }
+  {
+    auto Description = rcc::test::createTestTargetRegisterInfoDescription();
+    Description.PhysicalRegisters.front().IsReserved = true;
+    Context.expect(!rcc::TargetRegisterInfo::create(std::move(Description)),
+                   "statically reserved registers must not appear in allocation orders");
+  }
+  {
+    auto Description = rcc::test::createTestTargetRegisterInfoDescription();
     Description.PhysicalSubRegisters.front().SubReg = phys(rcc::test::TestRegister::G1Low32);
     Context.expect(!rcc::TargetRegisterInfo::create(std::move(Description)),
                    "subregister mappings with unrelated units must be rejected");
