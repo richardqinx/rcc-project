@@ -109,7 +109,8 @@ void testInvalidDescriptions(TestContext &Context) {
                  "fixed-size stack object must reject a missing size");
 
   auto ZeroSize = fixedObject(0, 1);
-  Context.expect(!Frame.createObject(ZeroSize), "fixed-size stack object must reject zero size");
+  Context.expect(Frame.createObject(ZeroSize).has_value(),
+                 "fixed-size stack objects must preserve LLVM MIR zero-sized objects");
 
   rcc::StackObjectDesc InvalidVariable;
   InvalidVariable.Kind = rcc::StackObjectKind::DynamicAlloca;

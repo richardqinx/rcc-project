@@ -345,6 +345,66 @@ bb.1."exit block" (landing-pad, bbsections Cold):
                  "complete MIR body parse-print-parse must be deterministic");
 }
 
+void testAddressSpacePointerWidthResolver(TestContext &Context) {
+  auto Target = createTarget();
+  auto Function = createFunction(Context, 3);
+  Context.expect(Target.has_value(), "pointer-width parser target must be valid");
+  if (!Target || !Function)
+    return;
+
+  rcc::mir::MIParserContext ParserContext;
+  ParserContext.PointerSizeInBits = [](std::uint32_t AddressSpace) -> rcc::Expected<std::uint32_t> {
+    if (AddressSpace == 1)
+      return 32;
+    return rcc::makeUnexpected(rcc::ErrorCode::InvalidArgument,
+                               "test data layout has no requested address space");
+  };
+  rcc::mir::MIParserOptions ParserOptions;
+  ParserOptions.VerifyAfterParse = false;
+  rcc::mir::MIParser Parser(*Function, *Target, "pointer-width.mir",
+                            "bb.0:\n  %0:_(p1) = TEST_COPY $g0\n", ParserContext, ParserOptions);
+  auto Parsed = Parser.parse();
+  const auto Registers = Function->registerInfo().virtualRegisters();
+  auto ExpectedType = rcc::LLT::makePointer(1, 32);
+  Context.expect(Parsed.has_value() && ExpectedType.has_value() && Registers.size() == 1 &&
+                     Registers.front().Type == *ExpectedType,
+                 "MI parser must use the address-space-specific pointer-width resolver");
+  if (!Parsed) {
+    for (const rcc::TextDiagnostic &Diagnostic : Parser.diagnostics())
+      std::cerr << Diagnostic.Category << ": " << Diagnostic.Message << '\n';
+    std::cerr << "error: " << Parsed.error().message() << '\n';
+  }
+}
+
+void testUnserializableLowLevelType(TestContext &Context) {
+  auto Target = createTarget();
+  auto Function = createFunction(Context, 4);
+  Context.expect(Target.has_value(), "unserializable-type target must be valid");
+  if (!Target || !Function)
+    return;
+
+  rcc::mir::MIParserOptions ParserOptions;
+  ParserOptions.VerifyAfterParse = false;
+  rcc::mir::MIParser Parser(*Function, *Target, "unserializable-type.mir",
+                            "bb.0:\n  %0:gpr64(f64) = TEST_COPY $g0\n", {}, ParserOptions);
+  auto Parsed = Parser.parse();
+  auto Register = rcc::Register::makeVirtual(0);
+  auto UnsupportedType = rcc::LLT::makeFloat(rcc::FloatSemantics::Float8E5M2);
+  Context.expect(Parsed.has_value() && Register.has_value() && UnsupportedType.has_value(),
+                 "unserializable-type test setup must parse a typed virtual register");
+  if (!Parsed || !Register || !UnsupportedType)
+    return;
+  auto SetType = Function->registerInfo().setType(*Register, *UnsupportedType);
+  Context.expect(SetType.has_value(), "test setup must assign an extended floating low-level type");
+  if (!SetType)
+    return;
+
+  auto Printed = rcc::mir::printMachineFunctionBody(*Function, *Target);
+  Context.expect(!Printed && Printed.error().message().find("cannot spell this floating") !=
+                                 std::string_view::npos,
+                 "printer must reject extended low-level types absent from fixed LLVM MIR grammar");
+}
+
 void expectParseError(TestContext &Context, const rcc::TargetDescription &Target, std::string Body,
                       std::string_view Message) {
   auto Function = createFunction(Context, 10);
@@ -391,6 +451,8 @@ void testDiagnostics(TestContext &Context) {
 int main() {
   TestContext Context;
   testTwoPassBodyParsing(Context);
+  testAddressSpacePointerWidthResolver(Context);
+  testUnserializableLowLevelType(Context);
   testDiagnostics(Context);
   return Context.result();
 }

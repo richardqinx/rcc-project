@@ -82,6 +82,13 @@ const EmbeddedIRReference *EmbeddedIRFunction::alloca(std::string_view QueryName
   return &Allocas[Position->second];
 }
 
+const EmbeddedIRReference *EmbeddedIRFunction::value(std::string_view QueryName) const noexcept {
+  const auto Position = ValueNameToIndex.find(QueryName);
+  if (Position == ValueNameToIndex.end())
+    return nullptr;
+  return &Values[Position->second];
+}
+
 const EmbeddedIRFunction *EmbeddedIRReferenceIndex::function(std::string_view Name) const noexcept {
   const auto Position = FunctionNameToIndex.find(Name);
   if (Position == FunctionNameToIndex.end())
@@ -97,12 +104,20 @@ EmbeddedIRReferenceIndex::globalObject(std::string_view Name) const noexcept {
   return &GlobalObjects[Position->second];
 }
 
-const EmbeddedIRReference *
+const EmbeddedIRMetadataDefinition *
 EmbeddedIRReferenceIndex::metadata(std::string_view Name) const noexcept {
   const auto Position = MetadataNameToIndex.find(Name);
   if (Position == MetadataNameToIndex.end())
     return nullptr;
   return &MetadataDefinitions[Position->second];
+}
+
+const EmbeddedIRTypeDefinition *
+EmbeddedIRReferenceIndex::typeDefinition(std::string_view Name) const noexcept {
+  const auto Position = TypeNameToIndex.find(Name);
+  if (Position == TypeNameToIndex.end())
+    return nullptr;
+  return &TypeDefinitions[Position->second];
 }
 
 class EmbeddedIRIndexer final {
@@ -299,8 +314,53 @@ private:
       parseGlobalObject(Line, LineOffset, Position, End);
       return;
     }
+    if (Line[Position] == '%') {
+      parseTypeDefinition(Line, LineOffset, Position, End);
+      return;
+    }
     if (Line[Position] == '!')
       parseMetadataDefinition(Line, LineOffset, Position, End);
+  }
+
+  void parseTypeDefinition(std::string_view Line, std::size_t LineOffset,
+                           std::size_t Position, std::size_t End) {
+    auto Name = parseIdentifier(Line, LineOffset, Position, End, '%');
+    if (!Name || Failed)
+      return;
+    Position = skipHorizontalSpace(Line, Name->End, End);
+    if (Position >= End || Line[Position] != '=')
+      return;
+    ++Position;
+    Position = skipHorizontalSpace(Line, Position, End);
+    if (!startsWord(Line, Position, End, "type"))
+      return;
+    Position += std::string_view("type").size();
+    Position = skipHorizontalSpace(Line, Position, End);
+    std::size_t DefinitionEnd = End;
+    while (DefinitionEnd > Position && isHorizontalSpace(Line[DefinitionEnd - 1]))
+      --DefinitionEnd;
+    if (Position == DefinitionEnd) {
+      diagnose(Name->Range.Begin.Offset, Name->Range.End.Offset,
+               "embedded LLVM IR type definition is empty");
+      return;
+    }
+    if (Index.TypeNameToIndex.contains(Name->Name)) {
+      diagnose(Name->Range.Begin.Offset, Name->Range.End.Offset,
+               "duplicate embedded LLVM IR type definition");
+      return;
+    }
+    const std::size_t TypeIndex = Index.TypeDefinitions.size();
+    const bool NumericName = !Name->Name.empty() && Name->Name.front() >= '0' &&
+                             Name->Name.front() <= '9';
+    Index.TypeNameToIndex.emplace(Name->Name, TypeIndex);
+    Index.TypeDefinitions.push_back(EmbeddedIRTypeDefinition{
+        .Name = std::move(Name->Name),
+        .Range = Name->Range,
+        .Definition = std::string(Line.substr(Position, DefinitionEnd - Position)),
+        .DefinitionRange =
+            Index.Source.range(LineOffset + Position, LineOffset + DefinitionEnd),
+        .NumericName = NumericName,
+    });
   }
 
   void parseTargetFact(std::string_view Line, std::size_t LineOffset, std::size_t Position,
@@ -426,6 +486,24 @@ private:
       }
       if (InQuote)
         continue;
+      if (Character == '%' && HeaderParenthesisDepth != 0 && ActiveFunction) {
+        const std::size_t IdentifierBegin = Position;
+        auto Name = parseIdentifier(Line, LineOffset, Position, End, '%');
+        if (!Name || Failed)
+          return;
+        const std::size_t Following = skipHorizontalSpace(Line, Name->End, End);
+        std::size_t Previous = IdentifierBegin;
+        while (Previous > 0 && isHorizontalSpace(Line[Previous - 1]))
+          --Previous;
+        const bool HasTypeBefore = Previous != 0 && Line[Previous - 1] != '(' &&
+                                   Line[Previous - 1] != ',';
+        const bool EndsParameter = Following == End || Line[Following] == ',' ||
+                                   Line[Following] == ')';
+        if (HasTypeBefore && EndsParameter)
+          addLocalValue(*Name, Index.Functions[ActiveFunction.value()]);
+        Position = Name->End - 1;
+        continue;
+      }
       if (Character == '(') {
         ++HeaderParenthesisDepth;
         continue;
@@ -445,6 +523,21 @@ private:
         return;
       }
     }
+  }
+
+  void addLocalValue(const ParsedIdentifier &Name, EmbeddedIRFunction &Function) {
+    if (Function.ValueNameToIndex.contains(Name.Name) ||
+        Function.BlockNameToIndex.contains(Name.Name)) {
+      diagnose(Name.Range.Begin.Offset, Name.Range.End.Offset,
+               "duplicate embedded LLVM IR local value or basic block name");
+      return;
+    }
+    const std::size_t ValueIndex = Function.Values.size();
+    Function.ValueNameToIndex.emplace(Name.Name, ValueIndex);
+    Function.Values.push_back(EmbeddedIRReference{
+        .Name = Name.Name,
+        .Range = Name.Range,
+    });
   }
 
   void parseActiveFunctionLine(std::string_view Line, std::size_t LineOffset, std::size_t End) {
@@ -498,7 +591,7 @@ private:
     parseBlockLabel(Line, LineOffset, Begin, BodyEnd, Function);
     if (Failed)
       return;
-    parseAlloca(Line, LineOffset, Begin, BodyEnd, Function);
+    parseLocalValueDefinition(Line, LineOffset, Begin, BodyEnd, Function);
     if (Failed)
       return;
 
@@ -524,6 +617,11 @@ private:
                "duplicate embedded LLVM IR basic block label");
       return;
     }
+    if (Function.ValueNameToIndex.contains(Name->Name)) {
+      diagnose(Name->Range.Begin.Offset, Name->Range.End.Offset,
+               "duplicate embedded LLVM IR local value or basic block name");
+      return;
+    }
     const std::size_t BlockIndex = Function.Blocks.size();
     Function.BlockNameToIndex.emplace(Name->Name, BlockIndex);
     Function.Blocks.push_back(EmbeddedIRReference{
@@ -532,46 +630,33 @@ private:
     });
   }
 
-  void parseAlloca(std::string_view Line, std::size_t LineOffset, std::size_t Begin,
-                   std::size_t End, EmbeddedIRFunction &Function) {
-    bool InQuote = false;
-    for (std::size_t Position = Begin; Position < End; ++Position) {
-      if (InQuote && Line[Position] == '\\' && Position + 2 < End &&
-          isHexDigit(Line[Position + 1]) && isHexDigit(Line[Position + 2])) {
-        Position += 2;
-        continue;
-      }
-      if (Line[Position] == '"') {
-        InQuote = !InQuote;
-        continue;
-      }
-      if (InQuote || Line[Position] != '%')
-        continue;
-
-      auto Name = parseIdentifier(Line, LineOffset, Position, End, '%');
-      if (!Name || Failed)
-        return;
-      Position = skipHorizontalSpace(Line, Name->End, End);
-      if (Position >= End || Line[Position] != '=')
-        continue;
-      ++Position;
-      Position = skipHorizontalSpace(Line, Position, End);
-      if (!startsWord(Line, Position, End, "alloca"))
-        continue;
-
-      if (Function.AllocaNameToIndex.contains(Name->Name)) {
-        diagnose(Name->Range.Begin.Offset, Name->Range.End.Offset,
-                 "duplicate embedded LLVM IR alloca name");
-        return;
-      }
-      const std::size_t AllocaIndex = Function.Allocas.size();
-      Function.AllocaNameToIndex.emplace(Name->Name, AllocaIndex);
-      Function.Allocas.push_back(EmbeddedIRReference{
-          .Name = std::move(Name->Name),
-          .Range = Name->Range,
-      });
+  void parseLocalValueDefinition(std::string_view Line, std::size_t LineOffset,
+                                 std::size_t Begin, std::size_t End,
+                                 EmbeddedIRFunction &Function) {
+    std::size_t Position = skipHorizontalSpace(Line, Begin, End);
+    if (Position >= End || Line[Position] != '%')
       return;
-    }
+    auto Name = parseIdentifier(Line, LineOffset, Position, End, '%');
+    if (!Name || Failed)
+      return;
+    Position = skipHorizontalSpace(Line, Name->End, End);
+    if (Position >= End || Line[Position] != '=')
+      return;
+    ++Position;
+    Position = skipHorizontalSpace(Line, Position, End);
+
+    addLocalValue(*Name, Function);
+    if (Failed)
+      return;
+
+    if (!startsWord(Line, Position, End, "alloca"))
+      return;
+    const std::size_t AllocaIndex = Function.Allocas.size();
+    Function.AllocaNameToIndex.emplace(Name->Name, AllocaIndex);
+    Function.Allocas.push_back(EmbeddedIRReference{
+        .Name = std::move(Name->Name),
+        .Range = Name->Range,
+    });
   }
 
   void parseGlobalObject(std::string_view Line, std::size_t LineOffset, std::size_t Position,
@@ -608,6 +693,28 @@ private:
     Position = skipHorizontalSpace(Line, Name->End, End);
     if (Position >= End || Line[Position] != '=')
       return;
+    ++Position;
+    Position = skipHorizontalSpace(Line, Position, End);
+    if (startsWord(Line, Position, End, "distinct")) {
+      Position += std::string_view("distinct").size();
+      Position = skipHorizontalSpace(Line, Position, End);
+    }
+
+    std::string DynamicType;
+    if (Position < End && Line[Position] == '!') {
+      ++Position;
+      if (Position < End && Line[Position] == '{') {
+        DynamicType = "MDTuple";
+      } else if (Position < End && Line[Position] == '"') {
+        DynamicType = "MDString";
+      } else {
+        const std::size_t TypeBegin = Position;
+        while (Position < End && isIdentifierBody(Line[Position]))
+          ++Position;
+        if (Position != TypeBegin)
+          DynamicType = std::string(Line.substr(TypeBegin, Position - TypeBegin));
+      }
+    }
     if (Index.MetadataNameToIndex.contains(Name->Name)) {
       diagnose(Name->Range.Begin.Offset, Name->Range.End.Offset,
                "duplicate embedded LLVM IR metadata definition");
@@ -615,9 +722,10 @@ private:
     }
     const std::size_t MetadataIndex = Index.MetadataDefinitions.size();
     Index.MetadataNameToIndex.emplace(Name->Name, MetadataIndex);
-    Index.MetadataDefinitions.push_back(EmbeddedIRReference{
+    Index.MetadataDefinitions.push_back(EmbeddedIRMetadataDefinition{
         .Name = std::move(Name->Name),
         .Range = Name->Range,
+        .DynamicType = std::move(DynamicType),
     });
   }
 

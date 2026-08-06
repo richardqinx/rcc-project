@@ -24,6 +24,20 @@ struct EmbeddedIRReference final {
   TextRange Range;
 };
 
+struct EmbeddedIRMetadataDefinition final {
+  std::string Name;
+  TextRange Range;
+  std::string DynamicType;
+};
+
+struct EmbeddedIRTypeDefinition final {
+  std::string Name;
+  TextRange Range;
+  std::string Definition;
+  TextRange DefinitionRange;
+  bool NumericName = false;
+};
+
 class EmbeddedIRFunction final {
 public:
   [[nodiscard]] std::string_view name() const noexcept {
@@ -46,8 +60,13 @@ public:
     return Allocas;
   }
 
+  [[nodiscard]] std::span<const EmbeddedIRReference> values() const noexcept {
+    return Values;
+  }
+
   [[nodiscard]] const EmbeddedIRReference *block(std::string_view QueryName) const noexcept;
   [[nodiscard]] const EmbeddedIRReference *alloca(std::string_view QueryName) const noexcept;
+  [[nodiscard]] const EmbeddedIRReference *value(std::string_view QueryName) const noexcept;
 
 private:
   struct StringHash final {
@@ -63,8 +82,10 @@ private:
   bool IsDefinition = false;
   std::vector<EmbeddedIRReference> Blocks;
   std::vector<EmbeddedIRReference> Allocas;
+  std::vector<EmbeddedIRReference> Values;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> BlockNameToIndex;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> AllocaNameToIndex;
+  std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> ValueNameToIndex;
 
   friend class EmbeddedIRIndexer;
 };
@@ -101,13 +122,19 @@ public:
     return GlobalObjects;
   }
 
-  [[nodiscard]] std::span<const EmbeddedIRReference> metadataDefinitions() const noexcept {
+  [[nodiscard]] std::span<const EmbeddedIRMetadataDefinition>
+  metadataDefinitions() const noexcept {
     return MetadataDefinitions;
+  }
+
+  [[nodiscard]] std::span<const EmbeddedIRTypeDefinition> typeDefinitions() const noexcept {
+    return TypeDefinitions;
   }
 
   [[nodiscard]] const EmbeddedIRFunction *function(std::string_view Name) const noexcept;
   [[nodiscard]] const EmbeddedIRReference *globalObject(std::string_view Name) const noexcept;
-  [[nodiscard]] const EmbeddedIRReference *metadata(std::string_view Name) const noexcept;
+  [[nodiscard]] const EmbeddedIRMetadataDefinition *metadata(std::string_view Name) const noexcept;
+  [[nodiscard]] const EmbeddedIRTypeDefinition *typeDefinition(std::string_view Name) const noexcept;
   [[nodiscard]] bool hasGlobalValue(std::string_view Name) const noexcept {
     return function(Name) != nullptr || globalObject(Name) != nullptr;
   }
@@ -131,10 +158,12 @@ private:
   std::optional<TextRange> DataLayoutRange;
   std::vector<EmbeddedIRFunction> Functions;
   std::vector<EmbeddedIRReference> GlobalObjects;
-  std::vector<EmbeddedIRReference> MetadataDefinitions;
+  std::vector<EmbeddedIRMetadataDefinition> MetadataDefinitions;
+  std::vector<EmbeddedIRTypeDefinition> TypeDefinitions;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> FunctionNameToIndex;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> GlobalNameToIndex;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> MetadataNameToIndex;
+  std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> TypeNameToIndex;
 
   friend class EmbeddedIRIndexer;
 };
@@ -157,6 +186,10 @@ public:
 
   [[nodiscard]] std::span<const TextDiagnostic> diagnostics() const noexcept {
     return Diagnostics;
+  }
+
+  [[nodiscard]] std::optional<EmbeddedIRReferenceIndex> takeIndex() && {
+    return std::move(Index);
   }
 
 private:

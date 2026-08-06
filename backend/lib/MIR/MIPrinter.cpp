@@ -61,6 +61,15 @@ namespace {
   return Result;
 }
 
+[[nodiscard]] std::string quoteString(std::string_view Value) {
+  std::string Result = quoteName(Value);
+  if (!Result.empty() && Result.front() == '"')
+    return Result;
+  Result.insert(Result.begin(), '"');
+  Result.push_back('"');
+  return Result;
+}
+
 [[nodiscard]] std::string hexadecimalWords(std::span<const std::uint64_t> Words,
                                            std::uint32_t BitWidth) {
   constexpr std::string_view Hex = "0123456789ABCDEF";
@@ -208,6 +217,91 @@ namespace {
   return {};
 }
 
+[[nodiscard]] Expected<std::string> llvmMIRScalarLowLevelType(LLT Type) {
+  if (Type.isToken())
+    return "s0";
+  if (Type.isAnyScalar())
+    return "s" + std::to_string(Type.scalarBitWidth());
+  if (Type.isInteger())
+    return "i" + std::to_string(Type.scalarBitWidth());
+  if (Type.isPointer()) {
+    const auto AddressSpace = Type.addressSpace();
+    if (!AddressSpace) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "pointer low-level type has no address space");
+    }
+    return "p" + std::to_string(*AddressSpace);
+  }
+  if (!Type.isFloat()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "invalid scalar low-level type cannot be printed as LLVM MIR");
+  }
+
+  const auto Semantics = Type.floatSemantics();
+  if (!Semantics) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "floating low-level type has no floating-point semantics");
+  }
+  switch (*Semantics) {
+  case FloatSemantics::IEEEHalf:
+    return "f16";
+  case FloatSemantics::BFloat:
+    return "bf16";
+  case FloatSemantics::IEEESingle:
+    return "f32";
+  case FloatSemantics::IEEEDouble:
+    return "f64";
+  case FloatSemantics::IEEEQuad:
+    return "f128";
+  case FloatSemantics::PPCDoubleDouble:
+  case FloatSemantics::PPCDoubleDoubleLegacy:
+  case FloatSemantics::Float8E5M2:
+  case FloatSemantics::Float8E5M2FNUZ:
+  case FloatSemantics::Float8E4M3:
+  case FloatSemantics::Float8E4M3FN:
+  case FloatSemantics::Float8E4M3FNUZ:
+  case FloatSemantics::Float8E4M3B11FNUZ:
+  case FloatSemantics::Float8E3M4:
+  case FloatSemantics::FloatTF32:
+  case FloatSemantics::Float8E8M0FNU:
+  case FloatSemantics::Float6E3M2FN:
+  case FloatSemantics::Float6E2M3FN:
+  case FloatSemantics::Float4E2M1FN:
+  case FloatSemantics::X87DoubleExtended:
+  case FloatSemantics::Count:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "fixed LLVM MIR cannot spell this floating low-level type");
+  }
+  return makeUnexpected(ErrorCode::InternalError, "floating low-level type is unhandled");
+}
+
+[[nodiscard]] Expected<std::string> llvmMIRLowLevelType(LLT Type) {
+  if (!Type.isValid()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "invalid low-level type cannot be printed as LLVM MIR");
+  }
+  if (!Type.isVector())
+    return llvmMIRScalarLowLevelType(Type);
+
+  const auto ElementType = Type.scalarElementType();
+  if (!ElementType) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "vector low-level type has no scalar element type");
+  }
+  auto Scalar = llvmMIRScalarLowLevelType(*ElementType);
+  if (!Scalar)
+    return std::unexpected(Scalar.error());
+
+  std::string Result = "<";
+  if (Type.isScalableVector())
+    Result.append("vscale x ");
+  Result.append(std::to_string(Type.minimumElementCount()));
+  Result.append(" x ");
+  Result.append(*Scalar);
+  Result.push_back('>');
+  return Result;
+}
+
 class BodyPrinter final {
 public:
   BodyPrinter(const MachineFunction &Function, const TargetDescription &Target,
@@ -232,6 +326,7 @@ private:
   [[nodiscard]] Expected<void> printMemoryBase(const MemoryBase &Base, std::int64_t Offset);
 
   [[nodiscard]] Expected<std::uint32_t> blockID(const MachineBasicBlock &Block) const;
+  [[nodiscard]] Expected<std::uint32_t> virtualRegisterID(Register Reg) const;
   [[nodiscard]] Expected<std::uint32_t> frameID(FrameIndex Index) const;
   [[nodiscard]] Expected<std::uint32_t> constantPoolID(ConstantPoolIndex Index) const;
   [[nodiscard]] Expected<std::uint32_t> jumpTableID(JumpTableIndex Index) const;
@@ -268,6 +363,22 @@ Expected<std::uint32_t> BodyPrinter::blockID(const MachineBasicBlock &Block) con
     return makeUnexpected(ErrorCode::VerificationError,
                           "machine operand references an unlinked basic block");
   return Found->second;
+}
+
+Expected<std::uint32_t> BodyPrinter::virtualRegisterID(Register Reg) const {
+  if (!Context.VirtualRegisters.empty()) {
+    const auto Found =
+        std::ranges::find_if(Context.VirtualRegisters,
+                             [Reg](const MIVirtualRegisterSlot &Slot) { return Slot.Reg == Reg; });
+    if (Found == Context.VirtualRegisters.end()) {
+      return makeUnexpected(ErrorCode::VerificationError, "virtual register has no MIR text slot");
+    }
+    return Found->TextID;
+  }
+  const auto VirtualIndex = Reg.virtualIndex();
+  if (!VirtualIndex)
+    return makeUnexpected(ErrorCode::VerificationError, "virtual register has no numeric index");
+  return *VirtualIndex;
 }
 
 Expected<std::uint32_t> BodyPrinter::frameID(FrameIndex Index) const {
@@ -459,9 +570,9 @@ Expected<void> BodyPrinter::printRegisterOperand(const MachineOperand &Operand,
     if (!Printed)
       return Printed;
   } else {
-    const auto VirtualIndex = Reg.virtualIndex();
+    auto VirtualIndex = virtualRegisterID(Reg);
     if (!VirtualIndex)
-      return makeUnexpected(ErrorCode::VerificationError, "virtual register has no numeric index");
+      return std::unexpected(VirtualIndex.error());
     Output.push_back('%');
     Output.append(std::to_string(*VirtualIndex));
     if (Operand.subReg().value() != 0) {
@@ -495,8 +606,11 @@ Expected<void> BodyPrinter::printRegisterOperand(const MachineOperand &Operand,
       Output.append(":_");
     }
     if (RegisterInfo.Type) {
+      auto Type = llvmMIRLowLevelType(*RegisterInfo.Type);
+      if (!Type)
+        return std::unexpected(Type.error());
       Output.push_back('(');
-      Output.append(RegisterInfo.Type->toString());
+      Output.append(*Type);
       Output.push_back(')');
     }
   }
@@ -1092,7 +1206,7 @@ Expected<void> BodyPrinter::printMemoryOperand(const MachineMemOperand &Operand)
       return makeUnexpected(ErrorCode::VerificationError, "synchronization scope has no MIR name");
     }
     Output.append(" syncscope(");
-    Output.append(quoteName(Scope->Name));
+    Output.append(quoteString(Scope->Name));
     Output.push_back(')');
   }
   if (Description.SuccessOrdering != AtomicOrdering::NotAtomic) {

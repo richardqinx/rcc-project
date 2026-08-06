@@ -263,10 +263,29 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
       return std::unexpected(DestinationIndex.error());
     State.Result.FrameIndices.emplace(SourceObject.index(), *DestinationIndex);
   }
-  auto CallFrameResult = State.Destination.frameInfo().setMaxCallFrameSize(
-      State.Source.frameInfo().maxCallFrameSize());
-  if (!CallFrameResult)
-    return std::unexpected(CallFrameResult.error());
+  MachineFrameState FrameState = State.Source.frameInfo().state();
+  FrameState.SavePoints.clear();
+  FrameState.RestorePoints.clear();
+  auto MapFrameReference = [&State](std::optional<FrameIndex> &Reference) -> Expected<void> {
+    if (!Reference)
+      return {};
+    const auto Position = State.Result.FrameIndices.find(*Reference);
+    if (Position == State.Result.FrameIndices.end()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "source frame state references an unmapped stack object");
+    }
+    Reference = Position->second;
+    return {};
+  };
+  auto StackProtectorResult = MapFrameReference(FrameState.StackProtector);
+  if (!StackProtectorResult)
+    return StackProtectorResult;
+  auto FunctionContextResult = MapFrameReference(FrameState.FunctionContext);
+  if (!FunctionContextResult)
+    return FunctionContextResult;
+  auto StateResult = State.Destination.frameInfo().setState(std::move(FrameState));
+  if (!StateResult)
+    return std::unexpected(StateResult.error());
   return {};
 }
 
@@ -490,6 +509,34 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
     if (!UpdateResult)
       return std::unexpected(UpdateResult.error());
   }
+
+  MachineFrameState FrameState = State.Destination.frameInfo().state();
+  auto ClonePoints =
+      [&State](std::span<const MachineFrameSaveRestorePoint> SourcePoints,
+               std::vector<MachineFrameSaveRestorePoint> &DestinationPoints) -> Expected<void> {
+    DestinationPoints.clear();
+    DestinationPoints.reserve(SourcePoints.size());
+    for (const MachineFrameSaveRestorePoint &Point : SourcePoints) {
+      const auto Position = State.Result.BlockStableIDs.find(Point.Block);
+      if (Position == State.Result.BlockStableIDs.end()) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "source frame save/restore point references an unmapped block");
+      }
+      DestinationPoints.push_back({Position->second, Point.Registers});
+    }
+    return {};
+  };
+  auto SaveResult =
+      ClonePoints(State.Source.frameInfo().state().SavePoints, FrameState.SavePoints);
+  if (!SaveResult)
+    return SaveResult;
+  auto RestoreResult =
+      ClonePoints(State.Source.frameInfo().state().RestorePoints, FrameState.RestorePoints);
+  if (!RestoreResult)
+    return RestoreResult;
+  auto StateResult = State.Destination.frameInfo().setState(std::move(FrameState));
+  if (!StateResult)
+    return std::unexpected(StateResult.error());
 
   if (State.Source.frameInfo().isFrozen()) {
     const auto StackSize = State.Source.frameInfo().staticStackSize();

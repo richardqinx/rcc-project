@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINECONSTANTPOOL_H
 #define RCC_CODEGEN_MACHINECONSTANTPOOL_H
 
+#include "rcc/CodeGen/GenericConstant.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/TargetConstant.h"
@@ -57,14 +58,6 @@ struct ConstantPoolPlacement final {
 
   friend bool operator==(const ConstantPoolPlacement &Left,
                          const ConstantPoolPlacement &Right) = default;
-};
-
-struct GenericConstantData final {
-  std::string TypeIdentity;
-  std::vector<std::byte> Bytes;
-
-  friend bool operator==(const GenericConstantData &Left,
-                         const GenericConstantData &Right) = default;
 };
 
 struct SymbolDifferenceConstant final {

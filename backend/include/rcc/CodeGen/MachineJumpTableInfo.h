@@ -21,10 +21,13 @@ class MachineBasicBlock;
 class MachineFunction;
 
 enum class JumpTableEntryEncoding : std::uint8_t {
-  AbsoluteAddress,
-  RelativeToTableBase,
-  RelativeToEntry,
-  CompressedOffset,
+  BlockAddress,
+  GPRelative64BlockAddress,
+  GPRelative32BlockAddress,
+  LabelDifference32,
+  LabelDifference64,
+  Inline,
+  Custom32,
   Target,
   Count,
 };
@@ -39,7 +42,7 @@ struct JumpTablePlacement final {
 };
 
 struct MachineJumpTableDesc final {
-  JumpTableEntryEncoding Encoding = JumpTableEntryEncoding::AbsoluteAddress;
+  JumpTableEntryEncoding Encoding = JumpTableEntryEncoding::BlockAddress;
   std::uint8_t EntrySize = 8;
   Alignment Align;
   std::vector<MachineBasicBlock *> Targets;
@@ -60,16 +63,24 @@ public:
     return std::holds_alternative<std::monostate>(Description);
   }
 
+  [[nodiscard]] bool isPending() const noexcept {
+    return std::holds_alternative<PendingDescription>(Description);
+  }
+
   [[nodiscard]] const MachineJumpTableDesc *description() const noexcept {
     return std::get_if<MachineJumpTableDesc>(&Description);
   }
 
 private:
+  struct PendingDescription final {};
+
   MachineJumpTableEntry(JumpTableIndex Index, MachineJumpTableDesc Description)
       : Index(Index), Description(std::move(Description)) {}
+  explicit MachineJumpTableEntry(JumpTableIndex Index)
+      : Index(Index), Description(PendingDescription{}) {}
 
   JumpTableIndex Index;
-  std::variant<std::monostate, MachineJumpTableDesc> Description;
+  std::variant<std::monostate, PendingDescription, MachineJumpTableDesc> Description;
 
   friend class MachineJumpTableInfo;
 };
@@ -85,6 +96,9 @@ public:
   ~MachineJumpTableInfo() = default;
 
   [[nodiscard]] Expected<JumpTableIndex> createTable(MachineJumpTableDesc Description);
+  [[nodiscard]] Expected<JumpTableIndex> reserveTable();
+  [[nodiscard]] Expected<void> defineReservedTable(JumpTableIndex Index,
+                                                   MachineJumpTableDesc Description);
   [[nodiscard]] Expected<void> updateTable(JumpTableIndex Index, MachineJumpTableDesc Description);
   [[nodiscard]] Expected<void> eraseTable(JumpTableIndex Index);
 

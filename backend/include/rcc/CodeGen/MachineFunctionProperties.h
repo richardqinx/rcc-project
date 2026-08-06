@@ -27,6 +27,10 @@ enum class MachineFunctionProperty : std::uint8_t {
   FrameFinalized,
   NoFrameIndices,
   NoExecutablePseudos,
+  // These two properties mirror LLVM MIR pipeline state. They are deliberately
+  // separate from RCC's MachineCompilationStatus, which records a concrete run.
+  FailedISel,
+  FailsVerification,
   Count,
 };
 

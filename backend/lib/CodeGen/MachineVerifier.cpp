@@ -211,6 +211,7 @@ private:
         return fail("block layout contains a cycle or duplicate block");
       if (!Block->isLinked() || Block->previous() != Previous)
         return fail("block layout ownership or previous link is inconsistent");
+      LinkedBlockIDs.insert(Block->stableID());
       if (Block->denseNumber() != LayoutIndex || Block->layoutIndex() != LayoutIndex) {
         return fail("block dense number or layout index is stale");
       }
@@ -427,6 +428,30 @@ private:
   }
 
   [[nodiscard]] Expected<void> verifyFrameLifetimes() const {
+    auto VerifyPoints =
+        [this](std::span<const MachineFrameSaveRestorePoint> Points,
+               std::string_view Kind) -> Expected<void> {
+      for (const MachineFrameSaveRestorePoint &Point : Points) {
+        if (!LinkedBlockIDs.contains(Point.Block)) {
+          return fail(std::string("frame ") + std::string(Kind) +
+                      " point references a detached or unknown block");
+        }
+        for (const PhysicalRegister Reg : Point.Registers) {
+          if (!Target.registers().isKnownPhysicalRegister(Reg)) {
+            return fail(std::string("frame ") + std::string(Kind) +
+                        " point references an unknown physical register");
+          }
+        }
+      }
+      return {};
+    };
+    auto SaveResult = VerifyPoints(Function.frameInfo().state().SavePoints, "save");
+    if (!SaveResult)
+      return SaveResult;
+    auto RestoreResult = VerifyPoints(Function.frameInfo().state().RestorePoints, "restore");
+    if (!RestoreResult)
+      return RestoreResult;
+
     for (const StackObject &Object : Function.frameInfo().objects()) {
       const StackObjectDesc *Description = Object.description();
       if (Description == nullptr)
@@ -441,6 +466,10 @@ private:
         auto DebugInfoResult = Description->DebugInfo->verify(Function.metadata());
         if (!DebugInfoResult)
           return failWith("stack object debug information", DebugInfoResult.error());
+      }
+      if (Description->CalleeSavedRegister &&
+          !Target.registers().isKnownPhysicalRegister(*Description->CalleeSavedRegister)) {
+        return fail("callee-saved stack object references an unknown physical register");
       }
     }
     return {};
@@ -794,6 +823,7 @@ private:
   MachineVerifierOptions Options;
   std::unordered_set<const MachineBasicBlock *> RegisteredBlocks;
   std::unordered_set<const MachineBasicBlock *> LinkedBlocks;
+  std::unordered_set<MachineBlockStableID> LinkedBlockIDs;
   std::unordered_set<const MachineInstr *> RegisteredInstructions;
   std::unordered_set<const MachineInstr *> LinkedInstructions;
   std::unordered_set<MachineInstrStableID> LinkedInstructionIDs;

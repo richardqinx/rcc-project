@@ -426,8 +426,9 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
       "builder must reject unknown constant-pool and jump-table indices before allocation");
 
   rcc::MachineConstantPoolEntryDesc ConstantDescription;
+  auto Integer = rcc::IntegerImmediate::fromUnsigned(64, 0x2a2a2a2a2a2a2a2aULL);
   ConstantDescription.Value =
-      rcc::GenericConstantData{"i64", std::vector<std::byte>(8, std::byte{0x2a})};
+      std::move(*rcc::GenericConstantData::integer(std::move(*Integer)));
   ConstantDescription.Size = 8;
   ConstantDescription.Align = *rcc::Alignment::create(8);
   auto ConstantIndex = Function->constantPool().addEntry(std::move(ConstantDescription));

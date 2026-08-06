@@ -20,6 +20,8 @@ constexpr std::array PropertyNames{
     std::string_view{"FrameFinalized"},
     std::string_view{"NoFrameIndices"},
     std::string_view{"NoExecutablePseudos"},
+    std::string_view{"FailedISel"},
+    std::string_view{"FailsVerification"},
 };
 
 static_assert(PropertyNames.size() == static_cast<std::size_t>(MachineFunctionProperty::Count));

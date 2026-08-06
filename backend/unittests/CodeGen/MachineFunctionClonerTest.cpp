@@ -335,8 +335,9 @@ struct SourceFixture final {
     return false;
 
   rcc::MachineConstantPoolEntryDesc HistoricalConstant;
+  auto HistoricalInteger = rcc::IntegerImmediate::fromUnsigned(32, 0x01010101U);
   HistoricalConstant.Value =
-      rcc::GenericConstantData{"i32", std::vector<std::byte>(4, std::byte{1})};
+      std::move(*rcc::GenericConstantData::integer(std::move(*HistoricalInteger)));
   HistoricalConstant.Size = 4;
   HistoricalConstant.Align = *rcc::Alignment::create(4);
   auto HistoricalConstantIndex = Function.constantPool().addEntry(std::move(HistoricalConstant));
@@ -367,7 +368,7 @@ struct SourceFixture final {
                  "source jump table history must contain a tombstone");
 
   rcc::MachineJumpTableDesc JumpTable;
-  JumpTable.Encoding = rcc::JumpTableEntryEncoding::RelativeToTableBase;
+  JumpTable.Encoding = rcc::JumpTableEntryEncoding::GPRelative32BlockAddress;
   JumpTable.EntrySize = 4;
   JumpTable.Align = *rcc::Alignment::create(4);
   JumpTable.Targets = {Fixture.Exit, Fixture.Entry, Fixture.Exit};

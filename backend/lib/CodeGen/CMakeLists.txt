@@ -3,6 +3,7 @@
 set(
   RCCBackendCodeGenSources
   CompilationUnit.cpp
+  GenericConstant.cpp
   InstructionDescriptor.cpp
   LowLevelType.cpp
   MachineBasicBlockAttributes.cpp
@@ -38,6 +39,7 @@ set(
 set(
   RCCBackendCodeGenHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CompilationUnit.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericConstant.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlockAttributes.h"
@@ -102,6 +104,7 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GenericConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlockAttributes.cpp"
@@ -137,6 +140,7 @@ rcc_backend_register_format_files(
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GenericConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlockAttributes.cpp"

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -50,6 +51,89 @@ namespace {
 }
 
 } // namespace
+
+MIRTargetNode::MIRTargetNode() = default;
+MIRTargetNode::MIRTargetNode(const MIRTargetNode &) = default;
+MIRTargetNode &MIRTargetNode::operator=(const MIRTargetNode &) = default;
+MIRTargetNode::MIRTargetNode(MIRTargetNode &&) noexcept = default;
+MIRTargetNode &MIRTargetNode::operator=(MIRTargetNode &&) noexcept = default;
+MIRTargetNode::~MIRTargetNode() = default;
+
+MIRTargetNode MIRTargetNode::null() {
+  return {};
+}
+
+MIRTargetNode MIRTargetNode::scalar(std::string Value) {
+  MIRTargetNode Result;
+  Result.Kind = MIRTargetNodeKind::Scalar;
+  Result.Scalar = std::move(Value);
+  return Result;
+}
+
+MIRTargetNode MIRTargetNode::sequence(std::vector<MIRTargetNode> Values) {
+  MIRTargetNode Result;
+  Result.Kind = MIRTargetNodeKind::Sequence;
+  Result.Sequence = std::move(Values);
+  return Result;
+}
+
+MIRTargetNode MIRTargetNode::mapping(std::vector<MIRTargetMappingEntry> Entries) {
+  MIRTargetNode Result;
+  Result.Kind = MIRTargetNodeKind::Mapping;
+  Result.Mapping = std::move(Entries);
+  return Result;
+}
+
+bool operator==(const MIRTargetNode &Left, const MIRTargetNode &Right) {
+  return Left.Kind == Right.Kind && Left.Scalar == Right.Scalar &&
+         Left.Sequence == Right.Sequence && Left.Mapping == Right.Mapping;
+}
+
+const MIRTargetNode *MIRTargetNode::mappingValue(std::string_view Key) const noexcept {
+  if (Kind != MIRTargetNodeKind::Mapping)
+    return nullptr;
+  for (const MIRTargetMappingEntry &Entry : Mapping) {
+    if (Entry.Key == Key)
+      return &Entry.Value;
+  }
+  return nullptr;
+}
+
+Expected<void> MIRTargetNode::verify() const {
+  if (Kind >= MIRTargetNodeKind::Count)
+    return makeUnexpected(ErrorCode::InvalidArgument, "target MIR node kind is invalid");
+
+  const bool HasScalar = !Scalar.empty();
+  const bool HasSequence = !Sequence.empty();
+  const bool HasMapping = !Mapping.empty();
+  if ((Kind != MIRTargetNodeKind::Scalar && HasScalar) ||
+      (Kind != MIRTargetNodeKind::Sequence && HasSequence) ||
+      (Kind != MIRTargetNodeKind::Mapping && HasMapping)) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "target MIR node contains storage for a different node kind");
+  }
+
+  if (Kind == MIRTargetNodeKind::Sequence) {
+    for (const MIRTargetNode &Element : Sequence) {
+      auto ElementResult = Element.verify();
+      if (!ElementResult)
+        return ElementResult;
+    }
+  }
+  if (Kind == MIRTargetNodeKind::Mapping) {
+    std::unordered_set<std::string_view> Keys;
+    for (const MIRTargetMappingEntry &Entry : Mapping) {
+      if (Entry.Key.empty() || !Keys.insert(Entry.Key).second) {
+        return makeUnexpected(ErrorCode::InvalidArgument,
+                              "target MIR mapping keys must be nonempty and unique");
+      }
+      auto ValueResult = Entry.Value.verify();
+      if (!ValueResult)
+        return ValueResult;
+    }
+  }
+  return {};
+}
 
 Expected<TargetMIRTextInfo> TargetMIRTextInfo::create(TargetMIRTextInfoDesc Description,
                                                       const TargetRegisterInfo &Registers) {
@@ -191,6 +275,18 @@ Expected<TargetMIRTextInfo> TargetMIRTextInfo::create(TargetMIRTextInfoDesc Desc
 
   if (Result.Description.FunctionStateType && Result.Description.FunctionStateType->value() == 0) {
     return invalidDescription("target function state TypeID must be nonzero");
+  }
+  const bool HasStateType = Result.Description.FunctionStateType.has_value();
+  const bool HasParser = Result.Description.ParseFunctionState != nullptr;
+  const bool HasPrinter = Result.Description.PrintFunctionState != nullptr;
+  if (HasStateType != HasParser || HasStateType != HasPrinter) {
+    return invalidDescription(
+        "target function state TypeID, parser, and printer must be provided together");
+  }
+  const bool HasConstantParser = Result.Description.ParseTargetConstant != nullptr;
+  const bool HasConstantPrinter = Result.Description.PrintTargetConstant != nullptr;
+  if (HasConstantParser != HasConstantPrinter) {
+    return invalidDescription("target constant parser and printer must be provided together");
   }
 
   return Result;
@@ -363,6 +459,88 @@ TargetMIRTextInfo::physicalRegister(std::uint32_t DwarfRegister) const noexcept 
   if (Position == DwarfToRegister.end())
     return std::nullopt;
   return Position->second;
+}
+
+Expected<TargetFunctionState>
+TargetMIRTextInfo::parseFunctionState(const MIRTargetNode &Node) const {
+  if (Description.ParseFunctionState == nullptr || !Description.FunctionStateType) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "target does not define a machineFunctionInfo MIR schema");
+  }
+  auto NodeResult = Node.verify();
+  if (!NodeResult)
+    return std::unexpected(NodeResult.error());
+  auto State = Description.ParseFunctionState(Node);
+  if (!State)
+    return std::unexpected(State.error());
+  auto StateResult = State->verify();
+  if (!StateResult)
+    return std::unexpected(StateResult.error());
+  if (State->typeID() != Description.FunctionStateType) {
+    return makeUnexpected(ErrorCode::ParseError,
+                          "parsed target function state has the wrong schema TypeID");
+  }
+  return State;
+}
+
+Expected<MIRTargetNode>
+TargetMIRTextInfo::printFunctionState(const TargetFunctionState &State) const {
+  if (Description.PrintFunctionState == nullptr || !Description.FunctionStateType) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "target does not define a machineFunctionInfo MIR schema");
+  }
+  auto StateResult = State.verify();
+  if (!StateResult)
+    return std::unexpected(StateResult.error());
+  if (State.typeID() != Description.FunctionStateType) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "target function state has the wrong MIR schema TypeID");
+  }
+  auto Node = Description.PrintFunctionState(State);
+  if (!Node)
+    return std::unexpected(Node.error());
+  auto NodeResult = Node->verify();
+  if (!NodeResult)
+    return std::unexpected(NodeResult.error());
+  if (Node->Kind != MIRTargetNodeKind::Mapping) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machineFunctionInfo printer must produce a mapping");
+  }
+  return Node;
+}
+
+Expected<TargetConstant>
+TargetMIRTextInfo::parseTargetConstant(std::string_view Text) const {
+  if (Description.ParseTargetConstant == nullptr) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "target does not define a target constant MIR schema");
+  }
+  auto Constant = Description.ParseTargetConstant(Text);
+  if (!Constant)
+    return std::unexpected(Constant.error());
+  auto Verification = Constant->verify();
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  return Constant;
+}
+
+Expected<std::string>
+TargetMIRTextInfo::printTargetConstant(const TargetConstant &Constant) const {
+  if (Description.PrintTargetConstant == nullptr) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "target does not define a target constant MIR schema");
+  }
+  auto Verification = Constant.verify();
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  auto Text = Description.PrintTargetConstant(Constant);
+  if (!Text)
+    return std::unexpected(Text.error());
+  if (Text->empty()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "target constant printer produced an empty MIR value");
+  }
+  return Text;
 }
 
 } // namespace rcc

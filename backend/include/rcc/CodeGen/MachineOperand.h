@@ -69,6 +69,8 @@ public:
                                                                std::uint64_t Value);
   [[nodiscard]] static Expected<IntegerImmediate> fromSigned(std::uint32_t BitWidth,
                                                              std::int64_t Value);
+  [[nodiscard]] static Expected<IntegerImmediate> parseDecimal(std::uint32_t BitWidth,
+                                                               std::string_view Text);
 
   [[nodiscard]] std::uint32_t bitWidth() const noexcept {
     return BitWidth;
@@ -80,6 +82,7 @@ public:
 
   [[nodiscard]] bool isZero() const noexcept;
   [[nodiscard]] bool isNegative() const noexcept;
+  [[nodiscard]] std::string toUnsignedDecimal() const;
   [[nodiscard]] Expected<void> verify() const;
 
   friend bool operator==(const IntegerImmediate &Left, const IntegerImmediate &Right) = default;

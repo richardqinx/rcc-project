@@ -6,12 +6,14 @@
 #include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
+#include "rcc/CodeGen/Register.h"
 #include "rcc/CodeGen/StableID.h"
 #include "rcc/Support/Error.h"
 
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -22,6 +24,7 @@ namespace rcc {
 enum class StackObjectKind : std::uint8_t {
   Default,
   FixedABI,
+  FixedSpillSlot,
   SpillSlot,
   VariableSized,
   DynamicAlloca,
@@ -101,13 +104,18 @@ struct StackObjectLifetimeRange final {
 
 struct StackObjectDesc final {
   StackObjectKind Kind = StackObjectKind::Default;
+  std::optional<std::string> AllocaName;
   std::optional<std::uint64_t> Size;
   Alignment Align;
   std::optional<std::int64_t> Offset;
   StackID Stack;
   bool IsDead = false;
+  bool IsImmutable = false;
   bool IsAliased = false;
   bool AddressTaken = false;
+  std::optional<PhysicalRegister> CalleeSavedRegister;
+  bool CalleeSavedRestored = true;
+  std::optional<std::int64_t> LocalOffset;
   std::vector<StackObjectLifetimeRange> Lifetime;
   std::optional<MachineVariableDebugInfo> DebugInfo;
   std::uint64_t TargetFlags = 0;
@@ -143,6 +151,56 @@ private:
   friend class MachineFrameInfo;
 };
 
+enum class MachineFramePointerPolicy : std::uint8_t {
+  None,
+  NonLeaf,
+  All,
+  Reserved,
+  NonLeafNoReserve,
+  Count,
+};
+
+[[nodiscard]] std::optional<MachineFramePointerPolicy>
+parseMachineFramePointerPolicy(std::string_view Name) noexcept;
+[[nodiscard]] std::string_view
+getMachineFramePointerPolicyName(MachineFramePointerPolicy Policy) noexcept;
+
+struct MachineFrameSaveRestorePoint final {
+  MachineBlockStableID Block;
+  std::vector<PhysicalRegister> Registers;
+
+  friend bool operator==(const MachineFrameSaveRestorePoint &Left,
+                         const MachineFrameSaveRestorePoint &Right) = default;
+};
+
+struct MachineFrameState final {
+  bool IsFrameAddressTaken = false;
+  bool IsReturnAddressTaken = false;
+  bool HasStackMap = false;
+  bool HasPatchPoint = false;
+  std::uint64_t StackSize = 0;
+  std::int32_t OffsetAdjustment = 0;
+  std::optional<Alignment> MaxAlignment;
+  bool AdjustsStack = false;
+  bool HasCalls = false;
+  MachineFramePointerPolicy FramePointerPolicy = MachineFramePointerPolicy::None;
+  std::optional<FrameIndex> StackProtector;
+  std::optional<FrameIndex> FunctionContext;
+  std::optional<std::uint64_t> MaxCallFrameSize;
+  std::uint32_t CVBytesOfCalleeSavedRegisters = 0;
+  bool HasOpaqueSPAdjustment = false;
+  bool HasVAStart = false;
+  bool HasMustTailInVarArgFunc = false;
+  bool HasTailCall = false;
+  bool IsCalleeSavedInfoValid = false;
+  std::uint32_t LocalFrameSize = 0;
+  std::vector<MachineFrameSaveRestorePoint> SavePoints;
+  std::vector<MachineFrameSaveRestorePoint> RestorePoints;
+
+  friend bool operator==(const MachineFrameState &Left,
+                         const MachineFrameState &Right) = default;
+};
+
 class MachineFrameInfo final {
 public:
   MachineFrameInfo() = default;
@@ -169,31 +227,38 @@ public:
     return Frozen;
   }
 
+  [[nodiscard]] const MachineFrameState &state() const noexcept {
+    return State;
+  }
+
   [[nodiscard]] std::optional<std::uint64_t> staticStackSize() const noexcept {
-    return StaticStackSize;
+    if (!Frozen)
+      return std::nullopt;
+    return State.StackSize;
   }
 
   [[nodiscard]] Alignment stackAlignment() const noexcept {
-    return StackAlign;
+    return State.MaxAlignment.value_or(Alignment{});
   }
 
-  [[nodiscard]] std::uint64_t maxCallFrameSize() const noexcept {
-    return MaxCallFrameSize;
+  [[nodiscard]] std::optional<std::uint64_t> maxCallFrameSize() const noexcept {
+    return State.MaxCallFrameSize;
   }
 
+  [[nodiscard]] Expected<void> setState(MachineFrameState NewState);
   [[nodiscard]] Expected<void> setMaxCallFrameSize(std::uint64_t Size);
+  [[nodiscard]] Expected<void> clearMaxCallFrameSize();
   [[nodiscard]] Expected<void> freeze(std::uint64_t Size, Alignment Align);
   [[nodiscard]] Expected<void> verify() const;
 
 private:
   [[nodiscard]] static Expected<void> verifyDescription(const StackObjectDesc &Description);
+  [[nodiscard]] static Expected<void> verifyStateStructure(const MachineFrameState &State);
   [[nodiscard]] Expected<StackObject *> mutableObject(FrameIndex Index);
 
   std::vector<StackObject> Objects;
+  MachineFrameState State;
   bool Frozen = false;
-  std::optional<std::uint64_t> StaticStackSize;
-  Alignment StackAlign;
-  std::uint64_t MaxCallFrameSize = 0;
 };
 
 } // namespace rcc

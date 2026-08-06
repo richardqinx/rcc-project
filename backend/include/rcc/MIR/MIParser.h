@@ -5,15 +5,18 @@
 
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMetadata.h"
+#include "rcc/CodeGen/Register.h"
 #include "rcc/Support/Error.h"
 #include "rcc/Support/TextDiagnostic.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace rcc {
@@ -22,6 +25,11 @@ class MachineFunction;
 class TargetDescription;
 
 namespace mir {
+
+struct MIVirtualRegisterSlot final {
+  std::uint32_t TextID = 0;
+  Register Reg;
+};
 
 struct MIFrameObjectSlot final {
   std::uint32_t TextID = 0;
@@ -50,12 +58,15 @@ struct MISyncScopeSlot final {
 };
 
 struct MIParserContext final {
+  std::vector<MIVirtualRegisterSlot> VirtualRegisters;
   std::vector<MIFrameObjectSlot> StackObjects;
   std::vector<MIFrameObjectSlot> FixedStackObjects;
   std::vector<MIConstantPoolSlot> ConstantPoolItems;
   std::vector<MIJumpTableSlot> JumpTables;
   std::vector<MIMetadataSlot> Metadata;
   std::vector<MISyncScopeSlot> SyncScopes;
+  std::function<Expected<SyncScopeID>(std::string_view)> InternSyncScope;
+  std::function<Expected<std::uint32_t>(std::uint32_t)> PointerSizeInBits;
   std::uint32_t DefaultPointerSizeInBits = 0;
 };
 
@@ -66,6 +77,7 @@ struct MIParserOptions final {
   std::size_t MaximumInstructions = std::size_t{1} << 24U;
   std::size_t MaximumOperandsPerInstruction = std::size_t{1} << 20U;
   std::size_t MaximumMemoryOperandsPerInstruction = std::size_t{1} << 20U;
+  bool VerifyAfterParse = true;
 };
 
 class MIParser final {

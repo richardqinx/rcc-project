@@ -13,6 +13,7 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
+#include "rcc/MIR/MIDebugSyntax.h"
 #include "rcc/MIR/MILexer.h"
 
 #include <algorithm>
@@ -23,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -254,106 +256,6 @@ namespace {
   const std::uint32_t Bias = 0x7FFFU + ((Bits >> 16U) & 1U);
   Bits += Bias;
   return static_cast<std::uint16_t>(Bits >> 16U);
-}
-
-[[nodiscard]] std::optional<std::uint64_t> debugExpressionOpcode(std::string_view Name) noexcept {
-  if (Name.starts_with("DW_OP_lit")) {
-    std::uint64_t Index = 0;
-    if (parseUnsignedDigits(Name.substr(9), Index) && Index <= 31)
-      return 0x30U + Index;
-  }
-  if (Name.starts_with("DW_OP_reg")) {
-    std::uint64_t Index = 0;
-    if (parseUnsignedDigits(Name.substr(9), Index) && Index <= 31)
-      return 0x50U + Index;
-  }
-  if (Name.starts_with("DW_OP_breg")) {
-    std::uint64_t Index = 0;
-    if (parseUnsignedDigits(Name.substr(10), Index) && Index <= 31)
-      return 0x70U + Index;
-  }
-
-  constexpr auto NamedOpcodes = std::to_array<std::pair<std::string_view, std::uint64_t>>({
-      {"DW_OP_addr", 0x03},
-      {"DW_OP_deref", 0x06},
-      {"DW_OP_const1u", 0x08},
-      {"DW_OP_const1s", 0x09},
-      {"DW_OP_const2u", 0x0A},
-      {"DW_OP_const2s", 0x0B},
-      {"DW_OP_const4u", 0x0C},
-      {"DW_OP_const4s", 0x0D},
-      {"DW_OP_const8u", 0x0E},
-      {"DW_OP_const8s", 0x0F},
-      {"DW_OP_constu", 0x10},
-      {"DW_OP_consts", 0x11},
-      {"DW_OP_dup", 0x12},
-      {"DW_OP_drop", 0x13},
-      {"DW_OP_over", 0x14},
-      {"DW_OP_pick", 0x15},
-      {"DW_OP_swap", 0x16},
-      {"DW_OP_rot", 0x17},
-      {"DW_OP_xderef", 0x18},
-      {"DW_OP_abs", 0x19},
-      {"DW_OP_and", 0x1A},
-      {"DW_OP_div", 0x1B},
-      {"DW_OP_minus", 0x1C},
-      {"DW_OP_mod", 0x1D},
-      {"DW_OP_mul", 0x1E},
-      {"DW_OP_neg", 0x1F},
-      {"DW_OP_not", 0x20},
-      {"DW_OP_or", 0x21},
-      {"DW_OP_plus", 0x22},
-      {"DW_OP_plus_uconst", 0x23},
-      {"DW_OP_shl", 0x24},
-      {"DW_OP_shr", 0x25},
-      {"DW_OP_shra", 0x26},
-      {"DW_OP_xor", 0x27},
-      {"DW_OP_bra", 0x28},
-      {"DW_OP_eq", 0x29},
-      {"DW_OP_ge", 0x2A},
-      {"DW_OP_gt", 0x2B},
-      {"DW_OP_le", 0x2C},
-      {"DW_OP_lt", 0x2D},
-      {"DW_OP_ne", 0x2E},
-      {"DW_OP_skip", 0x2F},
-      {"DW_OP_regx", 0x90},
-      {"DW_OP_fbreg", 0x91},
-      {"DW_OP_bregx", 0x92},
-      {"DW_OP_piece", 0x93},
-      {"DW_OP_deref_size", 0x94},
-      {"DW_OP_xderef_size", 0x95},
-      {"DW_OP_nop", 0x96},
-      {"DW_OP_push_object_address", 0x97},
-      {"DW_OP_call2", 0x98},
-      {"DW_OP_call4", 0x99},
-      {"DW_OP_call_ref", 0x9A},
-      {"DW_OP_form_tls_address", 0x9B},
-      {"DW_OP_call_frame_cfa", 0x9C},
-      {"DW_OP_bit_piece", 0x9D},
-      {"DW_OP_implicit_value", 0x9E},
-      {"DW_OP_stack_value", 0x9F},
-      {"DW_OP_implicit_pointer", 0xA0},
-      {"DW_OP_addrx", 0xA1},
-      {"DW_OP_constx", 0xA2},
-      {"DW_OP_entry_value", 0xA3},
-      {"DW_OP_const_type", 0xA4},
-      {"DW_OP_regval_type", 0xA5},
-      {"DW_OP_deref_type", 0xA6},
-      {"DW_OP_xderef_type", 0xA7},
-      {"DW_OP_convert", 0xA8},
-      {"DW_OP_reinterpret", 0xA9},
-      {"DW_OP_LLVM_fragment", 0x1000},
-      {"DW_OP_LLVM_convert", 0x1001},
-      {"DW_OP_LLVM_tag_offset", 0x1002},
-      {"DW_OP_LLVM_entry_value", 0x1003},
-      {"DW_OP_LLVM_implicit_pointer", 0x1004},
-      {"DW_OP_LLVM_arg", 0x1005},
-  });
-  const auto *const Found =
-      std::ranges::find_if(NamedOpcodes, [Name](const auto &Entry) { return Entry.first == Name; });
-  if (Found == NamedOpcodes.end())
-    return std::nullopt;
-  return Found->second;
 }
 
 [[nodiscard]] std::optional<std::uint64_t> minimumTypeSizeInBits(LLT Type) noexcept {
@@ -817,6 +719,13 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Resu
     Created = LLT::makeFloat(FloatSemantics::BFloat);
     break;
   case ScalarKind::Pointer:
+    if (Context.PointerSizeInBits) {
+      auto PointerSize = Context.PointerSizeInBits(static_cast<std::uint32_t>(Value));
+      if (!PointerSize)
+        return importError(TypeToken, PointerSize.error());
+      Created = LLT::makePointer(Value, *PointerSize);
+      break;
+    }
     if (Context.DefaultPointerSizeInBits == 0)
       return fail(TypeToken, "pointer low-level type requires an explicit pointer size");
     Created = LLT::makePointer(Value, Context.DefaultPointerSizeInBits);
@@ -1335,7 +1244,9 @@ std::optional<JumpTableIndex> MIParser::Impl::jumpTableIndexFor(const MIToken &T
     return std::nullopt;
   }
   for (const MIJumpTableSlot &Slot : Context.JumpTables) {
-    if (Slot.TextID == ID && Function.jumpTableInfo().table(Slot.Index) != nullptr)
+    if (Slot.TextID == ID && (Function.jumpTableInfo().table(Slot.Index) != nullptr ||
+                              (Slot.Index.value() < Function.jumpTableInfo().tables().size() &&
+                               Function.jumpTableInfo().tables()[Slot.Index.value()].isPending())))
       return Slot.Index;
   }
   static_cast<void>(fail(Token, "use of undefined jump table #" + std::to_string(ID)));
@@ -1566,7 +1477,7 @@ bool MIParser::Impl::parseMetadataOperand(ParsedOperand &Result) {
     std::vector<std::uint64_t> Elements;
     while (!at(MITokenKind::RightParen)) {
       if (at(MITokenKind::Identifier)) {
-        const auto Opcode = debugExpressionOpcode(token().stringValue());
+        const auto Opcode = parseDIExpressionOpcodeName(token().stringValue());
         if (!Opcode)
           return fail("unknown debug expression opcode '" + std::string(token().stringValue()) +
                       "'");
@@ -2036,8 +1947,16 @@ bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result) {
     if (!at(MITokenKind::StringConstant))
       return fail("syncscope requires a quoted scope name");
     const std::string_view Name = token().stringValue();
-    const auto Scope = std::ranges::find_if(
+    auto Scope = std::ranges::find_if(
         Context.SyncScopes, [Name](const MISyncScopeSlot &Slot) { return Slot.Name == Name; });
+    if (Scope == Context.SyncScopes.end() && Context.InternSyncScope) {
+      const MIToken NameToken = token();
+      auto ID = Context.InternSyncScope(Name);
+      if (!ID)
+        return importError(NameToken, ID.error());
+      Context.SyncScopes.push_back({.Name = std::string(Name), .ID = *ID});
+      Scope = std::prev(Context.SyncScopes.end());
+    }
     if (Scope == Context.SyncScopes.end())
       return fail("unknown synchronization scope '" + std::string(Name) + "'");
     Description.SyncScope = Scope->ID;
@@ -2994,20 +2913,33 @@ Expected<void> MIParser::Impl::parse() {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "MI parser requires a staging machine function with an empty body");
   }
+  for (const MIVirtualRegisterSlot &Slot : Context.VirtualRegisters) {
+    if (!Slot.Reg.isVirtual() || !Function.registerInfo().isKnownVirtualRegister(Slot.Reg)) {
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "MI parser virtual-register slot maps to an unknown register");
+    }
+    if (!NumericVirtualRegisters.emplace(Slot.TextID, Slot.Reg).second) {
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "MI parser virtual-register text IDs must be unique");
+    }
+  }
   if (tokenize())
     return failureResult();
   if (parseFirstPass() || parseSecondPass() || inferSuccessors())
     return failureResult();
 
   Function.renumberBlocks();
-  auto Verified = MachineVerifier::verify(
-      Function, Target,
-      MachineVerifierOptions{
-          .Mode = MachineVerifierMode::Generic, .Stage = std::nullopt, .VerifyProperties = false});
-  if (!Verified) {
-    static_cast<void>(fail(token(), "parsed machine function failed verification: " +
-                                        std::string(Verified.error().message())));
-    return failureResult();
+  if (Options.VerifyAfterParse) {
+    auto Verified =
+        MachineVerifier::verify(Function, Target,
+                                MachineVerifierOptions{.Mode = MachineVerifierMode::Generic,
+                                                       .Stage = std::nullopt,
+                                                       .VerifyProperties = false});
+    if (!Verified) {
+      static_cast<void>(fail(token(), "parsed machine function failed verification: " +
+                                          std::string(Verified.error().message())));
+      return failureResult();
+    }
   }
   return {};
 }

@@ -53,6 +53,34 @@ getTargetConstant(const MachineConstantPoolValue &Value) noexcept {
   return {};
 }
 
+[[nodiscard]] std::optional<std::uint64_t>
+fixedGenericStoreSize(const GenericConstantType &Type) noexcept {
+  switch (Type.Kind) {
+  case GenericConstantTypeKind::Integer:
+    return (static_cast<std::uint64_t>(Type.BitWidth) + 7U) / 8U;
+  case GenericConstantTypeKind::Byte:
+    return 1;
+  case GenericConstantTypeKind::Floating:
+    return (static_cast<std::uint64_t>(getFloatSemanticsBitWidth(Type.Semantics).value_or(0)) +
+            7U) /
+           8U;
+  case GenericConstantTypeKind::Array:
+  case GenericConstantTypeKind::Vector: {
+    if (Type.Scalable || Type.Elements.size() != 1)
+      return std::nullopt;
+    const auto ElementSize = fixedGenericStoreSize(Type.Elements.front());
+    if (!ElementSize ||
+        (*ElementSize != 0 &&
+         Type.ElementCount > std::numeric_limits<std::uint64_t>::max() / *ElementSize)) {
+      return std::nullopt;
+    }
+    return *ElementSize * Type.ElementCount;
+  }
+  default:
+    return std::nullopt;
+  }
+}
+
 } // namespace
 
 ConstantPoolEntryKind MachineConstantPoolEntryDesc::kind() const noexcept {
@@ -95,13 +123,21 @@ Expected<void> MachineConstantPoolEntryDesc::verify() const {
   switch (kind()) {
   case ConstantPoolEntryKind::Generic: {
     const auto *Generic = std::get_if<GenericConstantData>(&Value);
-    if (Generic == nullptr || Generic->TypeIdentity.empty() || Generic->Bytes.size() != Size) {
+    if (Generic == nullptr) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "generic constant pool entry has invalid type or byte size");
+                            "generic constant pool entry has an invalid payload");
     }
-    if (Relocation != ConstantPoolRelocationMode::None) {
+    auto Verification = Generic->verify();
+    if (!Verification)
+      return Verification;
+    if (const auto FixedSize = fixedGenericStoreSize(Generic->Type);
+        FixedSize && *FixedSize != Size) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "raw generic constant pool bytes cannot carry relocations");
+                            "generic constant store size does not match its pool entry size");
+    }
+    if (!Generic->referencesSymbol() && Relocation != ConstantPoolRelocationMode::None) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "symbol-free generic constant cannot require relocation");
     }
     return {};
   }

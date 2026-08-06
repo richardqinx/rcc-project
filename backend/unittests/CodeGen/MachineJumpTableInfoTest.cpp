@@ -51,7 +51,7 @@ createFunction(TestContext &Context, std::string Name, std::uint64_t ID) {
 [[nodiscard]] rcc::MachineJumpTableDesc tableDescription(rcc::MachineBasicBlock &First,
                                                          rcc::MachineBasicBlock &Second) {
   rcc::MachineJumpTableDesc Description;
-  Description.Encoding = rcc::JumpTableEntryEncoding::RelativeToTableBase;
+  Description.Encoding = rcc::JumpTableEntryEncoding::GPRelative32BlockAddress;
   Description.EntrySize = 4;
   Description.Align = *rcc::Alignment::create(4);
   Description.Targets = {&First, &Second, &Second};
@@ -90,14 +90,15 @@ void testTableLifecycle(TestContext &Context) {
                      Function->jumpTableInfo().table(*First) == nullptr,
                  "erasing a jump table must leave a tombstone");
   auto CompressedDescription = tableDescription(*Entry, *Exit);
-  CompressedDescription.Encoding = rcc::JumpTableEntryEncoding::CompressedOffset;
-  CompressedDescription.EntrySize = 2;
+  CompressedDescription.Encoding = rcc::JumpTableEntryEncoding::Custom32;
+  CompressedDescription.EntrySize = 4;
   auto Compressed = Function->jumpTableInfo().createTable(std::move(CompressedDescription));
   Context.expect(Compressed && Compressed->value() == 2,
                  "jump table tombstone indices must never be reused");
 
   auto Updated = tableDescription(*Entry, *Exit);
-  Updated.Encoding = rcc::JumpTableEntryEncoding::RelativeToEntry;
+  Updated.Encoding = rcc::JumpTableEntryEncoding::LabelDifference64;
+  Updated.EntrySize = 8;
   Context.expect(Function->jumpTableInfo().updateTable(*Target, std::move(Updated)).has_value() &&
                      Function->jumpTableInfo().verify().has_value() &&
                      Function->jumpTableInfo().freeze().has_value() &&
@@ -145,7 +146,8 @@ void testInvalidTables(TestContext &Context) {
                  "generic jump table encoding must reject target encoding IDs");
 
   auto OversizedCompressed = tableDescription(*Block, *Block);
-  OversizedCompressed.Encoding = rcc::JumpTableEntryEncoding::CompressedOffset;
+  OversizedCompressed.Encoding = rcc::JumpTableEntryEncoding::Custom32;
+  OversizedCompressed.EntrySize = 8;
   OversizedCompressed.EntrySize = 8;
   Context.expect(!Function->jumpTableInfo().createTable(std::move(OversizedCompressed)),
                  "compressed jump table must reject oversized entries");

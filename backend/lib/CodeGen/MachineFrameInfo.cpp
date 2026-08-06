@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
@@ -50,17 +51,53 @@ std::string_view getStackIDName(StackID ID) noexcept {
   return "unknown";
 }
 
+std::optional<MachineFramePointerPolicy>
+parseMachineFramePointerPolicy(std::string_view Name) noexcept {
+  if (Name == "none")
+    return MachineFramePointerPolicy::None;
+  if (Name == "non-leaf")
+    return MachineFramePointerPolicy::NonLeaf;
+  if (Name == "all")
+    return MachineFramePointerPolicy::All;
+  if (Name == "reserved")
+    return MachineFramePointerPolicy::Reserved;
+  if (Name == "non-leaf-no-reserve")
+    return MachineFramePointerPolicy::NonLeafNoReserve;
+  return std::nullopt;
+}
+
+std::string_view
+getMachineFramePointerPolicyName(MachineFramePointerPolicy Policy) noexcept {
+  switch (Policy) {
+  case MachineFramePointerPolicy::None:
+    return "none";
+  case MachineFramePointerPolicy::NonLeaf:
+    return "non-leaf";
+  case MachineFramePointerPolicy::All:
+    return "all";
+  case MachineFramePointerPolicy::Reserved:
+    return "reserved";
+  case MachineFramePointerPolicy::NonLeafNoReserve:
+    return "non-leaf-no-reserve";
+  case MachineFramePointerPolicy::Count:
+    return "unknown";
+  }
+  return "unknown";
+}
+
 bool StackObject::isSpill() const noexcept {
   const StackObjectDesc *Desc = description();
   if (Desc == nullptr)
     return false;
   return Desc->Kind == StackObjectKind::SpillSlot || Desc->Kind == StackObjectKind::CalleeSaved ||
-         Desc->Kind == StackObjectKind::EmergencySpill;
+         Desc->Kind == StackObjectKind::EmergencySpill ||
+         Desc->Kind == StackObjectKind::FixedSpillSlot;
 }
 
 bool StackObject::isFixed() const noexcept {
   const StackObjectDesc *Desc = description();
-  return Desc != nullptr && Desc->Kind == StackObjectKind::FixedABI;
+  return Desc != nullptr && (Desc->Kind == StackObjectKind::FixedABI ||
+                             Desc->Kind == StackObjectKind::FixedSpillSlot);
 }
 
 bool StackObject::isVariableSized() const noexcept {
@@ -82,14 +119,34 @@ Expected<void> MachineFrameInfo::verifyDescription(const StackObjectDesc &Descri
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "variable-sized stack objects cannot have a fixed size or offset");
     }
-  } else if (!Description.Size || *Description.Size == 0) {
+  } else if (!Description.Size) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "fixed-size stack objects require a nonzero size");
+                          "fixed-size stack objects require an explicit size");
   }
 
-  if (Description.Kind == StackObjectKind::FixedABI && !Description.Offset) {
+  if ((Description.Kind == StackObjectKind::FixedABI ||
+       Description.Kind == StackObjectKind::FixedSpillSlot) &&
+      !Description.Offset) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "fixed ABI stack objects require a fixed offset");
+  }
+  if (Description.AllocaName && Description.AllocaName->empty()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "named stack objects require a nonempty alloca name");
+  }
+  if (Description.IsImmutable && Description.Kind != StackObjectKind::FixedABI) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "only fixed ABI stack objects may be immutable");
+  }
+  if (Description.CalleeSavedRegister && Description.CalleeSavedRegister->number() == 0) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "callee-saved stack objects require a nonzero physical register");
+  }
+  if (Description.LocalOffset &&
+      (Description.Kind == StackObjectKind::FixedABI ||
+       Description.Kind == StackObjectKind::FixedSpillSlot)) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "fixed ABI stack objects cannot have a local frame offset");
   }
   if (Description.Kind == StackObjectKind::Target && !Description.Stack.isSpecialStack() &&
       Description.TargetFlags == 0) {
@@ -116,6 +173,41 @@ Expected<void> MachineFrameInfo::verifyDescription(const StackObjectDesc &Descri
       return DebugInfoResult;
   }
   return {};
+}
+
+Expected<void> MachineFrameInfo::verifyStateStructure(const MachineFrameState &State) {
+  if (State.FramePointerPolicy >= MachineFramePointerPolicy::Count) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "frame-pointer policy is invalid");
+  }
+
+  auto VerifyPoints = [](std::span<const MachineFrameSaveRestorePoint> Points,
+                         std::string_view Kind) -> Expected<void> {
+    std::unordered_set<MachineBlockStableID> Blocks;
+    for (const MachineFrameSaveRestorePoint &Point : Points) {
+      if (!Point.Block.isValid()) {
+        return makeUnexpected(ErrorCode::InvalidArgument,
+                              std::string(Kind) + " point requires a valid basic-block identity");
+      }
+      if (!Blocks.insert(Point.Block).second) {
+        return makeUnexpected(ErrorCode::InvalidArgument,
+                              std::string(Kind) + " points must use unique basic blocks");
+      }
+      std::unordered_set<PhysicalRegister> Registers;
+      for (const PhysicalRegister Reg : Point.Registers) {
+        if (Reg.number() == 0 || !Registers.insert(Reg).second) {
+          return makeUnexpected(ErrorCode::InvalidArgument,
+                                std::string(Kind) +
+                                    " point registers must be nonzero and unique");
+        }
+      }
+    }
+    return {};
+  };
+
+  auto SaveResult = VerifyPoints(State.SavePoints, "save");
+  if (!SaveResult)
+    return SaveResult;
+  return VerifyPoints(State.RestorePoints, "restore");
 }
 
 Expected<FrameIndex> MachineFrameInfo::createObject(StackObjectDesc Description) {
@@ -214,7 +306,26 @@ Expected<void> MachineFrameInfo::setMaxCallFrameSize(std::uint64_t Size) {
   if (Frozen)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "frozen frame cannot change its maximum call-frame size");
-  MaxCallFrameSize = Size;
+  State.MaxCallFrameSize = Size;
+  return {};
+}
+
+Expected<void> MachineFrameInfo::clearMaxCallFrameSize() {
+  if (Frozen) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "frozen frame cannot change its maximum call-frame size");
+  }
+  State.MaxCallFrameSize.reset();
+  return {};
+}
+
+Expected<void> MachineFrameInfo::setState(MachineFrameState NewState) {
+  if (Frozen)
+    return makeUnexpected(ErrorCode::InvalidArgument, "frozen frame cannot replace its state");
+  auto Verification = verifyStateStructure(NewState);
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  State = std::move(NewState);
   return {};
 }
 
@@ -234,13 +345,17 @@ Expected<void> MachineFrameInfo::freeze(std::uint64_t Size, Alignment Align) {
                           "static stack size must be aligned to the stack alignment");
   }
 
-  StaticStackSize = Size;
-  StackAlign = Align;
+  State.StackSize = Size;
+  State.MaxAlignment = Align;
   Frozen = true;
   return {};
 }
 
 Expected<void> MachineFrameInfo::verify() const {
+  auto StateResult = verifyStateStructure(State);
+  if (!StateResult)
+    return StateResult;
+
   for (std::size_t Position = 0; Position < Objects.size(); ++Position) {
     const StackObject &Object = Objects[Position];
     if (Object.index() != FrameIndex::fromValue(static_cast<std::uint32_t>(Position))) {
@@ -258,11 +373,17 @@ Expected<void> MachineFrameInfo::verify() const {
     }
   }
 
-  if (Frozen != StaticStackSize.has_value()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "frame frozen state and static stack size are inconsistent");
+  for (const std::optional<FrameIndex> Index : {State.StackProtector, State.FunctionContext}) {
+    if (Index && object(*Index) == nullptr) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "frame state references an unknown stack object");
+    }
   }
-  if (Frozen && *StaticStackSize % StackAlign.bytes() != 0) {
+  if (Frozen && !State.MaxAlignment) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "frozen frame is missing its maximum alignment");
+  }
+  if (Frozen && State.StackSize % State.MaxAlignment->bytes() != 0) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "frozen static stack size violates stack alignment");
   }

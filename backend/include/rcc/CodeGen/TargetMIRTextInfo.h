@@ -7,6 +7,8 @@
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/Register.h"
 #include "rcc/CodeGen/RegisterMask.h"
+#include "rcc/CodeGen/TargetConstant.h"
+#include "rcc/CodeGen/TargetFunctionState.h"
 #include "rcc/Support/Error.h"
 
 #include <cstdint>
@@ -23,6 +25,55 @@
 namespace rcc {
 
 class TargetRegisterInfo;
+
+enum class MIRTargetNodeKind : std::uint8_t {
+  Null,
+  Scalar,
+  Sequence,
+  Mapping,
+  Count,
+};
+
+struct MIRTargetMappingEntry;
+
+struct MIRTargetNode final {
+  MIRTargetNode();
+  MIRTargetNode(const MIRTargetNode &);
+  MIRTargetNode &operator=(const MIRTargetNode &);
+  MIRTargetNode(MIRTargetNode &&) noexcept;
+  MIRTargetNode &operator=(MIRTargetNode &&) noexcept;
+  ~MIRTargetNode();
+
+  MIRTargetNodeKind Kind = MIRTargetNodeKind::Null;
+  std::string Scalar;
+  std::vector<MIRTargetNode> Sequence;
+  std::vector<MIRTargetMappingEntry> Mapping;
+
+  [[nodiscard]] static MIRTargetNode null();
+  [[nodiscard]] static MIRTargetNode scalar(std::string Value);
+  [[nodiscard]] static MIRTargetNode sequence(std::vector<MIRTargetNode> Values);
+  [[nodiscard]] static MIRTargetNode mapping(std::vector<MIRTargetMappingEntry> Entries);
+
+  [[nodiscard]] const MIRTargetNode *mappingValue(std::string_view Key) const noexcept;
+  [[nodiscard]] Expected<void> verify() const;
+
+  friend bool operator==(const MIRTargetNode &Left, const MIRTargetNode &Right);
+};
+
+struct MIRTargetMappingEntry final {
+  std::string Key;
+  MIRTargetNode Value;
+
+  friend bool operator==(const MIRTargetMappingEntry &Left,
+                         const MIRTargetMappingEntry &Right) = default;
+};
+
+using MIRTargetFunctionStateParser =
+    Expected<TargetFunctionState> (*)(const MIRTargetNode &Node);
+using MIRTargetFunctionStatePrinter =
+    Expected<MIRTargetNode> (*)(const TargetFunctionState &State);
+using MIRTargetConstantParser = Expected<TargetConstant> (*)(std::string_view Text);
+using MIRTargetConstantPrinter = Expected<std::string> (*)(const TargetConstant &Constant);
 
 struct MIRRegisterMaskDesc final {
   std::string Name;
@@ -75,6 +126,10 @@ struct TargetMIRTextInfoDesc final {
       StackID::noAllocStack(),
   };
   std::optional<TargetFunctionStateTypeID> FunctionStateType;
+  MIRTargetFunctionStateParser ParseFunctionState = nullptr;
+  MIRTargetFunctionStatePrinter PrintFunctionState = nullptr;
+  MIRTargetConstantParser ParseTargetConstant = nullptr;
+  MIRTargetConstantPrinter PrintTargetConstant = nullptr;
 };
 
 class TargetMIRTextInfo final {
@@ -179,6 +234,14 @@ public:
   [[nodiscard]] std::optional<TargetFunctionStateTypeID> functionStateType() const noexcept {
     return Description.FunctionStateType;
   }
+
+  [[nodiscard]] Expected<TargetFunctionState>
+  parseFunctionState(const MIRTargetNode &Node) const;
+  [[nodiscard]] Expected<MIRTargetNode>
+  printFunctionState(const TargetFunctionState &State) const;
+  [[nodiscard]] Expected<TargetConstant> parseTargetConstant(std::string_view Text) const;
+  [[nodiscard]] Expected<std::string>
+  printTargetConstant(const TargetConstant &Constant) const;
 
 private:
   explicit TargetMIRTextInfo(TargetMIRTextInfoDesc Description)

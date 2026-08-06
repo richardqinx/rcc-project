@@ -33,10 +33,18 @@ MachineJumpTableInfo::verifyDescription(const MachineJumpTableDesc &Description)
     return makeUnexpected(ErrorCode::VerificationError,
                           "target jump table encoding and target encoding ID are inconsistent");
   }
-  if (Description.Encoding == JumpTableEntryEncoding::CompressedOffset &&
-      Description.EntrySize > 4) {
+  if ((Description.Encoding == JumpTableEntryEncoding::GPRelative32BlockAddress ||
+       Description.Encoding == JumpTableEntryEncoding::LabelDifference32 ||
+       Description.Encoding == JumpTableEntryEncoding::Custom32) &&
+      Description.EntrySize != 4) {
     return makeUnexpected(ErrorCode::VerificationError,
-                          "compressed jump table entries cannot exceed four bytes");
+                          "32-bit jump table encodings require four-byte entries");
+  }
+  if ((Description.Encoding == JumpTableEntryEncoding::GPRelative64BlockAddress ||
+       Description.Encoding == JumpTableEntryEncoding::LabelDifference64) &&
+      Description.EntrySize != 8) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "64-bit jump table encodings require eight-byte entries");
   }
 
   for (const MachineBasicBlock *Target : Description.Targets) {
@@ -63,6 +71,37 @@ Expected<JumpTableIndex> MachineJumpTableInfo::createTable(MachineJumpTableDesc 
   return Index;
 }
 
+Expected<JumpTableIndex> MachineJumpTableInfo::reserveTable() {
+  if (Frozen) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "frozen jump table info cannot reserve tables");
+  }
+  if (Tables.size() > std::numeric_limits<std::uint32_t>::max())
+    return makeUnexpected(ErrorCode::Unsupported, "jump table index space is exhausted");
+
+  const JumpTableIndex Index = JumpTableIndex::fromValue(static_cast<std::uint32_t>(Tables.size()));
+  Tables.push_back(MachineJumpTableEntry(Index));
+  return Index;
+}
+
+Expected<void>
+MachineJumpTableInfo::defineReservedTable(JumpTableIndex Index,
+                                          MachineJumpTableDesc Description) {
+  if (Frozen) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "frozen jump table info cannot define reserved tables");
+  }
+  if (Index.value() >= Tables.size() || !Tables[Index.value()].isPending()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "jump table index is not an unresolved reservation");
+  }
+  auto Verification = verifyDescription(Description);
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  Tables[Index.value()].Description.emplace<MachineJumpTableDesc>(std::move(Description));
+  return {};
+}
+
 Expected<MachineJumpTableEntry *> MachineJumpTableInfo::mutableTable(JumpTableIndex Index) {
   if (Frozen)
     return makeUnexpected(ErrorCode::InvalidArgument,
@@ -70,8 +109,10 @@ Expected<MachineJumpTableEntry *> MachineJumpTableInfo::mutableTable(JumpTableIn
   if (Index.value() >= Tables.size())
     return makeUnexpected(ErrorCode::InvalidArgument, "jump table index is out of range");
   MachineJumpTableEntry &Entry = Tables[Index.value()];
-  if (Entry.isTombstone())
-    return makeUnexpected(ErrorCode::InvalidArgument, "jump table index is a tombstone");
+  if (Entry.isTombstone() || Entry.isPending()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "jump table index has no defined description");
+  }
   return &Entry;
 }
 
@@ -130,6 +171,10 @@ Expected<void> MachineJumpTableInfo::verify() const {
                             "jump table index does not match its stable table position");
     }
     const MachineJumpTableDesc *Description = Entry.description();
+    if (Entry.isPending()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "jump table contains an unresolved reservation");
+    }
     if (Description == nullptr)
       continue;
     auto Verification = verifyDescription(*Description);

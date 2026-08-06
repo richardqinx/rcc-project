@@ -27,6 +27,10 @@ namespace {
 
 } // namespace
 
+MachineMetadataElement MachineMetadataElement::null() {
+  return MachineMetadataElement(NullValue{});
+}
+
 Expected<MachineMetadataElement>
 MachineMetadataElement::reference(MachineMetadataReference Reference) {
   if (!Reference.isValid()) {

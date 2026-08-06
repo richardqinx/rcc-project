@@ -128,8 +128,8 @@ struct PoolTargetConstant final {
 [[nodiscard]] rcc::MachineConstantPoolEntryDesc
 genericDescription(rcc::ConstantPoolMergeKind Merge) {
   rcc::MachineConstantPoolEntryDesc Description;
-  Description.Value =
-      rcc::GenericConstantData{"i32", {std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}}};
+  auto Integer = rcc::IntegerImmediate::fromUnsigned(32, 0x04030201U);
+  Description.Value = std::move(*rcc::GenericConstantData::integer(std::move(*Integer)));
   Description.Size = 4;
   Description.Align = *rcc::Alignment::create(4);
   Description.Merge = Merge;

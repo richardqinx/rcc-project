@@ -17,6 +17,7 @@ int testReferenceIndex() {
   const std::string Input = "; @commented = global i8 0\n"
                             "target datalayout = \"e-m:e-p:64:64\"\n"
                             "target triple = \"riscv64-unknown-linux-gnu\"\n"
+                            "%pair = type { i32, i32 }\n"
                             "@ordinary = global i32 0\n"
                             "@\"space\\20global\" = external global i8\n"
                             "declare void @declared()\n"
@@ -25,12 +26,12 @@ int testReferenceIndex() {
                             ") {\n"
                             "entry:\n"
                             "  %slot = alloca i32, align 4\n"
-                            "  %not_an_alloca = add i32 1, 2\n"
+                            "  %not_an_alloca = add i32 %argument, 2\n"
                             "  br label %\"exit\\20block\"\n"
                             "\"exit\\20block\":\n"
                             "  ret void\n"
                             "}\n"
-                            "!0 = !{}\n"
+                            "!0 = !DILocation(line: 1, scope: !1)\n"
                             "!llvm.module.flags = !{!0}\n";
 
   rcc::mir::EmbeddedIRIndexResult Result = rcc::mir::indexEmbeddedIR("embedded.ll", Input);
@@ -54,6 +55,9 @@ int testReferenceIndex() {
   if (Function->allocas().size() != 1 || Function->alloca("slot") == nullptr ||
       Function->alloca("not_an_alloca") != nullptr)
     return fail("Embedded IR indexing must distinguish named allocas from other local values");
+  if (Function->values().size() != 3 || Function->value("argument") == nullptr ||
+      Function->value("slot") == nullptr || Function->value("not_an_alloca") == nullptr)
+    return fail("Embedded IR indexing must retain arguments and instruction results");
 
   if (!Index->hasGlobalValue("ordinary") || !Index->hasGlobalValue("space global") ||
       !Index->hasGlobalValue("declared") || Index->hasGlobalValue("commented"))
@@ -61,6 +65,12 @@ int testReferenceIndex() {
   if (Index->metadata("0") == nullptr || Index->metadata("llvm.module.flags") == nullptr ||
       Index->metadataDefinitions().size() != 2)
     return fail("Embedded IR indexing must retain numeric and named metadata definitions");
+  if (Index->metadata("0")->DynamicType != "DILocation" ||
+      Index->metadata("llvm.module.flags")->DynamicType != "MDTuple")
+    return fail("Embedded IR indexing must classify metadata dynamic types");
+  if (Index->typeDefinitions().size() != 1 || Index->typeDefinition("pair") == nullptr ||
+      Index->typeDefinition("pair")->Definition != "{ i32, i32 }")
+    return fail("Embedded IR indexing must retain named type definitions");
   return 0;
 }
 

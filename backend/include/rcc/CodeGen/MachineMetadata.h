@@ -62,6 +62,11 @@ class MachineMetadataElement final {
 public:
   MachineMetadataElement() = default;
 
+  struct NullValue final {
+    friend constexpr bool operator==(NullValue Left, NullValue Right) noexcept = default;
+  };
+
+  [[nodiscard]] static MachineMetadataElement null();
   [[nodiscard]] static Expected<MachineMetadataElement>
   reference(MachineMetadataReference Reference);
   [[nodiscard]] static MachineMetadataElement string(std::string Value);
@@ -78,14 +83,19 @@ public:
     return std::get_if<std::string>(&Storage);
   }
 
+  [[nodiscard]] bool isNull() const noexcept {
+    return std::holds_alternative<NullValue>(Storage);
+  }
+
   friend bool operator==(const MachineMetadataElement &Left,
                          const MachineMetadataElement &Right) = default;
 
 private:
+  explicit MachineMetadataElement(NullValue Value) : Storage(Value) {}
   explicit MachineMetadataElement(MachineMetadataReference Reference) : Storage(Reference) {}
   explicit MachineMetadataElement(std::string Value) : Storage(std::move(Value)) {}
 
-  std::variant<std::monostate, MachineMetadataReference, std::string> Storage;
+  std::variant<std::monostate, NullValue, MachineMetadataReference, std::string> Storage;
 };
 
 struct MachineMetadataNode final {

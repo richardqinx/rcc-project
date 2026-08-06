@@ -12,6 +12,8 @@
 #include <limits>
 #include <memory>
 #include <span>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -94,6 +96,68 @@ Expected<IntegerImmediate> IntegerImmediate::fromSigned(std::uint32_t BitWidth,
   return create(BitWidth, Words);
 }
 
+Expected<IntegerImmediate> IntegerImmediate::parseDecimal(std::uint32_t BitWidth,
+                                                          std::string_view Text) {
+  if (BitWidth == 0 || BitWidth > MaxBitWidth) {
+    return makeUnexpected(ErrorCode::ParseError,
+                          "integer immediate bit width is outside the supported range");
+  }
+  const bool Negative = Text.starts_with('-');
+  if (Negative)
+    Text.remove_prefix(1);
+  if (Text.empty())
+    return makeUnexpected(ErrorCode::ParseError, "integer immediate has no decimal digits");
+
+  std::vector<std::uint64_t> Words(integerWordCount(BitWidth), 0);
+  for (const char Character : Text) {
+    if (Character < '0' || Character > '9') {
+      return makeUnexpected(ErrorCode::ParseError,
+                            "integer immediate contains a non-decimal digit");
+    }
+    std::uint64_t Carry = static_cast<unsigned>(Character - '0');
+    for (std::uint64_t &Word : Words) {
+      const unsigned __int128 Product = static_cast<unsigned __int128>(Word) * 10U + Carry;
+      Word = static_cast<std::uint64_t>(Product);
+      Carry = static_cast<std::uint64_t>(Product >> 64U);
+    }
+    if (Carry != 0 || (Words.back() & ~integerHighWordMask(BitWidth)) != 0) {
+      return makeUnexpected(ErrorCode::ParseError,
+                            "integer immediate does not fit its declared bit width");
+    }
+  }
+
+  if (Negative) {
+    if (std::ranges::all_of(Words, [](std::uint64_t Word) { return Word == 0; })) {
+      return makeUnexpected(ErrorCode::ParseError,
+                            "negative zero is not a canonical integer immediate");
+    }
+    const std::uint32_t SignBit = BitWidth - 1U;
+    const std::size_t SignWord = SignBit / 64U;
+    const std::uint64_t SignMask = std::uint64_t{1} << (SignBit % 64U);
+    bool Fits = Words[SignWord] <= SignMask;
+    for (std::size_t Index = SignWord + 1; Index < Words.size(); ++Index)
+      Fits = Fits && Words[Index] == 0;
+    if (Words[SignWord] == SignMask) {
+      for (std::size_t Index = 0; Index < SignWord; ++Index)
+        Fits = Fits && Words[Index] == 0;
+    }
+    if (!Fits) {
+      return makeUnexpected(ErrorCode::ParseError,
+                            "negative integer immediate does not fit its declared bit width");
+    }
+    for (std::uint64_t &Word : Words)
+      Word = ~Word;
+    std::uint64_t Carry = 1;
+    for (std::uint64_t &Word : Words) {
+      const std::uint64_t Previous = Word;
+      Word += Carry;
+      Carry = Carry != 0 && Word < Previous ? 1 : 0;
+    }
+    Words.back() &= integerHighWordMask(BitWidth);
+  }
+  return create(BitWidth, Words);
+}
+
 bool IntegerImmediate::isZero() const noexcept {
   return std::ranges::all_of(Words, [](std::uint64_t Word) { return Word == 0; });
 }
@@ -101,6 +165,25 @@ bool IntegerImmediate::isZero() const noexcept {
 bool IntegerImmediate::isNegative() const noexcept {
   const std::uint32_t SignBit = BitWidth - 1U;
   return (Words[SignBit / 64U] & (std::uint64_t{1} << (SignBit % 64U))) != 0;
+}
+
+std::string IntegerImmediate::toUnsignedDecimal() const {
+  if (isZero())
+    return "0";
+  std::vector<std::uint64_t> Remaining = Words;
+  std::string Digits;
+  while (!std::ranges::all_of(Remaining,
+                              [](std::uint64_t Word) { return Word == 0; })) {
+    unsigned __int128 Remainder = 0;
+    for (auto Iterator = Remaining.rbegin(); Iterator != Remaining.rend(); ++Iterator) {
+      const unsigned __int128 Dividend = (Remainder << 64U) | *Iterator;
+      *Iterator = static_cast<std::uint64_t>(Dividend / 10U);
+      Remainder = Dividend % 10U;
+    }
+    Digits.push_back(static_cast<char>('0' + static_cast<unsigned>(Remainder)));
+  }
+  std::ranges::reverse(Digits);
+  return Digits;
 }
 
 Expected<void> IntegerImmediate::verify() const {

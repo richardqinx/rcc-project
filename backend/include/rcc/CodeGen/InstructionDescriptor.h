@@ -97,6 +97,7 @@ enum class InstructionFlag : std::uint8_t {
   Convergent,
   UnmodeledSideEffects,
   Phi,
+  FakeUse,
   Generic,
   TerminalEmission,
   Count,
