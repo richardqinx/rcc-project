@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/MachineOperand.h"
 
+#include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -172,8 +173,7 @@ std::string IntegerImmediate::toUnsignedDecimal() const {
     return "0";
   std::vector<std::uint64_t> Remaining = Words;
   std::string Digits;
-  while (!std::ranges::all_of(Remaining,
-                              [](std::uint64_t Word) { return Word == 0; })) {
+  while (!std::ranges::all_of(Remaining, [](std::uint64_t Word) { return Word == 0; })) {
     unsigned __int128 Remainder = 0;
     for (auto Iterator = Remaining.rbegin(); Iterator != Remaining.rend(); ++Iterator) {
       const unsigned __int128 Dividend = (Remainder << 64U) | *Iterator;
@@ -534,6 +534,17 @@ Expected<void> MachineOperand::setSubReg(SubRegIndex SubReg) {
                           "subregister index requires a register operand");
   }
   RegSubReg = SubReg;
+  return {};
+}
+
+Expected<void> MachineOperand::setBasicBlock(MachineBasicBlock &Block) {
+  if (OperandKind != Kind::BasicBlock)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "setBasicBlock requires a basic-block operand");
+  if (Parent != nullptr && &Block.function() != &Parent->function())
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "basic-block operand references another machine function");
+  std::get<BasicBlockOperand>(Storage).Block = &Block;
   return {};
 }
 

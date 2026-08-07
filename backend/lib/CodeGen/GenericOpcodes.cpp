@@ -102,7 +102,7 @@ using GO = GenericOpcode;
   OperandDescriptor Result;
   Result.Kinds = {MachineOperand::Kind::Register};
   Result.RegisterRole = Role;
-  Result.TypeConstraint = OperandTypeConstraint{std::move(Kinds), Group};
+  Result.TypeConstraint = OperandTypeConstraint{Kinds, Group};
   return Result;
 }
 
@@ -146,6 +146,11 @@ using GO = GenericOpcode;
   return Descriptor;
 }
 
+[[nodiscard]] OperandDescriptor registeredTargetFlags(OperandDescriptor Descriptor) {
+  Descriptor.AllowAnyTargetFlags = true;
+  return Descriptor;
+}
+
 class DescriptorRegistry final {
 public:
   DescriptorRegistry() {
@@ -158,7 +163,7 @@ public:
 #undef RCC_CORE_OPCODE
   }
 
-  void configure(std::initializer_list<GO> Opcodes, std::vector<OperandDescriptor> Operands,
+  void configure(std::initializer_list<GO> Opcodes, const std::vector<OperandDescriptor> &Operands,
                  std::size_t NumDefs, std::initializer_list<InstructionFlag> Flags = {},
                  bool Variadic = false, std::size_t MinimumRepetitions = 0,
                  bool RequiresMemoryOperands = false, PseudoOwner Owner = PseudoOwner::None,
@@ -322,9 +327,10 @@ private:
     auto Info = RegInfo.virtualRegisterInfo(*Reg);
     if (!Info)
       return std::unexpected(Info.error());
-    if (!Info->get().Type)
+    const std::optional<LLT> &Type = Info->get().Type;
+    if (!Type)
       return semanticError("generic virtual register is missing its LLT");
-    Types[Index] = *Info->get().Type;
+    Types[Index] = Type.value();
   }
 
   const auto TypeAt = [&Types](std::size_t Index) -> LLT { return *Types[Index]; };
@@ -773,7 +779,7 @@ private:
   }
   case GO::G_INTRINSIC_FPTRUNC_ROUND: {
     const auto Rounding = plainImmediate(Operands[2]);
-    if (!Rounding || !((*Rounding >= 0 && *Rounding <= 4) || *Rounding == 7))
+    if (!Rounding || *Rounding < 0 || (*Rounding > 4 && *Rounding != 7))
       return semanticError("floating truncation rounding mode is invalid");
     return VerifyWidthChange(false);
   }
@@ -980,14 +986,17 @@ private:
 void configureCoreOpcodes(DescriptorRegistry &Registry) {
   const auto RegDef = untypedRegister(RegisterOperandRole::Def);
   const auto RegUse = untypedRegister(RegisterOperandRole::Use);
+  const auto TransferDef = registeredTargetFlags(RegDef);
+  const auto TransferUse = registeredTargetFlags(RegUse);
   const auto Any = anyOperand();
   const auto VariadicAny = repeated(Any);
   const auto VariadicUse = repeated(RegUse);
 
-  Registry.configure({GO::PHI},
-                     {RegDef, VariadicUse, repeated(kind(MachineOperand::Kind::BasicBlock))}, 1,
-                     {InstructionFlag::Phi}, true, 1, false, PseudoOwner::PhiElimination,
-                     PipelineStage::SSAEliminated);
+  Registry.configure(
+      {GO::PHI},
+      {TransferDef, repeated(TransferUse), repeated(kind(MachineOperand::Kind::BasicBlock))}, 1,
+      {InstructionFlag::Phi}, true, 1, false, PseudoOwner::PhiElimination,
+      PipelineStage::SSAEliminated);
   Registry.configure({GO::INLINEASM}, {VariadicAny}, 0,
                      {InstructionFlag::ProducesCode, InstructionFlag::TerminalEmission,
                       InstructionFlag::UnmodeledSideEffects},
@@ -1004,10 +1013,11 @@ void configureCoreOpcodes(DescriptorRegistry &Registry) {
   Registry.configure({GO::KILL}, {VariadicUse}, 0, {InstructionFlag::Meta}, true);
   Registry.configure({GO::EXTRACT_SUBREG}, {RegDef, RegUse, immediate()}, 1, {}, false, 0, false,
                      PseudoOwner::PostRAExpansion, PipelineStage::PostRAFinalized);
-  Registry.configure({GO::INSERT_SUBREG}, {RegDef, RegUse, RegUse, immediate()}, 1, {}, false, 0,
-                     false, PseudoOwner::TwoAddressRewrite, PipelineStage::TiedOpsRewritten);
+  Registry.configure({GO::INSERT_SUBREG}, {TransferDef, TransferUse, TransferUse, immediate()}, 1,
+                     {}, false, 0, false, PseudoOwner::TwoAddressRewrite,
+                     PipelineStage::TiedOpsRewritten);
   Registry.tie(GO::INSERT_SUBREG, 0, 1);
-  Registry.configure({GO::IMPLICIT_DEF}, {RegDef}, 1,
+  Registry.configure({GO::IMPLICIT_DEF}, {TransferDef}, 1,
                      {InstructionFlag::Meta, InstructionFlag::Rematerializable});
   Registry.configure({GO::INIT_UNDEF}, {RegDef}, 1, {}, false, 0, false,
                      PseudoOwner::RegisterAllocator, PipelineStage::RegisterAllocated);
@@ -1019,10 +1029,10 @@ void configureCoreOpcodes(DescriptorRegistry &Registry) {
                      {VariadicAny}, 0, {InstructionFlag::Meta}, true);
   Registry.configure({GO::DBG_LABEL}, {kind(MachineOperand::Kind::Metadata)}, 0,
                      {InstructionFlag::Meta});
-  Registry.configure({GO::REG_SEQUENCE}, {RegDef, repeated(RegUse), repeated(immediate())}, 1, {},
-                     true, 1, false, PseudoOwner::TwoAddressRewrite,
-                     PipelineStage::TiedOpsRewritten);
-  Registry.configure({GO::COPY}, {RegDef, RegUse}, 1, {}, false, 0, false,
+  Registry.configure({GO::REG_SEQUENCE},
+                     {TransferDef, repeated(TransferUse), repeated(immediate())}, 1, {}, true, 1,
+                     false, PseudoOwner::TwoAddressRewrite, PipelineStage::TiedOpsRewritten);
+  Registry.configure({GO::COPY}, {TransferDef, TransferUse}, 1, {}, false, 0, false,
                      PseudoOwner::PostRAExpansion, PipelineStage::PostRAFinalized);
   Registry.configure({GO::COPY_LANEMASK}, {RegDef, RegUse, kind(MachineOperand::Kind::LaneMask)}, 1,
                      {}, false, 0, false, PseudoOwner::PostRAExpansion,
@@ -1170,10 +1180,13 @@ void configureGenericOpcodes(DescriptorRegistry &Registry) {
                    InstructionFlag::Commutable);
 
   Registry.configure({GO::G_SDIVREM, GO::G_UDIVREM}, {IntDef0, IntDef0, IntUse0, IntUse0}, 2);
-  Registry.configure({GO::G_IMPLICIT_DEF}, {AnyDef0}, 1);
-  Registry.configure({GO::G_PHI},
-                     {AnyDef0, repeated(AnyUse0), repeated(kind(MachineOperand::Kind::BasicBlock))},
-                     1, {InstructionFlag::Phi}, true, 1);
+  const auto TransferDef0 = registeredTargetFlags(AnyDef0);
+  const auto TransferUse0 = registeredTargetFlags(AnyUse0);
+  Registry.configure({GO::G_IMPLICIT_DEF}, {TransferDef0}, 1);
+  Registry.configure(
+      {GO::G_PHI},
+      {TransferDef0, repeated(TransferUse0), repeated(kind(MachineOperand::Kind::BasicBlock))}, 1,
+      {InstructionFlag::Phi}, true, 1);
   Registry.configure({GO::G_FRAME_INDEX},
                      {ScalarPointerDef0, kind(MachineOperand::Kind::FrameIndex)}, 1);
   Registry.configure({GO::G_GLOBAL_VALUE},

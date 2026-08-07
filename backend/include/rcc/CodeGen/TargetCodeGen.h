@@ -7,12 +7,14 @@
 #include "rcc/CodeGen/Register.h"
 #include "rcc/Support/Error.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
 namespace rcc {
 
 class MachineFunction;
+class MachineBasicBlock;
 class MachineInstr;
 class MachineRegisterInfo;
 class TargetDescription;
@@ -86,6 +88,38 @@ public:
   [[nodiscard]] virtual Expected<void> canSelect(const MachineInstr &, const MachineFunction &,
                                                  const TargetDescription &) const {
     return {};
+  }
+};
+
+class TargetSSAInfo {
+public:
+  virtual ~TargetSSAInfo() = default;
+
+  [[nodiscard]] virtual Expected<bool> isFallthroughEdge(const MachineBasicBlock &From,
+                                                         const MachineBasicBlock &To,
+                                                         const MachineFunction &Function,
+                                                         const TargetDescription &Target) const = 0;
+
+  [[nodiscard]] virtual Expected<bool>
+  rewriteBranchTarget(MachineBasicBlock &Block, MachineBasicBlock &OldTarget,
+                      MachineBasicBlock &NewTarget, MachineFunction &Function,
+                      const TargetDescription &Target) const = 0;
+
+  [[nodiscard]] virtual Expected<void>
+  insertUnconditionalBranch(MachineBasicBlock &Block, MachineBasicBlock &Target,
+                            MachineFunction &Function,
+                            const TargetDescription &TargetDescription) const = 0;
+
+  [[nodiscard]] virtual Expected<void> validateCopy(Register Destination,
+                                                    SubRegIndex DestinationSubReg, Register Source,
+                                                    SubRegIndex SourceSubReg,
+                                                    const MachineFunction &Function,
+                                                    const TargetDescription &Target) const = 0;
+
+  [[nodiscard]] virtual Expected<bool> tryConvertToThreeAddress(MachineInstr &, std::size_t,
+                                                                std::size_t, MachineFunction &,
+                                                                const TargetDescription &) const {
+    return false;
   }
 };
 

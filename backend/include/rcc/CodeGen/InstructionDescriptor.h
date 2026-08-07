@@ -226,6 +226,7 @@ struct OperandDescriptor final {
   bool Optional = false;
   bool VariadicGroup = false;
   bool AllowSubReg = false;
+  bool AllowAnyTargetFlags = false;
   std::optional<NamedOperandID> Name;
   std::optional<TargetOperandTypeID> TargetOperandType;
   std::uint32_t AllowedTargetFlags = 0;

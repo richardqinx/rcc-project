@@ -29,6 +29,7 @@ set(
   MachinePass.cpp
   MachinePipelinePasses.cpp
   MachineRegisterInfo.cpp
+  MachineSSAExit.cpp
   MachineVerifier.cpp
   MachineFunctionProperties.cpp
   MachineFunctionRecords.cpp
@@ -71,6 +72,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePipelinePasses.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetCodeGen.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineSSAExit.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineVerifier.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionProperties.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionRecords.h"
@@ -141,6 +143,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePasses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionRecords.cpp"
@@ -182,6 +185,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePasses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionRecords.cpp"

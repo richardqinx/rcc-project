@@ -10,6 +10,7 @@ namespace rcc::riscv {
 [[nodiscard]] const TargetLegalizerInfo &legalizerInfo() noexcept;
 [[nodiscard]] const TargetRegisterBankInfo &registerBankInfo() noexcept;
 [[nodiscard]] const TargetInstructionSelector &instructionSelector() noexcept;
+[[nodiscard]] const TargetSSAInfo &ssaInfo() noexcept;
 
 } // namespace rcc::riscv
 

@@ -58,7 +58,13 @@ Expected<TargetDescription> TargetDescription::create(InstructionSet Instruction
 
   for (const InstructionDescriptor &Instruction : Instructions.descriptors()) {
     for (const OperandDescriptor &Operand : Instruction.Operands) {
-      if ((Operand.AllowedTargetFlags & ~MIRText->serializableOperandFlagMask()) != 0) {
+      if (Operand.AllowAnyTargetFlags && Operand.AllowedTargetFlags != 0) {
+        return makeUnexpected(
+            ErrorCode::InvalidArgument,
+            "instruction operand cannot combine unrestricted and explicit target flags");
+      }
+      if (!Operand.AllowAnyTargetFlags &&
+          (Operand.AllowedTargetFlags & ~MIRText->serializableOperandFlagMask()) != 0) {
         return makeUnexpected(
             ErrorCode::InvalidArgument,
             "instruction operand allows a target flag outside the MIR text schema");

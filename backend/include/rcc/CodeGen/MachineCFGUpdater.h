@@ -10,6 +10,7 @@ namespace rcc {
 
 class MachineBasicBlock;
 class MachineFunction;
+class MachineInstr;
 
 class MachineCFGUpdater final {
 public:
@@ -22,11 +23,16 @@ public:
   [[nodiscard]] Expected<void> replaceSuccessor(MachineBasicBlock &From,
                                                 MachineBasicBlock &OldTarget,
                                                 MachineBasicBlock &NewTarget);
+  [[nodiscard]] Expected<void> splitEdge(MachineBasicBlock &From, MachineBasicBlock &To,
+                                         MachineBasicBlock &EdgeBlock);
   [[nodiscard]] Expected<void> updateBranchProbability(MachineBasicBlock &From,
                                                        MachineBasicBlock &To,
                                                        BranchProbability Probability);
   [[nodiscard]] Expected<void> transferSuccessors(MachineBasicBlock &From, MachineBasicBlock &To);
   [[nodiscard]] Expected<void> disconnectBlock(MachineBasicBlock &Block);
+  [[nodiscard]] Expected<MachineBasicBlock *> splitBlock(MachineBasicBlock &Block,
+                                                         MachineInstr &SplitBefore);
+  [[nodiscard]] Expected<void> deleteBlock(MachineBasicBlock &Block);
 
 private:
   [[nodiscard]] Expected<void> verifyOwnership(const MachineBasicBlock &Block) const;

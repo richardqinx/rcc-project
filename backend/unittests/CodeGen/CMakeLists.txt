@@ -21,6 +21,7 @@ set(
   MachineOperandTest.cpp
   MachinePassTest.cpp
   MachinePipelinePassesTest.cpp
+  MachineSSAExitTest.cpp
   MachineVerifierTest.cpp
   MachineVerifierTargetTest.cpp
   MachineValueTypesTest.cpp
@@ -273,6 +274,14 @@ target_link_libraries(
 
 add_test(NAME RCCBackend.CodeGen.MachineAnalyses COMMAND RCCBackendCodeGenMachineAnalysesTests)
 
+add_executable(RCCBackendCodeGenMachineSSAExitTests MachineSSAExitTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineSSAExitTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineSSAExitTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(NAME RCCBackend.CodeGen.MachineSSAExit COMMAND RCCBackendCodeGenMachineSSAExitTests)
+
 add_executable(RCCBackendCodeGenTargetConstantTests TargetConstantTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenTargetConstantTests)
 target_link_libraries(RCCBackendCodeGenTargetConstantTests PRIVATE RCCBackend::CodeGen)
@@ -350,6 +359,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePassesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
@@ -379,6 +389,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePassesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"

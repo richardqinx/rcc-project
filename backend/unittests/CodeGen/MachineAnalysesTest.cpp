@@ -458,6 +458,108 @@ void testCFGUpdaterPHIs(TestContext &Context, const rcc::TargetDescription &Targ
                  "CFG block deletion must detach a disconnected block cleanly");
 }
 
+void testCFGUpdaterFailureAtomicity(TestContext &Context, const rcc::TargetDescription &Target) {
+  auto SplitFunction =
+      rcc::MachineFunction::create("cfg_split_atomic", rcc::MachineFunctionStableID::fromValue(5));
+  if (!SplitFunction) {
+    Context.expect(false, "CFG split atomicity function creation must succeed");
+    return;
+  }
+  auto Source = appendBlock(**SplitFunction);
+  auto Merge = appendBlock(**SplitFunction);
+  if (!Source || !Merge)
+    return;
+  auto SplitUpdater = (*SplitFunction)->cfgUpdater();
+  if (!SplitUpdater.addSuccessor(**Source, **Merge, rcc::BranchProbability::one()))
+    return;
+
+  auto I64 = rcc::LLT::makeInteger(64);
+  auto Destination = I64 ? (*SplitFunction)->registerInfo().createVirtualRegister(*I64)
+                         : rcc::Expected<rcc::Register>{std::unexpected(I64.error())};
+  auto Value = I64 ? (*SplitFunction)->registerInfo().createVirtualRegister(*I64)
+                   : rcc::Expected<rcc::Register>{std::unexpected(I64.error())};
+  if (!Destination || !Value)
+    return;
+
+  rcc::MachineIRBuilder Builder(**SplitFunction, Target);
+  if (!Builder.setInsertPoint(**Source))
+    return;
+  auto Branch = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_BR));
+  auto BranchInstruction =
+      Branch && Branch->addBasicBlock(**Merge)
+          ? Branch->build()
+          : rcc::Expected<rcc::MachineInstr *>{rcc::makeUnexpected(
+                rcc::ErrorCode::InternalError, "failed to build CFG split branch")};
+  if (!BranchInstruction || !Builder.setInsertPoint(**Merge))
+    return;
+  auto Phi = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_PHI));
+  auto PhiInstruction =
+      Phi && Phi->addDef(*Destination) && Phi->addUse(*Value) && Phi->addBasicBlock(**Source)
+          ? Phi->build()
+          : rcc::Expected<rcc::MachineInstr *>{rcc::makeUnexpected(
+                rcc::ErrorCode::InternalError, "failed to build CFG split PHI")};
+  if (!PhiInstruction || !(*PhiInstruction)->eraseOperand(2))
+    return;
+
+  const std::size_t LinkedBlocksBefore = (*SplitFunction)->blockCount();
+  const std::size_t AllocatedBlocksBefore = (*SplitFunction)->allBlocks().size();
+  auto FailedSplit = SplitUpdater.splitBlock(**Source, **BranchInstruction);
+  Context.expect(
+      !FailedSplit && (*SplitFunction)->blockCount() == LinkedBlocksBefore &&
+          (*SplitFunction)->allBlocks().size() == AllocatedBlocksBefore &&
+          (*BranchInstruction)->parent() == *Source && (*Source)->successors().size() == 1 &&
+          (*Source)->successors().front().Block == *Merge && (*Merge)->predecessors().size() == 1 &&
+          (*Merge)->predecessors().front() == *Source,
+      "failed block split must not mutate layout, instructions, or CFG edges");
+
+  auto FailedDelete = SplitUpdater.deleteBlock(**Source);
+  Context.expect(!FailedDelete && (*Source)->isLinked() &&
+                     (*SplitFunction)->blockCount() == LinkedBlocksBefore &&
+                     (*Source)->successors().size() == 1 && (*Merge)->predecessors().size() == 1,
+                 "failed block deletion must not partially disconnect CFG edges");
+
+  auto TransferFunction = rcc::MachineFunction::create("cfg_transfer_atomic",
+                                                       rcc::MachineFunctionStableID::fromValue(6));
+  if (!TransferFunction)
+    return;
+  auto From = appendBlock(**TransferFunction);
+  auto To = appendBlock(**TransferFunction);
+  auto Successor = appendBlock(**TransferFunction);
+  if (!From || !To || !Successor)
+    return;
+  auto TransferUpdater = (*TransferFunction)->cfgUpdater();
+  if (!TransferUpdater.addSuccessor(**From, **Successor, rcc::BranchProbability::one()) ||
+      !TransferUpdater.addSuccessor(**To, **Successor, rcc::BranchProbability::one())) {
+    return;
+  }
+  auto TransferDestination = I64 ? (*TransferFunction)->registerInfo().createVirtualRegister(*I64)
+                                 : rcc::Expected<rcc::Register>{std::unexpected(I64.error())};
+  auto TransferValue = I64 ? (*TransferFunction)->registerInfo().createVirtualRegister(*I64)
+                           : rcc::Expected<rcc::Register>{std::unexpected(I64.error())};
+  if (!TransferDestination || !TransferValue)
+    return;
+  rcc::MachineIRBuilder TransferBuilder(**TransferFunction, Target);
+  if (!TransferBuilder.setInsertPoint(**Successor))
+    return;
+  auto TransferPhi = TransferBuilder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_PHI));
+  auto TransferPhiInstruction =
+      TransferPhi && TransferPhi->addDef(*TransferDestination) &&
+              TransferPhi->addUse(*TransferValue) && TransferPhi->addBasicBlock(**From)
+          ? TransferPhi->build()
+          : rcc::Expected<rcc::MachineInstr *>{rcc::makeUnexpected(
+                rcc::ErrorCode::InternalError, "failed to build CFG transfer PHI")};
+  if (!TransferPhiInstruction)
+    return;
+
+  auto FailedTransfer = TransferUpdater.transferSuccessors(**From, **To);
+  Context.expect(
+      !FailedTransfer && (*From)->successors().size() == 1 && (*To)->successors().size() == 1 &&
+          (*Successor)->predecessors().size() == 2 &&
+          (*TransferPhiInstruction)->operandCount() == 3 &&
+          (*TransferPhiInstruction)->operandAt(2)->getIf<rcc::BasicBlockOperand>()->Block == *From,
+      "failed successor transfer must preserve both CFG edges and PHI operands");
+}
+
 } // namespace
 
 int main() {
@@ -472,6 +574,7 @@ int main() {
   testAliasAnalysis(Context);
   testMemoryDependence(Context, *Target);
   testCFGUpdaterPHIs(Context, *Target);
+  testCFGUpdaterFailureAtomicity(Context, *Target);
   testAtomicStandardRegistration(Context);
   return Context.result();
 }

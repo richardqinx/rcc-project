@@ -420,11 +420,12 @@ Expected<void> InstructionSet::validateExplicitOperands(const InstructionDescrip
     auto Info = RegInfo.virtualRegisterInfo(*Reg);
     if (!Info)
       return std::unexpected(Info.error());
-    if (!Info->get().Type) {
+    const std::optional<LLT> &RegisterType = Info->get().Type;
+    if (!RegisterType) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "typed instruction operand virtual register has no LLT");
     }
-    const LLT Type = *Info->get().Type;
+    const LLT Type = RegisterType.value();
     if (!OperandDesc.TypeConstraint->Kinds.contains(Type.kind())) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "instruction operand LLT kind is not permitted by its descriptor");
@@ -587,7 +588,8 @@ Expected<void> InstructionSet::validateOperand(const OperandDescriptor &Descript
     return makeUnexpected(ErrorCode::VerificationError,
                           "instruction operand kind does not match its descriptor");
   }
-  if ((Operand.targetFlags() & ~Descriptor.AllowedTargetFlags) != 0) {
+  if (!Descriptor.AllowAnyTargetFlags &&
+      (Operand.targetFlags() & ~Descriptor.AllowedTargetFlags) != 0) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "instruction operand uses unregistered target flags");
   }

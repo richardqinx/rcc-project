@@ -102,7 +102,15 @@ private:
 
   auto Phi = instructionDescriptor(PhiOpcode, "TEST_PHI");
   Phi.Operands.push_back(registerDescriptor(rcc::RegisterOperandRole::Def));
+  auto PhiValue = registerDescriptor(rcc::RegisterOperandRole::Use);
+  PhiValue.VariadicGroup = true;
+  Phi.Operands.push_back(PhiValue);
+  rcc::OperandDescriptor PhiBlock;
+  PhiBlock.Kinds = {rcc::MachineOperand::Kind::BasicBlock};
+  PhiBlock.VariadicGroup = true;
+  Phi.Operands.push_back(PhiBlock);
   Phi.NumExplicitDefs = 1;
+  Phi.Variadic = true;
   Phi.Flags.set(rcc::InstructionFlag::Pseudo);
   Phi.Flags.set(rcc::InstructionFlag::Phi);
   Phi.Owner = rcc::PseudoOwner::PhiElimination;
@@ -302,6 +310,103 @@ void testReachableStructuralFailures(TestContext &Context) {
   }
 }
 
+enum class PhiTestShape : std::uint8_t {
+  Valid,
+  MissingPredecessor,
+  DuplicatePredecessor,
+  NonPredecessor,
+  AfterInstruction,
+};
+
+[[nodiscard]] std::unique_ptr<rcc::MachineFunction>
+createPhiTestFunction(TestContext &Context, const rcc::TargetDescription &Target, std::string Name,
+                      std::uint64_t ID, PhiTestShape Shape) {
+  auto Function = createFunction(Context, std::move(Name), ID);
+  if (!Function)
+    return nullptr;
+  rcc::MachineBasicBlock *Left = createBlock(Context, *Function);
+  rcc::MachineBasicBlock *Right = createBlock(Context, *Function);
+  rcc::MachineBasicBlock *Merge = createBlock(Context, *Function);
+  rcc::MachineBasicBlock *Other = createBlock(Context, *Function);
+  if (Left == nullptr || Right == nullptr || Merge == nullptr || Other == nullptr)
+    return nullptr;
+
+  auto CFG = Function->cfgUpdater();
+  if (!CFG.addSuccessor(*Left, *Merge, rcc::BranchProbability::one()) ||
+      !CFG.addSuccessor(*Right, *Merge, rcc::BranchProbability::one())) {
+    Context.expect(false, "PHI verifier test CFG must be constructed");
+    return nullptr;
+  }
+
+  auto Type = rcc::LLT::makeInteger(64);
+  auto Destination = Type ? Function->registerInfo().createVirtualRegister(*Type)
+                          : rcc::Expected<rcc::Register>{std::unexpected(Type.error())};
+  auto LeftValue = Type ? Function->registerInfo().createVirtualRegister(*Type)
+                        : rcc::Expected<rcc::Register>{std::unexpected(Type.error())};
+  auto RightValue = Type ? Function->registerInfo().createVirtualRegister(*Type)
+                         : rcc::Expected<rcc::Register>{std::unexpected(Type.error())};
+  if (!Destination || !LeftValue || !RightValue) {
+    Context.expect(false, "PHI verifier test registers must be created");
+    return nullptr;
+  }
+
+  rcc::MachineIRBuilder Builder(*Function, Target);
+  if (!Builder.setInsertPoint(*Merge)) {
+    Context.expect(false, "PHI verifier insertion point must be valid");
+    return nullptr;
+  }
+  if (Shape == PhiTestShape::AfterInstruction &&
+      buildNoOperand(Context, Builder, NopOpcode) == nullptr)
+    return nullptr;
+
+  auto Phi = Builder.buildInstr(rcc::Opcode::fromValue(PhiOpcode));
+  if (!Phi || !Phi->addDef(*Destination) || !Phi->addUse(*LeftValue) ||
+      !Phi->addBasicBlock(*Left)) {
+    Context.expect(false, "PHI verifier instruction prefix must build");
+    return nullptr;
+  }
+  if (Shape == PhiTestShape::DuplicatePredecessor) {
+    if (!Phi->addUse(*RightValue) || !Phi->addBasicBlock(*Left))
+      return nullptr;
+  } else if (Shape == PhiTestShape::NonPredecessor) {
+    if (!Phi->addUse(*RightValue) || !Phi->addBasicBlock(*Other))
+      return nullptr;
+  } else if (Shape != PhiTestShape::MissingPredecessor) {
+    if (!Phi->addUse(*RightValue) || !Phi->addBasicBlock(*Right))
+      return nullptr;
+  }
+  if (!Phi->build()) {
+    Context.expect(false, "PHI verifier test instruction must publish");
+    return nullptr;
+  }
+  return Function;
+}
+
+void testPHIStructure(TestContext &Context) {
+  auto Target = createTarget();
+  if (!Target)
+    return;
+  auto Valid = createPhiTestFunction(Context, *Target, "valid_phi", 60, PhiTestShape::Valid);
+  auto Missing =
+      createPhiTestFunction(Context, *Target, "missing_phi", 61, PhiTestShape::MissingPredecessor);
+  auto Duplicate = createPhiTestFunction(Context, *Target, "duplicate_phi", 62,
+                                         PhiTestShape::DuplicatePredecessor);
+  auto NonPredecessor =
+      createPhiTestFunction(Context, *Target, "foreign_phi", 63, PhiTestShape::NonPredecessor);
+  auto AfterInstruction =
+      createPhiTestFunction(Context, *Target, "late_phi", 64, PhiTestShape::AfterInstruction);
+  Context.expect(Valid && rcc::MachineVerifier::verify(*Valid, *Target),
+                 "PHI with one incoming value per predecessor must verify");
+  Context.expect(Missing && !rcc::MachineVerifier::verify(*Missing, *Target),
+                 "PHI missing a predecessor must fail verification");
+  Context.expect(Duplicate && !rcc::MachineVerifier::verify(*Duplicate, *Target),
+                 "PHI with duplicate incoming blocks must fail verification");
+  Context.expect(NonPredecessor && !rcc::MachineVerifier::verify(*NonPredecessor, *Target),
+                 "PHI naming a non-predecessor must fail verification");
+  Context.expect(AfterInstruction && !rcc::MachineVerifier::verify(*AfterInstruction, *Target),
+                 "PHI after a code instruction must fail verification");
+}
+
 void testPropertyFailures(TestContext &Context) {
   auto Target = createTarget();
   if (!Target)
@@ -428,7 +533,8 @@ void testSelectedStateAndPseudoDeadline(TestContext &Context) {
                    "tied-state instruction must build");
     for (const rcc::MachineFunctionProperty Property :
          {rcc::MachineFunctionProperty::Legalized, rcc::MachineFunctionProperty::RegBankSelected,
-          rcc::MachineFunctionProperty::Selected, rcc::MachineFunctionProperty::TiedOpsRewritten}) {
+          rcc::MachineFunctionProperty::Selected, rcc::MachineFunctionProperty::NoPHIs,
+          rcc::MachineFunctionProperty::TiedOpsRewritten}) {
       Tied->properties().set(Property);
     }
     Context.expect(!rcc::MachineVerifier::verify(*Tied, *Target),
@@ -469,6 +575,20 @@ void testSelectedStateAndPseudoDeadline(TestContext &Context) {
     Dependency->properties().set(rcc::MachineFunctionProperty::FrameFinalized);
     Context.expect(!rcc::MachineVerifier::verify(*Dependency, *Target),
                    "FrameFinalized must require NoVRegs and NoFrameIndices");
+  }
+
+  auto SSAExitDependency = createFunction(Context, "ssa_exit_property_dependency", 65);
+  if (SSAExitDependency) {
+    for (const rcc::MachineFunctionProperty Property :
+         {rcc::MachineFunctionProperty::Legalized, rcc::MachineFunctionProperty::RegBankSelected,
+          rcc::MachineFunctionProperty::Selected, rcc::MachineFunctionProperty::TiedOpsRewritten}) {
+      SSAExitDependency->properties().set(Property);
+    }
+    Context.expect(!rcc::MachineVerifier::verify(*SSAExitDependency, *Target),
+                   "TiedOpsRewritten must require NoPHIs");
+    SSAExitDependency->properties().set(rcc::MachineFunctionProperty::NoPHIs);
+    Context.expect(rcc::MachineVerifier::verify(*SSAExitDependency, *Target).has_value(),
+                   "TiedOpsRewritten dependency must be satisfied by NoPHIs");
   }
 }
 
@@ -523,8 +643,7 @@ void testTableReferenceFailures(TestContext &Context) {
 
   rcc::MachineConstantPoolEntryDesc ConstantDescription;
   auto Integer = rcc::IntegerImmediate::fromUnsigned(32, 0x01010101U);
-  ConstantDescription.Value =
-      std::move(*rcc::GenericConstantData::integer(std::move(*Integer)));
+  ConstantDescription.Value = std::move(*rcc::GenericConstantData::integer(std::move(*Integer)));
   ConstantDescription.Size = 4;
   ConstantDescription.Align = *rcc::Alignment::create(4);
   auto ConstantIndex = ConstantFunction->constantPool().addEntry(std::move(ConstantDescription));
@@ -609,6 +728,7 @@ int main() {
   TestContext Context;
   testValidFunctionAndModes(Context);
   testReachableStructuralFailures(Context);
+  testPHIStructure(Context);
   testPropertyFailures(Context);
   testSelectedStateAndPseudoDeadline(Context);
   testFrameStateFailures(Context);

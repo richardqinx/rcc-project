@@ -72,6 +72,9 @@ public:
                       std::span<const MachineMemOperand *const> MemOperands) const;
   [[nodiscard]] Expected<void> validateInstruction(const MachineInstr &Instruction,
                                                    const MachineRegisterInfo &RegInfo) const;
+  [[nodiscard]] Expected<void> validateTieCompatibility(const MachineOperand &Def,
+                                                        const MachineOperand &Use,
+                                                        const MachineRegisterInfo &RegInfo) const;
   [[nodiscard]] Expected<void> validateCFIInfo(const MachineCFIInfo &Info) const;
   [[nodiscard]] Expected<void> validateFrameInfo(const MachineFrameInfo &Info) const;
   [[nodiscard]] Expected<void> validateRegisterInfo(const MachineRegisterInfo &RegInfo) const;
@@ -95,10 +98,6 @@ private:
                                                        const VirtualRegisterInfo &Info) const;
   [[nodiscard]] std::optional<RegisterClassID>
   effectiveRegisterClass(const MachineOperand &Operand, const MachineRegisterInfo &RegInfo) const;
-  [[nodiscard]] Expected<void> validateTieCompatibility(const MachineOperand &Def,
-                                                        const MachineOperand &Use,
-                                                        const MachineRegisterInfo &RegInfo) const;
-
   InstructionSet Instructions;
   TargetRegisterInfo Registers;
   TargetMIRTextInfo MIRText;

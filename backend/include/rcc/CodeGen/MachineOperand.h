@@ -449,6 +449,7 @@ public:
   [[nodiscard]] Expected<void> setRegister(Register Reg);
   [[nodiscard]] Expected<void> setRegisterFlags(RegisterOperandFlags Flags);
   [[nodiscard]] Expected<void> setSubReg(SubRegIndex SubReg);
+  [[nodiscard]] Expected<void> setBasicBlock(MachineBasicBlock &Block);
 
   [[nodiscard]] std::optional<std::size_t> tiedOperandIndex() const noexcept {
     return TiedOperandIndex;

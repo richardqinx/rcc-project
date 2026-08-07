@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/MachineVerifier.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -87,6 +88,9 @@ public:
     auto CFGResult = verifyCFG();
     if (!CFGResult)
       return CFGResult;
+    auto PHIResult = verifyPHIs();
+    if (!PHIResult)
+      return PHIResult;
     auto RegisterResult = verifyRegisterInfo();
     if (!RegisterResult)
       return RegisterResult;
@@ -428,9 +432,8 @@ private:
   }
 
   [[nodiscard]] Expected<void> verifyFrameLifetimes() const {
-    auto VerifyPoints =
-        [this](std::span<const MachineFrameSaveRestorePoint> Points,
-               std::string_view Kind) -> Expected<void> {
+    auto VerifyPoints = [this](std::span<const MachineFrameSaveRestorePoint> Points,
+                               std::string_view Kind) -> Expected<void> {
       for (const MachineFrameSaveRestorePoint &Point : Points) {
         if (!LinkedBlockIDs.contains(Point.Block)) {
           return fail(std::string("frame ") + std::string(Kind) +
@@ -591,6 +594,8 @@ private:
     }
 
     HasPhi |= Descriptor->Flags.has(InstructionFlag::Phi);
+    HasStageTenPseudo |= Instruction.opcode() == opcode(GenericOpcode::REG_SEQUENCE) ||
+                         Instruction.opcode() == opcode(GenericOpcode::INSERT_SUBREG);
     HasGenericInstruction |= Descriptor->Flags.has(InstructionFlag::Generic);
     HasExecutablePseudo |= Descriptor->Flags.has(InstructionFlag::Pseudo) &&
                            !Descriptor->Flags.has(InstructionFlag::Meta) &&
@@ -708,6 +713,75 @@ private:
     return {};
   }
 
+  [[nodiscard]] Expected<void> verifyPHIs() {
+    for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
+         Block = Block->next()) {
+      bool SawNonMetaInstruction = false;
+      for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
+           Instruction = Instruction->next()) {
+        const InstructionDescriptor *Descriptor =
+            Target.instructionDescriptor(Instruction->opcode());
+        if (Descriptor == nullptr)
+          return fail("PHI verification encountered an unregistered instruction");
+
+        if (!Descriptor->Flags.has(InstructionFlag::Phi)) {
+          SawNonMetaInstruction |= !Descriptor->Flags.has(InstructionFlag::Meta);
+          continue;
+        }
+        if (SawNonMetaInstruction)
+          return fail("PHI instruction appears after a non-meta instruction");
+
+        const std::span<const MachineOperand> Operands = Instruction->operands();
+        if (Operands.size() < 3 || (Operands.size() - 1U) % 2U != 0) {
+          return fail("PHI must contain a destination and at least one incoming pair");
+        }
+        const Register *Destination = Operands.front().getIf<Register>();
+        if (Destination == nullptr || !Destination->isVirtual() || !Operands.front().isDef() ||
+            Operands.front().isUse() || Operands.front().isImplicit()) {
+          return fail("PHI destination must be an explicit virtual-register definition");
+        }
+
+        std::unordered_set<const MachineBasicBlock *> IncomingBlocks;
+        for (std::size_t Index = 1; Index < Operands.size(); Index += 2U) {
+          const MachineOperand &ValueOperand = Operands[Index];
+          const MachineOperand &BlockOperand = Operands[Index + 1U];
+          const Register *Value = ValueOperand.getIf<Register>();
+          const BasicBlockOperand *Incoming = BlockOperand.getIf<BasicBlockOperand>();
+          if (Value == nullptr || !ValueOperand.isUse() || ValueOperand.isDef() ||
+              ValueOperand.isImplicit() || Incoming == nullptr || Incoming->Block == nullptr ||
+              BlockOperand.isImplicit()) {
+            return fail("PHI incoming operands must be explicit register/block pairs");
+          }
+          if (std::ranges::find(Block->predecessors(), Incoming->Block) ==
+              Block->predecessors().end()) {
+            return fail("PHI incoming block is not a CFG predecessor");
+          }
+          if (!IncomingBlocks.insert(Incoming->Block).second)
+            return fail("PHI contains duplicate incoming blocks");
+
+          if (!Value->isNoRegister() && Destination->isVirtual() && Value->isVirtual() &&
+              Operands.front().subReg().value() == 0 && ValueOperand.subReg().value() == 0) {
+            auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(*Destination);
+            auto ValueInfo = Function.registerInfo().virtualRegisterInfo(*Value);
+            if (!DestinationInfo || !ValueInfo)
+              return fail("PHI references an unknown virtual register");
+            if (DestinationInfo->get().Type && ValueInfo->get().Type &&
+                DestinationInfo->get().Type != ValueInfo->get().Type) {
+              return fail("PHI destination and incoming value types do not match");
+            }
+          }
+          auto Compatibility = Target.validateTieCompatibility(Operands.front(), ValueOperand,
+                                                               Function.registerInfo());
+          if (!Compatibility)
+            return failWith("PHI register compatibility", Compatibility.error());
+        }
+        if (IncomingBlocks.size() != Block->predecessors().size())
+          return fail("PHI incoming blocks do not exactly cover CFG predecessors");
+      }
+    }
+    return {};
+  }
+
   [[nodiscard]] Expected<void> verifyRegisterInfo() {
     const MachineRegisterInfo &RegInfo = Function.registerInfo();
     std::unordered_set<PhysicalRegister> FunctionLiveIns;
@@ -767,6 +841,9 @@ private:
     if (Has(MachineFunctionProperty::TiedOpsRewritten) && !Has(MachineFunctionProperty::Selected)) {
       return fail("TiedOpsRewritten requires Selected");
     }
+    if (Has(MachineFunctionProperty::TiedOpsRewritten) && !Has(MachineFunctionProperty::NoPHIs)) {
+      return fail("TiedOpsRewritten requires NoPHIs");
+    }
     if (Has(MachineFunctionProperty::FrameFinalized) &&
         (!Has(MachineFunctionProperty::NoVRegs) || !Has(MachineFunctionProperty::NoFrameIndices))) {
       return fail("FrameFinalized requires NoVRegs and NoFrameIndices");
@@ -796,6 +873,9 @@ private:
     }
     if (Has(MachineFunctionProperty::TiedOpsRewritten) && HasUnrewrittenTie) {
       return fail("TiedOpsRewritten function has unequal tied registers");
+    }
+    if (Has(MachineFunctionProperty::TiedOpsRewritten) && HasStageTenPseudo) {
+      return fail("TiedOpsRewritten function contains a Stage 10 pseudo");
     }
 
     const bool NeedsTypes = Options.Mode == MachineVerifierMode::PreLegalizer ||
@@ -837,6 +917,7 @@ private:
   bool HasExecutablePseudo = false;
   bool HasFrameIndex = false;
   bool HasUnrewrittenTie = false;
+  bool HasStageTenPseudo = false;
   bool HasLiveVirtualRegister = false;
   bool MissingVirtualType = false;
   bool MissingVirtualBank = false;

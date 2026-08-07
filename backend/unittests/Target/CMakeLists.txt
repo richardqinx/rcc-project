@@ -33,11 +33,17 @@ rcc_backend_configure_target(RCCBackendRISCVCodeGenTests)
 target_link_libraries(RCCBackendRISCVCodeGenTests PRIVATE RCCBackend::RISCV RCCBackend::CodeGen)
 add_test(NAME RCCBackendRISCVCodeGenTests COMMAND RCCBackendRISCVCodeGenTests)
 
+add_executable(RCCBackendRISCVSSAExitTests RISCVSSAExitTest.cpp)
+rcc_backend_configure_target(RCCBackendRISCVSSAExitTests)
+target_link_libraries(RCCBackendRISCVSSAExitTests PRIVATE RCCBackend::RISCV RCCBackend::CodeGen)
+add_test(NAME RCCBackendRISCVSSAExitTests COMMAND RCCBackendRISCVSSAExitTests)
+
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/DescriptionGeneratorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLoweringTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGenTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSSAExitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.h"
 )
@@ -46,5 +52,6 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLoweringTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGenTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSSAExitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
 )
