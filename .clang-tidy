@@ -7,6 +7,7 @@ Checks: >
   bugprone-*,
   -bugprone-easily-swappable-parameters,
   performance-*,
+  -performance-enum-size,
   portability-*,
   llvm-header-guard,
   llvm-namespace-comment,
@@ -47,6 +48,8 @@ CheckOptions:
   - { key: readability-identifier-naming.ConstexprVariableCase,     value: CamelCase  }
   - { key: readability-identifier-naming.ClassConstantCase,         value: CamelCase  }
   - { key: readability-identifier-naming.EnumConstantCase,          value: CamelCase  }
+  # Preserve canonical protocol, opcode, ABI, and ISA spellings.
+  - { key: readability-identifier-naming.EnumConstantIgnoredRegexp, value: '^([A-Z][A-Z0-9_]*|Pseudo[A-Z0-9_]+)$' }
   - { key: readability-identifier-naming.MacroDefinitionCase,       value: UPPER_CASE }
   # Other
   - { key: readability-identifier-naming.IgnoreMainLikeFunctions,                  value: 1 }

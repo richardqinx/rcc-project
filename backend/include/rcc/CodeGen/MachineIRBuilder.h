@@ -161,6 +161,16 @@ public:
     return *Function;
   }
 
+  [[nodiscard]] const TargetDescription &target() const noexcept {
+    return *Target;
+  }
+
+  [[nodiscard]] MachineBasicBlock *insertionBlock() const noexcept {
+    return InsertBlock;
+  }
+
+  [[nodiscard]] Expected<void> verifyInsertPoint() const;
+
   [[nodiscard]] Expected<void> setInsertPoint(MachineBasicBlock &Block);
   [[nodiscard]] Expected<void> setInsertPointBefore(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> setInsertPointAfter(MachineInstr &Instruction);

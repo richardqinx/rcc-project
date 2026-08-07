@@ -4,6 +4,7 @@ set(
   RCCBackendCodeGenTestSources
   CompilationUnitTest.cpp
   CoreTypesTest.cpp
+  GenericOpcodesTest.cpp
   InstructionDescriptorTest.cpp
   MachineCompilationStatusTest.cpp
   MachineConstantPoolTest.cpp
@@ -14,13 +15,16 @@ set(
   MachineIRAttributesTest.cpp
   MachineIRBuilderTest.cpp
   MachineIRCoreTest.cpp
+  MachineAnalysesTest.cpp
   MachineJumpTableInfoTest.cpp
   MachineMetadataTest.cpp
   MachineOperandTest.cpp
+  MachinePassTest.cpp
   MachineVerifierTest.cpp
   MachineVerifierTargetTest.cpp
   MachineValueTypesTest.cpp
   TargetConstantTest.cpp
+  TargetCallLoweringTest.cpp
   TargetFunctionStateTest.cpp
   TargetMIRTextInfoTest.cpp
   TargetRegisterInfoTest.cpp
@@ -40,6 +44,12 @@ rcc_backend_configure_target(RCCBackendCodeGenCoreTypesTests)
 target_link_libraries(RCCBackendCodeGenCoreTypesTests PRIVATE RCCBackend::CodeGen)
 
 add_test(NAME RCCBackend.CodeGen.CoreTypes COMMAND RCCBackendCodeGenCoreTypesTests)
+
+add_executable(RCCBackendCodeGenGenericOpcodesTests GenericOpcodesTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenGenericOpcodesTests)
+target_link_libraries(RCCBackendCodeGenGenericOpcodesTests PRIVATE RCCBackend::CodeGen)
+
+add_test(NAME RCCBackend.CodeGen.GenericOpcodes COMMAND RCCBackendCodeGenGenericOpcodesTests)
 
 add_executable(
   RCCBackendCodeGenInstructionDescriptorTests
@@ -233,6 +243,24 @@ add_test(
   COMMAND RCCBackendCodeGenMachineOperandTests
 )
 
+add_executable(RCCBackendCodeGenMachinePassTests MachinePassTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachinePassTests)
+target_link_libraries(
+  RCCBackendCodeGenMachinePassTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(NAME RCCBackend.CodeGen.MachinePass COMMAND RCCBackendCodeGenMachinePassTests)
+
+add_executable(RCCBackendCodeGenMachineAnalysesTests MachineAnalysesTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineAnalysesTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineAnalysesTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(NAME RCCBackend.CodeGen.MachineAnalyses COMMAND RCCBackendCodeGenMachineAnalysesTests)
+
 add_executable(RCCBackendCodeGenTargetConstantTests TargetConstantTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenTargetConstantTests)
 target_link_libraries(RCCBackendCodeGenTargetConstantTests PRIVATE RCCBackend::CodeGen)
@@ -240,6 +268,18 @@ target_link_libraries(RCCBackendCodeGenTargetConstantTests PRIVATE RCCBackend::C
 add_test(
   NAME RCCBackend.CodeGen.TargetConstant
   COMMAND RCCBackendCodeGenTargetConstantTests
+)
+
+add_executable(RCCBackendCodeGenTargetCallLoweringTests TargetCallLoweringTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenTargetCallLoweringTests)
+target_link_libraries(
+  RCCBackendCodeGenTargetCallLoweringTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.TargetCallLowering
+  COMMAND RCCBackendCodeGenTargetCallLoweringTests
 )
 
 add_executable(RCCBackendCodeGenTargetFunctionStateTests TargetFunctionStateTest.cpp)
@@ -281,6 +321,7 @@ add_test(
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GenericOpcodesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatusTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPoolTest.cpp"
@@ -291,13 +332,16 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRAttributesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilderTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalysesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetCallLoweringTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"
@@ -305,6 +349,7 @@ rcc_backend_register_format_files(
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/CoreTypesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GenericOpcodesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatusTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPoolTest.cpp"
@@ -315,13 +360,16 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRAttributesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilderTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalysesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstantTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetCallLoweringTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"

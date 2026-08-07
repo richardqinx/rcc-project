@@ -650,6 +650,19 @@ Expected<void> MachineIRBuilder::validateInstruction(const MachineInstr &Instruc
   return {};
 }
 
+Expected<void> MachineIRBuilder::verifyInsertPoint() const {
+  if (InsertBlock == nullptr)
+    return makeUnexpected(ErrorCode::InvalidArgument, "machine IR builder has no insertion point");
+  auto BlockValidation = validateBlock(*InsertBlock);
+  if (!BlockValidation)
+    return std::unexpected(BlockValidation.error());
+  if (InsertBefore != nullptr && InsertBefore->parent() != InsertBlock) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine IR builder insertion cursor is no longer in its block");
+  }
+  return {};
+}
+
 Expected<void> MachineIRBuilder::setInsertPoint(MachineBasicBlock &Block) {
   auto Validation = validateBlock(Block);
   if (!Validation)

@@ -3,6 +3,7 @@
 set(
   RCCBackendCodeGenSources
   CompilationUnit.cpp
+  GenericOpcodes.cpp
   GenericConstant.cpp
   InstructionDescriptor.cpp
   LowLevelType.cpp
@@ -19,11 +20,13 @@ set(
   MachineFunctionCloner.cpp
   MachineIRTypes.cpp
   MachineIRBuilder.cpp
+  MachineAnalyses.cpp
   MachineInstr.cpp
   MachineJumpTableInfo.cpp
   MachineMemOperand.cpp
   MachineMetadata.cpp
   MachineOperand.cpp
+  MachinePass.cpp
   MachineRegisterInfo.cpp
   MachineVerifier.cpp
   MachineFunctionProperties.cpp
@@ -31,6 +34,7 @@ set(
   Register.cpp
   RegisterMask.cpp
   TargetConstant.cpp
+  TargetCallLowering.cpp
   TargetDescription.cpp
   TargetFunctionState.cpp
   TargetMIRTextInfo.cpp
@@ -39,6 +43,7 @@ set(
 set(
   RCCBackendCodeGenHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CompilationUnit.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericOpcodes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericConstant.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
@@ -55,11 +60,13 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionCloner.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineIRTypes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineIRBuilder.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineAnalyses.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineInstr.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineJumpTableInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMetadata.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePass.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineVerifier.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionProperties.h"
@@ -68,6 +75,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterMask.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/StableID.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetConstant.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetCallLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetDescription.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFunctionState.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetMIRTextInfo.h"
@@ -104,6 +112,7 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GenericOpcodes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GenericConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
@@ -120,11 +129,13 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilder.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalyses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
@@ -132,6 +143,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetDescription.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"
@@ -140,6 +152,7 @@ rcc_backend_register_format_files(
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GenericOpcodes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GenericConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
@@ -156,11 +169,13 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRTypes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRBuilder.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalyses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
@@ -168,6 +183,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetDescription.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"

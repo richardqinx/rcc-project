@@ -23,14 +23,21 @@ rcc_backend_configure_target(RCCBackendRISCVTargetTests)
 target_link_libraries(RCCBackendRISCVTargetTests PRIVATE RCCBackend::RISCV)
 add_test(NAME RCCBackendRISCVTargetTests COMMAND RCCBackendRISCVTargetTests)
 
+add_executable(RCCBackendRISCVCallLoweringTests RISCVCallLoweringTest.cpp)
+rcc_backend_configure_target(RCCBackendRISCVCallLoweringTests)
+target_link_libraries(RCCBackendRISCVCallLoweringTests PRIVATE RCCBackend::RISCV)
+add_test(NAME RCCBackendRISCVCallLoweringTests COMMAND RCCBackendRISCVCallLoweringTests)
+
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/DescriptionGeneratorTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLoweringTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.h"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/DescriptionGeneratorTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLoweringTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
 )

@@ -61,6 +61,7 @@ struct OriginIDTag;
 struct TargetConstantTypeIDTag;
 struct TargetFunctionStateTypeIDTag;
 struct TargetRelocationKindIDTag;
+struct CallingConventionIDTag;
 
 } // namespace detail
 
@@ -86,6 +87,7 @@ using OriginID = MachineIndex<detail::OriginIDTag, std::uint64_t>;
 using TargetConstantTypeID = MachineIndex<detail::TargetConstantTypeIDTag, std::uint64_t>;
 using TargetFunctionStateTypeID = MachineIndex<detail::TargetFunctionStateTypeIDTag, std::uint64_t>;
 using TargetRelocationKindID = MachineIndex<detail::TargetRelocationKindIDTag>;
+using CallingConventionID = MachineIndex<detail::CallingConventionIDTag>;
 
 class Alignment final {
 public:
@@ -298,6 +300,7 @@ struct SourceLocation final {
 static_assert(sizeof(Opcode) == sizeof(std::uint32_t));
 static_assert(sizeof(Alignment) == sizeof(std::uint64_t));
 static_assert(sizeof(FrameIndex) == sizeof(std::uint32_t));
+static_assert(sizeof(CallingConventionID) == sizeof(std::uint32_t));
 static_assert(sizeof(MemoryAliasSourceID) == sizeof(std::uint64_t));
 static_assert(std::is_trivially_copyable_v<Opcode>);
 static_assert(std::is_trivially_copyable_v<FrameIndex>);
