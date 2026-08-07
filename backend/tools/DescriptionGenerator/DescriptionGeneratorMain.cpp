@@ -14,14 +14,16 @@ namespace {
 
 struct CommandLine final {
   std::string InputPath;
-  std::string HeaderPath;
+  std::string RegisterHeaderPath;
+  std::string InstructionHeaderPath;
   std::string TablesPath;
 };
 
 [[nodiscard]] bool parseCommandLine(int ArgumentCount, char *Arguments[], CommandLine &Result) {
   for (int Index = 1; Index < ArgumentCount; ++Index) {
     const std::string_view Argument(Arguments[Index]);
-    if (Argument == "--input" || Argument == "--header" || Argument == "--tables") {
+    if (Argument == "--input" || Argument == "--register-header" ||
+        Argument == "--instruction-header" || Argument == "--tables") {
       if (Index + 1 >= ArgumentCount) {
         std::cerr << "rcc-backend-descgen: missing value for " << Argument << '\n';
         return false;
@@ -29,8 +31,10 @@ struct CommandLine final {
       std::string *Destination = nullptr;
       if (Argument == "--input")
         Destination = &Result.InputPath;
-      else if (Argument == "--header")
-        Destination = &Result.HeaderPath;
+      else if (Argument == "--register-header")
+        Destination = &Result.RegisterHeaderPath;
+      else if (Argument == "--instruction-header")
+        Destination = &Result.InstructionHeaderPath;
       else
         Destination = &Result.TablesPath;
       *Destination = Arguments[++Index];
@@ -39,9 +43,12 @@ struct CommandLine final {
     std::cerr << "rcc-backend-descgen: unknown argument '" << Argument << "'\n";
     return false;
   }
-  if (!Result.InputPath.empty() && !Result.HeaderPath.empty() && !Result.TablesPath.empty())
+  if (!Result.InputPath.empty() && !Result.RegisterHeaderPath.empty() &&
+      !Result.InstructionHeaderPath.empty() && !Result.TablesPath.empty()) {
     return true;
-  std::cerr << "usage: rcc-backend-descgen --input <file> --header <file> --tables <file>\n";
+  }
+  std::cerr << "usage: rcc-backend-descgen --input <file> --register-header <file> "
+               "--instruction-header <file> --tables <file>\n";
   return false;
 }
 
@@ -90,7 +97,8 @@ int main(int ArgumentCount, char *Arguments[]) {
     return 1;
   }
 
-  return writeFile(Command.HeaderPath, Result.Output->RegisterHeader) &&
+  return writeFile(Command.RegisterHeaderPath, Result.Output->RegisterHeader) &&
+                 writeFile(Command.InstructionHeaderPath, Result.Output->InstructionHeader) &&
                  writeFile(Command.TablesPath, Result.Output->TargetTables)
              ? 0
              : 1;

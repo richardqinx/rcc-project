@@ -2,8 +2,12 @@
 
 set(RCCBackendRISCVDescription "${CMAKE_CURRENT_SOURCE_DIR}/RISCV.rccdesc")
 set(
-  RCCBackendRISCVGeneratedHeader
+  RCCBackendRISCVGeneratedRegisterHeader
   "${RCC_BACKEND_BINARY_DIR}/generated/include/rcc/Target/RISCV/RISCVRegisters.h"
+)
+set(
+  RCCBackendRISCVGeneratedInstructionHeader
+  "${RCC_BACKEND_BINARY_DIR}/generated/include/rcc/Target/RISCV/RISCVInstructions.h"
 )
 set(
   RCCBackendRISCVGeneratedTables
@@ -11,11 +15,15 @@ set(
 )
 
 add_custom_command(
-  OUTPUT "${RCCBackendRISCVGeneratedHeader}" "${RCCBackendRISCVGeneratedTables}"
+  OUTPUT
+    "${RCCBackendRISCVGeneratedRegisterHeader}"
+    "${RCCBackendRISCVGeneratedInstructionHeader}"
+    "${RCCBackendRISCVGeneratedTables}"
   COMMAND
     "$<TARGET_FILE:RCCBackendDescriptionGenerator>"
     --input "${RCCBackendRISCVDescription}"
-    --header "${RCCBackendRISCVGeneratedHeader}"
+    --register-header "${RCCBackendRISCVGeneratedRegisterHeader}"
+    --instruction-header "${RCCBackendRISCVGeneratedInstructionHeader}"
     --tables "${RCCBackendRISCVGeneratedTables}"
   DEPENDS RCCBackendDescriptionGenerator "${RCCBackendRISCVDescription}"
   COMMENT "Generating RCC RV64GC target tables"
@@ -24,18 +32,24 @@ add_custom_command(
 
 add_custom_target(
   RCCBackendRISCVGeneratedTablesTarget
-  DEPENDS "${RCCBackendRISCVGeneratedHeader}" "${RCCBackendRISCVGeneratedTables}"
+  DEPENDS
+    "${RCCBackendRISCVGeneratedRegisterHeader}"
+    "${RCCBackendRISCVGeneratedInstructionHeader}"
+    "${RCCBackendRISCVGeneratedTables}"
 )
 
 set_source_files_properties(
-  "${RCCBackendRISCVGeneratedHeader}" "${RCCBackendRISCVGeneratedTables}"
+  "${RCCBackendRISCVGeneratedRegisterHeader}"
+  "${RCCBackendRISCVGeneratedInstructionHeader}"
+  "${RCCBackendRISCVGeneratedTables}"
   PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE
 )
 
 add_library(
   RCCBackendRISCV
   RISCVTarget.cpp
-  "${RCCBackendRISCVGeneratedHeader}"
+  "${RCCBackendRISCVGeneratedRegisterHeader}"
+  "${RCCBackendRISCVGeneratedInstructionHeader}"
   "${RCCBackendRISCVGeneratedTables}"
 )
 add_library(RCCBackend::RISCV ALIAS RCCBackendRISCV)
@@ -68,7 +82,9 @@ install(
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 install(
-  FILES "${RCCBackendRISCVGeneratedHeader}"
+  FILES
+    "${RCCBackendRISCVGeneratedRegisterHeader}"
+    "${RCCBackendRISCVGeneratedInstructionHeader}"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rcc/Target/RISCV"
 )
 
@@ -76,4 +92,6 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTarget.h"
 )
-rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp")
+rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
+)

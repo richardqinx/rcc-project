@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -54,6 +55,8 @@ namespace {
   }
 
   bool SawOptional = false;
+  std::optional<std::size_t> VariadicBegin;
+  std::optional<std::size_t> VariadicEnd;
   for (std::size_t Index = 0; Index < Descriptor.Operands.size(); ++Index) {
     const OperandDescriptor &Operand = Descriptor.Operands[Index];
     if (Operand.Kinds.empty()) {
@@ -75,19 +78,17 @@ namespace {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "non-register operand descriptor has register constraints");
     }
+    if (Operand.TypeConstraint) {
+      if (!isRegisterOnly(Operand.Kinds) || Operand.TypeConstraint->Kinds.empty() ||
+          Operand.TypeConstraint->Kinds.contains(LLT::Kind::Invalid)) {
+        return makeUnexpected(ErrorCode::InvalidArgument,
+                              "typed operand descriptor requires a nonempty register type set");
+      }
+    }
     if (Operand.EarlyClobber && !isDefRole(Operand.RegisterRole)) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "early-clobber operand descriptor must define a register");
     }
-    if (Index < Descriptor.NumExplicitDefs && !isDefRole(Operand.RegisterRole)) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "canonical explicit defs must precede instruction uses");
-    }
-    if (Index >= Descriptor.NumExplicitDefs && isDefRole(Operand.RegisterRole)) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "register definition appears after the explicit def prefix");
-    }
-
     if (Descriptor.Variadic && Operand.Optional) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "variadic instruction descriptor cannot contain optional operands");
@@ -99,27 +100,61 @@ namespace {
                             "optional operand descriptors must form a trailing suffix");
     }
 
-    if (Operand.VariadicGroup &&
-        (!Descriptor.Variadic || Index + 1 != Descriptor.Operands.size())) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "variadic operand group must be the final descriptor");
-    }
     if (Operand.VariadicGroup && (Operand.Optional || Operand.DefaultTiedOperand)) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "variadic operand descriptor cannot be optional or have a default tie");
     }
+    if (Operand.VariadicGroup) {
+      if (!Descriptor.Variadic) {
+        return makeUnexpected(ErrorCode::InvalidArgument,
+                              "non-variadic instruction descriptor has a variadic group");
+      }
+      if (!VariadicBegin)
+        VariadicBegin = Index;
+      VariadicEnd = Index + 1;
+    } else if (VariadicEnd) {
+      const bool LaterGroup =
+          std::ranges::any_of(Descriptor.Operands.begin() + static_cast<std::ptrdiff_t>(Index),
+                              Descriptor.Operands.end(), [](const OperandDescriptor &Candidate) {
+                                return Candidate.VariadicGroup;
+                              });
+      if (LaterGroup) {
+        return makeUnexpected(ErrorCode::InvalidArgument,
+                              "variadic operand group descriptors must be contiguous");
+      }
+    }
   }
 
-  if (Descriptor.Variadic &&
-      (Descriptor.Operands.empty() || !Descriptor.Operands.back().VariadicGroup)) {
+  if (Descriptor.Variadic && !VariadicBegin) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "variadic instruction descriptor requires a final variadic group");
+                          "variadic instruction descriptor requires a variadic group");
   }
-  if (!Descriptor.Variadic &&
-      std::ranges::any_of(Descriptor.Operands,
-                          [](const OperandDescriptor &Operand) { return Operand.VariadicGroup; })) {
+  if (!Descriptor.Variadic && Descriptor.MinimumVariadicRepetitions != 0) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "non-variadic instruction descriptor has a variadic group");
+                          "non-variadic instruction has a minimum variadic repetition count");
+  }
+
+  bool SawUse = false;
+  std::size_t MinimumDefs = 0;
+  for (std::size_t Index = 0; Index < Descriptor.Operands.size(); ++Index) {
+    const OperandDescriptor &Operand = Descriptor.Operands[Index];
+    const std::size_t Repetitions =
+        Operand.VariadicGroup ? Descriptor.MinimumVariadicRepetitions : 1;
+    for (std::size_t Repeat = 0; Repeat < Repetitions; ++Repeat) {
+      if (isDefRole(Operand.RegisterRole)) {
+        if (SawUse) {
+          return makeUnexpected(ErrorCode::InvalidArgument,
+                                "register definition appears after an instruction use");
+        }
+        ++MinimumDefs;
+      } else {
+        SawUse = true;
+      }
+    }
+  }
+  if (Descriptor.NumExplicitDefs != MinimumDefs) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "instruction descriptor explicit def count does not match its shape");
   }
 
   for (std::size_t Index = 0; Index < Descriptor.Operands.size(); ++Index) {
@@ -207,17 +242,73 @@ namespace {
   return {};
 }
 
+struct OperandShape final {
+  std::size_t VariadicBegin = 0;
+  std::size_t VariadicEnd = 0;
+  std::size_t Repetitions = 0;
+};
+
+[[nodiscard]] Expected<OperandShape> resolveOperandShape(const InstructionDescriptor &Descriptor,
+                                                         std::size_t OperandCount) {
+  if (!Descriptor.Variadic) {
+    std::size_t RequiredCount = Descriptor.Operands.size();
+    while (RequiredCount != 0 && Descriptor.Operands[RequiredCount - 1].Optional)
+      --RequiredCount;
+    if (OperandCount < RequiredCount || OperandCount > Descriptor.Operands.size()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "instruction has an invalid explicit operand count");
+    }
+    return OperandShape{};
+  }
+
+  const auto Begin = std::ranges::find_if(
+      Descriptor.Operands, [](const OperandDescriptor &Operand) { return Operand.VariadicGroup; });
+  const auto End = std::ranges::find_if_not(
+      Begin, Descriptor.Operands.end(),
+      [](const OperandDescriptor &Operand) { return Operand.VariadicGroup; });
+  const std::size_t VariadicBegin =
+      static_cast<std::size_t>(std::distance(Descriptor.Operands.begin(), Begin));
+  const std::size_t VariadicEnd =
+      static_cast<std::size_t>(std::distance(Descriptor.Operands.begin(), End));
+  const std::size_t GroupSize = VariadicEnd - VariadicBegin;
+  const std::size_t FixedCount = Descriptor.Operands.size() - GroupSize;
+  if (GroupSize == 0 || OperandCount < FixedCount) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "instruction has an invalid variadic operand count");
+  }
+  const std::size_t VariableCount = OperandCount - FixedCount;
+  if (VariableCount % GroupSize != 0 ||
+      VariableCount / GroupSize < Descriptor.MinimumVariadicRepetitions) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "instruction has an incomplete or undersized variadic operand group");
+  }
+  return OperandShape{VariadicBegin, VariadicEnd, VariableCount / GroupSize};
+}
+
 [[nodiscard]] const OperandDescriptor &descriptorForOperand(const InstructionDescriptor &Descriptor,
+                                                            const OperandShape &Shape,
                                                             std::size_t Index) {
-  if (Index < Descriptor.Operands.size())
+  if (!Descriptor.Variadic)
     return Descriptor.Operands[Index];
-  return Descriptor.Operands.back();
+  if (Index < Shape.VariadicBegin)
+    return Descriptor.Operands[Index];
+  const std::size_t GroupSize = Shape.VariadicEnd - Shape.VariadicBegin;
+  const std::size_t VariableCount = Shape.Repetitions * GroupSize;
+  if (Index < Shape.VariadicBegin + VariableCount) {
+    return Descriptor.Operands[Shape.VariadicBegin + (Index - Shape.VariadicBegin) % GroupSize];
+  }
+  return Descriptor.Operands[Shape.VariadicEnd + (Index - Shape.VariadicBegin - VariableCount)];
 }
 
 } // namespace
 
 OperandKindSet::OperandKindSet(std::initializer_list<MachineOperand::Kind> Kinds) noexcept {
   for (const MachineOperand::Kind Kind : Kinds)
+    add(Kind);
+}
+
+LLTKindSet::LLTKindSet(std::initializer_list<LLT::Kind> Kinds) noexcept {
+  for (const LLT::Kind Kind : Kinds)
     add(Kind);
 }
 
@@ -290,31 +381,65 @@ const InstructionDescriptor *InstructionSet::descriptor(std::string_view Name) c
 Expected<void> InstructionSet::validateExplicitOperands(const InstructionDescriptor &Descriptor,
                                                         std::span<const MachineOperand> Operands,
                                                         const MachineRegisterInfo &RegInfo) const {
-  std::size_t RequiredCount = Descriptor.Operands.size();
-  if (Descriptor.Variadic)
-    --RequiredCount;
-  else {
-    while (RequiredCount != 0 && Descriptor.Operands[RequiredCount - 1].Optional)
-      --RequiredCount;
-  }
+  auto Shape = resolveOperandShape(Descriptor, Operands.size());
+  if (!Shape)
+    return std::unexpected(Shape.error());
 
-  if (Operands.size() < RequiredCount ||
-      (!Descriptor.Variadic && Operands.size() > Descriptor.Operands.size())) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "instruction has an invalid explicit operand count");
-  }
-
+  bool SawUse = false;
+  std::unordered_map<std::uint16_t, LLT> EqualityGroups;
   for (std::size_t Index = 0; Index < Operands.size(); ++Index) {
     const MachineOperand &Operand = Operands[Index];
     if (Operand.isImplicit()) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "explicit operand sequence contains an implicit register");
     }
-    const auto Validation =
-        validateOperand(descriptorForOperand(Descriptor, Index), Operand, RegInfo);
+    const OperandDescriptor &OperandDesc = descriptorForOperand(Descriptor, *Shape, Index);
+    const auto Validation = validateOperand(OperandDesc, Operand, RegInfo);
     if (!Validation)
       return std::unexpected(Validation.error());
+    if (Operand.isRegister()) {
+      if (isDefRole(OperandDesc.RegisterRole)) {
+        if (SawUse) {
+          return makeUnexpected(ErrorCode::VerificationError,
+                                "instruction register definition appears after a use");
+        }
+      } else {
+        SawUse = true;
+      }
+    } else {
+      SawUse = true;
+    }
+
+    if (!OperandDesc.TypeConstraint)
+      continue;
+    const Register *Reg = Operand.getIf<Register>();
+    if (Reg == nullptr || !Reg->isVirtual()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "typed instruction operand must use a virtual register");
+    }
+    auto Info = RegInfo.virtualRegisterInfo(*Reg);
+    if (!Info)
+      return std::unexpected(Info.error());
+    if (!Info->get().Type) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "typed instruction operand virtual register has no LLT");
+    }
+    const LLT Type = *Info->get().Type;
+    if (!OperandDesc.TypeConstraint->Kinds.contains(Type.kind())) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "instruction operand LLT kind is not permitted by its descriptor");
+    }
+    if (OperandDesc.TypeConstraint->EqualityGroup) {
+      const auto [Position, Inserted] =
+          EqualityGroups.emplace(*OperandDesc.TypeConstraint->EqualityGroup, Type);
+      if (!Inserted && Position->second != Type) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "instruction operands in one LLT group have different types");
+      }
+    }
   }
+  if (Descriptor.VerifyExplicitOperands != nullptr)
+    return Descriptor.VerifyExplicitOperands(Descriptor.InstructionOpcode, Operands, RegInfo);
   return {};
 }
 
@@ -472,7 +597,12 @@ Expected<void> InstructionSet::validateOperand(const OperandDescriptor &Descript
     const bool IsUse = Operand.isUse();
     const bool ExpectedDef = isDefRole(Descriptor.RegisterRole);
     const bool ExpectedUse = isUseRole(Descriptor.RegisterRole);
-    if (IsDef != ExpectedDef || IsUse != ExpectedUse) {
+    if (Descriptor.RegisterRole == RegisterOperandRole::Any) {
+      if (!IsDef && !IsUse) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "unclassified register operand must define or use its register");
+      }
+    } else if (IsDef != ExpectedDef || IsUse != ExpectedUse) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "register operand def/use role does not match its descriptor");
     }
@@ -564,7 +694,12 @@ Expected<void> InstructionSet::validateInstruction(const MachineInstr &Instructi
   auto ImplicitValidation = validateImplicitOperands(*Descriptor, ImplicitOperands);
   if (!ImplicitValidation)
     return std::unexpected(ImplicitValidation.error());
-  return validateMemOperands(*Descriptor, Instruction.memOperands());
+  auto MemoryValidation = validateMemOperands(*Descriptor, Instruction.memOperands());
+  if (!MemoryValidation)
+    return std::unexpected(MemoryValidation.error());
+  if (Descriptor->VerifyInstructionSemantics != nullptr)
+    return Descriptor->VerifyInstructionSemantics(Instruction, RegInfo);
+  return {};
 }
 
 Expected<std::vector<MachineOperand>>

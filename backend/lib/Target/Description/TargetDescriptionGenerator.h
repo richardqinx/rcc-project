@@ -14,6 +14,7 @@ namespace rcc::targetgen {
 
 struct GeneratedDescription final {
   std::string RegisterHeader;
+  std::string InstructionHeader;
   std::string TargetTables;
 };
 

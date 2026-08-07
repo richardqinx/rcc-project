@@ -2,11 +2,15 @@
 
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
+
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -93,11 +97,68 @@ Expected<TargetMIRTextInfo> createMIRTextInfo() {
   return TargetMIRTextInfo::create(std::move(Description), *Registers);
 }
 
+Expected<TargetDescription> createTargetDescription() {
+  auto Registers = createRegisterInfo();
+  if (!Registers)
+    return std::unexpected(Registers.error());
+
+  std::vector<InstructionDescriptor> Descriptors;
+  std::vector<rcc::ImmediatePredicate> Predicates;
+  appendGeneratedInstructionInfo(Descriptors, Predicates);
+  auto GenericInfo = appendGenericInstructionInfo(Descriptors, Predicates);
+  if (!GenericInfo)
+    return std::unexpected(GenericInfo.error());
+  auto Instructions = InstructionSet::create(std::move(Descriptors), std::move(Predicates));
+  if (!Instructions)
+    return std::unexpected(Instructions.error());
+
+  TargetMIRTextInfoDesc MIRText;
+  appendGeneratedMIRTextInfo(MIRText);
+  return TargetDescription::create(std::move(*Instructions), std::move(*Registers),
+                                   std::move(MIRText));
+}
+
 std::shared_ptr<const RegisterMask> createCallPreservedMask() {
   TargetMIRTextInfoDesc Description;
   appendGeneratedMIRTextInfo(Description);
   assert(!Description.RegisterMasks.empty());
   return Description.RegisterMasks.front().Mask;
+}
+
+std::span<const SchedulingClassInfo> schedulingClasses() noexcept {
+  return GeneratedSchedulingClasses;
+}
+
+std::span<const EncodingCategoryInfo> encodingCategories() noexcept {
+  return GeneratedEncodingCategories;
+}
+
+std::span<const AssemblyFormatInfo> assemblyFormats() noexcept {
+  return GeneratedAssemblyFormats;
+}
+
+std::span<const AssemblyInstructionInfo> assemblyInstructions() noexcept {
+  return GeneratedAssemblyInstructions;
+}
+
+const AssemblyInstructionInfo *assemblyInstruction(Opcode InstructionOpcode) noexcept {
+  for (const AssemblyInstructionInfo &Info : GeneratedAssemblyInstructions) {
+    if (Info.InstructionOpcode == InstructionOpcode)
+      return &Info;
+  }
+  return nullptr;
+}
+
+std::span<const CallingConventionInfo> callingConventions() noexcept {
+  return GeneratedCallingConventions;
+}
+
+const CallingConventionInfo *callingConvention(CallingConvention ID) noexcept {
+  for (const CallingConventionInfo &Info : GeneratedCallingConventions) {
+    if (Info.ID == ID)
+      return &Info;
+  }
+  return nullptr;
 }
 
 } // namespace rcc::riscv

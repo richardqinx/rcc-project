@@ -2,6 +2,9 @@
 
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
+
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <ranges>
@@ -47,8 +50,8 @@ void testRegisterFacts(TestContext &Context) {
 
   Context.expect(
       Registers->physicalRegisters().size() == 64 && Registers->registerUnits().size() == 64 &&
-          Registers->registerClasses().size() == 6 && Registers->registerBanks().size() == 2,
-      "RV64GC must expose the complete scalar integer and floating register files");
+          Registers->registerClasses().size() == 8 && Registers->registerBanks().size() == 2,
+      "RV64GC must expose the complete scalar, compressed, and restricted register classes");
   Context.expect(Registers->physicalRegister("x0") != nullptr &&
                      Registers->physicalRegister("zero") == nullptr &&
                      Registers->physicalRegisterByAlternativeName("ZERO") != nullptr &&
@@ -71,6 +74,9 @@ void testRegisterFacts(TestContext &Context) {
           std::ranges::find(GPR->AllocationOrder, X2) == GPR->AllocationOrder.end() &&
           std::ranges::find(GPR->AllocationOrder, X5) != GPR->AllocationOrder.end(),
       "the general-register allocation order must exclude statically reserved registers");
+  Context.expect(Registers->registerClass("gpr_nx0") != nullptr &&
+                     Registers->registerClass("gpr_nx0_nx2") != nullptr,
+                 "compressed instructions must have explicit nonzero register classes");
 }
 
 void testABIAndDebugFacts(TestContext &Context) {
@@ -93,10 +99,96 @@ void testABIAndDebugFacts(TestContext &Context) {
   Context.expect(MIRText->registerMasks().size() == 1 &&
                      MIRText->registerMasks().front().Name == "csr_ilp32d_lp64d",
                  "RV64GC must expose its named LP64D call-preserved mask");
+  Context.expect(MIRText->directOperandFlagMask() == 31 &&
+                     MIRText->directOperandFlag("riscv-call") == 1,
+                 "RV64GC MIR target flags must expose the canonical direct-call spelling");
   Context.expect(MIRText->dwarfRegister(X1) == 1,
                  "the return-address register must retain its DWARF register number");
   Context.expect(MIRText->physicalRegister(63) == F31,
                  "the final floating register DWARF number must map to f31");
+
+  const auto Conventions = rcc::riscv::callingConventions();
+  const auto *LP64D = rcc::riscv::callingConvention(rcc::riscv::CallingConvention::LP64D);
+  Context.expect(
+      Conventions.size() == 1 && LP64D != nullptr && LP64D->Name == "lp64d" &&
+          LP64D->IntegerArgumentRegisters.size() == 8 &&
+          LP64D->FloatingArgumentRegisters.size() == 8 &&
+          LP64D->IntegerReturnRegisters.size() == 2 && LP64D->FloatingReturnRegisters.size() == 2 &&
+          LP64D->StackAlignmentBytes == 16 && LP64D->StackArgumentAlignmentBytes == 16 &&
+          LP64D->SupportsVarArgs && LP64D->SupportsTailCalls &&
+          LP64D->PreservedMaskName == "CSR_ILP32D_LP64D",
+      "LP64D calling-convention tables must expose register, stack, and tail-call facts");
+}
+
+void testInstructionFacts(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  Context.expect(Target.has_value(), "RV64GC target description must be structurally valid");
+  if (!Target) {
+    std::cerr << "target construction error: " << Target.error().message() << '\n';
+    return;
+  }
+
+  const auto *Addi = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADDI)));
+  const auto *Load = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::LD)));
+  const auto *Branch = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::BEQ)));
+  const auto *Floating = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::FADD_S)));
+  const auto *Atomic = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::LR_W)));
+  const auto *Compressed = Target->instructionDescriptor(rcc::Opcode::fromValue(
+      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::C_ADDI16SP)));
+  const auto *GenericAdd = Target->instructionDescriptor(rcc::opcode(rcc::GenericOpcode::G_ADD));
+  const auto *PseudoCall = Target->instructionDescriptor(rcc::Opcode::fromValue(
+      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::PseudoCALL)));
+  const auto *Assembly = rcc::riscv::assemblyInstruction(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADDI)));
+  const auto *FenceAssembly = rcc::riscv::assemblyInstruction(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::FENCE_I)));
+  Context.expect(
+      Target->instructions().descriptors().size() ==
+              201 + rcc::genericInstructionDescriptors().size() &&
+          Addi != nullptr && Addi->Name == "ADDI" && Addi->NumExplicitDefs == 1 &&
+          Addi->Operands.size() == 3 && Addi->Operands.back().ImmediatePredicate &&
+          Load != nullptr && Load->Flags.has(rcc::InstructionFlag::MayLoad) &&
+          Load->RequiresMemoryOperands && Branch != nullptr &&
+          Branch->Flags.has(rcc::InstructionFlag::Terminator) &&
+          Branch->Flags.has(rcc::InstructionFlag::Branch) && Floating != nullptr &&
+          Floating->Operands.size() == 4 && Floating->Operands.back().ImmediatePredicate &&
+          Atomic != nullptr && Atomic->Flags.has(rcc::InstructionFlag::MayLoad) &&
+          Atomic->RequiresMemoryOperands && Compressed != nullptr &&
+          Compressed->ImplicitDefs.size() == 1 && Compressed->ImplicitUses.size() == 1 &&
+          GenericAdd != nullptr && GenericAdd->Flags.has(rcc::InstructionFlag::Generic) &&
+          PseudoCall != nullptr && PseudoCall->Flags.has(rcc::InstructionFlag::Pseudo) &&
+          PseudoCall->Flags.has(rcc::InstructionFlag::Call) &&
+          rcc::riscv::assemblyInstruction(PseudoCall->InstructionOpcode) == nullptr &&
+          Assembly != nullptr && Assembly->Mnemonic == "addi" &&
+          Assembly->Format == rcc::AssemblyFormatID::fromValue(static_cast<std::uint32_t>(
+                                  rcc::riscv::AssemblyFormat::RD_RS1_IMM)),
+      "generated instruction and assembly descriptors must drive the formal RV64GC target");
+
+  const auto Schedules = rcc::riscv::schedulingClasses();
+  const auto Encodings = rcc::riscv::encodingCategories();
+  const auto Formats = rcc::riscv::assemblyFormats();
+  Context.expect(Schedules.size() == 15 && Encodings.size() == 10 && Formats.size() == 34 &&
+                     rcc::riscv::assemblyInstructions().size() == 192 && FenceAssembly != nullptr &&
+                     FenceAssembly->Mnemonic == "fence.i" &&
+                     std::ranges::any_of(Schedules,
+                                         [](const rcc::riscv::SchedulingClassInfo &Class) {
+                                           return Class.Name == "load" && Class.MicroOps == 1 &&
+                                                  Class.Latency == 3;
+                                         }) &&
+                     std::ranges::any_of(Encodings,
+                                         [](const rcc::riscv::EncodingCategoryInfo &Category) {
+                                           return Category.Name == "i" && Category.SizeInBytes == 4;
+                                         }) &&
+                     std::ranges::any_of(Formats,
+                                         [](const rcc::riscv::AssemblyFormatInfo &Format) {
+                                           return Format.Name == "rd-rs1-imm";
+                                         }),
+                 "generated scheduling, encoding, and assembly tables must preserve target facts");
 }
 
 } // namespace
@@ -105,5 +197,6 @@ int main() {
   TestContext Context;
   testRegisterFacts(Context);
   testABIAndDebugFacts(Context);
+  testInstructionFacts(Context);
   return Context.result();
 }
