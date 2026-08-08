@@ -406,7 +406,8 @@ class MIRDocumentParser final {
 public:
   MIRDocumentParser(const TargetDescription &Target, std::string SourceName, std::string SourceText,
                     MIRDocumentParserOptions Options)
-      : Target(Target), Options(Options), Result(std::move(SourceName), std::move(SourceText)) {}
+      : Target(Target), Options(std::move(Options)),
+        Result(std::move(SourceName), std::move(SourceText)) {}
 
   [[nodiscard]] MIRDocumentParseResult run();
 
@@ -2144,8 +2145,7 @@ bool MIRDocumentParser::parseFunctionRecords(const yaml::Node &Root, MachineFunc
           WideFlags > std::numeric_limits<std::uint32_t>::max()) {
         return true;
       }
-      if (ActiveDocument->EmbeddedIR &&
-          ActiveDocument->EmbeddedIR->hasGlobalValue(Callee) == false) {
+      if (ActiveDocument->EmbeddedIR && !ActiveDocument->EmbeddedIR->hasGlobalValue(Callee)) {
         return fail(CalleeNode->range(), "called global references an undefined embedded global");
       }
       auto AddResult =
@@ -2765,7 +2765,8 @@ MIRDocumentParseResult::~MIRDocumentParseResult() = default;
 
 MIRDocumentParseResult parseMIRDocument(const TargetDescription &Target, std::string SourceName,
                                         std::string SourceText, MIRDocumentParserOptions Options) {
-  return MIRDocumentParser(Target, std::move(SourceName), std::move(SourceText), Options).run();
+  return MIRDocumentParser(Target, std::move(SourceName), std::move(SourceText), std::move(Options))
+      .run();
 }
 
 } // namespace rcc::mir

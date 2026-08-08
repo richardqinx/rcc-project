@@ -66,8 +66,7 @@ struct VectorShape final {
   friend constexpr bool operator==(VectorShape Left, VectorShape Right) noexcept = default;
 };
 
-[[nodiscard]] std::optional<VectorShape>
-vectorShape(const GenericConstantType &Type) noexcept {
+[[nodiscard]] std::optional<VectorShape> vectorShape(const GenericConstantType &Type) noexcept {
   const GenericConstantType &Resolved = resolvedType(Type);
   if (Resolved.Kind != GenericConstantTypeKind::Vector)
     return std::nullopt;
@@ -121,8 +120,7 @@ pointerAddressSpace(const GenericConstantType &Type) noexcept {
   if (isIntegerScalarType(Type) || isFloatingScalarType(Type))
     return true;
   const GenericConstantType *Element = vectorElementType(Type);
-  return Element != nullptr &&
-         (isIntegerScalarType(*Element) || isFloatingScalarType(*Element));
+  return Element != nullptr && (isIntegerScalarType(*Element) || isFloatingScalarType(*Element));
 }
 
 [[nodiscard]] std::optional<std::uint64_t>
@@ -175,8 +173,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
          isPointerScalarType(*PointerElement) && isIntegerScalarType(*IntegerElement);
 }
 
-[[nodiscard]] bool isSizedType(const GenericConstantType &Type,
-                                std::size_t Depth = 0) noexcept {
+[[nodiscard]] bool isSizedType(const GenericConstantType &Type, std::size_t Depth = 0) noexcept {
   if (Depth > MaximumVerificationDepth)
     return false;
   const GenericConstantType &Resolved = resolvedType(Type);
@@ -224,8 +221,8 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
 [[nodiscard]] bool hasOnlyValuePayload(const GenericConstantData &Value) noexcept {
   return Value.Symbol.empty() && Value.Block.empty() &&
          Value.ExpressionOpcode == GenericConstantExpressionOpcode::Invalid &&
-         Value.ExpressionFlags.rawValue() == 0 && !Value.SourceElementType &&
-         !Value.InRangeStart && !Value.InRangeEnd;
+         Value.ExpressionFlags.rawValue() == 0 && !Value.SourceElementType && !Value.InRangeStart &&
+         !Value.InRangeEnd;
 }
 
 [[nodiscard]] Expected<void> verifyType(const GenericConstantType &Type, std::size_t Depth,
@@ -335,8 +332,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
         (EffectiveType.Kind != GenericConstantTypeKind::Integer &&
          EffectiveType.Kind != GenericConstantTypeKind::Byte) ||
         Value.IntegerValue->bitWidth() !=
-            (EffectiveType.Kind == GenericConstantTypeKind::Byte ? 8U
-                                                                 : EffectiveType.BitWidth)) {
+            (EffectiveType.Kind == GenericConstantTypeKind::Byte ? 8U : EffectiveType.BitWidth)) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "generic integer constant has an inconsistent payload");
     }
@@ -384,9 +380,8 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
     }
     for (std::size_t Index = 0; Index < Value.Elements.size(); ++Index) {
       const GenericConstantType &ExpectedType =
-          EffectiveType.Kind == GenericConstantTypeKind::Struct
-              ? EffectiveType.Elements[Index]
-              : EffectiveType.Elements.front();
+          EffectiveType.Kind == GenericConstantTypeKind::Struct ? EffectiveType.Elements[Index]
+                                                                : EffectiveType.Elements.front();
       if (Value.Elements[Index].Type != ExpectedType) {
         return makeUnexpected(ErrorCode::VerificationError,
                               "generic aggregate element type does not match its container");
@@ -417,8 +412,8 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
         Value.IntegerValue || Value.FloatingValue || !Value.ByteValue.empty() ||
         !Value.Elements.empty() || !Value.Block.empty() ||
         Value.ExpressionOpcode != GenericConstantExpressionOpcode::Invalid ||
-        Value.ExpressionFlags.rawValue() != 0 || Value.SourceElementType ||
-        Value.InRangeStart || Value.InRangeEnd) {
+        Value.ExpressionFlags.rawValue() != 0 || Value.SourceElementType || Value.InRangeStart ||
+        Value.InRangeEnd) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "generic global-address constant has an inconsistent payload");
     }
@@ -428,13 +423,13 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
         Value.Block.empty() || Value.IntegerValue || Value.FloatingValue ||
         !Value.ByteValue.empty() || !Value.Elements.empty() ||
         Value.ExpressionOpcode != GenericConstantExpressionOpcode::Invalid ||
-        Value.ExpressionFlags.rawValue() != 0 || Value.SourceElementType ||
-        Value.InRangeStart || Value.InRangeEnd) {
+        Value.ExpressionFlags.rawValue() != 0 || Value.SourceElementType || Value.InRangeStart ||
+        Value.InRangeEnd) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "generic block-address constant has an inconsistent payload");
     }
     return {};
-  case GenericConstantKind::PointerAuth:
+  case GenericConstantKind::PointerAuth: {
     if (EffectiveType.Kind != GenericConstantTypeKind::Pointer || Value.Elements.size() < 2 ||
         Value.Elements.size() > 5 || Value.IntegerValue || Value.FloatingValue ||
         !Value.ByteValue.empty() || !hasOnlyValuePayload(Value)) {
@@ -446,19 +441,20 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
       if (!Result)
         return Result;
     }
+    const auto KeyBitWidth = integerScalarBitWidth(Value.Elements[1].Type);
     if (!isPointerScalarType(Value.Elements[0].Type) ||
-        !sameResolvedType(Value.Type, Value.Elements[0].Type) ||
-        !integerScalarBitWidth(Value.Elements[1].Type) ||
-        *integerScalarBitWidth(Value.Elements[1].Type) != 32) {
+        !sameResolvedType(Value.Type, Value.Elements[0].Type) || !KeyBitWidth ||
+        KeyBitWidth.value() != 32) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "generic pointer-auth constant has invalid pointer or key operands");
     }
-    if (Value.Elements.size() >= 3 &&
-        (!integerScalarBitWidth(Value.Elements[2].Type) ||
-         *integerScalarBitWidth(Value.Elements[2].Type) != 64)) {
-      return makeUnexpected(
-          ErrorCode::VerificationError,
-          "generic pointer-auth constant integer discriminator must be a scalar i64");
+    if (Value.Elements.size() >= 3) {
+      const auto DiscriminatorBitWidth = integerScalarBitWidth(Value.Elements[2].Type);
+      if (!DiscriminatorBitWidth || DiscriminatorBitWidth.value() != 64) {
+        return makeUnexpected(
+            ErrorCode::VerificationError,
+            "generic pointer-auth constant integer discriminator must be a scalar i64");
+      }
     }
     for (std::size_t Index = 3; Index < Value.Elements.size(); ++Index) {
       if (!isPointerScalarType(Value.Elements[Index].Type)) {
@@ -468,6 +464,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
       }
     }
     return {};
+  }
   case GenericConstantKind::Expression:
     if (Value.ExpressionOpcode == GenericConstantExpressionOpcode::Invalid ||
         Value.Elements.empty() || Value.IntegerValue || Value.FloatingValue ||
@@ -495,18 +492,18 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
     const bool IsBinary = Value.ExpressionOpcode == GenericConstantExpressionOpcode::Add ||
                           Value.ExpressionOpcode == GenericConstantExpressionOpcode::Sub ||
                           Value.ExpressionOpcode == GenericConstantExpressionOpcode::Xor;
-    const bool IsGEP = Value.ExpressionOpcode ==
-                       GenericConstantExpressionOpcode::GetElementPtr;
+    const bool IsGEP = Value.ExpressionOpcode == GenericConstantExpressionOpcode::GetElementPtr;
     const std::uint8_t Flags = Value.ExpressionFlags.rawValue();
     const std::uint8_t BinaryFlags =
-        (std::uint8_t{1} << static_cast<std::uint8_t>(GenericConstantExpressionFlag::NoUnsignedWrap)) |
+        (std::uint8_t{1} << static_cast<std::uint8_t>(
+             GenericConstantExpressionFlag::NoUnsignedWrap)) |
         (std::uint8_t{1} << static_cast<std::uint8_t>(GenericConstantExpressionFlag::NoSignedWrap));
     const std::uint8_t GEPFlags =
         (std::uint8_t{1} << static_cast<std::uint8_t>(GenericConstantExpressionFlag::InBounds)) |
-        (std::uint8_t{1} <<
-         static_cast<std::uint8_t>(GenericConstantExpressionFlag::NoUnsignedSignedWrap)) |
-        (std::uint8_t{1} <<
-         static_cast<std::uint8_t>(GenericConstantExpressionFlag::GEPNoUnsignedWrap));
+        (std::uint8_t{1} << static_cast<std::uint8_t>(
+             GenericConstantExpressionFlag::NoUnsignedSignedWrap)) |
+        (std::uint8_t{1} << static_cast<std::uint8_t>(
+             GenericConstantExpressionFlag::GEPNoUnsignedWrap));
     if ((!IsBinary && !IsGEP && Flags != 0) || (IsBinary && (Flags & ~BinaryFlags) != 0) ||
         (IsGEP && (Flags & ~GEPFlags) != 0)) {
       return makeUnexpected(ErrorCode::VerificationError,
@@ -594,14 +591,14 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
       if (!isIntegerOrIntegerVectorType(Value.Type) ||
           !sameResolvedType(Value.Elements[0].Type, Value.Type) ||
           !sameResolvedType(Value.Elements[1].Type, Value.Type)) {
-        return makeUnexpected(ErrorCode::VerificationError,
-                              "generic binary constant requires equal integer operand and result types");
+        return makeUnexpected(
+            ErrorCode::VerificationError,
+            "generic binary constant requires equal integer operand and result types");
       }
       return {};
     case GenericConstantExpressionOpcode::GetElementPtr: {
       if (!Value.SourceElementType || !isSizedType(*Value.SourceElementType) ||
-          !isPointerOrPointerVectorType(FirstType) ||
-          !isPointerOrPointerVectorType(Value.Type)) {
+          !isPointerOrPointerVectorType(FirstType) || !isPointerOrPointerVectorType(Value.Type)) {
         return makeUnexpected(ErrorCode::VerificationError,
                               "generic getelementptr constant has invalid source or pointer types");
       }
@@ -631,9 +628,8 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
         return makeUnexpected(ErrorCode::VerificationError,
                               "generic getelementptr result has an incompatible vector shape");
       }
-      if (Value.InRangeStart &&
-          (Value.InRangeStart->bitWidth() != Value.InRangeEnd->bitWidth() ||
-           !signedIntegerLess(*Value.InRangeStart, *Value.InRangeEnd))) {
+      if (Value.InRangeStart && (Value.InRangeStart->bitWidth() != Value.InRangeEnd->bitWidth() ||
+                                 !signedIntegerLess(*Value.InRangeStart, *Value.InRangeEnd))) {
         return makeUnexpected(ErrorCode::VerificationError,
                               "generic getelementptr inrange interval is invalid");
       }
@@ -756,9 +752,8 @@ Expected<GenericConstantType> GenericConstantType::array(std::uint64_t Count,
   return Type;
 }
 
-Expected<GenericConstantType> GenericConstantType::vector(std::uint64_t Count,
-                                                          GenericConstantType Element,
-                                                          bool IsScalable) {
+Expected<GenericConstantType>
+GenericConstantType::vector(std::uint64_t Count, GenericConstantType Element, bool IsScalable) {
   if (Count == 0)
     return makeUnexpected(ErrorCode::InvalidArgument, "generic vector type cannot be empty");
   auto Verification = Element.verify();
@@ -800,8 +795,7 @@ GenericConstantType::function(GenericConstantType Return,
   return Type;
 }
 
-Expected<GenericConstantType> GenericConstantType::named(std::string TypeName,
-                                                         bool IsNumericName) {
+Expected<GenericConstantType> GenericConstantType::named(std::string TypeName, bool IsNumericName) {
   if (TypeName.empty())
     return makeUnexpected(ErrorCode::InvalidArgument, "generic named type cannot be empty");
   GenericConstantType Type;

@@ -68,10 +68,8 @@ struct MIRTargetMappingEntry final {
                          const MIRTargetMappingEntry &Right) = default;
 };
 
-using MIRTargetFunctionStateParser =
-    Expected<TargetFunctionState> (*)(const MIRTargetNode &Node);
-using MIRTargetFunctionStatePrinter =
-    Expected<MIRTargetNode> (*)(const TargetFunctionState &State);
+using MIRTargetFunctionStateParser = Expected<TargetFunctionState> (*)(const MIRTargetNode &Node);
+using MIRTargetFunctionStatePrinter = Expected<MIRTargetNode> (*)(const TargetFunctionState &State);
 using MIRTargetConstantParser = Expected<TargetConstant> (*)(std::string_view Text);
 using MIRTargetConstantPrinter = Expected<std::string> (*)(const TargetConstant &Constant);
 
@@ -235,13 +233,10 @@ public:
     return Description.FunctionStateType;
   }
 
-  [[nodiscard]] Expected<TargetFunctionState>
-  parseFunctionState(const MIRTargetNode &Node) const;
-  [[nodiscard]] Expected<MIRTargetNode>
-  printFunctionState(const TargetFunctionState &State) const;
+  [[nodiscard]] Expected<TargetFunctionState> parseFunctionState(const MIRTargetNode &Node) const;
+  [[nodiscard]] Expected<MIRTargetNode> printFunctionState(const TargetFunctionState &State) const;
   [[nodiscard]] Expected<TargetConstant> parseTargetConstant(std::string_view Text) const;
-  [[nodiscard]] Expected<std::string>
-  printTargetConstant(const TargetConstant &Constant) const;
+  [[nodiscard]] Expected<std::string> printTargetConstant(const TargetConstant &Constant) const;
 
 private:
   explicit TargetMIRTextInfo(TargetMIRTextInfoDesc Description)

@@ -509,8 +509,7 @@ TargetMIRTextInfo::printFunctionState(const TargetFunctionState &State) const {
   return Node;
 }
 
-Expected<TargetConstant>
-TargetMIRTextInfo::parseTargetConstant(std::string_view Text) const {
+Expected<TargetConstant> TargetMIRTextInfo::parseTargetConstant(std::string_view Text) const {
   if (Description.ParseTargetConstant == nullptr) {
     return makeUnexpected(ErrorCode::Unsupported,
                           "target does not define a target constant MIR schema");
@@ -524,8 +523,7 @@ TargetMIRTextInfo::parseTargetConstant(std::string_view Text) const {
   return Constant;
 }
 
-Expected<std::string>
-TargetMIRTextInfo::printTargetConstant(const TargetConstant &Constant) const {
+Expected<std::string> TargetMIRTextInfo::printTargetConstant(const TargetConstant &Constant) const {
   if (Description.PrintTargetConstant == nullptr) {
     return makeUnexpected(ErrorCode::Unsupported,
                           "target does not define a target constant MIR schema");

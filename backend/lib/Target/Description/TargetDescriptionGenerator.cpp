@@ -1364,7 +1364,7 @@ private:
       const auto Value = unsignedInteger32(*Tie, "instruction operand default_tied_operand");
       if (!Value)
         return std::nullopt;
-      Result.DefaultTiedOperand = *Value;
+      Result.DefaultTiedOperand = Value;
     }
     if (const yaml::Node *EarlyClobber = optionalNode(Node, "early_clobber")) {
       const auto Value = boolean(*EarlyClobber, "instruction operand early_clobber");
@@ -1614,7 +1614,7 @@ operandKindEnumerator(std::string_view Value) noexcept {
       {"debug_instr_ref", "DebugInstrRef"},
       {"lane_mask", "LaneMask"},
   }};
-  const auto Position = std::ranges::find(Kinds, Value, &decltype(Kinds)::value_type::first);
+  const auto *const Position = std::ranges::find(Kinds, Value, &decltype(Kinds)::value_type::first);
   if (Position == Kinds.end())
     return std::nullopt;
   return Position->second;
@@ -1675,7 +1675,7 @@ instructionFlagEnumerator(std::string_view Value) noexcept {
       {"generic", "Generic"},
       {"terminal_emission", "TerminalEmission"},
   }};
-  const auto Position = std::ranges::find(Flags, Value, &decltype(Flags)::value_type::first);
+  const auto *const Position = std::ranges::find(Flags, Value, &decltype(Flags)::value_type::first);
   if (Position == Flags.end())
     return std::nullopt;
   return Position->second;
@@ -1698,7 +1698,8 @@ pseudoOwnerEnumerator(std::string_view Value) noexcept {
   }};
   if (Value == "asm_printer")
     return "AsmPrinter";
-  const auto Position = std::ranges::find(Owners, Value, &decltype(Owners)::value_type::first);
+  const auto *const Position =
+      std::ranges::find(Owners, Value, &decltype(Owners)::value_type::first);
   if (Position == Owners.end())
     return std::nullopt;
   return Position->second;
@@ -1718,7 +1719,8 @@ pipelineStageEnumerator(std::string_view Value) noexcept {
       {"post_ra_finalized", "PostRAFinalized"},
       {"emission", "Emission"},
   }};
-  const auto Position = std::ranges::find(Stages, Value, &decltype(Stages)::value_type::first);
+  const auto *const Position =
+      std::ranges::find(Stages, Value, &decltype(Stages)::value_type::first);
   if (Position == Stages.end())
     return std::nullopt;
   return Position->second;
@@ -2066,7 +2068,7 @@ private:
         fail(Convention.Range, "calling convention register classes must resolve");
         return false;
       }
-      const auto normalizeRegisterList = [this,
+      const auto NormalizeRegisterList = [this,
                                           &Convention](const std::vector<std::string> &Symbols,
                                                        const NormalizedRegisterClass &RegisterClass,
                                                        std::vector<std::uint32_t> &Output) {
@@ -2101,13 +2103,13 @@ private:
           .SupportsVarArgs = Convention.SupportsVarArgs,
           .SupportsTailCalls = Convention.SupportsTailCalls,
       };
-      if (!normalizeRegisterList(Convention.IntegerArgumentRegisterSymbols,
+      if (!NormalizeRegisterList(Convention.IntegerArgumentRegisterSymbols,
                                  *IntegerClassDescription, Normalized.IntegerArgumentRegisters) ||
-          !normalizeRegisterList(Convention.FloatingArgumentRegisterSymbols,
+          !NormalizeRegisterList(Convention.FloatingArgumentRegisterSymbols,
                                  *FloatingClassDescription, Normalized.FloatingArgumentRegisters) ||
-          !normalizeRegisterList(Convention.IntegerReturnRegisterSymbols, *IntegerClassDescription,
+          !NormalizeRegisterList(Convention.IntegerReturnRegisterSymbols, *IntegerClassDescription,
                                  Normalized.IntegerReturnRegisters) ||
-          !normalizeRegisterList(Convention.FloatingReturnRegisterSymbols,
+          !NormalizeRegisterList(Convention.FloatingReturnRegisterSymbols,
                                  *FloatingClassDescription, Normalized.FloatingReturnRegisters)) {
         return false;
       }
@@ -3004,8 +3006,9 @@ void emitImmediatePredicate(std::ostream &Output, const NormalizedImmediatePredi
 
 } // namespace
 
-DescriptionGenerationResult generateDescription(std::string SourceName, std::string SourceText) {
-  yaml::ParseResult YAMLResult = yaml::parse(SourceName, SourceText);
+DescriptionGenerationResult generateDescription(const std::string &SourceName,
+                                                std::string SourceText) {
+  yaml::ParseResult YAMLResult = yaml::parse(SourceName, std::move(SourceText));
   if (!YAMLResult.succeeded()) {
     DescriptionGenerationResult Result;
     for (const TextDiagnostic &Diagnostic : YAMLResult.diagnostics())

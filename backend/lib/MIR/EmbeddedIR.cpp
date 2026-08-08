@@ -322,8 +322,8 @@ private:
       parseMetadataDefinition(Line, LineOffset, Position, End);
   }
 
-  void parseTypeDefinition(std::string_view Line, std::size_t LineOffset,
-                           std::size_t Position, std::size_t End) {
+  void parseTypeDefinition(std::string_view Line, std::size_t LineOffset, std::size_t Position,
+                           std::size_t End) {
     auto Name = parseIdentifier(Line, LineOffset, Position, End, '%');
     if (!Name || Failed)
       return;
@@ -350,15 +350,14 @@ private:
       return;
     }
     const std::size_t TypeIndex = Index.TypeDefinitions.size();
-    const bool NumericName = !Name->Name.empty() && Name->Name.front() >= '0' &&
-                             Name->Name.front() <= '9';
+    const bool NumericName =
+        !Name->Name.empty() && Name->Name.front() >= '0' && Name->Name.front() <= '9';
     Index.TypeNameToIndex.emplace(Name->Name, TypeIndex);
     Index.TypeDefinitions.push_back(EmbeddedIRTypeDefinition{
         .Name = std::move(Name->Name),
         .Range = Name->Range,
         .Definition = std::string(Line.substr(Position, DefinitionEnd - Position)),
-        .DefinitionRange =
-            Index.Source.range(LineOffset + Position, LineOffset + DefinitionEnd),
+        .DefinitionRange = Index.Source.range(LineOffset + Position, LineOffset + DefinitionEnd),
         .NumericName = NumericName,
     });
   }
@@ -495,10 +494,10 @@ private:
         std::size_t Previous = IdentifierBegin;
         while (Previous > 0 && isHorizontalSpace(Line[Previous - 1]))
           --Previous;
-        const bool HasTypeBefore = Previous != 0 && Line[Previous - 1] != '(' &&
-                                   Line[Previous - 1] != ',';
-        const bool EndsParameter = Following == End || Line[Following] == ',' ||
-                                   Line[Following] == ')';
+        const bool HasTypeBefore =
+            Previous != 0 && Line[Previous - 1] != '(' && Line[Previous - 1] != ',';
+        const bool EndsParameter =
+            Following == End || Line[Following] == ',' || Line[Following] == ')';
         if (HasTypeBefore && EndsParameter)
           addLocalValue(*Name, Index.Functions[ActiveFunction.value()]);
         Position = Name->End - 1;
@@ -630,9 +629,8 @@ private:
     });
   }
 
-  void parseLocalValueDefinition(std::string_view Line, std::size_t LineOffset,
-                                 std::size_t Begin, std::size_t End,
-                                 EmbeddedIRFunction &Function) {
+  void parseLocalValueDefinition(std::string_view Line, std::size_t LineOffset, std::size_t Begin,
+                                 std::size_t End, EmbeddedIRFunction &Function) {
     std::size_t Position = skipHorizontalSpace(Line, Begin, End);
     if (Position >= End || Line[Position] != '%')
       return;

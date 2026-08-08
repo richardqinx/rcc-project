@@ -16,6 +16,7 @@ enum class ErrorCode : std::uint8_t {
   ParseError,
   VerificationError,
   Unsupported,
+  RegisterAllocationFailed,
   IoError,
   InternalError,
 };

@@ -78,27 +78,28 @@ void testGeneration(TestContext &Context) {
   }
   Context.expect(First.succeeded() && Second.succeeded(),
                  "a complete restricted target description must generate successfully");
-  if (!First.succeeded() || !Second.succeeded())
+  if (!First.succeeded() || !Second.succeeded() || !First.Output || !Second.Output)
     return;
+  const auto &FirstOutput = First.Output.value();
+  const auto &SecondOutput = Second.Output.value();
 
-  Context.expect(First.Output->RegisterHeader == Second.Output->RegisterHeader &&
-                     First.Output->InstructionHeader == Second.Output->InstructionHeader &&
-                     First.Output->TargetTables == Second.Output->TargetTables,
+  Context.expect(FirstOutput.RegisterHeader == SecondOutput.RegisterHeader &&
+                     FirstOutput.InstructionHeader == SecondOutput.InstructionHeader &&
+                     FirstOutput.TargetTables == SecondOutput.TargetTables,
                  "target description generation must be deterministic");
   Context.expect(
-      First.Output->RegisterHeader.find("enum class PhysicalRegisterID") != std::string::npos &&
-          First.Output->RegisterHeader.find("R1 = 1") != std::string::npos &&
-          First.Output->InstructionHeader.find("enum class InstructionOpcode") !=
+      FirstOutput.RegisterHeader.find("enum class PhysicalRegisterID") != std::string::npos &&
+          FirstOutput.RegisterHeader.find("R1 = 1") != std::string::npos &&
+          FirstOutput.InstructionHeader.find("enum class InstructionOpcode") != std::string::npos &&
+          FirstOutput.InstructionHeader.find("LOAD_IMM = 1024") != std::string::npos &&
+          FirstOutput.TargetTables.find("appendGeneratedRegisterInfo") != std::string::npos &&
+          FirstOutput.TargetTables.find("appendGeneratedInstructionInfo") != std::string::npos &&
+          FirstOutput.TargetTables.find("GeneratedAssemblyInstructions") != std::string::npos &&
+          FirstOutput.TargetTables.find("Description.DirectOperandFlagMask = 31") !=
               std::string::npos &&
-          First.Output->InstructionHeader.find("LOAD_IMM = 1024") != std::string::npos &&
-          First.Output->TargetTables.find("appendGeneratedRegisterInfo") != std::string::npos &&
-          First.Output->TargetTables.find("appendGeneratedInstructionInfo") != std::string::npos &&
-          First.Output->TargetTables.find("GeneratedAssemblyInstructions") != std::string::npos &&
-          First.Output->TargetTables.find("Description.DirectOperandFlagMask = 31") !=
-              std::string::npos &&
-          First.Output->TargetTables.find("\"tiny-call\", 1") != std::string::npos &&
-          First.Output->TargetTables.find("\"load.imm\"") != std::string::npos &&
-          First.Output->TargetTables.find("makePreservedMask") != std::string::npos,
+          FirstOutput.TargetTables.find("\"tiny-call\", 1") != std::string::npos &&
+          FirstOutput.TargetTables.find("\"load.imm\"") != std::string::npos &&
+          FirstOutput.TargetTables.find("makePreservedMask") != std::string::npos,
       "generated output must contain typed target IDs, assembly mnemonics, and static target "
       "tables");
 }

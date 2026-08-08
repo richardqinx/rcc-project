@@ -427,8 +427,7 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
 
   rcc::MachineConstantPoolEntryDesc ConstantDescription;
   auto Integer = rcc::IntegerImmediate::fromUnsigned(64, 0x2a2a2a2a2a2a2a2aULL);
-  ConstantDescription.Value =
-      std::move(*rcc::GenericConstantData::integer(std::move(*Integer)));
+  ConstantDescription.Value = std::move(*rcc::GenericConstantData::integer(std::move(*Integer)));
   ConstantDescription.Size = 8;
   ConstantDescription.Align = *rcc::Alignment::create(8);
   auto ConstantIndex = Function->constantPool().addEntry(std::move(ConstantDescription));

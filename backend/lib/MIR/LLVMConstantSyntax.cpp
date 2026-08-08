@@ -248,9 +248,7 @@ private:
     Words[Nibble / 16U] |= static_cast<std::uint64_t>(hexDigitValue(*Iterator))
                            << ((Nibble % 16U) * 4U);
   }
-  if ((BitWidth % 64U) != 0 && (Words.back() >> (BitWidth % 64U)) != 0)
-    return false;
-  return true;
+  return (BitWidth % 64U) == 0 || (Words.back() >> (BitWidth % 64U)) == 0;
 }
 
 [[nodiscard]] bool parseLegacyWideFloatHexWords(std::string_view Digits,
@@ -1172,7 +1170,7 @@ convertRawDoubleNaN(FloatSemantics Semantics, bool Negative, std::uint64_t Fract
                           "integer hexadecimal spelling contains a non-hexadecimal digit");
   }
 
-  const auto FirstNonZero =
+  const auto *const FirstNonZero =
       std::ranges::find_if(Digits, [](char Character) { return hexDigitValue(Character) != 0; });
   std::size_t ActiveBits = 0;
   if (FirstNonZero != Digits.end()) {
@@ -1998,9 +1996,8 @@ Expected<GenericConstantData> ConstantParser::parseExpression(GenericConstantTyp
     case GenericConstantExpressionOpcode::Xor:
     case GenericConstantExpressionOpcode::ExtractElement:
       return 2;
-    case GenericConstantExpressionOpcode::InsertElement:
-      return 3;
     case GenericConstantExpressionOpcode::ShuffleVector:
+    case GenericConstantExpressionOpcode::InsertElement:
       return 3;
     case GenericConstantExpressionOpcode::GetElementPtr:
       return 1;
@@ -2454,15 +2451,22 @@ Expected<std::string> printValue(const GenericConstantData &Value, bool IncludeT
   case GenericConstantKind::Invalid:
     break;
   case GenericConstantKind::Integer:
+    if (!Value.IntegerValue)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "integer constant is missing its integer payload");
     if (resolvedType(Value.Type).Kind == GenericConstantTypeKind::Integer &&
         resolvedType(Value.Type).BitWidth == 1)
-      Result.append(Value.IntegerValue->isZero() ? "false" : "true");
+      Result.append(Value.IntegerValue.value().isZero() ? "false" : "true");
     else
-      Result.append(Value.IntegerValue->toUnsignedDecimal());
+      Result.append(Value.IntegerValue.value().toUnsignedDecimal());
     return Result;
   case GenericConstantKind::Floating:
+    if (!Value.FloatingValue)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "floating constant is missing its floating payload");
     Result.append("f0x");
-    Result.append(hexadecimalWords(Value.FloatingValue->words(), Value.FloatingValue->bitWidth()));
+    Result.append(hexadecimalWords(Value.FloatingValue.value().words(),
+                                   Value.FloatingValue.value().bitWidth()));
     return Result;
   case GenericConstantKind::NullPointer:
     Result.append("null");
@@ -2549,15 +2553,25 @@ Expected<std::string> printValue(const GenericConstantData &Value, bool IncludeT
     if (Value.ExpressionFlags.has(GenericConstantExpressionFlag::NoSignedWrap))
       Result.append(" nsw");
     if (Value.InRangeStart) {
+      if (!Value.InRangeEnd) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "constant expression is missing its inrange end");
+      }
+      const auto &InRangeStart = Value.InRangeStart.value();
+      const auto &InRangeEnd = Value.InRangeEnd.value();
       Result.append(" inrange(");
-      Result.append(std::to_string(std::bit_cast<std::int64_t>(Value.InRangeStart->words()[0])));
+      Result.append(std::to_string(std::bit_cast<std::int64_t>(InRangeStart.words()[0])));
       Result.append(", ");
-      Result.append(std::to_string(std::bit_cast<std::int64_t>(Value.InRangeEnd->words()[0])));
+      Result.append(std::to_string(std::bit_cast<std::int64_t>(InRangeEnd.words()[0])));
       Result.push_back(')');
     }
     Result.append(" (");
     if (Value.ExpressionOpcode == GenericConstantExpressionOpcode::GetElementPtr) {
-      auto SourceType = printType(*Value.SourceElementType);
+      if (!Value.SourceElementType) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "getelementptr constant is missing its source element type");
+      }
+      auto SourceType = printType(Value.SourceElementType.value());
       if (!SourceType)
         return std::unexpected(SourceType.error());
       Result.append(*SourceType);
@@ -3004,14 +3018,12 @@ LayoutAlignment DataLayoutInfo::scalarAlignment(char Kind, std::uint32_t BitWidt
     if (Entry.Kind != Kind)
       continue;
     if (Kind == 'i') {
-      if (Entry.BitWidth >= BitWidth &&
-          (Selected == nullptr || Entry.BitWidth < Selected->BitWidth)) {
+      const bool BetterMatch =
+          Selected == nullptr ||
+          (Entry.BitWidth >= BitWidth && Entry.BitWidth < Selected->BitWidth) ||
+          (Selected->BitWidth < BitWidth && Entry.BitWidth > Selected->BitWidth);
+      if (BetterMatch)
         Selected = &Entry;
-      } else if (Selected == nullptr) {
-        Selected = &Entry;
-      } else if (Selected->BitWidth < BitWidth && Entry.BitWidth > Selected->BitWidth) {
-        Selected = &Entry;
-      }
     } else if (Entry.BitWidth == BitWidth) {
       Selected = &Entry;
       break;

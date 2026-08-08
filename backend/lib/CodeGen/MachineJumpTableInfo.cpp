@@ -84,9 +84,8 @@ Expected<JumpTableIndex> MachineJumpTableInfo::reserveTable() {
   return Index;
 }
 
-Expected<void>
-MachineJumpTableInfo::defineReservedTable(JumpTableIndex Index,
-                                          MachineJumpTableDesc Description) {
+Expected<void> MachineJumpTableInfo::defineReservedTable(JumpTableIndex Index,
+                                                         MachineJumpTableDesc Description) {
   if (Frozen) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "frozen jump table info cannot define reserved tables");

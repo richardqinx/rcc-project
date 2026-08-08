@@ -30,6 +30,14 @@ set(
   MachinePass.cpp
   MachinePipelinePasses.cpp
   MachineRegisterInfo.cpp
+  InlineSpiller.cpp
+  LiveRangeEdit.cpp
+  LiveRegMatrix.cpp
+  RegAllocBase.cpp
+  RegAllocBasic.cpp
+  RegAllocFast.cpp
+  RegAllocPBQP.cpp
+  VirtRegMap.cpp
   MachineSSAExit.cpp
   MachineVerifier.cpp
   MachineFunctionProperties.cpp
@@ -74,6 +82,19 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePipelinePasses.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetCodeGen.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Graph.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Math.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/ReductionRules.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Solution.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Solver.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LiveRangeEdit.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LiveRegMatrix.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegAllocCommon.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegAllocFast.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegAllocPBQP.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/Spiller.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetRegisterAllocationInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/VirtRegMap.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineSSAExit.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineVerifier.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionProperties.h"
@@ -146,6 +167,17 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePasses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/InlineSpiller.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRangeEdit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegMatrix.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBase.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBasic.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocFast.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocPBQP.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/VirtRegMap.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBase.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBasic.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocInternal.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
@@ -189,6 +221,14 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePasses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/InlineSpiller.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRangeEdit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegMatrix.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBase.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBasic.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocFast.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocPBQP.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/VirtRegMap.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"

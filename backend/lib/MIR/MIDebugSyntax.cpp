@@ -16,15 +16,13 @@ namespace {
 [[nodiscard]] bool parseIndex(std::string_view Text, std::uint64_t &Value) noexcept {
   if (Text.empty())
     return false;
-  const auto [End, Error] =
-      std::from_chars(Text.data(), Text.data() + Text.size(), Value, 10);
+  const auto [End, Error] = std::from_chars(Text.data(), Text.data() + Text.size(), Value, 10);
   return Error == std::errc{} && End == Text.data() + Text.size();
 }
 
 } // namespace
 
-std::optional<std::uint64_t>
-parseDIExpressionOpcodeName(std::string_view Name) noexcept {
+std::optional<std::uint64_t> parseDIExpressionOpcodeName(std::string_view Name) noexcept {
   const auto NumberedOpcode = [Name](std::string_view Prefix,
                                      std::uint64_t Base) -> std::optional<std::uint64_t> {
     if (!Name.starts_with(Prefix))
@@ -117,7 +115,7 @@ parseDIExpressionOpcodeName(std::string_view Name) noexcept {
       {"DW_OP_LLVM_implicit_pointer", 0x1004},
       {"DW_OP_LLVM_arg", 0x1005},
   });
-  const auto Found =
+  const auto *const Found =
       std::ranges::find_if(NamedOpcodes, [Name](const auto &Entry) { return Entry.first == Name; });
   if (Found == NamedOpcodes.end())
     return std::nullopt;

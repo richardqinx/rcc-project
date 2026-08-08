@@ -97,9 +97,14 @@ int main(int ArgumentCount, char *Arguments[]) {
     return 1;
   }
 
-  return writeFile(Command.RegisterHeaderPath, Result.Output->RegisterHeader) &&
-                 writeFile(Command.InstructionHeaderPath, Result.Output->InstructionHeader) &&
-                 writeFile(Command.TablesPath, Result.Output->TargetTables)
+  if (!Result.Output) {
+    std::cerr << "rcc-backend-descgen: successful generation produced no output\n";
+    return 1;
+  }
+  const rcc::targetgen::GeneratedDescription &Output = Result.Output.value();
+  return writeFile(Command.RegisterHeaderPath, Output.RegisterHeader) &&
+                 writeFile(Command.InstructionHeaderPath, Output.InstructionHeader) &&
+                 writeFile(Command.TablesPath, Output.TargetTables)
              ? 0
              : 1;
 }

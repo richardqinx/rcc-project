@@ -375,7 +375,7 @@ instructions:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: SIMM20, name: IMM }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [produces_code, rematerializable]
     scheduling_class: ALU
     encoding_category: U
     assembly_format: RD_IMM
@@ -402,7 +402,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [produces_code, rematerializable]
     scheduling_class: ALU
     encoding_category: I
     assembly_format: RD_RS1_IMM
@@ -444,7 +444,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [produces_code, rematerializable]
     scheduling_class: ALU
     encoding_category: I
     assembly_format: RD_RS1_IMM
@@ -709,7 +709,7 @@ instructions:
     assembly_mnemonic: lw
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
@@ -799,7 +799,7 @@ instructions:
     assembly_mnemonic: sw
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
@@ -1202,7 +1202,7 @@ instructions:
     assembly_mnemonic: ld
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
@@ -1217,7 +1217,7 @@ instructions:
     assembly_mnemonic: sd
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
@@ -1423,7 +1423,7 @@ instructions:
     assembly_mnemonic: flw
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, memory_role: value, name: FRD }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
@@ -1438,7 +1438,7 @@ instructions:
     assembly_mnemonic: fsw
     operands:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, memory_role: value, name: FRS2 }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
@@ -1854,7 +1854,7 @@ instructions:
     assembly_mnemonic: fld
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRD }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
@@ -1869,7 +1869,7 @@ instructions:
     assembly_mnemonic: fsd
     operands:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRS2 }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 0
     flags: [may_store, produces_code]

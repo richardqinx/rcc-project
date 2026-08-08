@@ -526,8 +526,7 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
     }
     return {};
   };
-  auto SaveResult =
-      ClonePoints(State.Source.frameInfo().state().SavePoints, FrameState.SavePoints);
+  auto SaveResult = ClonePoints(State.Source.frameInfo().state().SavePoints, FrameState.SavePoints);
   if (!SaveResult)
     return SaveResult;
   auto RestoreResult =

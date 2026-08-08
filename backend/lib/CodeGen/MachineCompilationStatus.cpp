@@ -42,6 +42,7 @@ isKnownDiagnosticSeverity(MachineCompilationDiagnosticSeverity Severity) noexcep
   case ErrorCode::ParseError:
   case ErrorCode::VerificationError:
   case ErrorCode::Unsupported:
+  case ErrorCode::RegisterAllocationFailed:
   case ErrorCode::IoError:
   case ErrorCode::InternalError:
     return true;

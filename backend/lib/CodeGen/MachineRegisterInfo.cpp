@@ -229,6 +229,11 @@ Expected<void> MachineRegisterInfo::addLiveIn(PhysicalRegister PhysReg,
   return {};
 }
 
+void MachineRegisterInfo::clearLiveInVirtualRegisters() noexcept {
+  for (PhysicalRegisterLiveIn &LiveIn : LiveIns)
+    LiveIn.InitialVirtualRegister.reset();
+}
+
 Expected<void> MachineRegisterInfo::reservePhysicalRegister(PhysicalRegister PhysReg) {
   if (!PhysReg.isValid()) {
     return makeUnexpected(ErrorCode::InvalidArgument,

@@ -22,6 +22,8 @@ set(
   MachineOperandTest.cpp
   MachinePassTest.cpp
   MachinePipelinePassesTest.cpp
+  PBQPTest.cpp
+  RegisterAllocationTest.cpp
   MachineSSAExitTest.cpp
   MachineVerifierTest.cpp
   MachineVerifierTargetTest.cpp
@@ -47,6 +49,72 @@ rcc_backend_configure_target(RCCBackendCodeGenCoreTypesTests)
 target_link_libraries(RCCBackendCodeGenCoreTypesTests PRIVATE RCCBackend::CodeGen)
 
 add_test(NAME RCCBackend.CodeGen.CoreTypes COMMAND RCCBackendCodeGenCoreTypesTests)
+
+add_executable(RCCBackendCodeGenPBQPTests PBQPTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenPBQPTests)
+target_link_libraries(RCCBackendCodeGenPBQPTests PRIVATE RCCBackend::CodeGen)
+
+add_test(NAME RCCBackend.CodeGen.PBQP COMMAND RCCBackendCodeGenPBQPTests)
+
+add_executable(RCCBackendCodeGenRegisterAllocationTests RegisterAllocationTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenRegisterAllocationTests)
+target_link_libraries(
+  RCCBackendCodeGenRegisterAllocationTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.RegisterAllocation
+  COMMAND RCCBackendCodeGenRegisterAllocationTests
+)
+
+add_executable(RCCBackendCodeGenLiveRegMatrixTests LiveRegMatrixTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenLiveRegMatrixTests)
+target_link_libraries(
+  RCCBackendCodeGenLiveRegMatrixTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(NAME RCCBackend.CodeGen.LiveRegMatrix COMMAND RCCBackendCodeGenLiveRegMatrixTests)
+
+add_executable(RCCBackendCodeGenVirtRegMapTests VirtRegMapTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenVirtRegMapTests)
+target_link_libraries(
+  RCCBackendCodeGenVirtRegMapTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(NAME RCCBackend.CodeGen.VirtRegMap COMMAND RCCBackendCodeGenVirtRegMapTests)
+
+add_executable(RCCBackendCodeGenSpillerTests SpillerTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenSpillerTests)
+target_link_libraries(
+  RCCBackendCodeGenSpillerTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(NAME RCCBackend.CodeGen.Spiller COMMAND RCCBackendCodeGenSpillerTests)
+
+add_executable(RCCBackendCodeGenBasicAllocatorTests RegAllocBasicTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenBasicAllocatorTests)
+target_link_libraries(
+  RCCBackendCodeGenBasicAllocatorTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(NAME RCCBackend.CodeGen.BasicAllocator COMMAND RCCBackendCodeGenBasicAllocatorTests)
+
+add_executable(RCCBackendCodeGenFastAllocatorTests RegAllocFastTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenFastAllocatorTests)
+target_link_libraries(
+  RCCBackendCodeGenFastAllocatorTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(NAME RCCBackend.CodeGen.FastAllocator COMMAND RCCBackendCodeGenFastAllocatorTests)
+
+add_executable(RCCBackendCodeGenPBQPAllocatorTests RegAllocPBQPTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenPBQPAllocatorTests)
+target_link_libraries(
+  RCCBackendCodeGenPBQPAllocatorTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(NAME RCCBackend.CodeGen.PBQPAllocator COMMAND RCCBackendCodeGenPBQPAllocatorTests)
 
 add_executable(RCCBackendCodeGenGenericOpcodesTests GenericOpcodesTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenGenericOpcodesTests)
@@ -373,6 +441,8 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePassesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
@@ -382,6 +452,13 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTestSupport.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegMatrixTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/VirtRegMapTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/SpillerTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBasicTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocFastTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocPBQPTest.cpp"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnitTest.cpp"
@@ -404,6 +481,8 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePassesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
@@ -413,4 +492,10 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionStateTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfoTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfoTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegMatrixTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/VirtRegMapTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/SpillerTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBasicTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocFastTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocPBQPTest.cpp"
 )

@@ -122,8 +122,7 @@ public:
     return GlobalObjects;
   }
 
-  [[nodiscard]] std::span<const EmbeddedIRMetadataDefinition>
-  metadataDefinitions() const noexcept {
+  [[nodiscard]] std::span<const EmbeddedIRMetadataDefinition> metadataDefinitions() const noexcept {
     return MetadataDefinitions;
   }
 
@@ -134,7 +133,8 @@ public:
   [[nodiscard]] const EmbeddedIRFunction *function(std::string_view Name) const noexcept;
   [[nodiscard]] const EmbeddedIRReference *globalObject(std::string_view Name) const noexcept;
   [[nodiscard]] const EmbeddedIRMetadataDefinition *metadata(std::string_view Name) const noexcept;
-  [[nodiscard]] const EmbeddedIRTypeDefinition *typeDefinition(std::string_view Name) const noexcept;
+  [[nodiscard]] const EmbeddedIRTypeDefinition *
+  typeDefinition(std::string_view Name) const noexcept;
   [[nodiscard]] bool hasGlobalValue(std::string_view Name) const noexcept {
     return function(Name) != nullptr || globalObject(Name) != nullptr;
   }

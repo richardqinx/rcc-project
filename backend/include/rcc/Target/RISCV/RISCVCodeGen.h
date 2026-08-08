@@ -4,6 +4,7 @@
 #define RCC_TARGET_RISCV_RISCVCODEGEN_H
 
 #include "rcc/CodeGen/TargetCodeGen.h"
+#include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
 
 namespace rcc::riscv {
 
@@ -11,6 +12,7 @@ namespace rcc::riscv {
 [[nodiscard]] const TargetRegisterBankInfo &registerBankInfo() noexcept;
 [[nodiscard]] const TargetInstructionSelector &instructionSelector() noexcept;
 [[nodiscard]] const TargetSSAInfo &ssaInfo() noexcept;
+[[nodiscard]] const TargetRegisterAllocationInfo &registerAllocationInfo() noexcept;
 
 } // namespace rcc::riscv
 

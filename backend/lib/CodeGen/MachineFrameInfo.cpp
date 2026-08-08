@@ -66,8 +66,7 @@ parseMachineFramePointerPolicy(std::string_view Name) noexcept {
   return std::nullopt;
 }
 
-std::string_view
-getMachineFramePointerPolicyName(MachineFramePointerPolicy Policy) noexcept {
+std::string_view getMachineFramePointerPolicyName(MachineFramePointerPolicy Policy) noexcept {
   switch (Policy) {
   case MachineFramePointerPolicy::None:
     return "none";
@@ -96,8 +95,8 @@ bool StackObject::isSpill() const noexcept {
 
 bool StackObject::isFixed() const noexcept {
   const StackObjectDesc *Desc = description();
-  return Desc != nullptr && (Desc->Kind == StackObjectKind::FixedABI ||
-                             Desc->Kind == StackObjectKind::FixedSpillSlot);
+  return Desc != nullptr &&
+         (Desc->Kind == StackObjectKind::FixedABI || Desc->Kind == StackObjectKind::FixedSpillSlot);
 }
 
 bool StackObject::isVariableSized() const noexcept {
@@ -142,9 +141,8 @@ Expected<void> MachineFrameInfo::verifyDescription(const StackObjectDesc &Descri
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "callee-saved stack objects require a nonzero physical register");
   }
-  if (Description.LocalOffset &&
-      (Description.Kind == StackObjectKind::FixedABI ||
-       Description.Kind == StackObjectKind::FixedSpillSlot)) {
+  if (Description.LocalOffset && (Description.Kind == StackObjectKind::FixedABI ||
+                                  Description.Kind == StackObjectKind::FixedSpillSlot)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "fixed ABI stack objects cannot have a local frame offset");
   }
@@ -196,8 +194,7 @@ Expected<void> MachineFrameInfo::verifyStateStructure(const MachineFrameState &S
       for (const PhysicalRegister Reg : Point.Registers) {
         if (Reg.number() == 0 || !Registers.insert(Reg).second) {
           return makeUnexpected(ErrorCode::InvalidArgument,
-                                std::string(Kind) +
-                                    " point registers must be nonzero and unique");
+                                std::string(Kind) + " point registers must be nonzero and unique");
         }
       }
     }

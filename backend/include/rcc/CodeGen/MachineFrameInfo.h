@@ -197,8 +197,7 @@ struct MachineFrameState final {
   std::vector<MachineFrameSaveRestorePoint> SavePoints;
   std::vector<MachineFrameSaveRestorePoint> RestorePoints;
 
-  friend bool operator==(const MachineFrameState &Left,
-                         const MachineFrameState &Right) = default;
+  friend bool operator==(const MachineFrameState &Left, const MachineFrameState &Right) = default;
 };
 
 class MachineFrameInfo final {

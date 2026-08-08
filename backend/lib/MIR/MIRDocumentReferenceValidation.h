@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// The private header has no stable include-root-relative guard name.
+// NOLINTNEXTLINE(llvm-header-guard)
 #ifndef RCC_LIB_MIR_MIRDOCUMENTREFERENCEVALIDATION_H
 #define RCC_LIB_MIR_MIRDOCUMENTREFERENCEVALIDATION_H
 

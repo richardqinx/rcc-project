@@ -50,8 +50,8 @@ struct GenericConstantType final {
   [[nodiscard]] static GenericConstantType byte() noexcept;
   [[nodiscard]] static Expected<GenericConstantType> floating(FloatSemantics Semantics);
   [[nodiscard]] static GenericConstantType pointer(std::uint32_t AddressSpace = 0) noexcept;
-  [[nodiscard]] static Expected<GenericConstantType>
-  array(std::uint64_t ElementCount, GenericConstantType Element);
+  [[nodiscard]] static Expected<GenericConstantType> array(std::uint64_t ElementCount,
+                                                           GenericConstantType Element);
   [[nodiscard]] static Expected<GenericConstantType>
   vector(std::uint64_t ElementCount, GenericConstantType Element, bool Scalable = false);
   [[nodiscard]] static Expected<GenericConstantType>
@@ -152,8 +152,7 @@ struct GenericConstantData final {
   std::string Block;
   bool NumericSymbol = false;
   bool NumericBlock = false;
-  GenericConstantExpressionOpcode ExpressionOpcode =
-      GenericConstantExpressionOpcode::Invalid;
+  GenericConstantExpressionOpcode ExpressionOpcode = GenericConstantExpressionOpcode::Invalid;
   GenericConstantExpressionFlags ExpressionFlags;
   std::optional<GenericConstantType> SourceElementType;
   std::optional<IntegerImmediate> InRangeStart;

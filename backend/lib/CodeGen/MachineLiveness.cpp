@@ -1662,10 +1662,9 @@ LiveIntervalsAnalysis::run(MachineFunction &Function, const TargetDescription &T
     auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
     if (!Info)
       return std::unexpected(Info.error());
+    // Preserve the target-provided hint order.  MachineRegisterInfo already de-duplicates
+    // hints, and their order is the deterministic preference order consumed by allocators.
     Interval.AllocationHints = Info->get().AllocationHints;
-    std::ranges::sort(Interval.AllocationHints, [](PhysicalRegister Left, PhysicalRegister Right) {
-      return Left.number() < Right.number();
-    });
 
     std::uint64_t Weight = 1;
     for (const MachineOperand &Operand : Function.registerInfo().useOperands(Reg, false)) {

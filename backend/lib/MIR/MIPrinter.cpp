@@ -1285,20 +1285,24 @@ Expected<void> BodyPrinter::printInstruction(const MachineInstr &Instruction) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "machine instruction has no target descriptor");
   }
-  if (Descriptor->NumExplicitDefs > Instruction.operandCount()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "machine instruction has fewer operands than explicit definitions");
+  std::size_t ExplicitDefs = 0;
+  while (ExplicitDefs < Instruction.operandCount()) {
+    const MachineOperand *Operand = Instruction.operandAt(ExplicitDefs);
+    if (Operand == nullptr || !Operand->isRegister() || Operand->isImplicit() ||
+        !Operand->isDef() || Operand->isUse())
+      break;
+    ++ExplicitDefs;
   }
 
   Output.append("  ");
-  for (std::size_t Index = 0; Index < Descriptor->NumExplicitDefs; ++Index) {
+  for (std::size_t Index = 0; Index < ExplicitDefs; ++Index) {
     if (Index != 0)
       Output.append(", ");
     if (auto Printed = printOperand(*Instruction.operandAt(Index), true); !Printed) {
       return Printed;
     }
   }
-  if (Descriptor->NumExplicitDefs != 0)
+  if (ExplicitDefs != 0)
     Output.append(" = ");
 
   const MachineInstrFlags Flags = Instruction.flags();
@@ -1333,8 +1337,7 @@ Expected<void> BodyPrinter::printInstruction(const MachineInstr &Instruction) {
   Output.append(Descriptor->Name);
 
   bool HasPrintedTail = false;
-  for (std::size_t Index = Descriptor->NumExplicitDefs; Index < Instruction.operandCount();
-       ++Index) {
+  for (std::size_t Index = ExplicitDefs; Index < Instruction.operandCount(); ++Index) {
     Output.append(HasPrintedTail ? ", " : " ");
     HasPrintedTail = true;
     if (auto Printed = printOperand(*Instruction.operandAt(Index), false); !Printed) {

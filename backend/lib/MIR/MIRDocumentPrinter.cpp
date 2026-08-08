@@ -85,7 +85,7 @@ class MIRDocumentPrinter final {
 public:
   MIRDocumentPrinter(const MIRDocument &Document, const TargetDescription &Target,
                      MIRDocumentPrinterOptions Options)
-      : Document(Document), Target(Target), Options(Options) {}
+      : Document(Document), Target(Target), Options(std::move(Options)) {}
 
   [[nodiscard]] Expected<std::string> run();
 
@@ -1187,9 +1187,10 @@ Expected<void> MIRDocumentPrinter::printFunction(const MachineFunction &Function
   Output.append("---\nname: ");
   Output.append(yamlScalar(Function.name()));
   Output.push_back('\n');
-  if (Function.attributes().alignment()) {
+  const auto Alignment = Function.attributes().alignment();
+  if (Alignment) {
     Output.append("alignment: ");
-    Output.append(std::to_string(Function.attributes().alignment()->bytes()));
+    Output.append(std::to_string(Alignment->bytes()));
     Output.push_back('\n');
   }
 
@@ -1296,7 +1297,7 @@ Expected<std::string> MIRDocumentPrinter::run() {
 
 Expected<std::string> printMIRDocument(const MIRDocument &Document, const TargetDescription &Target,
                                        MIRDocumentPrinterOptions Options) {
-  return MIRDocumentPrinter(Document, Target, Options).run();
+  return MIRDocumentPrinter(Document, Target, std::move(Options)).run();
 }
 
 } // namespace rcc::mir

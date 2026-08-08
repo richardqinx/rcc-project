@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// The private header has no stable include-root-relative guard name.
+// NOLINTNEXTLINE(llvm-header-guard)
 #ifndef RCC_TARGET_DESCRIPTION_TARGETDESCRIPTIONGENERATOR_H
 #define RCC_TARGET_DESCRIPTION_TARGETDESCRIPTIONGENERATOR_H
 
@@ -27,7 +29,7 @@ struct DescriptionGenerationResult final {
   }
 };
 
-[[nodiscard]] DescriptionGenerationResult generateDescription(std::string SourceName,
+[[nodiscard]] DescriptionGenerationResult generateDescription(const std::string &SourceName,
                                                               std::string SourceText);
 
 } // namespace rcc::targetgen

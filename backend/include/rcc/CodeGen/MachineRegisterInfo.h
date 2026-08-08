@@ -134,6 +134,7 @@ public:
   [[nodiscard]] std::span<const PhysicalRegisterLiveIn> liveIns() const noexcept {
     return LiveIns;
   }
+  void clearLiveInVirtualRegisters() noexcept;
 
   [[nodiscard]] Expected<void> reservePhysicalRegister(PhysicalRegister PhysReg);
   [[nodiscard]] bool isReserved(PhysicalRegister PhysReg) const noexcept;

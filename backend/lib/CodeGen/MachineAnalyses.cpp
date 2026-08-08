@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -296,7 +297,7 @@ Expected<MachineLoopAnalysis::Result> MachineLoopAnalysis::run(MachineFunction &
   Result ResultValue;
   std::vector<MachineBasicBlock *> Blocks = linkedBlocks(Function);
   const auto Order = blockOrder(Blocks);
-  std::unordered_map<MachineBasicBlock *, std::unordered_set<MachineBasicBlock *>> LoopBlocks;
+  std::map<MachineBasicBlock *, std::unordered_set<MachineBasicBlock *>> LoopBlocks;
   std::unordered_map<MachineBasicBlock *, std::vector<MachineBasicBlock *>> LoopLatches;
 
   for (MachineBasicBlock *Latch : Blocks) {

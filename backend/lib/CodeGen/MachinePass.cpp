@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -164,8 +165,9 @@ MachineAnalysisManager::registerAnalysisImpl(MachineAnalysisRegistration Registr
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine analysis name is already registered");
   }
-  Registry.emplace(Registration.ID, RegisteredAnalysis{std::move(Registration), std::move(Runner),
-                                                       std::move(Invalidator)});
+  const AnalysisID RegistrationID = Registration.ID;
+  Registry.emplace(RegistrationID, RegisteredAnalysis{std::move(Registration), std::move(Runner),
+                                                      std::move(Invalidator)});
   return {};
 }
 
@@ -287,7 +289,7 @@ void MachineAnalysisManager::invalidate(MachineFunction &Function,
   if (FunctionPosition == Cache.end() || Preserved.preservesAll() || Changes.empty())
     return;
 
-  std::unordered_set<AnalysisID> Invalid;
+  std::set<AnalysisID> Invalid;
   for (auto &[ID, Entry] : FunctionPosition->second) {
     if (Preserved.preserves(ID))
       continue;
@@ -406,8 +408,9 @@ Expected<void> CompilationUnitAnalysisManager::registerAnalysisImpl(
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "compilation-unit analysis name is already registered");
   }
-  Registry.emplace(Registration.ID, RegisteredAnalysis{std::move(Registration), std::move(Runner),
-                                                       std::move(Invalidator)});
+  const AnalysisID RegistrationID = Registration.ID;
+  Registry.emplace(RegistrationID, RegisteredAnalysis{std::move(Registration), std::move(Runner),
+                                                      std::move(Invalidator)});
   return {};
 }
 
@@ -524,7 +527,7 @@ void CompilationUnitAnalysisManager::invalidate(CompilationUnit &Unit,
   if (UnitPosition == Cache.end() || Preserved.preservesAll() || Changes.empty())
     return;
 
-  std::unordered_set<AnalysisID> Invalid;
+  std::set<AnalysisID> Invalid;
   for (auto &[ID, Entry] : UnitPosition->second) {
     if (Preserved.preserves(ID))
       continue;
@@ -1238,10 +1241,10 @@ Expected<void> MachinePassManager::runFunctions(CompilationUnit &Unit,
   for (std::size_t Index = 0; Index < FunctionCount; ++Index) {
     if (Instrumentation != nullptr)
       Instrumentation->replayBufferedEvents(EventBuffers[Index]);
-    if (Failures[Index]) {
-      return std::unexpected(
-          prefixedError(*Failures[Index],
-                        "function '" + std::string(Unit.functionAt(Index)->name()) + "' failed: "));
+    const auto &Failure = Failures[Index];
+    if (Failure) {
+      return std::unexpected(prefixedError(
+          *Failure, "function '" + std::string(Unit.functionAt(Index)->name()) + "' failed: "));
     }
   }
   return {};
