@@ -319,6 +319,7 @@ private:
   friend class MachinePassManager;
   friend class CompilationUnitPassManager;
   friend Expected<void> registerStage8MachineAnalyses(MachineAnalysisManager &Analyses);
+  friend Expected<void> registerStage11MachineAnalyses(MachineAnalysisManager &Analyses);
 };
 
 class CompilationUnitAnalysisManager final {

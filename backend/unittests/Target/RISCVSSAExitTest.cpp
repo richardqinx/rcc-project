@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachinePass.h"
 #include "rcc/CodeGen/MachineSSAExit.h"
@@ -167,13 +168,18 @@ buildPhi(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
   return Result;
 }
 
-void setSelectedSSAProperties(rcc::MachineFunction &Function) {
+[[nodiscard]] rcc::Expected<void> setSelectedSSAProperties(rcc::MachineFunction &Function,
+                                                           const rcc::TargetDescription &Target) {
+  auto Rebuilt = rcc::rebuildMachineLiveness(Function, Target);
+  if (!Rebuilt)
+    return std::unexpected(Rebuilt.error());
   for (rcc::MachineFunctionProperty Property :
        {rcc::MachineFunctionProperty::IsSSA, rcc::MachineFunctionProperty::TracksLiveness,
         rcc::MachineFunctionProperty::Legalized, rcc::MachineFunctionProperty::RegBankSelected,
         rcc::MachineFunctionProperty::Selected}) {
     Function.properties().set(Property);
   }
+  return {};
 }
 
 void testBehaviorAndCopyLegality(TestContext &Context, const rcc::TargetDescription &Target) {
@@ -286,7 +292,10 @@ void testRV64GCCriticalEdge(TestContext &Context, const rcc::TargetDescription &
       std::pair<rcc::Register, rcc::MachineBasicBlock *>{*OtherValue, *Other}};
   Context.expect(buildPhi(**Function, Target, **Merge, *Destination, Incoming).has_value(),
                  "RV64GC critical-edge PHI must be built");
-  setSelectedSSAProperties(**Function);
+  auto InitialLiveness = setSelectedSSAProperties(**Function, Target);
+  Context.expect(InitialLiveness.has_value(), "RV64GC PHI liveness rebuild must succeed");
+  if (!InitialLiveness)
+    return;
 
   rcc::MachinePassManager Pipeline;
   Context.expect(Pipeline.addPass(std::make_unique<rcc::PHIEliminationPass>(rcc::riscv::ssaInfo()))

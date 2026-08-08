@@ -17,6 +17,7 @@ set(
   MachineIRCoreTest.cpp
   MachineAnalysesTest.cpp
   MachineJumpTableInfoTest.cpp
+  MachineLivenessTest.cpp
   MachineMetadataTest.cpp
   MachineOperandTest.cpp
   MachinePassTest.cpp
@@ -221,6 +222,18 @@ add_test(
   COMMAND RCCBackendCodeGenMachineJumpTableInfoTests
 )
 
+add_executable(RCCBackendCodeGenMachineLivenessTests MachineLivenessTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineLivenessTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineLivenessTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget RCCBackend::RISCV
+)
+
+add_test(
+  NAME RCCBackend.CodeGen.MachineLiveness
+  COMMAND RCCBackendCodeGenMachineLivenessTests
+)
+
 add_executable(RCCBackendCodeGenMachineMetadataTests MachineMetadataTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineMetadataTests)
 target_link_libraries(
@@ -355,6 +368,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalysesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineLivenessTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
@@ -385,6 +399,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalysesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineLivenessTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"

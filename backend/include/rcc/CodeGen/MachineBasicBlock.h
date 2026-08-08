@@ -113,6 +113,9 @@ public:
   [[nodiscard]] Expected<void> addLiveIn(PhysicalRegister PhysReg,
                                          LaneMask Lanes = LaneMask::all());
   [[nodiscard]] Expected<void> removeLiveIn(PhysicalRegister PhysReg);
+  void clearLiveIns() noexcept {
+    LiveIns.clear();
+  }
   [[nodiscard]] std::span<const MachineBasicBlockLiveIn> liveIns() const noexcept {
     return LiveIns;
   }

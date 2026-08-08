@@ -9,6 +9,7 @@
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -458,29 +459,18 @@ placePhiCopiesOnEdge(MachineFunction &Function, const TargetDescription &Target,
   return EdgeBlock;
 }
 
-[[nodiscard]] Expected<bool> clearStaleLivenessFlags(MachineFunction &Function) {
-  bool Changed = false;
-  for (MachineInstr *Instruction : Function.allInstructions()) {
-    if (Instruction->parent() == nullptr)
-      continue;
-    for (std::size_t Index = 0; Index < Instruction->operandCount(); ++Index) {
-      MachineOperand *Operand = Instruction->operandAt(Index);
-      if (Operand == nullptr || !Operand->isRegister())
-        continue;
-      RegisterOperandFlags Flags = Operand->registerFlags();
-      const bool HadStaleFlag =
-          Flags.has(RegisterOperandFlag::Kill) || Flags.has(RegisterOperandFlag::Dead);
-      if (!HadStaleFlag)
-        continue;
-      Flags.clear(RegisterOperandFlag::Kill);
-      Flags.clear(RegisterOperandFlag::Dead);
-      auto Updated = Operand->setRegisterFlags(Flags);
-      if (!Updated)
-        return std::unexpected(Updated.error());
-      Changed = true;
-    }
+[[nodiscard]] Expected<void> repairTrackedLiveness(MachineFunction &Function,
+                                                   const TargetDescription &Target,
+                                                   MachinePassResult &Result) {
+  if (!Result.Changed || !Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
+    return {};
   }
-  return Changed;
+  auto Rebuilt = rebuildMachineLiveness(Function, Target);
+  if (!Rebuilt)
+    return std::unexpected(Rebuilt.error());
+  if (*Rebuilt)
+    Result.Changes.add(MachinePassChange::Operands);
+  return {};
 }
 
 [[nodiscard]] Expected<SubRegIndex> subRegIndex(const MachineOperand &Operand,
@@ -900,11 +890,10 @@ Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunctio
   }
 
   if (Result.Changed && Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
-    auto Cleared = clearStaleLivenessFlags(Function);
-    if (!Cleared)
-      return std::unexpected(Cleared.error());
-    if (*Cleared)
-      Result.Changes.add(MachinePassChange::Operands);
+    auto Repaired = repairTrackedLiveness(Function, Target, Result);
+    if (!Repaired)
+      return std::unexpected(
+          prefixedError(Repaired.error(), "PHI-elimination liveness repair failed: "));
   }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;
@@ -1077,11 +1066,10 @@ TwoAddressRewritePass::runImplementation(MachineFunction &Function, const Target
   if (!FinalState)
     return std::unexpected(FinalState.error());
   if (Result.Changed && Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
-    auto Cleared = clearStaleLivenessFlags(Function);
-    if (!Cleared)
-      return std::unexpected(Cleared.error());
-    if (*Cleared)
-      Result.Changes.add(MachinePassChange::Operands);
+    auto Repaired = repairTrackedLiveness(Function, Target, Result);
+    if (!Repaired)
+      return std::unexpected(
+          prefixedError(Repaired.error(), "two-address liveness repair failed: "));
   }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;

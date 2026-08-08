@@ -135,6 +135,7 @@ Expected<TargetRegisterInfo> TargetRegisterInfo::create(TargetRegisterInfoDesc D
   }
 
   std::unordered_set<RegisterUnitID> ReferencedUnits;
+  std::unordered_map<RegisterUnitID, int> UnitLaneCardinalities;
   for (const PhysicalRegisterDesc &Register : Result.Description.PhysicalRegisters) {
     if (Register.Units.empty())
       return invalidDescription("physical register must reference at least one register unit");
@@ -146,6 +147,12 @@ Expected<TargetRegisterInfo> TargetRegisterInfo::create(TargetRegisterInfoDesc D
           !SeenUnits.insert(Unit.Unit).second) {
         return invalidDescription(
             "physical register has an unknown, empty-lane, or duplicate register unit");
+      }
+      const int Cardinality = std::popcount(Unit.Lanes.rawValue());
+      const auto [Position, Inserted] = UnitLaneCardinalities.emplace(Unit.Unit, Cardinality);
+      if (!Inserted && Position->second != Cardinality) {
+        return invalidDescription(
+            "every physical-register view of a register unit must have the same lane count");
       }
       ReferencedUnits.insert(Unit.Unit);
       RegisterLanes = RegisterLanes | Unit.Lanes;

@@ -7,6 +7,7 @@
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
 
@@ -232,6 +233,20 @@ registerConfigurationFingerprint(const MachineRegisterInfo &RegInfo) noexcept {
   return Error(Source.code(), std::move(Prefix));
 }
 
+[[nodiscard]] Expected<void> repairTrackedLiveness(MachineFunction &Function,
+                                                   const TargetDescription &Target,
+                                                   MachinePassResult &Result) {
+  if (!Result.Changed || !Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
+    return {};
+  }
+  auto Rebuilt = rebuildMachineLiveness(Function, Target);
+  if (!Rebuilt)
+    return std::unexpected(Rebuilt.error());
+  if (*Rebuilt)
+    Result.Changes.add(MachinePassChange::Operands);
+  return {};
+}
+
 } // namespace
 
 const MachinePassContract &LegalizerPass::contract() const noexcept {
@@ -359,6 +374,9 @@ Expected<MachinePassResult> LegalizerPass::runImplementation(MachineFunction &Fu
       return std::unexpected(
           prefixedError(FinalValidation.error(), "legalizer produced invalid MachineIR: "));
   }
+  auto Liveness = repairTrackedLiveness(Function, Target, Result);
+  if (!Liveness)
+    return std::unexpected(prefixedError(Liveness.error(), "legalizer liveness repair failed: "));
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;
 }
@@ -470,6 +488,14 @@ Expected<MachinePassResult> RegisterBankSelectPass::run(MachineFunction &Functio
     Result.Changes.add(MachinePassChange::Registers);
   }
 
+  auto Liveness = repairTrackedLiveness(Function, Target, Result);
+  if (!Liveness) {
+    auto Restored = Restore();
+    if (!Restored)
+      return std::unexpected(prefixedError(Restored.error(), "register-bank rollback failed: "));
+    return std::unexpected(
+        prefixedError(Liveness.error(), "register-bank liveness repair failed: "));
+  }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;
 }
@@ -607,6 +633,11 @@ InstructionSelectPass::runImplementation(MachineFunction &Function, const Target
   if (!RegisterValidation)
     return std::unexpected(prefixedError(RegisterValidation.error(),
                                          "instruction selection produced invalid registers: "));
+  auto Liveness = repairTrackedLiveness(Function, Target, Result);
+  if (!Liveness) {
+    return std::unexpected(
+        prefixedError(Liveness.error(), "instruction-selection liveness repair failed: "));
+  }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;
 }

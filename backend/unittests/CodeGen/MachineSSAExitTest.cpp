@@ -9,6 +9,7 @@
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachinePass.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -413,13 +414,18 @@ buildPhi(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
   return Pending->build();
 }
 
-void setSelectedSSAProperties(rcc::MachineFunction &Function) {
+[[nodiscard]] rcc::Expected<void> setSelectedSSAProperties(rcc::MachineFunction &Function,
+                                                           const rcc::TargetDescription &Target) {
+  auto Rebuilt = rcc::rebuildMachineLiveness(Function, Target);
+  if (!Rebuilt)
+    return std::unexpected(Rebuilt.error());
   for (rcc::MachineFunctionProperty Property :
        {rcc::MachineFunctionProperty::IsSSA, rcc::MachineFunctionProperty::TracksLiveness,
         rcc::MachineFunctionProperty::Legalized, rcc::MachineFunctionProperty::RegBankSelected,
         rcc::MachineFunctionProperty::Selected}) {
     Function.properties().set(Property);
   }
+  return {};
 }
 
 [[nodiscard]] rcc::Expected<void> runPHIElimination(rcc::MachineFunction &Function,
@@ -531,7 +537,10 @@ void testParallelPHIsAndPlacement(TestContext &Context, const rcc::TargetDescrip
                                           KilledUse, {}, {rcc::RegisterOperandFlag::Kill}) &&
                      buildJump(Function, Target, Backedge, Header),
                  "parallel PHI backedge must be populated");
-  setSelectedSSAProperties(Function);
+  auto InitialLiveness = setSelectedSSAProperties(Function, Target);
+  Context.expect(InitialLiveness.has_value(), "parallel PHI liveness rebuild must succeed");
+  if (!InitialLiveness)
+    return;
 
   auto Run = runPHIElimination(Function, Target, Info);
   Context.expect(Run.has_value(), "parallel PHI elimination must succeed");
@@ -666,7 +675,14 @@ void testCriticalEdgeAndPhysicalLiveIn(TestContext &Context, const rcc::TargetDe
       std::pair<rcc::Register, rcc::MachineBasicBlock *>{*OtherValue, &Other}};
   Context.expect(buildPhi(Function, Target, Merge, *Destination, Incoming).has_value(),
                  "critical-edge PHI must be built");
-  setSelectedSSAProperties(Function);
+  const std::array G1Use{rcc::Register::fromPhysical(G1)};
+  Context.expect(buildRegisterInstruction(Function, Target, Merge, testOpcode(UseOpcode), {}, G1Use)
+                     .has_value(),
+                 "merge block must consume its inherited physical live-in");
+  auto InitialLiveness = setSelectedSSAProperties(Function, Target);
+  Context.expect(InitialLiveness.has_value(), "critical-edge PHI liveness rebuild must succeed");
+  if (!InitialLiveness)
+    return;
 
   auto Run = runPHIElimination(Function, Target, Info);
   Context.expect(Run.has_value(), "critical-edge PHI elimination must succeed");
@@ -730,7 +746,8 @@ void testUndefAndFailureAtomicity(TestContext &Context, const rcc::TargetDescrip
                   {rcc::RegisterOperandFlag::Undef})) {
       return Fixture;
     }
-    setSelectedSSAProperties(*Fixture.Function);
+    Context.expect(setSelectedSSAProperties(*Fixture.Function, Target).has_value(),
+                   "undef PHI liveness rebuild must succeed");
     return Fixture;
   };
 
@@ -887,7 +904,10 @@ void testTwoAddressAndSubregisterPseudos(TestContext &Context, const rcc::Target
   auto Return = Builder.buildInstr(testOpcode(ReturnOpcode));
   Context.expect(Return && Return->build(), "two-address return must be built");
 
-  setSelectedSSAProperties(Function);
+  auto InitialLiveness = setSelectedSSAProperties(Function, Target);
+  Context.expect(InitialLiveness.has_value(), "two-address liveness rebuild must succeed");
+  if (!InitialLiveness)
+    return;
   Function.properties().set(rcc::MachineFunctionProperty::NoPHIs);
   rcc::MachinePassManager Pipeline;
   Context.expect(Pipeline.addPass(std::make_unique<rcc::TwoAddressRewritePass>(Info)).has_value(),
@@ -939,18 +959,20 @@ void testTwoAddressAndSubregisterPseudos(TestContext &Context, const rcc::Target
                                    Copy->operandAt(0)->subReg() == rcc::test::TestSubReg::Low32;
                           }),
       "INSERT_SUBREG must copy its inserted value into the requested destination lane");
-  Context.expect(
-      std::ranges::all_of(Function.allInstructions(),
-                          [](const rcc::MachineInstr *MI) {
-                            if (MI->parent() == nullptr)
-                              return true;
-                            return std::ranges::none_of(
-                                MI->operands(), [](const rcc::MachineOperand &Op) {
-                                  return Op.registerFlags().has(rcc::RegisterOperandFlag::Kill) ||
-                                         Op.registerFlags().has(rcc::RegisterOperandFlag::Dead);
-                                });
-                          }),
-      "two-address rewrite must conservatively clear stale kill/dead flags");
+  const bool HasKill = std::ranges::any_of(Function.allInstructions(), [](const auto *MI) {
+    return MI->parent() != nullptr &&
+           std::ranges::any_of(MI->operands(), [](const rcc::MachineOperand &Operand) {
+             return Operand.registerFlags().has(rcc::RegisterOperandFlag::Kill);
+           });
+  });
+  const bool HasDead = std::ranges::any_of(Function.allInstructions(), [](const auto *MI) {
+    return MI->parent() != nullptr &&
+           std::ranges::any_of(MI->operands(), [](const rcc::MachineOperand &Operand) {
+             return Operand.registerFlags().has(rcc::RegisterOperandFlag::Dead);
+           });
+  });
+  Context.expect(HasKill && HasDead,
+                 "two-address rewrite must rebuild precise kill and dead flags");
   Context.expect(rcc::MachineVerifier::verify(Function, Target).has_value(),
                  "two-address and subregister expansion result must verify");
 
@@ -983,7 +1005,10 @@ void testTwoAddressAndSubregisterPseudos(TestContext &Context, const rcc::Target
                  "two-address atomicity tied instruction must build");
   if (!AtomicInstruction)
     return;
-  setSelectedSSAProperties(*AtomicFixture.Function);
+  auto AtomicLiveness = setSelectedSSAProperties(*AtomicFixture.Function, Target);
+  Context.expect(AtomicLiveness.has_value(), "two-address atomicity liveness rebuild must succeed");
+  if (!AtomicLiveness)
+    return;
   AtomicFixture.Function->properties().set(rcc::MachineFunctionProperty::NoPHIs);
   const std::size_t AtomicInstructionsBefore = AtomicFixture.Function->allInstructions().size();
   const std::size_t AtomicRegistersBefore =

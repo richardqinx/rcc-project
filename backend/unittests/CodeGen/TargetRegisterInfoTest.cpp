@@ -187,6 +187,12 @@ void testDescriptionRejection(TestContext &Context) {
   }
   {
     auto Description = rcc::test::createTestTargetRegisterInfoDescription();
+    Description.PhysicalRegisters[2].Units.front().Lanes = rcc::LaneMask::fromRaw(0x3);
+    Context.expect(!rcc::TargetRegisterInfo::create(std::move(Description)),
+                   "register-unit views with different lane counts must be rejected");
+  }
+  {
+    auto Description = rcc::test::createTestTargetRegisterInfoDescription();
     Description.RegisterClasses.front().SuperClasses.push_back(
         rcc::test::TestRegisterClass::GPR64Alloc);
     Context.expect(!rcc::TargetRegisterInfo::create(std::move(Description)),

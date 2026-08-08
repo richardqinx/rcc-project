@@ -278,7 +278,7 @@ private:
       rcc::MachineOperand::Kind::GlobalSymbol,
       rcc::MachineOperand::Kind::ExternalSymbol,
   };
-  Global.Operands.push_back(std::move(GlobalOperand));
+  Global.Operands.push_back(GlobalOperand);
   Global.Flags.set(rcc::InstructionFlag::ProducesCode);
 
   std::vector<rcc::InstructionDescriptor> Descriptors;
@@ -372,6 +372,7 @@ machineMetadataNodes:
   - '!10 = distinct !{!0, !"machine", null}'
 body: |
   bb.0.entry (%ir-block.entry):
+    liveins: $g0
     %7:gpr64 = TEST_LOAD $g0 :: (load syncscope("agent") acquire 8 from %ir.slot, align 8)
     TEST_GLOBAL @ordinary
     TEST_BRANCH %bb.0.entry

@@ -8,6 +8,7 @@
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -876,6 +877,11 @@ private:
     }
     if (Has(MachineFunctionProperty::TiedOpsRewritten) && HasStageTenPseudo) {
       return fail("TiedOpsRewritten function contains a Stage 10 pseudo");
+    }
+    if (Has(MachineFunctionProperty::TracksLiveness)) {
+      auto Liveness = verifyTrackedMachineLiveness(Function, Target);
+      if (!Liveness)
+        return failWith("tracked machine liveness", Liveness.error());
     }
 
     const bool NeedsTypes = Options.Mode == MachineVerifierMode::PreLegalizer ||
