@@ -172,6 +172,66 @@ Expected<void> MachineFunction::insertBlockBefore(MachineBasicBlock &Position,
   return {};
 }
 
+Expected<void> MachineFunction::moveBlockBefore(MachineBasicBlock &Position,
+                                                MachineBasicBlock &Block) {
+  if (Position.OwnerFunction != this || Block.OwnerFunction != this || !Position.IsLinked ||
+      !Block.IsLinked) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "layout move requires two linked blocks in the same function");
+  }
+  if (&Position == &Block || Block.NextBlock == &Position)
+    return {};
+
+  if (Block.PreviousBlock != nullptr)
+    Block.PreviousBlock->NextBlock = Block.NextBlock;
+  else
+    FirstBlock = Block.NextBlock;
+  if (Block.NextBlock != nullptr)
+    Block.NextBlock->PreviousBlock = Block.PreviousBlock;
+  else
+    LastBlock = Block.PreviousBlock;
+
+  Block.PreviousBlock = Position.PreviousBlock;
+  Block.NextBlock = &Position;
+  if (Position.PreviousBlock != nullptr)
+    Position.PreviousBlock->NextBlock = &Block;
+  else
+    FirstBlock = &Block;
+  Position.PreviousBlock = &Block;
+  renumberBlocks();
+  return {};
+}
+
+Expected<void> MachineFunction::moveBlockAfter(MachineBasicBlock &Position,
+                                               MachineBasicBlock &Block) {
+  if (Position.OwnerFunction != this || Block.OwnerFunction != this || !Position.IsLinked ||
+      !Block.IsLinked) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "layout move requires two linked blocks in the same function");
+  }
+  if (&Position == &Block || Position.NextBlock == &Block)
+    return {};
+
+  if (Block.PreviousBlock != nullptr)
+    Block.PreviousBlock->NextBlock = Block.NextBlock;
+  else
+    FirstBlock = Block.NextBlock;
+  if (Block.NextBlock != nullptr)
+    Block.NextBlock->PreviousBlock = Block.PreviousBlock;
+  else
+    LastBlock = Block.PreviousBlock;
+
+  Block.PreviousBlock = &Position;
+  Block.NextBlock = Position.NextBlock;
+  if (Position.NextBlock != nullptr)
+    Position.NextBlock->PreviousBlock = &Block;
+  else
+    LastBlock = &Block;
+  Position.NextBlock = &Block;
+  renumberBlocks();
+  return {};
+}
+
 Expected<void> MachineFunction::removeBlock(MachineBasicBlock &Block) {
   if (Block.OwnerFunction != this || !Block.IsLinked)
     return makeUnexpected(ErrorCode::InvalidArgument,

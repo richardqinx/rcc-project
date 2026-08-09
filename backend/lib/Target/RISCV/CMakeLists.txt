@@ -47,10 +47,16 @@ set_source_files_properties(
 
 add_library(
   RCCBackendRISCV
+  RISCVBranchInfo.cpp
   RISCVCodeGen.cpp
   RISCVCallLowering.cpp
   RISCVFrameLowering.cpp
+  RISCVMachineCombiner.cpp
+  RISCVMachineMemoryFolding.cpp
+  RISCVOptimizationPipeline.cpp
+  RISCVPseudoExpansion.cpp
   RISCVRegisterAllocation.cpp
+  RISCVScheduling.cpp
   RISCVTarget.cpp
   "${RCCBackendRISCVGeneratedRegisterHeader}"
   "${RCCBackendRISCVGeneratedInstructionHeader}"
@@ -93,19 +99,31 @@ install(
 )
 
 rcc_backend_register_format_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVBranchInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCodeGen.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCallLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTarget.h"
 )
 rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVBranchInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
 )

@@ -11,11 +11,21 @@ set(
   MachineBasicBlockAttributes.cpp
   MachineCFIInfo.cpp
   MachineCompilationStatus.cpp
+  MachineCombiner.cpp
+  MachineCombinerPattern.cpp
   MachineBasicBlock.cpp
+  MachineBlockPlacement.cpp
+  MachineBranchOptimization.cpp
+  MachineBranchRelaxation.cpp
   MachineCFGUpdater.cpp
   MachineConstantPool.cpp
+  MachineCopyPropagation.cpp
+  MachineCSE.cpp
   MachineDebugInfo.cpp
+  MachineDCE.cpp
   MachineFrameInfo.cpp
+  MachineFallthrough.cpp
+  MachineFinalization.cpp
   MachineFunction.cpp
   MachineFunctionAttributes.cpp
   MachineFunctionCloner.cpp
@@ -24,15 +34,29 @@ set(
   MachineAnalyses.cpp
   MachineInstr.cpp
   MachineJumpTableInfo.cpp
+  MachineLICM.cpp
   MachineLiveness.cpp
+  MachineMemoryFolding.cpp
   MachineMemOperand.cpp
   MachineMetadata.cpp
   MachineOperand.cpp
+  MachineOptimizationPipeline.cpp
   MachinePass.cpp
+  MachinePseudoExpansion.cpp
   MachinePipelinePasses.cpp
   MachineRegisterInfo.cpp
+  MachineScheduler.cpp
+  MachineShrinkWrapping.cpp
+  MachineSink.cpp
+  MachineStackSlotColoring.cpp
+  MachineTailDuplication.cpp
+  MachineTailMerge.cpp
   PrologueEpilogueInsertion.cpp
+  PostRAScheduler.cpp
+  RegisterPressure.cpp
   RegisterScavenger.cpp
+  ScheduleDAG.cpp
+  ScheduleHazardRecognizer.cpp
   InlineSpiller.cpp
   LiveRangeEdit.cpp
   LiveRegMatrix.cpp
@@ -53,6 +77,7 @@ set(
   TargetFunctionState.cpp
   TargetMIRTextInfo.cpp
   TargetRegisterInfo.cpp
+  TargetSchedulingModel.cpp
 )
 set(
   RCCBackendCodeGenHeaders
@@ -65,11 +90,21 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlockAttributes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFIInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCompilationStatus.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCombiner.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCombinerPattern.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlock.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBlockPlacement.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBranchOptimization.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBranchRelaxation.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFGUpdater.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineConstantPool.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCopyPropagation.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCSE.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineDebugInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineDCE.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFrameInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFallthrough.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFinalization.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunction.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionAttributes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionCloner.h"
@@ -78,17 +113,32 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineAnalyses.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineInstr.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineJumpTableInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineLICM.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineLiveness.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineLivenessRepair.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemoryFolding.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMetadata.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOptimizationPipeline.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePass.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePseudoExpansion.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePipelinePasses.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PrologueEpilogueInsertion.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterPressure.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterScavenger.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/ScheduleDAG.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/ScheduleHazardRecognizer.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetCodeGen.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFrameLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineScheduler.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineShrinkWrapping.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineSink.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineStackSlotColoring.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineTailDuplication.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineTailMerge.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PostRAScheduler.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Graph.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Math.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/ReductionRules.h"
@@ -111,10 +161,14 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/StableID.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetConstant.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetCallLowering.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetBranchInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetDescription.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFunctionState.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetMIRTextInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetMemoryFolding.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetRegisterInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetSchedulingModel.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetPseudoExpansion.h"
 )
 
 add_library(RCCBackendCodeGen ${RCCBackendCodeGenSources})
@@ -156,9 +210,19 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineBlockPlacement.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineBranchOptimization.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineBranchRelaxation.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCombiner.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCombinerPattern.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPool.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCopyPropagation.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCSE.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineDCE.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineDebugInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineFallthrough.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineFinalization.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunction.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionAttributes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
@@ -167,13 +231,28 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalyses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineLICM.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineLiveness.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemoryFolding.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePasses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineScheduler.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulerInternal.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineShrinkWrapping.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSink.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineStackSlotColoring.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineTailDuplication.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineTailMerge.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PostRAScheduler.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegisterPressure.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ScheduleDAG.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ScheduleHazardRecognizer.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InlineSpiller.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LiveRangeEdit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegMatrix.cpp"
@@ -197,6 +276,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetSchedulingModel.cpp"
   ${RCCBackendCodeGenHeaders}
 )
 rcc_backend_register_tidy_files(
@@ -210,9 +290,19 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCompilationStatus.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlock.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineCFGUpdater.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineBlockPlacement.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineBranchOptimization.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineBranchRelaxation.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCombiner.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCombinerPattern.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineConstantPool.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCopyPropagation.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineCSE.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineDCE.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineDebugInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFrameInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineFallthrough.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineFinalization.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunction.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionAttributes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionCloner.cpp"
@@ -221,13 +311,27 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalyses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineLICM.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineLiveness.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemoryFolding.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePasses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineScheduler.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineShrinkWrapping.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSink.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineStackSlotColoring.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineTailDuplication.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineTailMerge.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PostRAScheduler.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegisterPressure.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ScheduleDAG.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ScheduleHazardRecognizer.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InlineSpiller.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LiveRangeEdit.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegMatrix.cpp"
@@ -248,4 +352,5 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetSchedulingModel.cpp"
 )

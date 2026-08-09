@@ -157,6 +157,10 @@ public:
   [[nodiscard]] Expected<void> appendBlock(MachineBasicBlock &Block);
   [[nodiscard]] Expected<void> insertBlockBefore(MachineBasicBlock &Position,
                                                  MachineBasicBlock &Block);
+  [[nodiscard]] Expected<void> moveBlockBefore(MachineBasicBlock &Position,
+                                               MachineBasicBlock &Block);
+  [[nodiscard]] Expected<void> moveBlockAfter(MachineBasicBlock &Position,
+                                              MachineBasicBlock &Block);
   [[nodiscard]] Expected<void> removeBlock(MachineBasicBlock &Block);
 
   [[nodiscard]] MachineBasicBlock *firstBlock() noexcept {

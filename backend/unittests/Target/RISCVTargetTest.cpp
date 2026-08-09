@@ -149,7 +149,7 @@ void testInstructionFacts(TestContext &Context) {
       rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::FENCE_I)));
   Context.expect(
       Target->instructions().descriptors().size() ==
-              201 + rcc::genericInstructionDescriptors().size() &&
+              204 + rcc::genericInstructionDescriptors().size() &&
           Addi != nullptr && Addi->Name == "ADDI" && Addi->NumExplicitDefs == 1 &&
           Addi->Operands.size() == 3 && Addi->Operands.back().ImmediatePredicate &&
           Load != nullptr && Load->Flags.has(rcc::InstructionFlag::MayLoad) &&
@@ -173,7 +173,7 @@ void testInstructionFacts(TestContext &Context) {
   const auto Encodings = rcc::riscv::encodingCategories();
   const auto Formats = rcc::riscv::assemblyFormats();
   Context.expect(Schedules.size() == 15 && Encodings.size() == 10 && Formats.size() == 34 &&
-                     rcc::riscv::assemblyInstructions().size() == 192 && FenceAssembly != nullptr &&
+                     rcc::riscv::assemblyInstructions().size() == 195 && FenceAssembly != nullptr &&
                      FenceAssembly->Mnemonic == "fence.i" &&
                      std::ranges::any_of(Schedules,
                                          [](const rcc::riscv::SchedulingClassInfo &Class) {

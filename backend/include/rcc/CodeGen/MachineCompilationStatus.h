@@ -29,6 +29,7 @@ enum class MachineCompilationState : std::uint8_t {
   FinalizationFailed,
   AssemblyLoweringFailed,
   InternalError,
+  SchedulingFailed,
   Count,
 };
 

@@ -199,6 +199,7 @@ enum class PseudoOwner : std::uint8_t {
   PostRAExpansion,
   Finalization,
   AsmPrinter,
+  TargetLateExpansion,
 };
 
 enum class PipelineStage : std::uint8_t {

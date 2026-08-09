@@ -548,6 +548,18 @@ Expected<void> MachineOperand::setBasicBlock(MachineBasicBlock &Block) {
   return {};
 }
 
+Expected<void> MachineOperand::setFrameIndex(FrameIndex Index) {
+  if (OperandKind != Kind::FrameIndex)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "setFrameIndex requires a frame-index operand");
+  if (Parent != nullptr && Parent->function().frameInfo().object(Index) == nullptr) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "frame-index operand references an unknown stack object");
+  }
+  std::get<FrameIndexOperand>(Storage).Index = Index;
+  return {};
+}
+
 MachineOperand MachineOperand::cloneDetached() const {
   MachineOperand Result(OperandKind, Storage, TargetFlags);
   Result.RegFlags = RegFlags;

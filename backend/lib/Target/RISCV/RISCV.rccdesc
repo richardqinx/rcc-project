@@ -245,6 +245,10 @@ mir_operand_flags:
   direct_mask: 31
   direct:
     - { name: riscv-call, value: 1 }
+    - { name: riscv-pcrel-hi, value: 2 }
+    - { name: riscv-pcrel-lo, value: 4 }
+    - { name: riscv-copy-f32, value: 8 }
+    - { name: riscv-copy-f64, value: 16 }
   bitmask: []
 
 calling_conventions:
@@ -386,7 +390,7 @@ instructions:
     assembly_mnemonic: auipc
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
-      - { kinds: [immediate], immediate_predicate: SIMM20, name: IMM }
+      - { kinds: [immediate, basic_block, global_symbol, external_symbol, mc_symbol], immediate_predicate: SIMM20, allowed_target_flags: 3, name: IMM }
     num_explicit_defs: 1
     flags: [produces_code]
     scheduling_class: ALU
@@ -871,7 +875,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, basic_block, global_symbol, external_symbol, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
     num_explicit_defs: 1
     flags: [terminator, branch, indirect_branch, produces_code]
     scheduling_class: BRANCH
@@ -3195,3 +3199,52 @@ instructions:
     flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, return, barrier]
     owner: post_ra_expansion
     deadline: post_ra_finalized
+  -
+    id: 1225
+    symbol: JALR_CALL
+    name: JALR_CALL
+    assembly_mnemonic: jalr
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
+      - { kinds: [immediate, integer_immediate] }
+      - { kinds: [register_mask] }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [call, may_load, may_store, has_side_effects, produces_code, not_duplicable, unmodeled_side_effects]
+    scheduling_class: BRANCH
+    encoding_category: I
+    assembly_format: RD_RS1_IMM
+  -
+    id: 1226
+    symbol: JALR_TAIL
+    name: JALR_TAIL
+    assembly_mnemonic: jalr
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
+      - { kinds: [immediate, integer_immediate] }
+      - { kinds: [register_mask] }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [terminator, branch, indirect_branch, call, barrier, may_load, may_store, has_side_effects, produces_code, not_duplicable, unmodeled_side_effects]
+    scheduling_class: BRANCH
+    encoding_category: I
+    assembly_format: RD_RS1_IMM
+  -
+    id: 1227
+    symbol: JALR_RET
+    name: JALR_RET
+    assembly_mnemonic: jalr
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [terminator, return, barrier, produces_code]
+    scheduling_class: BRANCH
+    encoding_category: I
+    assembly_format: RD_RS1_IMM

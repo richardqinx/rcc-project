@@ -30,6 +30,16 @@ int main() {
     return fail("Error code must have a stable name");
   if (rcc::getErrorCodeName(rcc::ErrorCode::FrameLayoutFailed) != "frame layout failed")
     return fail("frame-layout errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::SchedulingFailed) != "scheduling failed")
+    return fail("scheduling errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::BranchRelaxationFailed) != "branch relaxation failed")
+    return fail("branch-relaxation errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::PseudoExpansionFailed) != "pseudo expansion failed")
+    return fail("pseudo-expansion errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::FinalEncodabilityFailed) != "final encodability failed")
+    return fail("final-encodability errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::CFGOptimizationFailed) != "CFG optimization failed")
+    return fail("CFG-optimization errors must have a stable name");
 
   return 0;
 }

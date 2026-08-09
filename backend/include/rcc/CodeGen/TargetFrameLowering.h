@@ -39,6 +39,11 @@ public:
   [[nodiscard]] virtual Expected<void> finalizeFrame(MachineFunction &Function,
                                                      const TargetDescription &Target) const = 0;
 
+  [[nodiscard]] virtual bool isCalleeSavedRegister(PhysicalRegister, const MachineFunction &,
+                                                   const TargetDescription &) const noexcept {
+    return false;
+  }
+
   [[nodiscard]] virtual bool isCallFramePseudo(const MachineInstr &Instruction) const noexcept = 0;
   [[nodiscard]] virtual Expected<void>
   eliminateCallFramePseudo(MachineInstr &Instruction, MachineFunction &Function,

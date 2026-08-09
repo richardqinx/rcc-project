@@ -26,6 +26,7 @@ constexpr std::array StateNames{
     std::string_view{"FinalizationFailed"},
     std::string_view{"AssemblyLoweringFailed"},
     std::string_view{"InternalError"},
+    std::string_view{"SchedulingFailed"},
 };
 
 static_assert(StateNames.size() == static_cast<std::size_t>(MachineCompilationState::Count));
@@ -44,6 +45,11 @@ isKnownDiagnosticSeverity(MachineCompilationDiagnosticSeverity Severity) noexcep
   case ErrorCode::Unsupported:
   case ErrorCode::RegisterAllocationFailed:
   case ErrorCode::FrameLayoutFailed:
+  case ErrorCode::SchedulingFailed:
+  case ErrorCode::BranchRelaxationFailed:
+  case ErrorCode::PseudoExpansionFailed:
+  case ErrorCode::FinalEncodabilityFailed:
+  case ErrorCode::CFGOptimizationFailed:
   case ErrorCode::IoError:
   case ErrorCode::InternalError:
     return true;

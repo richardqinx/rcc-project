@@ -1124,8 +1124,43 @@ calleeSaveOperations(MachineBasicBlock &Block, const MachineFunction &Function, 
   return Result;
 }
 
+[[nodiscard]] MachineBasicBlock *blockWithID(MachineFunction &Function,
+                                             MachineBlockStableID ID) noexcept {
+  for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {
+    if (Block->stableID() == ID)
+      return Block;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] MachineBasicBlock *frameSaveBlock(MachineFunction &Function) noexcept {
+  const auto &SavePoints = Function.frameInfo().state().SavePoints;
+  return SavePoints.empty() ? Function.firstBlock()
+                            : blockWithID(Function, SavePoints.front().Block);
+}
+
+[[nodiscard]] bool isFrameRestoreBlock(const MachineFunction &Function,
+                                       const MachineBasicBlock &Block) noexcept {
+  const MachineFrameState &State = Function.frameInfo().state();
+  if (State.RestorePoints.empty())
+    return State.SavePoints.empty();
+  return std::ranges::any_of(State.RestorePoints,
+                             [&Block](const MachineFrameSaveRestorePoint &Point) {
+                               return Point.Block == Block.stableID();
+                             });
+}
+
 class RISCVFrameLowering final : public TargetFrameLowering {
 public:
+  [[nodiscard]] bool
+  isCalleeSavedRegister(PhysicalRegister Reg, const MachineFunction &,
+                        const TargetDescription &Target) const noexcept override {
+    return std::ranges::any_of(saveOrder(), [&](PhysicalRegisterID ID) {
+      const auto Candidate = physical(ID);
+      return Candidate && Target.registers().regsOverlap(Reg, *Candidate);
+    });
+  }
+
   [[nodiscard]] Expected<void> prepareFrame(MachineFunction &Function,
                                             const TargetDescription &Target) const override {
     MachineFrameInfo &Frame = Function.frameInfo();
@@ -1133,6 +1168,10 @@ public:
       return makeUnexpected(ErrorCode::InvalidArgument, "RISC-V frame layout is already frozen");
 
     MachineFrameState State = Frame.state();
+    const std::vector<MachineFrameSaveRestorePoint> RequestedSavePoints = State.SavePoints;
+    const std::vector<MachineFrameSaveRestorePoint> RequestedRestorePoints = State.RestorePoints;
+    const bool HasRequestedPlacement =
+        !RequestedSavePoints.empty() || !RequestedRestorePoints.empty();
     for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
          Block = Block->next()) {
       for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
@@ -1249,25 +1288,32 @@ public:
     State.IsCalleeSavedInfoValid = true;
     State.SavePoints.clear();
     State.RestorePoints.clear();
-    if (!SavedRegisters->empty() && Function.firstBlock() != nullptr) {
-      State.SavePoints.push_back(
-          MachineFrameSaveRestorePoint{Function.firstBlock()->stableID(), *SavedRegisters});
-    }
-    for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
-         Block = Block->next()) {
-      bool HasEpilogue = false;
-      for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
-           Instruction = Instruction->next()) {
-        HasEpilogue |= isEpilogueTerminator(*Instruction, Target);
+    std::vector<PhysicalRegister> RestoredRegisters;
+    std::ranges::copy_if(
+        *SavedRegisters, std::back_inserter(RestoredRegisters),
+        [&Function](PhysicalRegister Reg) { return calleeSaveIsRestored(Function, Reg); });
+    if (HasRequestedPlacement) {
+      if (RequestedSavePoints.size() != 1 || RequestedRestorePoints.empty()) {
+        return makeUnexpected(
+            ErrorCode::VerificationError,
+            "RISC-V shrink-wrapped frame requires one save point and at least one restore point");
       }
-      if (HasEpilogue && !SavedRegisters->empty()) {
-        std::vector<PhysicalRegister> Restored;
-        std::ranges::copy_if(
-            *SavedRegisters, std::back_inserter(Restored),
-            [&Function](PhysicalRegister Reg) { return calleeSaveIsRestored(Function, Reg); });
-        if (!Restored.empty()) {
-          State.RestorePoints.push_back(
-              MachineFrameSaveRestorePoint{Block->stableID(), std::move(Restored)});
+      State.SavePoints.push_back({RequestedSavePoints.front().Block, *SavedRegisters});
+      for (const MachineFrameSaveRestorePoint &Point : RequestedRestorePoints)
+        State.RestorePoints.push_back({Point.Block, RestoredRegisters});
+    } else {
+      if (!SavedRegisters->empty() && Function.firstBlock() != nullptr) {
+        State.SavePoints.push_back({Function.firstBlock()->stableID(), *SavedRegisters});
+      }
+      for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
+           Block = Block->next()) {
+        bool HasEpilogue = false;
+        for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
+             Instruction = Instruction->next()) {
+          HasEpilogue |= isEpilogueTerminator(*Instruction, Target);
+        }
+        if (HasEpilogue && !RestoredRegisters.empty()) {
+          State.RestorePoints.push_back({Block->stableID(), RestoredRegisters});
         }
       }
     }
@@ -1290,10 +1336,10 @@ public:
     const std::span<const PhysicalRegister> Saved = Function.records().calleeSavedRegisters();
     if (Saved.empty())
       return {};
-    MachineBasicBlock *Entry = Function.firstBlock();
-    if (Entry == nullptr) {
+    MachineBasicBlock *SaveBlock = frameSaveBlock(Function);
+    if (SaveBlock == nullptr) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V callee-save frame has no entry block");
+                            "RISC-V callee-save frame has no valid save block");
     }
     auto FP = physical(PhysicalRegisterID::X8);
     auto BP = physical(PhysicalRegisterID::X9);
@@ -1303,9 +1349,9 @@ public:
     const bool Realign = requiresStackRealignment(Function);
 
     MachineIRBuilder SaveBuilder(Function, Target);
-    auto SavePoint = Entry->firstInstruction() != nullptr
-                         ? SaveBuilder.setInsertPointBefore(*Entry->firstInstruction())
-                         : SaveBuilder.setInsertPoint(*Entry);
+    auto SavePoint = SaveBlock->firstInstruction() != nullptr
+                         ? SaveBuilder.setInsertPointBefore(*SaveBlock->firstInstruction())
+                         : SaveBuilder.setInsertPoint(*SaveBlock);
     if (!SavePoint)
       return std::unexpected(SavePoint.error());
     for (const PhysicalRegister Reg : Saved) {
@@ -1322,6 +1368,8 @@ public:
 
     for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
          Block = Block->next()) {
+      if (!isFrameRestoreBlock(Function, *Block))
+        continue;
       std::vector<MachineInstr *> Terminators;
       for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
            Instruction = Instruction->next()) {
@@ -1433,21 +1481,22 @@ public:
   [[nodiscard]] Expected<void> emitPrologue(MachineFunction &Function,
                                             const TargetDescription &Target,
                                             RegisterScavenger &Scavenger) const override {
-    MachineBasicBlock *Entry = Function.firstBlock();
-    if (Entry == nullptr)
+    MachineBasicBlock *SaveBlock = frameSaveBlock(Function);
+    if (SaveBlock == nullptr)
       return Function.frameInfo().state().StackSize == 0
                  ? Expected<void>{}
                  : makeUnexpected(ErrorCode::VerificationError,
-                                  "RISC-V nonempty frame has no entry block");
-    const std::vector<CalleeSaveOperation> Saves = calleeSaveOperations(*Entry, Function, false);
+                                  "RISC-V nonempty frame has no save block");
+    const std::vector<CalleeSaveOperation> Saves =
+        calleeSaveOperations(*SaveBlock, Function, false);
     if (Saves.size() != Function.records().calleeSavedRegisters().size()) {
       return makeUnexpected(ErrorCode::InternalError,
                             "RISC-V prologue has an incomplete callee-save sequence");
     }
-    MachineInstr *Anchor = Entry->firstInstruction();
+    MachineInstr *Anchor = SaveBlock->firstInstruction();
     MachineIRBuilder Builder(Function, Target);
-    auto Point =
-        Anchor != nullptr ? Builder.setInsertPointBefore(*Anchor) : Builder.setInsertPoint(*Entry);
+    auto Point = Anchor != nullptr ? Builder.setInsertPointBefore(*Anchor)
+                                   : Builder.setInsertPoint(*SaveBlock);
     if (!Point)
       return std::unexpected(Point.error());
 
@@ -1637,6 +1686,8 @@ public:
                                             MachineFunction &Function,
                                             const TargetDescription &Target,
                                             RegisterScavenger &Scavenger) const override {
+    if (!isFrameRestoreBlock(Function, Block))
+      return {};
     auto FP = physical(PhysicalRegisterID::X8);
     auto SP = physical(PhysicalRegisterID::X2);
     auto BP = physical(PhysicalRegisterID::X9);

@@ -127,6 +127,38 @@ Expected<void> MachineFunctionRecords::addCalledGlobal(MachineCalledGlobal Calle
   return {};
 }
 
+Expected<void>
+MachineFunctionRecords::replaceInstructionReference(MachineInstrStableID OldInstruction,
+                                                    MachineInstrStableID NewInstruction) {
+  if (!OldInstruction.isValid() || !NewInstruction.isValid()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "instruction-record replacement requires two valid stable IDs");
+  }
+  if (OldInstruction == NewInstruction)
+    return {};
+  for (const MachineCallSiteInfo &CallSite : CallSites) {
+    if (CallSite.CallInstruction == NewInstruction) {
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "replacement instruction already owns a call-site record");
+    }
+  }
+  for (const MachineCalledGlobal &CalledGlobal : CalledGlobals) {
+    if (CalledGlobal.CallInstruction == NewInstruction) {
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "replacement instruction already owns a called-global record");
+    }
+  }
+  for (MachineCallSiteInfo &CallSite : CallSites) {
+    if (CallSite.CallInstruction == OldInstruction)
+      CallSite.CallInstruction = NewInstruction;
+  }
+  for (MachineCalledGlobal &CalledGlobal : CalledGlobals) {
+    if (CalledGlobal.CallInstruction == OldInstruction)
+      CalledGlobal.CallInstruction = NewInstruction;
+  }
+  return {};
+}
+
 Expected<void> MachineFunctionRecords::addPrefetchTarget(MachinePrefetchTarget Target) {
   if (std::ranges::find(PrefetchTargets, Target) != PrefetchTargets.end()) {
     return makeUnexpected(ErrorCode::InvalidArgument, "prefetch target is already recorded");

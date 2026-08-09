@@ -20,6 +20,11 @@ enum class ErrorCode : std::uint8_t {
   IoError,
   InternalError,
   FrameLayoutFailed,
+  SchedulingFailed,
+  BranchRelaxationFailed,
+  PseudoExpansionFailed,
+  FinalEncodabilityFailed,
+  CFGOptimizationFailed,
 };
 
 [[nodiscard]] std::string_view getErrorCodeName(ErrorCode Code) noexcept;

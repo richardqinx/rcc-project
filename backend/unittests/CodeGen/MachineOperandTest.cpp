@@ -264,6 +264,48 @@ void testOperandFactories(TestContext &Context) {
                  "detached operand cloning must preserve the new payload kinds");
 }
 
+void testFrameIndexRewrite(TestContext &Context) {
+  auto Function = createFunction(Context, 5, "frame-index-rewrite");
+  if (!Function)
+    return;
+  rcc::MachineBasicBlock *Block = appendBlock(Context, *Function);
+  auto Align = rcc::Alignment::create(8);
+  if (Block == nullptr || !Align)
+    return;
+
+  rcc::StackObjectDesc Description;
+  Description.Kind = rcc::StackObjectKind::SpillSlot;
+  Description.Size = 8;
+  Description.Align = *Align;
+  auto First = Function->frameInfo().createObject(Description);
+  auto Second = Function->frameInfo().createObject(Description);
+  Context.expect(First.has_value() && Second.has_value(),
+                 "frame-index rewrite objects must be created");
+  if (!First || !Second)
+    return;
+
+  auto Instruction = Function->createInstruction(rcc::Opcode::fromValue(OperandOpcode));
+  Context.expect(Instruction.has_value() &&
+                     (*Instruction)->addOperand(rcc::MachineOperand::frameIndex(*First, 4)) &&
+                     Block->appendInstruction(**Instruction),
+                 "frame-index rewrite operand must be linked to its function");
+  if (!Instruction || (*Instruction)->operandCount() == 0)
+    return;
+  rcc::MachineOperand *Operand = (*Instruction)->operandAt(0);
+  Context.expect(Operand != nullptr && Operand->setFrameIndex(*Second).has_value() &&
+                     Operand->getIf<rcc::FrameIndexOperand>()->Index == *Second &&
+                     Operand->getIf<rcc::FrameIndexOperand>()->Offset == 4,
+                 "setFrameIndex must rewrite only the object identity");
+
+  const rcc::FrameIndex Unknown = rcc::FrameIndex::fromValue(99);
+  Context.expect(Operand != nullptr && !Operand->setFrameIndex(Unknown) &&
+                     Operand->getIf<rcc::FrameIndexOperand>()->Index == *Second,
+                 "setFrameIndex must reject an unknown attached object atomically");
+  auto Immediate = rcc::MachineOperand::immediate(0);
+  Context.expect(!Immediate.setFrameIndex(*First),
+                 "setFrameIndex must reject non-frame-index operands");
+}
+
 void testCFIInfo(TestContext &Context) {
   const auto R1 = rcc::DwarfRegisterNumber::fromValue(1);
   const auto R2 = rcc::DwarfRegisterNumber::fromValue(2);
@@ -476,6 +518,7 @@ int main() {
   TestContext Context;
   testIntegerImmediate(Context);
   testOperandFactories(Context);
+  testFrameIndexRewrite(Context);
   testCFIInfo(Context);
   testBuilderVerifierAndClone(Context);
   return Context.result();

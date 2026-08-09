@@ -20,8 +20,10 @@ set(
   MachineLivenessTest.cpp
   MachineMetadataTest.cpp
   MachineOperandTest.cpp
+  MachineOptimizationTest.cpp
   MachinePassTest.cpp
   MachinePipelinePassesTest.cpp
+  MachineSchedulingTest.cpp
   PBQPTest.cpp
   RegisterAllocationTest.cpp
   MachineSSAExitTest.cpp
@@ -355,6 +357,22 @@ target_link_libraries(
 
 add_test(NAME RCCBackend.CodeGen.MachineAnalyses COMMAND RCCBackendCodeGenMachineAnalysesTests)
 
+add_executable(RCCBackendCodeGenMachineOptimizationTests MachineOptimizationTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineOptimizationTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineOptimizationTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::RISCV
+)
+add_test(NAME RCCBackend.CodeGen.MachineOptimization COMMAND RCCBackendCodeGenMachineOptimizationTests)
+
+add_executable(RCCBackendCodeGenMachineSchedulingTests MachineSchedulingTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachineSchedulingTests)
+target_link_libraries(
+  RCCBackendCodeGenMachineSchedulingTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::RISCV
+)
+add_test(NAME RCCBackend.CodeGen.MachineScheduling COMMAND RCCBackendCodeGenMachineSchedulingTests)
+
 add_executable(RCCBackendCodeGenMachineSSAExitTests MachineSSAExitTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineSSAExitTests)
 target_link_libraries(
@@ -439,8 +457,10 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineLivenessTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePassesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulingTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExitTest.cpp"
@@ -479,8 +499,10 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineLivenessTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePassesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulingTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExitTest.cpp"

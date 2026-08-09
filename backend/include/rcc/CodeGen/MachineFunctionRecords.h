@@ -117,6 +117,9 @@ public:
 
   [[nodiscard]] Expected<void> addCalledGlobal(MachineCalledGlobal CalledGlobal);
 
+  [[nodiscard]] Expected<void> replaceInstructionReference(MachineInstrStableID OldInstruction,
+                                                           MachineInstrStableID NewInstruction);
+
   [[nodiscard]] std::span<const MachinePrefetchTarget> prefetchTargets() const noexcept {
     return PrefetchTargets;
   }

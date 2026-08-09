@@ -1683,7 +1683,7 @@ instructionFlagEnumerator(std::string_view Value) noexcept {
 
 [[nodiscard]] std::optional<std::string_view>
 pseudoOwnerEnumerator(std::string_view Value) noexcept {
-  static constexpr std::array<std::pair<std::string_view, std::string_view>, 11> Owners = {{
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 12> Owners = {{
       {"none", "None"},
       {"legalizer", "Legalizer"},
       {"register_bank_select", "RegisterBankSelect"},
@@ -1695,6 +1695,7 @@ pseudoOwnerEnumerator(std::string_view Value) noexcept {
       {"prologue_epilogue_insertion", "PrologueEpilogueInsertion"},
       {"post_ra_expansion", "PostRAExpansion"},
       {"finalization", "Finalization"},
+      {"target_late_expansion", "TargetLateExpansion"},
   }};
   if (Value == "asm_printer")
     return "AsmPrinter";
@@ -2328,8 +2329,8 @@ private:
     }
     if (InputOperand.ImmediatePredicateSymbol) {
       const auto Position = ImmediatePredicateBySymbol.find(*InputOperand.ImmediatePredicateSymbol);
-      if (Position == ImmediatePredicateBySymbol.end() || Result.Kinds.size() != 1 ||
-          Result.Kinds.front() != "Immediate") {
+      if (Position == ImmediatePredicateBySymbol.end() ||
+          std::ranges::find(Result.Kinds, "Immediate") == Result.Kinds.end()) {
         fail(InputOperand.Range,
              "instruction immediate predicates must name a declaration and constrain an immediate");
         return false;

@@ -628,7 +628,7 @@ Expected<void> InstructionSet::validateOperand(const OperandDescriptor &Descript
     }
   }
 
-  if (Descriptor.ImmediatePredicate) {
+  if (Descriptor.ImmediatePredicate && Operand.kind() == MachineOperand::Kind::Immediate) {
     const ImmediatePredicate *Predicate = immediatePredicate(*Descriptor.ImmediatePredicate);
     if (Predicate == nullptr || !Predicate->Predicate(Operand)) {
       return makeUnexpected(ErrorCode::VerificationError,

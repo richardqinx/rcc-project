@@ -18,6 +18,16 @@ std::string_view getErrorCodeName(ErrorCode Code) noexcept {
     return "register allocation failed";
   case ErrorCode::FrameLayoutFailed:
     return "frame layout failed";
+  case ErrorCode::SchedulingFailed:
+    return "scheduling failed";
+  case ErrorCode::BranchRelaxationFailed:
+    return "branch relaxation failed";
+  case ErrorCode::PseudoExpansionFailed:
+    return "pseudo expansion failed";
+  case ErrorCode::FinalEncodabilityFailed:
+    return "final encodability failed";
+  case ErrorCode::CFGOptimizationFailed:
+    return "CFG optimization failed";
   case ErrorCode::IoError:
     return "I/O error";
   case ErrorCode::InternalError:

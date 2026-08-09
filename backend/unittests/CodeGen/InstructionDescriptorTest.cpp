@@ -86,6 +86,7 @@ private:
   RegisterOrImmediate.Kinds = {
       rcc::MachineOperand::Kind::Register,
       rcc::MachineOperand::Kind::Immediate,
+      rcc::MachineOperand::Kind::GlobalSymbol,
   };
   RegisterOrImmediate.RegisterRole = rcc::RegisterOperandRole::Use;
   RegisterOrImmediate.ImmediatePredicate = rcc::ImmediatePredicateID::fromValue(1);
@@ -217,6 +218,15 @@ void testOperandValidation(TestContext &Context) {
       InstructionSet->validateExplicitOperands(rcc::Opcode::fromValue(1), ValidOperands, RegInfo)
           .has_value(),
       "matching roles, constraints, flags, and predicate must validate");
+
+  std::vector<rcc::MachineOperand> SymbolOperands;
+  SymbolOperands.push_back(*registerOperand(*Destination, {rcc::RegisterOperandFlag::Define}));
+  SymbolOperands.push_back(*registerOperand(*Source, {rcc::RegisterOperandFlag::Use}));
+  SymbolOperands.push_back(*rcc::MachineOperand::globalSymbol("object", 0, 0x1));
+  Context.expect(
+      InstructionSet->validateExplicitOperands(rcc::Opcode::fromValue(1), SymbolOperands, RegInfo)
+          .has_value(),
+      "an immediate predicate must not reject another allowed symbolic operand kind");
 
   std::vector<rcc::MachineOperand> WrongRole;
   WrongRole.push_back(*registerOperand(*Destination, {rcc::RegisterOperandFlag::Use}));
