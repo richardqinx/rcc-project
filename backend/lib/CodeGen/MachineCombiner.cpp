@@ -103,7 +103,9 @@ namespace {
 }
 
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
-  return Instruction.debugInstrNumber() != 0 || Instruction.preInstrSymbol().has_value() ||
+  return Instruction.flags().has(MachineInstrFlag::FrameSetup) ||
+         Instruction.flags().has(MachineInstrFlag::FrameDestroy) ||
+         Instruction.debugInstrNumber() != 0 || Instruction.preInstrSymbol().has_value() ||
          Instruction.postInstrSymbol().has_value() || Instruction.heapAllocMarker().has_value() ||
          Instruction.pcSections().has_value() || Instruction.mmra().has_value() ||
          Instruction.cfiType().has_value() || Instruction.deactivationSymbol().has_value();

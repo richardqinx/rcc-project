@@ -44,7 +44,9 @@ namespace {
 }
 
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
-  return Instruction.debugInstrNumber() != 0 || Instruction.preInstrSymbol().has_value() ||
+  return Instruction.flags().has(MachineInstrFlag::FrameSetup) ||
+         Instruction.flags().has(MachineInstrFlag::FrameDestroy) ||
+         Instruction.debugInstrNumber() != 0 || Instruction.preInstrSymbol().has_value() ||
          Instruction.postInstrSymbol().has_value() || Instruction.heapAllocMarker().has_value() ||
          Instruction.pcSections().has_value() || Instruction.mmra().has_value() ||
          Instruction.cfiType().has_value() || Instruction.deactivationSymbol().has_value();
@@ -156,8 +158,10 @@ Expected<MachinePassResult> MachineDCEPass::runImplementation(MachineFunction &F
           Instruction = Next;
           continue;
         }
+        std::vector<Register> DefinitionList =
+            std::move(*Definitions).value_or(std::vector<Register>{});
 
-        for (const Register Reg : **Definitions) {
+        for (const Register Reg : DefinitionList) {
           auto Cleared = clearDebugUses(Registers, Reg);
           if (!Cleared)
             return std::unexpected(Cleared.error());
@@ -165,7 +169,7 @@ Expected<MachinePassResult> MachineDCEPass::runImplementation(MachineFunction &F
         auto Removed = Block->removeInstruction(*Instruction);
         if (!Removed)
           return std::unexpected(Removed.error());
-        for (const Register Reg : **Definitions) {
+        for (const Register Reg : DefinitionList) {
           if (!Registers.useEmpty(Reg, true) || Registers.getUniqueVRegDef(Reg) != nullptr) {
             return makeUnexpected(ErrorCode::InternalError,
                                   "machine DCE left references to a removed definition");

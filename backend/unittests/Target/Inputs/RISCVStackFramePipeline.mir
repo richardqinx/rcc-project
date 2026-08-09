@@ -1,0 +1,12 @@
+---
+name: stack_frame_pipeline
+tracksRegLiveness: true
+isSSA: true
+stack:
+  - { id: 0, size: 32, alignment: 16 }
+body: |
+  bb.0:
+    liveins: $x1
+    %0:gpr(i64) = G_CONSTANT 9
+    $x10 = COPY %0
+    PseudoRET implicit $x1, implicit $x10

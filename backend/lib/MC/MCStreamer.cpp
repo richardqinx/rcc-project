@@ -342,6 +342,22 @@ Expected<void> AsmTextStreamer::emitSymbolSize(MCSymbolRef Symbol, MCExprRef Siz
   return appendLine({}, ".size " + *Name + ", " + *PrintedSize);
 }
 
+Expected<void> AsmTextStreamer::emitCommonSymbol(MCSymbolRef Symbol, std::uint64_t Size,
+                                                 std::uint64_t Alignment) {
+  if (IsFinished)
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "cannot emit a common symbol after assembly finalization");
+  if (!Symbol || Size == 0 || Alignment == 0 || (Alignment & (Alignment - 1U)) != 0) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "common symbol requires a symbol, size, and power-of-two alignment");
+  }
+  auto Name = printMCSymbolName(Symbol->name());
+  if (!Name)
+    return std::unexpected(Name.error());
+  return appendLine({}, ".comm " + *Name + "," + std::to_string(Size) + "," +
+                            std::to_string(Alignment));
+}
+
 Expected<void> AsmTextStreamer::emitDirective(std::string_view Name, std::string_view Arguments) {
   if (!isDirectiveName(Name) || containsInvalidLineCharacter(Arguments)) {
     return makeUnexpected(ErrorCode::InvalidArgument,

@@ -375,6 +375,7 @@ instructions:
     symbol: LUI
     name: LUI
     assembly_mnemonic: lui
+    encoding: 5175
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: SIMM20, name: IMM }
@@ -388,6 +389,7 @@ instructions:
     symbol: AUIPC
     name: AUIPC
     assembly_mnemonic: auipc
+    encoding: 5143
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate, basic_block, global_symbol, external_symbol, mc_symbol], immediate_predicate: SIMM20, allowed_target_flags: 3, name: IMM }
@@ -401,6 +403,7 @@ instructions:
     symbol: ADDI
     name: ADDI
     assembly_mnemonic: addi
+    encoding: 1344531
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -415,6 +418,7 @@ instructions:
     symbol: SRLI
     name: SRLI
     assembly_mnemonic: srli
+    encoding: 1365011
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -429,6 +433,7 @@ instructions:
     symbol: SRAI
     name: SRAI
     assembly_mnemonic: srai
+    encoding: 1075106835
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -443,6 +448,7 @@ instructions:
     symbol: ADDIW
     name: ADDIW
     assembly_mnemonic: addiw
+    encoding: 1344539
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -457,6 +463,7 @@ instructions:
     symbol: SLLIW
     name: SLLIW
     assembly_mnemonic: slliw
+    encoding: 1348635
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -471,6 +478,7 @@ instructions:
     symbol: SRLIW
     name: SRLIW
     assembly_mnemonic: srliw
+    encoding: 1365019
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -485,6 +493,7 @@ instructions:
     symbol: SRAIW
     name: SRAIW
     assembly_mnemonic: sraiw
+    encoding: 1075106843
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -499,6 +508,7 @@ instructions:
     symbol: SLL
     name: SLL
     assembly_mnemonic: sll
+    encoding: 10785843
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -513,6 +523,7 @@ instructions:
     symbol: SLT
     name: SLT
     assembly_mnemonic: slt
+    encoding: 10789939
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -527,6 +538,7 @@ instructions:
     symbol: SLTU
     name: SLTU
     assembly_mnemonic: sltu
+    encoding: 10794035
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -541,6 +553,7 @@ instructions:
     symbol: XOR
     name: XOR
     assembly_mnemonic: xor
+    encoding: 10798131
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -555,6 +568,7 @@ instructions:
     symbol: SRL
     name: SRL
     assembly_mnemonic: srl
+    encoding: 10802227
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -569,6 +583,7 @@ instructions:
     symbol: SRA
     name: SRA
     assembly_mnemonic: sra
+    encoding: 1084544051
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -583,6 +598,7 @@ instructions:
     symbol: OR
     name: OR
     assembly_mnemonic: or
+    encoding: 10806323
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -597,6 +613,7 @@ instructions:
     symbol: AND
     name: AND
     assembly_mnemonic: and
+    encoding: 10810419
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -611,6 +628,7 @@ instructions:
     symbol: ADDW
     name: ADDW
     assembly_mnemonic: addw
+    encoding: 10781755
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -625,6 +643,7 @@ instructions:
     symbol: SUBW
     name: SUBW
     assembly_mnemonic: subw
+    encoding: 1084523579
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -639,6 +658,7 @@ instructions:
     symbol: SLLW
     name: SLLW
     assembly_mnemonic: sllw
+    encoding: 10785851
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -653,6 +673,7 @@ instructions:
     symbol: SRLW
     name: SRLW
     assembly_mnemonic: srlw
+    encoding: 10802235
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -667,6 +688,7 @@ instructions:
     symbol: SRAW
     name: SRAW
     assembly_mnemonic: sraw
+    encoding: 1084544059
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -681,6 +703,7 @@ instructions:
     symbol: LB
     name: LB
     assembly_mnemonic: lb
+    encoding: 8684547
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -696,6 +719,7 @@ instructions:
     symbol: LH
     name: LH
     assembly_mnemonic: lh
+    encoding: 8688643
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -711,6 +735,7 @@ instructions:
     symbol: LW
     name: LW
     assembly_mnemonic: lw
+    encoding: 8692739
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -726,6 +751,7 @@ instructions:
     symbol: LBU
     name: LBU
     assembly_mnemonic: lbu
+    encoding: 8700931
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -741,6 +767,7 @@ instructions:
     symbol: LHU
     name: LHU
     assembly_mnemonic: lhu
+    encoding: 8705027
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -756,6 +783,7 @@ instructions:
     symbol: LWU
     name: LWU
     assembly_mnemonic: lwu
+    encoding: 8709123
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -771,6 +799,7 @@ instructions:
     symbol: SB
     name: SB
     assembly_mnemonic: sb
+    encoding: 10781731
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -786,6 +815,7 @@ instructions:
     symbol: SH
     name: SH
     assembly_mnemonic: sh
+    encoding: 10785827
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -801,6 +831,7 @@ instructions:
     symbol: SW
     name: SW
     assembly_mnemonic: sw
+    encoding: 10789923
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -816,6 +847,7 @@ instructions:
     symbol: BLT
     name: BLT
     assembly_mnemonic: blt
+    encoding: 9715811
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
@@ -830,6 +862,7 @@ instructions:
     symbol: BGE
     name: BGE
     assembly_mnemonic: bge
+    encoding: 9719907
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
@@ -844,6 +877,7 @@ instructions:
     symbol: BLTU
     name: BLTU
     assembly_mnemonic: bltu
+    encoding: 9724003
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
@@ -858,6 +892,7 @@ instructions:
     symbol: BGEU
     name: BGEU
     assembly_mnemonic: bgeu
+    encoding: 9728099
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
@@ -872,6 +907,7 @@ instructions:
     symbol: JALR
     name: JALR
     assembly_mnemonic: jalr
+    encoding: 1344615
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -886,6 +922,7 @@ instructions:
     symbol: FENCE
     name: FENCE
     assembly_mnemonic: fence
+    encoding: 15
     operands:
       - { kinds: [immediate], immediate_predicate: UIMM4, name: PRED }
       - { kinds: [immediate], immediate_predicate: UIMM4, name: SUCC }
@@ -899,6 +936,7 @@ instructions:
     symbol: FENCE_I
     name: FENCE_I
     assembly_mnemonic: fence.i
+    encoding: 4111
     operands: []
     num_explicit_defs: 0
     flags: [has_side_effects, produces_code]
@@ -910,6 +948,7 @@ instructions:
     symbol: CSRRW
     name: CSRRW
     assembly_mnemonic: csrrw
+    encoding: 1348723
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM12, name: CSR }
@@ -924,6 +963,7 @@ instructions:
     symbol: CSRRS
     name: CSRRS
     assembly_mnemonic: csrrs
+    encoding: 1352819
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM12, name: CSR }
@@ -938,6 +978,7 @@ instructions:
     symbol: CSRRC
     name: CSRRC
     assembly_mnemonic: csrrc
+    encoding: 1356915
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM12, name: CSR }
@@ -952,6 +993,7 @@ instructions:
     symbol: CSRRWI
     name: CSRRWI
     assembly_mnemonic: csrrwi
+    encoding: 1102963
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM12, name: CSR }
@@ -966,6 +1008,7 @@ instructions:
     symbol: MUL
     name: MUL
     assembly_mnemonic: mul
+    encoding: 44336179
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -980,6 +1023,7 @@ instructions:
     symbol: MULH
     name: MULH
     assembly_mnemonic: mulh
+    encoding: 44340275
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -994,6 +1038,7 @@ instructions:
     symbol: MULHSU
     name: MULHSU
     assembly_mnemonic: mulhsu
+    encoding: 44344371
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1008,6 +1053,7 @@ instructions:
     symbol: MULHU
     name: MULHU
     assembly_mnemonic: mulhu
+    encoding: 44348467
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1022,6 +1068,7 @@ instructions:
     symbol: DIV
     name: DIV
     assembly_mnemonic: div
+    encoding: 44352563
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1036,6 +1083,7 @@ instructions:
     symbol: DIVU
     name: DIVU
     assembly_mnemonic: divu
+    encoding: 44356659
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1050,6 +1098,7 @@ instructions:
     symbol: REM
     name: REM
     assembly_mnemonic: rem
+    encoding: 44360755
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1064,6 +1113,7 @@ instructions:
     symbol: REMU
     name: REMU
     assembly_mnemonic: remu
+    encoding: 44364851
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1078,6 +1128,7 @@ instructions:
     symbol: MULW
     name: MULW
     assembly_mnemonic: mulw
+    encoding: 44336187
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1092,6 +1143,7 @@ instructions:
     symbol: DIVW
     name: DIVW
     assembly_mnemonic: divw
+    encoding: 44352571
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1106,6 +1158,7 @@ instructions:
     symbol: DIVUW
     name: DIVUW
     assembly_mnemonic: divuw
+    encoding: 44356667
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1120,6 +1173,7 @@ instructions:
     symbol: REMW
     name: REMW
     assembly_mnemonic: remw
+    encoding: 44360763
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1134,6 +1188,7 @@ instructions:
     symbol: REMUW
     name: REMUW
     assembly_mnemonic: remuw
+    encoding: 44364859
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1148,6 +1203,7 @@ instructions:
     symbol: CSRRSI
     name: CSRRSI
     assembly_mnemonic: csrrsi
+    encoding: 1107059
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM12, name: CSR }
@@ -1162,6 +1218,7 @@ instructions:
     symbol: CSRRCI
     name: CSRRCI
     assembly_mnemonic: csrrci
+    encoding: 1111155
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM12, name: CSR }
@@ -1176,6 +1233,7 @@ instructions:
     symbol: ADD
     name: ADD
     assembly_mnemonic: add
+    encoding: 10781747
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1190,6 +1248,7 @@ instructions:
     symbol: SUB
     name: SUB
     assembly_mnemonic: sub
+    encoding: 1084523571
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1204,6 +1263,7 @@ instructions:
     symbol: LD
     name: LD
     assembly_mnemonic: ld
+    encoding: 8696835
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -1219,6 +1279,7 @@ instructions:
     symbol: SD
     name: SD
     assembly_mnemonic: sd
+    encoding: 10794019
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -1234,6 +1295,7 @@ instructions:
     symbol: BEQ
     name: BEQ
     assembly_mnemonic: beq
+    encoding: 9699427
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
@@ -1248,6 +1310,7 @@ instructions:
     symbol: BNE
     name: BNE
     assembly_mnemonic: bne
+    encoding: 9703523
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
@@ -1262,6 +1325,7 @@ instructions:
     symbol: JAL
     name: JAL
     assembly_mnemonic: jal
+    encoding: 1135
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [basic_block], name: TARGET }
@@ -1275,6 +1339,7 @@ instructions:
     symbol: ECALL
     name: ECALL
     assembly_mnemonic: ecall
+    encoding: 115
     operands: []
     num_explicit_defs: 0
     flags: [has_side_effects, produces_code]
@@ -1286,6 +1351,7 @@ instructions:
     symbol: EBREAK
     name: EBREAK
     assembly_mnemonic: ebreak
+    encoding: 1048691
     operands: []
     num_explicit_defs: 0
     flags: [has_side_effects, produces_code]
@@ -1297,6 +1363,7 @@ instructions:
     symbol: SLTI
     name: SLTI
     assembly_mnemonic: slti
+    encoding: 1352723
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1311,6 +1378,7 @@ instructions:
     symbol: SLTIU
     name: SLTIU
     assembly_mnemonic: sltiu
+    encoding: 1356819
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1325,6 +1393,7 @@ instructions:
     symbol: XORI
     name: XORI
     assembly_mnemonic: xori
+    encoding: 1360915
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1339,6 +1408,7 @@ instructions:
     symbol: ORI
     name: ORI
     assembly_mnemonic: ori
+    encoding: 1369107
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1353,6 +1423,7 @@ instructions:
     symbol: ANDI
     name: ANDI
     assembly_mnemonic: andi
+    encoding: 1373203
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1367,6 +1438,7 @@ instructions:
     symbol: SLLI
     name: SLLI
     assembly_mnemonic: slli
+    encoding: 1348627
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1381,6 +1453,7 @@ instructions:
     symbol: LR_W
     name: LR_W
     assembly_mnemonic: lr.w
+    encoding: 268739631
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -1395,6 +1468,7 @@ instructions:
     symbol: SC_W
     name: SC_W
     assembly_mnemonic: sc.w
+    encoding: 413443119
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -1410,6 +1484,7 @@ instructions:
     symbol: AMOSWAP_W
     name: AMOSWAP_W
     assembly_mnemonic: amoswap.w
+    encoding: 145007663
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -1425,6 +1500,7 @@ instructions:
     symbol: FLW
     name: FLW
     assembly_mnemonic: flw
+    encoding: 8692743
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, memory_role: value, name: FRD }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -1440,6 +1516,7 @@ instructions:
     symbol: FSW
     name: FSW
     assembly_mnemonic: fsw
+    encoding: 10789927
     operands:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, memory_role: value, name: FRS2 }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -1455,6 +1532,7 @@ instructions:
     symbol: FMADD_S
     name: FMADD_S
     assembly_mnemonic: fmadd.s
+    encoding: 1487176771
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1471,6 +1549,7 @@ instructions:
     symbol: FMSUB_S
     name: FMSUB_S
     assembly_mnemonic: fmsub.s
+    encoding: 1487176775
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1487,6 +1566,7 @@ instructions:
     symbol: FNMSUB_S
     name: FNMSUB_S
     assembly_mnemonic: fnmsub.s
+    encoding: 1487176779
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1503,6 +1583,7 @@ instructions:
     symbol: FNMADD_S
     name: FNMADD_S
     assembly_mnemonic: fnmadd.s
+    encoding: 1487176783
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1519,6 +1600,7 @@ instructions:
     symbol: FADD_S
     name: FADD_S
     assembly_mnemonic: fadd.s
+    encoding: 10781779
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1534,6 +1616,7 @@ instructions:
     symbol: FSUB_S
     name: FSUB_S
     assembly_mnemonic: fsub.s
+    encoding: 144999507
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1549,6 +1632,7 @@ instructions:
     symbol: FMUL_S
     name: FMUL_S
     assembly_mnemonic: fmul.s
+    encoding: 279217235
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1564,6 +1648,7 @@ instructions:
     symbol: FDIV_S
     name: FDIV_S
     assembly_mnemonic: fdiv.s
+    encoding: 413434963
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1579,6 +1664,7 @@ instructions:
     symbol: FSQRT_S
     name: FSQRT_S
     assembly_mnemonic: fsqrt.s
+    encoding: 1476691027
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1593,6 +1679,7 @@ instructions:
     symbol: FSGNJ_S
     name: FSGNJ_S
     assembly_mnemonic: fsgnj.s
+    encoding: 547652691
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1607,6 +1694,7 @@ instructions:
     symbol: FSGNJN_S
     name: FSGNJN_S
     assembly_mnemonic: fsgnjn.s
+    encoding: 547656787
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1621,6 +1709,7 @@ instructions:
     symbol: FSGNJX_S
     name: FSGNJX_S
     assembly_mnemonic: fsgnjx.s
+    encoding: 547660883
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1635,6 +1724,7 @@ instructions:
     symbol: FMIN_S
     name: FMIN_S
     assembly_mnemonic: fmin.s
+    encoding: 681870419
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1649,6 +1739,7 @@ instructions:
     symbol: FMAX_S
     name: FMAX_S
     assembly_mnemonic: fmax.s
+    encoding: 681874515
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1663,6 +1754,7 @@ instructions:
     symbol: FCVT_W_S
     name: FCVT_W_S
     assembly_mnemonic: fcvt.w.s
+    encoding: 3221521491
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1677,6 +1769,7 @@ instructions:
     symbol: FCVT_WU_S
     name: FCVT_WU_S
     assembly_mnemonic: fcvt.wu.s
+    encoding: 3222570067
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1691,6 +1784,7 @@ instructions:
     symbol: FCVT_L_S
     name: FCVT_L_S
     assembly_mnemonic: fcvt.l.s
+    encoding: 3223618643
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1705,6 +1799,7 @@ instructions:
     symbol: FCVT_LU_S
     name: FCVT_LU_S
     assembly_mnemonic: fcvt.lu.s
+    encoding: 3224667219
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1719,6 +1814,7 @@ instructions:
     symbol: FMV_X_W
     name: FMV_X_W
     assembly_mnemonic: fmv.x.w
+    encoding: 3758392403
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1732,6 +1828,7 @@ instructions:
     symbol: FEQ_S
     name: FEQ_S
     assembly_mnemonic: feq.s
+    encoding: 2695144531
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1746,6 +1843,7 @@ instructions:
     symbol: FLT_S
     name: FLT_S
     assembly_mnemonic: flt.s
+    encoding: 2695140435
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1760,6 +1858,7 @@ instructions:
     symbol: FLE_S
     name: FLE_S
     assembly_mnemonic: fle.s
+    encoding: 2695136339
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1774,6 +1873,7 @@ instructions:
     symbol: FCLASS_S
     name: FCLASS_S
     assembly_mnemonic: fclass.s
+    encoding: 3758396499
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -1787,6 +1887,7 @@ instructions:
     symbol: FCVT_S_W
     name: FCVT_S_W
     assembly_mnemonic: fcvt.s.w
+    encoding: 3489956947
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1801,6 +1902,7 @@ instructions:
     symbol: FCVT_S_WU
     name: FCVT_S_WU
     assembly_mnemonic: fcvt.s.wu
+    encoding: 3491005523
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1815,6 +1917,7 @@ instructions:
     symbol: FCVT_S_L
     name: FCVT_S_L
     assembly_mnemonic: fcvt.s.l
+    encoding: 3492054099
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1829,6 +1932,7 @@ instructions:
     symbol: FCVT_S_LU
     name: FCVT_S_LU
     assembly_mnemonic: fcvt.s.lu
+    encoding: 3493102675
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1843,6 +1947,7 @@ instructions:
     symbol: FMV_W_X
     name: FMV_W_X
     assembly_mnemonic: fmv.w.x
+    encoding: 4026827859
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -1856,6 +1961,7 @@ instructions:
     symbol: FLD
     name: FLD
     assembly_mnemonic: fld
+    encoding: 8696839
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRD }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -1871,6 +1977,7 @@ instructions:
     symbol: FSD
     name: FSD
     assembly_mnemonic: fsd
+    encoding: 10794023
     operands:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRS2 }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -1886,6 +1993,7 @@ instructions:
     symbol: FMADD_D
     name: FMADD_D
     assembly_mnemonic: fmadd.d
+    encoding: 1520731203
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -1902,6 +2010,7 @@ instructions:
     symbol: FMSUB_D
     name: FMSUB_D
     assembly_mnemonic: fmsub.d
+    encoding: 1520731207
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -1918,6 +2027,7 @@ instructions:
     symbol: FNMSUB_D
     name: FNMSUB_D
     assembly_mnemonic: fnmsub.d
+    encoding: 1520731211
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -1934,6 +2044,7 @@ instructions:
     symbol: FNMADD_D
     name: FNMADD_D
     assembly_mnemonic: fnmadd.d
+    encoding: 1520731215
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -1950,6 +2061,7 @@ instructions:
     symbol: FADD_D
     name: FADD_D
     assembly_mnemonic: fadd.d
+    encoding: 44336211
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -1965,6 +2077,7 @@ instructions:
     symbol: FSUB_D
     name: FSUB_D
     assembly_mnemonic: fsub.d
+    encoding: 178553939
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -1980,6 +2093,7 @@ instructions:
     symbol: FMUL_D
     name: FMUL_D
     assembly_mnemonic: fmul.d
+    encoding: 312771667
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -1995,6 +2109,7 @@ instructions:
     symbol: FDIV_D
     name: FDIV_D
     assembly_mnemonic: fdiv.d
+    encoding: 446989395
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2010,6 +2125,7 @@ instructions:
     symbol: FSQRT_D
     name: FSQRT_D
     assembly_mnemonic: fsqrt.d
+    encoding: 1510245459
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2024,6 +2140,7 @@ instructions:
     symbol: FSGNJ_D
     name: FSGNJ_D
     assembly_mnemonic: fsgnj.d
+    encoding: 581207123
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2038,6 +2155,7 @@ instructions:
     symbol: FSGNJN_D
     name: FSGNJN_D
     assembly_mnemonic: fsgnjn.d
+    encoding: 581211219
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2052,6 +2170,7 @@ instructions:
     symbol: FSGNJX_D
     name: FSGNJX_D
     assembly_mnemonic: fsgnjx.d
+    encoding: 581215315
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2066,6 +2185,7 @@ instructions:
     symbol: FMIN_D
     name: FMIN_D
     assembly_mnemonic: fmin.d
+    encoding: 715424851
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2080,6 +2200,7 @@ instructions:
     symbol: FMAX_D
     name: FMAX_D
     assembly_mnemonic: fmax.d
+    encoding: 715428947
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2094,6 +2215,7 @@ instructions:
     symbol: FCVT_W_D
     name: FCVT_W_D
     assembly_mnemonic: fcvt.w.d
+    encoding: 3255075923
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2108,6 +2230,7 @@ instructions:
     symbol: FCVT_WU_D
     name: FCVT_WU_D
     assembly_mnemonic: fcvt.wu.d
+    encoding: 3256124499
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2122,6 +2245,7 @@ instructions:
     symbol: FCVT_L_D
     name: FCVT_L_D
     assembly_mnemonic: fcvt.l.d
+    encoding: 3257173075
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2136,6 +2260,7 @@ instructions:
     symbol: FCVT_LU_D
     name: FCVT_LU_D
     assembly_mnemonic: fcvt.lu.d
+    encoding: 3258221651
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2150,6 +2275,7 @@ instructions:
     symbol: FMV_X_D
     name: FMV_X_D
     assembly_mnemonic: fmv.x.d
+    encoding: 3791946835
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2163,6 +2289,7 @@ instructions:
     symbol: FEQ_D
     name: FEQ_D
     assembly_mnemonic: feq.d
+    encoding: 2728698963
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2177,6 +2304,7 @@ instructions:
     symbol: FLT_D
     name: FLT_D
     assembly_mnemonic: flt.d
+    encoding: 2728694867
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2191,6 +2319,7 @@ instructions:
     symbol: FLE_D
     name: FLE_D
     assembly_mnemonic: fle.d
+    encoding: 2728690771
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2205,6 +2334,7 @@ instructions:
     symbol: FCLASS_D
     name: FCLASS_D
     assembly_mnemonic: fclass.d
+    encoding: 3791950931
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2218,6 +2348,7 @@ instructions:
     symbol: FCVT_D_W
     name: FCVT_D_W
     assembly_mnemonic: fcvt.d.w
+    encoding: 3523511379
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -2232,6 +2363,7 @@ instructions:
     symbol: FCVT_D_WU
     name: FCVT_D_WU
     assembly_mnemonic: fcvt.d.wu
+    encoding: 3524559955
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -2246,6 +2378,7 @@ instructions:
     symbol: FCVT_D_L
     name: FCVT_D_L
     assembly_mnemonic: fcvt.d.l
+    encoding: 3525608531
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -2260,6 +2393,7 @@ instructions:
     symbol: FCVT_D_LU
     name: FCVT_D_LU
     assembly_mnemonic: fcvt.d.lu
+    encoding: 3526657107
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -2274,6 +2408,7 @@ instructions:
     symbol: FMV_D_X
     name: FMV_D_X
     assembly_mnemonic: fmv.d.x
+    encoding: 4060382291
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -2287,6 +2422,7 @@ instructions:
     symbol: FCVT_S_D
     name: FCVT_S_D
     assembly_mnemonic: fcvt.s.d
+    encoding: 1075086419
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
@@ -2301,6 +2437,7 @@ instructions:
     symbol: C_ADDI4SPN
     name: C_ADDI4SPN
     assembly_mnemonic: c.addi4spn
+    encoding: 2048
     operands:
       - { kinds: [register], role: def, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: C_UIMM10_NZ_A4, name: IMM }
@@ -2315,6 +2452,7 @@ instructions:
     symbol: C_FLD
     name: C_FLD
     assembly_mnemonic: c.fld
+    encoding: 9344
     operands:
       - { kinds: [register], role: def, register_class: FPR64C, register_bank: FPR, memory_role: value, name: FRD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
@@ -2330,6 +2468,7 @@ instructions:
     symbol: C_LW
     name: C_LW
     assembly_mnemonic: c.lw
+    encoding: 17536
     operands:
       - { kinds: [register], role: def, register_class: GPRC, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
@@ -2345,6 +2484,7 @@ instructions:
     symbol: C_LD
     name: C_LD
     assembly_mnemonic: c.ld
+    encoding: 25728
     operands:
       - { kinds: [register], role: def, register_class: GPRC, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
@@ -2360,6 +2500,7 @@ instructions:
     symbol: C_FSD
     name: C_FSD
     assembly_mnemonic: c.fsd
+    encoding: 42120
     operands:
       - { kinds: [register], role: use, register_class: FPR64C, register_bank: FPR, memory_role: value, name: FRS2 }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
@@ -2375,6 +2516,7 @@ instructions:
     symbol: C_SW
     name: C_SW
     assembly_mnemonic: c.sw
+    encoding: 50312
     operands:
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
@@ -2390,6 +2532,7 @@ instructions:
     symbol: C_SD
     name: C_SD
     assembly_mnemonic: c.sd
+    encoding: 58504
     operands:
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
@@ -2405,6 +2548,7 @@ instructions:
     symbol: C_ADDI
     name: C_ADDI
     assembly_mnemonic: c.addi
+    encoding: 1029
     operands:
       - { kinds: [register], role: def_use, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: C_SIMM6, name: IMM }
@@ -2418,6 +2562,7 @@ instructions:
     symbol: C_ADDIW
     name: C_ADDIW
     assembly_mnemonic: c.addiw
+    encoding: 9221
     operands:
       - { kinds: [register], role: def_use, register_class: GPR_NX0, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: C_SIMM6, name: IMM }
@@ -2431,6 +2576,7 @@ instructions:
     symbol: C_LI
     name: C_LI
     assembly_mnemonic: c.li
+    encoding: 17413
     operands:
       - { kinds: [register], role: def, register_class: GPR_NX0, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: C_SIMM6, name: IMM }
@@ -2444,6 +2590,7 @@ instructions:
     symbol: C_ADDI16SP
     name: C_ADDI16SP
     assembly_mnemonic: c.addi16sp
+    encoding: 24897
     operands:
       - { kinds: [immediate], immediate_predicate: C_SIMM10_A16_NZ, name: IMM }
     num_explicit_defs: 0
@@ -2458,6 +2605,7 @@ instructions:
     symbol: C_LUI
     name: C_LUI
     assembly_mnemonic: c.lui
+    encoding: 25605
     operands:
       - { kinds: [register], role: def, register_class: GPR_NX0_NX2, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: C_SIMM6_NZ, name: IMM }
@@ -2471,6 +2619,7 @@ instructions:
     symbol: C_SRLI
     name: C_SRLI
     assembly_mnemonic: c.srli
+    encoding: 32773
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM6, name: IMM }
@@ -2484,6 +2633,7 @@ instructions:
     symbol: C_SRAI
     name: C_SRAI
     assembly_mnemonic: c.srai
+    encoding: 33797
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM6, name: IMM }
@@ -2497,6 +2647,7 @@ instructions:
     symbol: C_ANDI
     name: C_ANDI
     assembly_mnemonic: c.andi
+    encoding: 34821
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: C_SIMM6, name: IMM }
@@ -2510,6 +2661,7 @@ instructions:
     symbol: C_SUB
     name: C_SUB
     assembly_mnemonic: c.sub
+    encoding: 35845
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
@@ -2523,6 +2675,7 @@ instructions:
     symbol: C_XOR
     name: C_XOR
     assembly_mnemonic: c.xor
+    encoding: 35877
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
@@ -2536,6 +2689,7 @@ instructions:
     symbol: C_OR
     name: C_OR
     assembly_mnemonic: c.or
+    encoding: 35909
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
@@ -2549,6 +2703,7 @@ instructions:
     symbol: C_AND
     name: C_AND
     assembly_mnemonic: c.and
+    encoding: 35941
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
@@ -2562,6 +2717,7 @@ instructions:
     symbol: C_SUBW
     name: C_SUBW
     assembly_mnemonic: c.subw
+    encoding: 39941
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
@@ -2575,6 +2731,7 @@ instructions:
     symbol: C_ADDW
     name: C_ADDW
     assembly_mnemonic: c.addw
+    encoding: 39973
     operands:
       - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
@@ -2588,6 +2745,7 @@ instructions:
     symbol: C_J
     name: C_J
     assembly_mnemonic: c.j
+    encoding: 40961
     operands:
       - { kinds: [basic_block], name: TARGET }
     num_explicit_defs: 0
@@ -2600,6 +2758,7 @@ instructions:
     symbol: C_BEQZ
     name: C_BEQZ
     assembly_mnemonic: c.beqz
+    encoding: 49153
     operands:
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS1 }
       - { kinds: [basic_block], name: TARGET }
@@ -2613,6 +2772,7 @@ instructions:
     symbol: C_BNEZ
     name: C_BNEZ
     assembly_mnemonic: c.bnez
+    encoding: 57345
     operands:
       - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS1 }
       - { kinds: [basic_block], name: TARGET }
@@ -2626,6 +2786,7 @@ instructions:
     symbol: C_SLLI
     name: C_SLLI
     assembly_mnemonic: c.slli
+    encoding: 1030
     operands:
       - { kinds: [register], role: def_use, register_class: GPR_NX0, register_bank: GPR, name: RD }
       - { kinds: [immediate], immediate_predicate: UIMM6, name: IMM }
@@ -2639,6 +2800,7 @@ instructions:
     symbol: C_FLDSP
     name: C_FLDSP
     assembly_mnemonic: c.fldsp
+    encoding: 9250
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRD }
       - { kinds: [immediate], immediate_predicate: C_UIMM9_A8, name: IMM }
@@ -2654,6 +2816,7 @@ instructions:
     symbol: C_LWSP
     name: C_LWSP
     assembly_mnemonic: c.lwsp
+    encoding: 17442
     operands:
       - { kinds: [register], role: def, register_class: GPR_NX0, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [immediate], immediate_predicate: C_UIMM8_A4, name: IMM }
@@ -2669,6 +2832,7 @@ instructions:
     symbol: C_LDSP
     name: C_LDSP
     assembly_mnemonic: c.ldsp
+    encoding: 25634
     operands:
       - { kinds: [register], role: def, register_class: GPR_NX0, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [immediate], immediate_predicate: C_UIMM9_A8, name: IMM }
@@ -2684,6 +2848,7 @@ instructions:
     symbol: C_JR
     name: C_JR
     assembly_mnemonic: c.jr
+    encoding: 33794
     operands:
       - { kinds: [register], role: use, register_class: GPR_NX0, register_bank: GPR, name: RS1 }
     num_explicit_defs: 0
@@ -2696,6 +2861,7 @@ instructions:
     symbol: C_MV
     name: C_MV
     assembly_mnemonic: c.mv
+    encoding: 33830
     operands:
       - { kinds: [register], role: def, register_class: GPR_NX0, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR_NX0, register_bank: GPR, name: RS2 }
@@ -2709,6 +2875,7 @@ instructions:
     symbol: C_EBREAK
     name: C_EBREAK
     assembly_mnemonic: c.ebreak
+    encoding: 36866
     operands: []
     num_explicit_defs: 0
     flags: [has_side_effects, produces_code]
@@ -2720,6 +2887,7 @@ instructions:
     symbol: C_JALR
     name: C_JALR
     assembly_mnemonic: c.jalr
+    encoding: 37890
     operands:
       - { kinds: [register], role: use, register_class: GPR_NX0, register_bank: GPR, name: RS1 }
     num_explicit_defs: 0
@@ -2733,6 +2901,7 @@ instructions:
     symbol: C_ADD
     name: C_ADD
     assembly_mnemonic: c.add
+    encoding: 37926
     operands:
       - { kinds: [register], role: def_use, register_class: GPR_NX0, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR_NX0, register_bank: GPR, name: RS2 }
@@ -2746,6 +2915,7 @@ instructions:
     symbol: C_FSDSP
     name: C_FSDSP
     assembly_mnemonic: c.fsdsp
+    encoding: 42018
     operands:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRS2 }
       - { kinds: [immediate], immediate_predicate: C_UIMM9_A8, name: IMM }
@@ -2761,6 +2931,7 @@ instructions:
     symbol: C_SWSP
     name: C_SWSP
     assembly_mnemonic: c.swsp
+    encoding: 50210
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [immediate], immediate_predicate: C_UIMM8_A4, name: IMM }
@@ -2776,6 +2947,7 @@ instructions:
     symbol: C_SDSP
     name: C_SDSP
     assembly_mnemonic: c.sdsp
+    encoding: 58402
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [immediate], immediate_predicate: C_UIMM9_A8, name: IMM }
@@ -2791,6 +2963,7 @@ instructions:
     symbol: FCVT_D_S
     name: FCVT_D_S
     assembly_mnemonic: fcvt.d.s
+    encoding: 1107592275
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
@@ -2805,6 +2978,7 @@ instructions:
     symbol: AMOADD_W
     name: AMOADD_W
     assembly_mnemonic: amoadd.w
+    encoding: 10789935
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2820,6 +2994,7 @@ instructions:
     symbol: AMOXOR_W
     name: AMOXOR_W
     assembly_mnemonic: amoxor.w
+    encoding: 547660847
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2835,6 +3010,7 @@ instructions:
     symbol: AMOAND_W
     name: AMOAND_W
     assembly_mnemonic: amoand.w
+    encoding: 1621402671
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2850,6 +3026,7 @@ instructions:
     symbol: AMOOR_W
     name: AMOOR_W
     assembly_mnemonic: amoor.w
+    encoding: 1084531759
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2865,6 +3042,7 @@ instructions:
     symbol: AMOMIN_W
     name: AMOMIN_W
     assembly_mnemonic: amomin.w
+    encoding: 2158273583
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2880,6 +3058,7 @@ instructions:
     symbol: AMOMAX_W
     name: AMOMAX_W
     assembly_mnemonic: amomax.w
+    encoding: 2695144495
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2895,6 +3074,7 @@ instructions:
     symbol: AMOMINU_W
     name: AMOMINU_W
     assembly_mnemonic: amominu.w
+    encoding: 3232015407
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2910,6 +3090,7 @@ instructions:
     symbol: AMOMAXU_W
     name: AMOMAXU_W
     assembly_mnemonic: amomaxu.w
+    encoding: 3768886319
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2925,6 +3106,7 @@ instructions:
     symbol: LR_D
     name: LR_D
     assembly_mnemonic: lr.d
+    encoding: 268743727
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
@@ -2939,6 +3121,7 @@ instructions:
     symbol: SC_D
     name: SC_D
     assembly_mnemonic: sc.d
+    encoding: 413447215
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2954,6 +3137,7 @@ instructions:
     symbol: AMOSWAP_D
     name: AMOSWAP_D
     assembly_mnemonic: amoswap.d
+    encoding: 145011759
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2969,6 +3153,7 @@ instructions:
     symbol: AMOADD_D
     name: AMOADD_D
     assembly_mnemonic: amoadd.d
+    encoding: 10794031
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2984,6 +3169,7 @@ instructions:
     symbol: AMOXOR_D
     name: AMOXOR_D
     assembly_mnemonic: amoxor.d
+    encoding: 547664943
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -2999,6 +3185,7 @@ instructions:
     symbol: AMOAND_D
     name: AMOAND_D
     assembly_mnemonic: amoand.d
+    encoding: 1621406767
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -3014,6 +3201,7 @@ instructions:
     symbol: AMOOR_D
     name: AMOOR_D
     assembly_mnemonic: amoor.d
+    encoding: 1084535855
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -3029,6 +3217,7 @@ instructions:
     symbol: AMOMIN_D
     name: AMOMIN_D
     assembly_mnemonic: amomin.d
+    encoding: 2158277679
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -3044,6 +3233,7 @@ instructions:
     symbol: AMOMAX_D
     name: AMOMAX_D
     assembly_mnemonic: amomax.d
+    encoding: 2695148591
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -3059,6 +3249,7 @@ instructions:
     symbol: AMOMINU_D
     name: AMOMINU_D
     assembly_mnemonic: amominu.d
+    encoding: 3232019503
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -3074,6 +3265,7 @@ instructions:
     symbol: AMOMAXU_D
     name: AMOMAXU_D
     assembly_mnemonic: amomaxu.d
+    encoding: 3768890415
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
@@ -3204,6 +3396,7 @@ instructions:
     symbol: JALR_CALL
     name: JALR_CALL
     assembly_mnemonic: jalr
+    encoding: 1344615
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -3221,6 +3414,7 @@ instructions:
     symbol: JALR_TAIL
     name: JALR_TAIL
     assembly_mnemonic: jalr
+    encoding: 1344615
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
@@ -3238,6 +3432,7 @@ instructions:
     symbol: JALR_RET
     name: JALR_RET
     assembly_mnemonic: jalr
+    encoding: 1344615
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }

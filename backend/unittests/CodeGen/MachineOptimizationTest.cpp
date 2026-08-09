@@ -300,6 +300,25 @@ void testDCEFixedPointAndDebugUses(TestContext &Context, const rcc::TargetDescri
   if (Memory == nullptr)
     return;
   rcc::MachineInstr *Store = buildStore(Context, Builder, LiveValue, X2, *Memory);
+  rcc::MachineInstr *FrameSetup = buildADDI(Context, Builder, rcc::Register::fromPhysical(X2),
+                                            rcc::Register::fromPhysical(X2), -16);
+  rcc::MachineInstr *FrameDestroy = buildADDI(Context, Builder, rcc::Register::fromPhysical(X2),
+                                              rcc::Register::fromPhysical(X2), 16);
+  Context.expect(FrameSetup != nullptr && FrameDestroy != nullptr,
+                 "DCE frame instruction construction must succeed");
+  if (FrameSetup == nullptr || FrameDestroy == nullptr)
+    return;
+  FrameSetup->setFlags({rcc::MachineInstrFlag::FrameSetup});
+  FrameDestroy->setFlags({rcc::MachineInstrFlag::FrameDestroy});
+  for (rcc::MachineInstr *Instruction : {FrameSetup, FrameDestroy}) {
+    rcc::MachineOperand *Definition = Instruction->operandAt(0);
+    if (Definition == nullptr)
+      return;
+    rcc::RegisterOperandFlags Flags = Definition->registerFlags();
+    Flags.set(rcc::RegisterOperandFlag::Dead);
+    Context.expect(Definition->setRegisterFlags(Flags).has_value(),
+                   "DCE frame definition must accept a dead marker");
+  }
   const std::size_t Before = Fixture.Entry->instructionCount();
 
   rcc::MachineAnalysisManager Analyses;
@@ -312,6 +331,8 @@ void testDCEFixedPointAndDebugUses(TestContext &Context, const rcc::TargetDescri
   Context.expect(Fixture.Entry->instructionCount() + 2 == Before,
                  "machine DCE must reach a fixed point across the dead chain");
   Context.expect(Store != nullptr && Store->isLinked(), "machine DCE must preserve a store");
+  Context.expect(FrameSetup->isLinked() && FrameDestroy->isLinked(),
+                 "machine DCE must preserve frame setup and destroy instructions");
   Context.expect(!Fixture.Function->registerInfo().isKnownVirtualRegister(DeadRoot) &&
                      !Fixture.Function->registerInfo().isKnownVirtualRegister(DeadValue),
                  "machine DCE must retire removed virtual registers");
@@ -379,6 +400,10 @@ void testPostRAMachineCombinerIdentity(TestContext &Context, const rcc::TargetDe
   const rcc::PhysicalRegister X10 = physical(Context, rcc::riscv::PhysicalRegisterID::X10);
   rcc::MachineInstr *Identity = buildADDI(Context, Builder, rcc::Register::fromPhysical(X10),
                                           rcc::Register::fromPhysical(X10), 0);
+  rcc::MachineInstr *FrameIdentity = buildADDI(Context, Builder, rcc::Register::fromPhysical(X10),
+                                               rcc::Register::fromPhysical(X10), 0);
+  if (FrameIdentity != nullptr)
+    FrameIdentity->setFlags({rcc::MachineInstrFlag::FrameDestroy});
   rcc::MachineAnalysisManager Analyses;
   rcc::MachineCombinerPass Pass(rcc::riscv::machineCombinerInfo(),
                                 rcc::MachineCombinerStage::PostRegisterAllocation);
@@ -386,6 +411,8 @@ void testPostRAMachineCombinerIdentity(TestContext &Context, const rcc::TargetDe
   Context.expect(
       Result.has_value() && Result->Changed && Identity != nullptr && !Identity->isLinked(),
       "post-RA combiner must erase a physical-register no-op only when identities match");
+  Context.expect(FrameIdentity != nullptr && FrameIdentity->isLinked(),
+                 "post-frame semantics must protect an otherwise removable identity");
 }
 
 void testCSERegisterAndMemoryRules(TestContext &Context, const rcc::TargetDescription &Target) {
@@ -610,8 +637,7 @@ void testPostRACodeMotion(TestContext &Context, const rcc::TargetDescription &Ta
     return;
   const rcc::Register X0 =
       rcc::Register::fromPhysical(physical(Context, rcc::riscv::PhysicalRegisterID::X0));
-  const rcc::Register X2 =
-      rcc::Register::fromPhysical(physical(Context, rcc::riscv::PhysicalRegisterID::X2));
+  const rcc::PhysicalRegister X2Physical = physical(Context, rcc::riscv::PhysicalRegisterID::X2);
   const rcc::Register X10 =
       rcc::Register::fromPhysical(physical(Context, rcc::riscv::PhysicalRegisterID::X10));
   const rcc::Register X12 =
@@ -634,7 +660,7 @@ void testPostRACodeMotion(TestContext &Context, const rcc::TargetDescription &Ta
       makeMemory(Context, *LICMFixture.Function, true, false);
   if (LICMMemory == nullptr)
     return;
-  (void)buildStore(Context, LICMBuilder, X12, *X2.physicalRegister(), *LICMMemory);
+  (void)buildStore(Context, LICMBuilder, X12, X2Physical, *LICMMemory);
   setPostRAProperties(*LICMFixture.Function);
   Context.expect(rcc::rebuildMachineLiveness(*LICMFixture.Function, Target).has_value(),
                  "post-RA LICM fixture liveness must be built");

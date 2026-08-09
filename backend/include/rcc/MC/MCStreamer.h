@@ -44,6 +44,8 @@ public:
   [[nodiscard]] virtual Expected<void> emitSymbolAttribute(MCSymbolRef Symbol,
                                                            MCSymbolAttribute Attribute) = 0;
   [[nodiscard]] virtual Expected<void> emitSymbolSize(MCSymbolRef Symbol, MCExprRef Size) = 0;
+  [[nodiscard]] virtual Expected<void> emitCommonSymbol(MCSymbolRef Symbol, std::uint64_t Size,
+                                                        std::uint64_t Alignment) = 0;
   [[nodiscard]] virtual Expected<void> emitDirective(std::string_view Name,
                                                      std::string_view Arguments = {}) = 0;
   [[nodiscard]] virtual Expected<void> emitCFI(const MCCFIInstruction &Instruction) = 0;
@@ -67,6 +69,8 @@ public:
   [[nodiscard]] Expected<void> emitSymbolAttribute(MCSymbolRef Symbol,
                                                    MCSymbolAttribute Attribute) override;
   [[nodiscard]] Expected<void> emitSymbolSize(MCSymbolRef Symbol, MCExprRef Size) override;
+  [[nodiscard]] Expected<void> emitCommonSymbol(MCSymbolRef Symbol, std::uint64_t Size,
+                                                std::uint64_t Alignment) override;
   [[nodiscard]] Expected<void> emitDirective(std::string_view Name,
                                              std::string_view Arguments = {}) override;
   [[nodiscard]] Expected<void> emitCFI(const MCCFIInstruction &Instruction) override;

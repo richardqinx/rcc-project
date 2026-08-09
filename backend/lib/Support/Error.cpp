@@ -30,6 +30,14 @@ std::string_view getErrorCodeName(ErrorCode Code) noexcept {
     return "CFG optimization failed";
   case ErrorCode::AssemblyLoweringFailed:
     return "assembly lowering failed";
+  case ErrorCode::InstructionEncodingFailed:
+    return "instruction encoding failed";
+  case ErrorCode::FixupApplicationFailed:
+    return "fixup application failed";
+  case ErrorCode::RelocationFailed:
+    return "relocation failed";
+  case ErrorCode::ObjectWritingFailed:
+    return "object writing failed";
   case ErrorCode::IoError:
     return "I/O error";
   case ErrorCode::InternalError:

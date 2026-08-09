@@ -51,6 +51,10 @@ isKnownDiagnosticSeverity(MachineCompilationDiagnosticSeverity Severity) noexcep
   case ErrorCode::FinalEncodabilityFailed:
   case ErrorCode::CFGOptimizationFailed:
   case ErrorCode::AssemblyLoweringFailed:
+  case ErrorCode::InstructionEncodingFailed:
+  case ErrorCode::FixupApplicationFailed:
+  case ErrorCode::RelocationFailed:
+  case ErrorCode::ObjectWritingFailed:
   case ErrorCode::IoError:
   case ErrorCode::InternalError:
     return true;

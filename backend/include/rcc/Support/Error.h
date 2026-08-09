@@ -26,6 +26,10 @@ enum class ErrorCode : std::uint8_t {
   FinalEncodabilityFailed,
   CFGOptimizationFailed,
   AssemblyLoweringFailed,
+  InstructionEncodingFailed,
+  FixupApplicationFailed,
+  RelocationFailed,
+  ObjectWritingFailed,
 };
 
 [[nodiscard]] std::string_view getErrorCodeName(ErrorCode Code) noexcept;

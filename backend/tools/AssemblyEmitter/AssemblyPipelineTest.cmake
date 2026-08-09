@@ -22,6 +22,11 @@ if(INPUT MATCHES "RISCVDataPipeline" AND
     NOT FirstAssembly MATCHES "\\.LJTI[0-9]+_0:"))
   message(FATAL_ERROR "assembly pipeline did not emit its constant pool and jump table")
 endif()
+if(INPUT MATCHES "RISCVStackFramePipeline" AND
+   (NOT FirstAssembly MATCHES "addi x2, x2, -32" OR
+    NOT FirstAssembly MATCHES "addi x2, x2, 32"))
+  message(FATAL_ERROR "assembly pipeline did not balance its stack frame")
+endif()
 
 execute_process(
   COMMAND "${EMITTER}" --input "${INPUT}"

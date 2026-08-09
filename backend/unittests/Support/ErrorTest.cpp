@@ -42,6 +42,15 @@ int main() {
     return fail("CFG-optimization errors must have a stable name");
   if (rcc::getErrorCodeName(rcc::ErrorCode::AssemblyLoweringFailed) != "assembly lowering failed")
     return fail("assembly-lowering errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::InstructionEncodingFailed) !=
+      "instruction encoding failed")
+    return fail("instruction-encoding errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::FixupApplicationFailed) != "fixup application failed")
+    return fail("fixup-application errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::RelocationFailed) != "relocation failed")
+    return fail("relocation errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::ObjectWritingFailed) != "object writing failed")
+    return fail("object-writing errors must have a stable name");
 
   return 0;
 }

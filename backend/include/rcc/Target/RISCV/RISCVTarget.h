@@ -37,6 +37,7 @@ struct AssemblyInstructionInfo final {
   Opcode InstructionOpcode;
   std::string_view Mnemonic;
   AssemblyFormatID Format;
+  std::uint32_t Encoding = 0;
 };
 
 struct CallingConventionInfo final {

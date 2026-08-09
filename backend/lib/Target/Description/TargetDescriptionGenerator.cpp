@@ -198,6 +198,7 @@ struct SourceInstruction final {
   std::string Symbol;
   std::string Name;
   std::string AssemblyMnemonic;
+  std::optional<std::uint32_t> BinaryEncoding;
   std::vector<SourceOperand> Operands;
   std::uint32_t NumExplicitDefs = 0;
   bool Variadic = false;
@@ -360,6 +361,7 @@ struct NormalizedInstruction final {
   std::string Symbol;
   std::string Name;
   std::string AssemblyMnemonic;
+  std::uint32_t BinaryEncoding = 0;
   std::vector<NormalizedOperand> Operands;
   std::uint32_t NumExplicitDefs = 0;
   bool Variadic = false;
@@ -1476,10 +1478,11 @@ private:
       if (!requireMapping(Element, "instruction"))
         return false;
       if (!checkKeys(*Element,
-                     {"id", "symbol", "name", "assembly_mnemonic", "operands", "num_explicit_defs",
-                      "variadic", "implicit_defs", "implicit_uses", "allow_extra_implicit_operands",
-                      "flags", "scheduling_class", "encoding_category", "assembly_format",
-                      "requires_memory_operands", "owner", "deadline"},
+                     {"id", "symbol", "name", "assembly_mnemonic", "encoding", "operands",
+                      "num_explicit_defs", "variadic", "implicit_defs", "implicit_uses",
+                      "allow_extra_implicit_operands", "flags", "scheduling_class",
+                      "encoding_category", "assembly_format", "requires_memory_operands", "owner",
+                      "deadline"},
                      "instruction")) {
         return false;
       }
@@ -1512,6 +1515,12 @@ private:
         if (!Value)
           return false;
         Instruction.AssemblyMnemonic = *Value;
+      }
+      if (const yaml::Node *Encoding = optionalNode(*Element, "encoding")) {
+        const auto Value = unsignedInteger32(*Encoding, "instruction encoding");
+        if (!Value)
+          return false;
+        Instruction.BinaryEncoding = Value;
       }
       if (const yaml::Node *SchedulingClass = optionalNode(*Element, "scheduling_class")) {
         const auto Value = scalar(*SchedulingClass, "instruction scheduling_class");
@@ -2386,13 +2395,14 @@ private:
     std::unordered_set<std::string> Names;
     for (const SourceInstruction &Instruction : Input.Instructions) {
       const bool HasMnemonic = !Instruction.AssemblyMnemonic.empty();
+      const bool HasBinaryEncoding = Instruction.BinaryEncoding.has_value();
       const bool HasSchedulingClass = !Instruction.SchedulingClassSymbol.empty();
       const bool HasEncodingCategory = !Instruction.EncodingCategorySymbol.empty();
       const bool HasAssemblyFormat = !Instruction.AssemblyFormatSymbol.empty();
-      const bool HasAllMachineFacts =
-          HasMnemonic && HasSchedulingClass && HasEncodingCategory && HasAssemblyFormat;
-      const bool HasAnyMachineFact =
-          HasMnemonic || HasSchedulingClass || HasEncodingCategory || HasAssemblyFormat;
+      const bool HasAllMachineFacts = HasMnemonic && HasBinaryEncoding && HasSchedulingClass &&
+                                      HasEncodingCategory && HasAssemblyFormat;
+      const bool HasAnyMachineFact = HasMnemonic || HasBinaryEncoding || HasSchedulingClass ||
+                                     HasEncodingCategory || HasAssemblyFormat;
       const bool IsPseudoSource =
           std::ranges::find(Instruction.Flags, "pseudo") != Instruction.Flags.end();
       const bool IsTerminalEmissionSource =
@@ -2432,6 +2442,7 @@ private:
           .Symbol = Instruction.Symbol,
           .Name = Instruction.Name,
           .AssemblyMnemonic = Instruction.AssemblyMnemonic,
+          .BinaryEncoding = Instruction.BinaryEncoding.value_or(0),
           .Operands = {},
           .NumExplicitDefs = Instruction.NumExplicitDefs,
           .Variadic = Instruction.Variadic,
@@ -2970,7 +2981,8 @@ void emitImmediatePredicate(std::ostream &Output, const NormalizedImmediatePredi
       continue;
     Output << "    {Opcode::fromValue(" << Instruction.ID << "), ";
     appendQuoted(Output, Instruction.AssemblyMnemonic);
-    Output << ", AssemblyFormatID::fromValue(" << Instruction.AssemblyFormat << ")},\n";
+    Output << ", AssemblyFormatID::fromValue(" << Instruction.AssemblyFormat << "), "
+           << Instruction.BinaryEncoding << "},\n";
   }
   Output << "}};\n\n";
 

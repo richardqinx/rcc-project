@@ -65,7 +65,7 @@ encoding_categories:
 assembly_formats:
   - { id: 1, symbol: RD_IMM, name: rd-imm }
 instructions:
-  - { id: 1024, symbol: LOAD_IMM, name: LOAD_IMM, assembly_mnemonic: load.imm, operands: [{ kinds: [register], role: def, register_class: GPR64, register_bank: GPR, name: RD }, { kinds: [immediate, global_symbol], immediate_predicate: SIMM8, name: IMM, allowed_target_flags: 33 }], num_explicit_defs: 1, flags: [produces_code], scheduling_class: ALU, encoding_category: I, assembly_format: RD_IMM }
+  - { id: 1024, symbol: LOAD_IMM, name: LOAD_IMM, assembly_mnemonic: load.imm, encoding: 19, operands: [{ kinds: [register], role: def, register_class: GPR64, register_bank: GPR, name: RD }, { kinds: [immediate, global_symbol], immediate_predicate: SIMM8, name: IMM, allowed_target_flags: 33 }], num_explicit_defs: 1, flags: [produces_code], scheduling_class: ALU, encoding_category: I, assembly_format: RD_IMM }
 )";
 }
 

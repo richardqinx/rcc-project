@@ -318,7 +318,7 @@ Expected<void> AsmPrinter::emitGlobalObjects(const CompilationUnit &Unit) {
     const GlobalObjectDesc *Object = Unit.globalObjectAt(Index);
     if (Object == nullptr)
       return makeUnexpected(ErrorCode::InternalError, "compilation unit contains a null global");
-    if (Object->isDeclaration() || Object->Linkage == GlobalLinkage::AvailableExternally)
+    if (Object->Linkage == GlobalLinkage::AvailableExternally)
       continue;
 
     const mc::MCSymbolRef Symbol = Context->globalSymbol(*Object);
@@ -327,14 +327,11 @@ Expected<void> AsmPrinter::emitGlobalObjects(const CompilationUnit &Unit) {
     auto Attributes = emitGlobalAttributes(*Object, Symbol, *Streamer);
     if (!Attributes)
       return std::unexpected(Attributes.error());
+    if (Object->isDeclaration())
+      continue;
 
     if (Object->Linkage == GlobalLinkage::Common) {
-      auto Name = mc::printMCSymbolName(Symbol->name());
-      if (!Name)
-        return std::unexpected(Name.error());
-      auto Common =
-          Streamer->emitDirective("comm", *Name + "," + std::to_string(Object->Size) + "," +
-                                              std::to_string(Object->Align.bytes()));
+      auto Common = Streamer->emitCommonSymbol(Symbol, Object->Size, Object->Align.bytes());
       if (!Common)
         return std::unexpected(Common.error());
       continue;

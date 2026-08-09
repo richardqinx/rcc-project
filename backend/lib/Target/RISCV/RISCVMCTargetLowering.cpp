@@ -22,6 +22,7 @@
 #include "rcc/MC/MCStreamer.h"
 #include "rcc/MC/MCSymbol.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
+#include "rcc/Target/RISCV/RISCVTargetRelocationKinds.h"
 
 #include <algorithm>
 #include <bit>
@@ -52,6 +53,15 @@ struct TypeLayout final {
   std::uint64_t Size = 0;
   std::uint64_t Alignment = 1;
 };
+
+[[nodiscard]] Expected<std::uint8_t> targetRelocationSize(TargetRelocationKindID Kind) {
+  if (Kind == targetRelocationKind(RISCVTargetRelocationKind::Absolute32))
+    return 4;
+  if (Kind == targetRelocationKind(RISCVTargetRelocationKind::Absolute64))
+    return 8;
+  return makeUnexpected(ErrorCode::Unsupported,
+                        "RV64GC target constant has an unknown relocation kind");
+}
 
 [[nodiscard]] Expected<std::uint64_t> checkedAdd(std::uint64_t Left, std::uint64_t Right) {
   std::uint64_t Result = 0;
@@ -612,6 +622,80 @@ struct TypeLayout final {
   return {};
 }
 
+[[nodiscard]] Expected<void> emitTargetBytes(std::span<const std::byte> Bytes,
+                                             mc::MCStreamer &Streamer) {
+  if (Bytes.empty())
+    return {};
+  std::vector<std::uint8_t> Storage;
+  Storage.reserve(Bytes.size());
+  for (const std::byte Byte : Bytes)
+    Storage.push_back(std::to_integer<std::uint8_t>(Byte));
+  return Streamer.emitBytes(Storage);
+}
+
+[[nodiscard]] Expected<void> emitTargetConstantImpl(const TargetConstant &Constant,
+                                                    MachineMCContext &Context,
+                                                    mc::MCStreamer &Streamer) {
+  auto Emission = Constant.emit();
+  if (!Emission)
+    return std::unexpected(Emission.error());
+  auto DeclaredKind = Constant.relocationKind();
+  if (!DeclaredKind)
+    return std::unexpected(DeclaredKind.error());
+  if (Emission->Fixups.empty() != !DeclaredKind->has_value()) {
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "RV64GC target constant relocation declaration is inconsistent");
+  }
+  if (Emission->Fixups.empty())
+    return emitTargetBytes(Emission->Bytes, Streamer);
+
+  std::vector<const TargetConstantFixup *> Fixups;
+  Fixups.reserve(Emission->Fixups.size());
+  for (const TargetConstantFixup &Fixup : Emission->Fixups) {
+    if (Fixup.Kind != **DeclaredKind) {
+      return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                            "RV64GC target constant contains mixed relocation kinds");
+    }
+    Fixups.push_back(&Fixup);
+  }
+  std::ranges::sort(Fixups, {}, [](const TargetConstantFixup *Fixup) { return Fixup->Offset; });
+
+  std::uint64_t Cursor = 0;
+  for (const TargetConstantFixup *Fixup : Fixups) {
+    auto Size = targetRelocationSize(Fixup->Kind);
+    if (!Size)
+      return std::unexpected(Size.error());
+    if (Fixup->Offset < Cursor || Fixup->Offset > Emission->Bytes.size() ||
+        *Size > Emission->Bytes.size() - static_cast<std::size_t>(Fixup->Offset)) {
+      return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                            "RV64GC target constant relocation storage is invalid");
+    }
+    auto RawBytes = emitTargetBytes(std::span<const std::byte>(Emission->Bytes)
+                                        .subspan(static_cast<std::size_t>(Cursor),
+                                                 static_cast<std::size_t>(Fixup->Offset - Cursor)),
+                                    Streamer);
+    if (!RawBytes)
+      return std::unexpected(RawBytes.error());
+
+    auto Symbol = Context.symbol(Fixup->Symbol);
+    if (!Symbol)
+      return std::unexpected(Symbol.error());
+    auto Expression = mc::MCExpr::symbol(std::move(*Symbol));
+    if (!Expression)
+      return std::unexpected(Expression.error());
+    auto WithAddend = addOffset(std::move(*Expression), Fixup->Addend);
+    if (!WithAddend)
+      return std::unexpected(WithAddend.error());
+    auto Value = Streamer.emitValue(std::move(*WithAddend), *Size);
+    if (!Value)
+      return std::unexpected(Value.error());
+    Cursor = Fixup->Offset + *Size;
+  }
+  return emitTargetBytes(
+      std::span<const std::byte>(Emission->Bytes).subspan(static_cast<std::size_t>(Cursor)),
+      Streamer);
+}
+
 [[nodiscard]] Expected<void> emitGlobalInitializerImpl(const GlobalInitializer &Initializer,
                                                        MachineMCContext &Context,
                                                        mc::MCStreamer &Streamer,
@@ -722,18 +806,7 @@ struct TypeLayout final {
     const auto *Value = Initializer.getIf<TargetConstant>();
     if (Value == nullptr)
       return makeUnexpected(ErrorCode::InternalError, "target initializer has no value");
-    auto Emission = Value->emit();
-    if (!Emission)
-      return std::unexpected(Emission.error());
-    if (!Emission->Fixups.empty()) {
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RV64GC target initializer fixups require native object emission");
-    }
-    std::vector<std::uint8_t> Bytes;
-    Bytes.reserve(Emission->Bytes.size());
-    for (const std::byte Byte : Emission->Bytes)
-      Bytes.push_back(std::to_integer<std::uint8_t>(Byte));
-    return Streamer.emitBytes(Bytes);
+    return emitTargetConstantImpl(*Value, Context, Streamer);
   }
   case GlobalInitializer::Kind::AlignmentPadding: {
     const auto *Value = Initializer.getIf<GlobalAlignmentPadding>();
@@ -1090,20 +1163,9 @@ Expected<void> RISCVMCTargetLowering::emitGlobalInitializer(const GlobalInitiali
 }
 
 Expected<void> RISCVMCTargetLowering::emitTargetConstant(const TargetConstant &Constant,
-                                                         MachineMCContext &,
+                                                         MachineMCContext &Context,
                                                          mc::MCStreamer &Streamer) const {
-  auto Emission = Constant.emit();
-  if (!Emission)
-    return std::unexpected(Emission.error());
-  if (!Emission->Fixups.empty()) {
-    return makeUnexpected(ErrorCode::Unsupported,
-                          "RV64GC target-constant fixups require the native object stage");
-  }
-  std::vector<std::uint8_t> Bytes;
-  Bytes.reserve(Emission->Bytes.size());
-  for (const std::byte Byte : Emission->Bytes)
-    Bytes.push_back(std::to_integer<std::uint8_t>(Byte));
-  return Streamer.emitBytes(Bytes);
+  return emitTargetConstantImpl(Constant, Context, Streamer);
 }
 
 Expected<void> RISCVMCTargetLowering::emitTargetJumpTable(const MachineFunction &Function,

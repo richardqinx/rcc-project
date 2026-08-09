@@ -2,20 +2,34 @@
 
 set(
   RCCBackendMCSources
+  ELFObjectWriter.cpp
   MCCFI.cpp
+  MCDwarfFrameEmitter.cpp
+  MCAsmBackend.cpp
+  MCAssembler.cpp
   MCContext.cpp
   MCExpr.cpp
+  MCFixup.cpp
   MCInstPrinter.cpp
+  MCObjectStreamer.cpp
   MCSection.cpp
   MCStreamer.cpp
 )
 set(
   RCCBackendMCHeaders
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/ELFObjectWriter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCCFI.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCDwarfFrameEmitter.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCAsmBackend.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCAssembler.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCCodeEmitter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCContext.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCExpr.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCFixup.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCInst.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCInstPrinter.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCObjectStreamer.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCObjectWriter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCSection.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCStreamer.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCSymbol.h"

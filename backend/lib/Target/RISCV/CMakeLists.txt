@@ -53,6 +53,9 @@ add_library(
   RISCVAssemblyPrinter.cpp
   RISCVFrameLowering.cpp
   RISCVInstPrinter.cpp
+  RISCVAsmBackend.cpp
+  RISCVMCCodeEmitter.cpp
+  RISCVObjectFile.cpp
   RISCVMCTargetLowering.cpp
   RISCVMachineCombiner.cpp
   RISCVMachineMemoryFolding.cpp
@@ -61,6 +64,7 @@ add_library(
   RISCVRegisterAllocation.cpp
   RISCVScheduling.cpp
   RISCVTarget.cpp
+  RISCVTargetConstant.cpp
   "${RCCBackendRISCVGeneratedRegisterHeader}"
   "${RCCBackendRISCVGeneratedInstructionHeader}"
   "${RCCBackendRISCVGeneratedTables}"
@@ -114,6 +118,9 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstPrinter.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAsmBackend.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCCodeEmitter.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVObjectFile.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCTargetLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
@@ -122,12 +129,19 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetConstant.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCodeGen.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVAssemblyPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCallLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVInstPrinter.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVAsmBackend.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVFixupKinds.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVMCCodeEmitter.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVObjectFile.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVMCTargetLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTarget.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTargetConstant.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTargetRelocationKinds.h"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVBranchInfo.cpp"
@@ -136,6 +150,9 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstPrinter.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAsmBackend.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCCodeEmitter.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVObjectFile.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCTargetLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
@@ -144,4 +161,5 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetConstant.cpp"
 )
