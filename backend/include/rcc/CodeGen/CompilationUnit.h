@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_COMPILATIONUNIT_H
 #define RCC_CODEGEN_COMPILATIONUNIT_H
 
+#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/StableID.h"
 #include "rcc/Support/Error.h"
 
@@ -28,6 +29,7 @@ public:
   ~CompilationUnit();
 
   [[nodiscard]] Expected<MachineFunction *> createMachineFunction(std::string Name);
+  [[nodiscard]] Expected<GlobalObjectDesc *> addGlobalObject(GlobalObjectDesc Object);
 
   [[nodiscard]] std::size_t functionCount() const noexcept {
     return Functions.size();
@@ -39,6 +41,15 @@ public:
   [[nodiscard]] const MachineFunction *function(std::string_view Name) const noexcept;
   [[nodiscard]] MachineFunction *function(MachineFunctionStableID ID) noexcept;
   [[nodiscard]] const MachineFunction *function(MachineFunctionStableID ID) const noexcept;
+
+  [[nodiscard]] std::size_t globalObjectCount() const noexcept {
+    return GlobalObjects.size();
+  }
+
+  [[nodiscard]] GlobalObjectDesc *globalObjectAt(std::size_t Index) noexcept;
+  [[nodiscard]] const GlobalObjectDesc *globalObjectAt(std::size_t Index) const noexcept;
+  [[nodiscard]] GlobalObjectDesc *globalObject(std::string_view Name) noexcept;
+  [[nodiscard]] const GlobalObjectDesc *globalObject(std::string_view Name) const noexcept;
 
   [[nodiscard]] Expected<void> verify() const;
 
@@ -53,6 +64,8 @@ private:
 
   std::vector<std::unique_ptr<MachineFunction>> Functions;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> FunctionNameToIndex;
+  std::vector<std::unique_ptr<GlobalObjectDesc>> GlobalObjects;
+  std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> GlobalNameToIndex;
   StableIDGenerator<MachineFunctionStableID> FunctionIDGenerator;
 };
 

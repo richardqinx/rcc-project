@@ -50,7 +50,10 @@ add_library(
   RISCVBranchInfo.cpp
   RISCVCodeGen.cpp
   RISCVCallLowering.cpp
+  RISCVAssemblyPrinter.cpp
   RISCVFrameLowering.cpp
+  RISCVInstPrinter.cpp
+  RISCVMCTargetLowering.cpp
   RISCVMachineCombiner.cpp
   RISCVMachineMemoryFolding.cpp
   RISCVOptimizationPipeline.cpp
@@ -75,7 +78,13 @@ target_include_directories(
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
   PRIVATE "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV"
 )
-target_link_libraries(RCCBackendRISCV PUBLIC RCCBackend::CodeGen)
+target_link_libraries(
+  RCCBackendRISCV
+  PUBLIC
+    RCCBackend::AsmPrinter
+    RCCBackend::CodeGen
+    RCCBackend::MC
+)
 
 set_target_properties(
   RCCBackendRISCV
@@ -100,9 +109,12 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVBranchInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstPrinter.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCTargetLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"
@@ -111,14 +123,20 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCodeGen.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVAssemblyPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCallLowering.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVInstPrinter.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVMCTargetLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTarget.h"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVBranchInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstPrinter.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCTargetLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"

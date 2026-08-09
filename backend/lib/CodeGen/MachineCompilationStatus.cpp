@@ -50,6 +50,7 @@ isKnownDiagnosticSeverity(MachineCompilationDiagnosticSeverity Severity) noexcep
   case ErrorCode::PseudoExpansionFailed:
   case ErrorCode::FinalEncodabilityFailed:
   case ErrorCode::CFGOptimizationFailed:
+  case ErrorCode::AssemblyLoweringFailed:
   case ErrorCode::IoError:
   case ErrorCode::InternalError:
     return true;

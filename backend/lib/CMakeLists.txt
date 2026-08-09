@@ -3,3 +3,5 @@
 add_subdirectory(Support)
 add_subdirectory(CodeGen)
 add_subdirectory(MIR)
+add_subdirectory(MC)
+add_subdirectory(AsmPrinter)

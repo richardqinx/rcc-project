@@ -28,6 +28,8 @@ std::string_view getErrorCodeName(ErrorCode Code) noexcept {
     return "final encodability failed";
   case ErrorCode::CFGOptimizationFailed:
     return "CFG optimization failed";
+  case ErrorCode::AssemblyLoweringFailed:
+    return "assembly lowering failed";
   case ErrorCode::IoError:
     return "I/O error";
   case ErrorCode::InternalError:

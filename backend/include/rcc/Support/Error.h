@@ -25,6 +25,7 @@ enum class ErrorCode : std::uint8_t {
   PseudoExpansionFailed,
   FinalEncodabilityFailed,
   CFGOptimizationFailed,
+  AssemblyLoweringFailed,
 };
 
 [[nodiscard]] std::string_view getErrorCodeName(ErrorCode Code) noexcept;

@@ -1,0 +1,10 @@
+---
+name: wide_constant_pipeline
+tracksRegLiveness: true
+isSSA: true
+body: |
+  bb.0:
+    liveins: $x1
+    %0:gpr(i64) = G_CONSTANT 9223372036854775807
+    $x10 = COPY %0
+    PseudoRET implicit $x1, implicit $x10

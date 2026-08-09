@@ -1,0 +1,18 @@
+---
+name: data_pipeline
+tracksRegLiveness: true
+isSSA: true
+constants:
+  - id: 0
+    value: 'i64 1234605616436508552'
+    alignment: 8
+jumpTable:
+  kind: block-address
+  entries:
+    - { id: 0, blocks: [ '%bb.0' ] }
+body: |
+  bb.0:
+    liveins: $x1
+    %0:gpr(i64) = G_CONSTANT 7
+    $x10 = COPY %0
+    PseudoRET implicit $x1, implicit $x10

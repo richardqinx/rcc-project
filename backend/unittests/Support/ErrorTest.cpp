@@ -40,6 +40,8 @@ int main() {
     return fail("final-encodability errors must have a stable name");
   if (rcc::getErrorCodeName(rcc::ErrorCode::CFGOptimizationFailed) != "CFG optimization failed")
     return fail("CFG-optimization errors must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::AssemblyLoweringFailed) != "assembly lowering failed")
+    return fail("assembly-lowering errors must have a stable name");
 
   return 0;
 }
