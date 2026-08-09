@@ -19,6 +19,7 @@ enum class ErrorCode : std::uint8_t {
   RegisterAllocationFailed,
   IoError,
   InternalError,
+  FrameLayoutFailed,
 };
 
 [[nodiscard]] std::string_view getErrorCodeName(ErrorCode Code) noexcept;

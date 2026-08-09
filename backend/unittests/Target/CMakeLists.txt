@@ -49,6 +49,17 @@ add_test(
   COMMAND RCCBackendRISCVRegisterAllocationTests
 )
 
+add_executable(RCCBackendRISCVFrameLoweringTests RISCVFrameLoweringTest.cpp)
+rcc_backend_configure_target(RCCBackendRISCVFrameLoweringTests)
+target_link_libraries(
+  RCCBackendRISCVFrameLoweringTests
+  PRIVATE RCCBackend::RISCV RCCBackend::CodeGen
+)
+add_test(
+  NAME RCCBackendRISCVFrameLoweringTests
+  COMMAND RCCBackendRISCVFrameLoweringTests
+)
+
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/DescriptionGeneratorTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLoweringTest.cpp"
@@ -56,6 +67,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGenTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSSAExitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocationTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLoweringTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.h"
 )
@@ -66,5 +78,6 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGenTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSSAExitTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocationTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLoweringTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
 )

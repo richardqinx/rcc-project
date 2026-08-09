@@ -51,6 +51,11 @@ public:
                                                 RegisterClassID) const noexcept {
     return 1;
   }
+
+  [[nodiscard]] virtual bool isReservedForFunction(const MachineFunction &, PhysicalRegister,
+                                                   const TargetDescription &) const noexcept {
+    return false;
+  }
 };
 
 } // namespace rcc

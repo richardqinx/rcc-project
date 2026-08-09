@@ -5,6 +5,7 @@ set(
   CompilationUnit.cpp
   GenericOpcodes.cpp
   GenericConstant.cpp
+  FrameIndexElimination.cpp
   InstructionDescriptor.cpp
   LowLevelType.cpp
   MachineBasicBlockAttributes.cpp
@@ -30,6 +31,8 @@ set(
   MachinePass.cpp
   MachinePipelinePasses.cpp
   MachineRegisterInfo.cpp
+  PrologueEpilogueInsertion.cpp
+  RegisterScavenger.cpp
   InlineSpiller.cpp
   LiveRangeEdit.cpp
   LiveRegMatrix.cpp
@@ -56,6 +59,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CompilationUnit.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericOpcodes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericConstant.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/FrameIndexElimination.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlockAttributes.h"
@@ -80,7 +84,10 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePass.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePipelinePasses.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PrologueEpilogueInsertion.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterScavenger.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetCodeGen.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFrameLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Graph.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Math.h"

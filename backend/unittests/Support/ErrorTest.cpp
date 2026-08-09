@@ -28,6 +28,8 @@ int main() {
     return fail("Error must preserve its message");
   if (rcc::getErrorCodeName(Failure.error().code()) != "parse error")
     return fail("Error code must have a stable name");
+  if (rcc::getErrorCodeName(rcc::ErrorCode::FrameLayoutFailed) != "frame layout failed")
+    return fail("frame-layout errors must have a stable name");
 
   return 0;
 }

@@ -84,7 +84,7 @@ private:
       auto ClassID = regalloc_detail::registerClassFor(Function, VirtualReg);
       if (!ClassID)
         return std::unexpected(ClassID.error());
-      auto Candidates = regalloc_detail::allocationOrder(Function, Target, VirtualReg);
+      auto Candidates = regalloc_detail::allocationOrder(Function, Target, TargetInfo, VirtualReg);
       if (!Candidates)
         return std::unexpected(Candidates.error());
       std::erase_if(*Candidates, [&](PhysicalRegister Candidate) {
@@ -257,6 +257,12 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
   auto Trial = regalloc_detail::cloneForAllocation(Function, Target);
   if (!Trial)
     return std::unexpected(Trial.error());
+  const std::vector<PhysicalRegister> FunctionReserved =
+      regalloc_detail::functionReservedRegisters(Function, Target, *Info);
+  auto TrialReserved =
+      regalloc_detail::reserveFunctionRegisters(*Trial->ClonedFunction, FunctionReserved);
+  if (!TrialReserved)
+    return std::unexpected(TrialReserved.error());
   MachineAnalysisManager TrialAnalyses;
   auto Registered = registerStage11MachineAnalyses(TrialAnalyses);
   if (!Registered)
@@ -275,6 +281,10 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
     return std::unexpected(regalloc_detail::withPrefix(
         Allocated.error(), "PBQPAllocator diverged after a successful transaction preflight: "));
   }
+  auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
+  if (!Reserved)
+    return std::unexpected(Reserved.error());
+  Allocated->Changed |= *Reserved;
   return regalloc_detail::passResult(*Allocated);
 }
 

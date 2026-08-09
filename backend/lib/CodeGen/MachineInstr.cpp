@@ -235,6 +235,20 @@ Expected<void> MachineInstr::addMemOperand(const MachineMemOperand &MemOperand) 
   return {};
 }
 
+Expected<void> MachineInstr::replaceMemOperand(std::size_t Index,
+                                               const MachineMemOperand &MemOperand) {
+  if (Index >= MemOperands.size()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine memory operand index is out of range");
+  }
+  if (!OwnerFunction->ownsMemOperand(MemOperand)) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "replacement memory operand belongs to another function");
+  }
+  MemOperands[Index] = &MemOperand;
+  return {};
+}
+
 Expected<void> MachineInstr::eraseMemOperand(std::size_t Index) {
   if (Index >= MemOperands.size()) {
     return makeUnexpected(ErrorCode::InvalidArgument,

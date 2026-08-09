@@ -438,12 +438,20 @@ void testOwnershipCFGAndMemory(TestContext &Context) {
                  "instruction must reject a block operand from another function");
 
   auto MemOperand = Function->createMemOperand(makeLoadDescription());
+  auto ReplacementMemOperand = Function->createMemOperand(makeLoadDescription());
   auto ForeignMemOperand = OtherFunction->createMemOperand(makeLoadDescription());
-  Context.expect(MemOperand && ForeignMemOperand,
+  Context.expect(MemOperand && ReplacementMemOperand && ForeignMemOperand,
                  "function arena must allocate immutable memory operands");
-  if (MemOperand && ForeignMemOperand) {
+  if (MemOperand && ReplacementMemOperand && ForeignMemOperand) {
     Context.expect((*Instr)->addMemOperand(**MemOperand).has_value(),
                    "instruction must accept a memory operand owned by its function");
+    Context.expect((*Instr)->replaceMemOperand(0, **ReplacementMemOperand).has_value() &&
+                       (*Instr)->memOperands().front() == *ReplacementMemOperand,
+                   "instruction must replace an owned memory operand in place");
+    Context.expect(!(*Instr)->replaceMemOperand(1, **MemOperand) &&
+                       !(*Instr)->replaceMemOperand(0, **ForeignMemOperand) &&
+                       (*Instr)->memOperands().front() == *ReplacementMemOperand,
+                   "invalid memory replacement must fail without mutation");
     Context.expect(!(*Instr)->addMemOperand(**ForeignMemOperand),
                    "instruction must reject a memory operand from another function");
   }

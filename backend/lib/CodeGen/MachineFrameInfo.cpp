@@ -330,7 +330,7 @@ Expected<void> MachineFrameInfo::freeze(std::uint64_t Size, Alignment Align) {
   if (Frozen)
     return makeUnexpected(ErrorCode::InvalidArgument, "frame layout is already frozen");
   for (const StackObject &Object : Objects) {
-    if (Object.isTombstone() || Object.isVariableSized())
+    if (Object.isTombstone() || Object.description()->IsDead || Object.isVariableSized())
       continue;
     if (!Object.description()->Offset) {
       return makeUnexpected(ErrorCode::VerificationError,
@@ -364,7 +364,8 @@ Expected<void> MachineFrameInfo::verify() const {
     auto DescriptionResult = verifyDescription(*Object.description());
     if (!DescriptionResult)
       return std::unexpected(DescriptionResult.error());
-    if (Frozen && !Object.isVariableSized() && !Object.description()->Offset) {
+    if (Frozen && !Object.description()->IsDead && !Object.isVariableSized() &&
+        !Object.description()->Offset) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "frozen fixed-size stack object has no final offset");
     }

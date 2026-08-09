@@ -16,6 +16,7 @@
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/CodeGen/RegAllocCommon.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 #include "rcc/CodeGen/VirtRegMap.h"
 
@@ -87,7 +88,7 @@ struct AllocationRunResult final {
 
 [[nodiscard]] inline Expected<std::vector<PhysicalRegister>>
 allocationOrder(const MachineFunction &Function, const TargetDescription &Target,
-                Register VirtualReg) {
+                const TargetRegisterAllocationInfo &TargetInfo, Register VirtualReg) {
   auto ClassID = registerClassFor(Function, VirtualReg);
   if (!ClassID)
     return std::unexpected(ClassID.error());
@@ -113,9 +114,43 @@ allocationOrder(const MachineFunction &Function, const TargetDescription &Target
   }
   std::erase_if(Result, [&](PhysicalRegister Candidate) {
     return isUnavailablePhysicalRegister(Function, Target.registers(), Candidate) ||
+           TargetInfo.isReservedForFunction(Function, Candidate, Target) ||
            !candidateSupportsSubRegisters(Function, Target.registers(), VirtualReg, Candidate);
   });
   return Result;
+}
+
+[[nodiscard]] inline std::vector<PhysicalRegister>
+functionReservedRegisters(const MachineFunction &Function, const TargetDescription &Target,
+                          const TargetRegisterAllocationInfo &TargetInfo) {
+  std::vector<PhysicalRegister> Roots;
+  for (const PhysicalRegisterDesc &Description : Target.registers().physicalRegisters()) {
+    if (TargetInfo.isReservedForFunction(Function, Description.Reg, Target))
+      Roots.push_back(Description.Reg);
+  }
+  std::vector<PhysicalRegister> Result;
+  for (const PhysicalRegisterDesc &Description : Target.registers().physicalRegisters()) {
+    if (std::ranges::any_of(Roots, [&](PhysicalRegister Root) {
+          return Target.registers().regsOverlap(Description.Reg, Root);
+        })) {
+      Result.push_back(Description.Reg);
+    }
+  }
+  return Result;
+}
+
+[[nodiscard]] inline Expected<bool>
+reserveFunctionRegisters(MachineFunction &Function, std::span<const PhysicalRegister> Registers) {
+  bool Changed = false;
+  for (const PhysicalRegister Reg : Registers) {
+    if (Function.registerInfo().isReserved(Reg))
+      continue;
+    auto Reserved = Function.registerInfo().reservePhysicalRegister(Reg);
+    if (!Reserved)
+      return std::unexpected(Reserved.error());
+    Changed = true;
+  }
+  return Changed;
 }
 
 [[nodiscard]] inline MachineInstr *firstTerminator(MachineBasicBlock &Block,

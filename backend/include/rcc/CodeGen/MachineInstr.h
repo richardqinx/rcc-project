@@ -98,6 +98,8 @@ public:
   [[nodiscard]] Expected<void> untieOperand(std::size_t Index);
 
   [[nodiscard]] Expected<void> addMemOperand(const MachineMemOperand &MemOperand);
+  [[nodiscard]] Expected<void> replaceMemOperand(std::size_t Index,
+                                                 const MachineMemOperand &MemOperand);
   [[nodiscard]] Expected<void> eraseMemOperand(std::size_t Index);
   [[nodiscard]] std::span<const MachineMemOperand *const> memOperands() const noexcept {
     return MemOperands;

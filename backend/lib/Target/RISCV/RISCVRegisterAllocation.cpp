@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
@@ -13,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -33,6 +35,20 @@ struct SpillForm final {
 
 [[nodiscard]] constexpr RegisterClassID registerClassID(RegisterClass Value) noexcept {
   return RegisterClassID::fromValue(static_cast<std::uint32_t>(Value));
+}
+
+[[nodiscard]] std::optional<std::int64_t> immediateValue(const MachineOperand &Operand) noexcept {
+  if (const auto *Immediate = Operand.getIf<std::int64_t>())
+    return *Immediate;
+  const auto *Integer = Operand.getIf<IntegerImmediateOperand>();
+  if (Integer == nullptr || Integer->Value.bitWidth() == 0 || Integer->Value.bitWidth() > 64) {
+    return std::nullopt;
+  }
+  std::uint64_t Raw = Integer->Value.words().empty() ? 0 : Integer->Value.words().front();
+  const std::uint32_t Width = Integer->Value.bitWidth();
+  if (Width < 64 && (Raw & (std::uint64_t{1} << (Width - 1U))) != 0)
+    Raw |= ~std::uint64_t{0} << Width;
+  return std::bit_cast<std::int64_t>(Raw);
 }
 
 [[nodiscard]] constexpr std::optional<SpillForm> spillForm(RegisterClassID Class) noexcept {
@@ -102,6 +118,74 @@ createStackMemoryOperand(MachineIRBuilder &Builder, FrameIndex StackSlot, Memory
 
 class RISCVRegisterAllocationInfo final : public TargetRegisterAllocationInfo {
 public:
+  [[nodiscard]] bool
+  isReservedForFunction(const MachineFunction &Function, PhysicalRegister Reg,
+                        const TargetDescription &Target) const noexcept override {
+    std::uint64_t RequiredAlignment = 16;
+    RequiredAlignment = std::max(
+        RequiredAlignment, Function.frameInfo().state().MaxAlignment.value_or(Alignment{}).bytes());
+    for (const StackObject &Object : Function.frameInfo().objects()) {
+      if (!Object.isTombstone() && !Object.description()->IsDead) {
+        RequiredAlignment = std::max(RequiredAlignment, Object.description()->Align.bytes());
+      }
+    }
+    for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
+         Block = Block->next()) {
+      for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
+           Instruction = Instruction->next()) {
+        if (Instruction->opcode() != targetOpcode(InstructionOpcode::ADJCALLSTACKDOWN) &&
+            Instruction->opcode() != targetOpcode(InstructionOpcode::ADJCALLSTACKUP)) {
+          continue;
+        }
+        if (Instruction->operandCount() < 2)
+          continue;
+        const auto Requested = immediateValue(*Instruction->operandAt(1));
+        if (Requested && *Requested > 0 &&
+            std::has_single_bit(static_cast<std::uint64_t>(*Requested))) {
+          RequiredAlignment = std::max(RequiredAlignment, static_cast<std::uint64_t>(*Requested));
+        }
+      }
+    }
+    const bool RequiresRealignment = RequiredAlignment > 16;
+    if (Reg.number() == static_cast<std::uint32_t>(PhysicalRegisterID::X9))
+      return RequiresRealignment;
+    if (Reg.number() != static_cast<std::uint32_t>(PhysicalRegisterID::X8))
+      return false;
+    const MachineFrameState &State = Function.frameInfo().state();
+    bool HasCalls = State.HasCalls;
+    for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr && !HasCalls;
+         Block = Block->next()) {
+      for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
+           Instruction = Instruction->next()) {
+        const InstructionDescriptor *Descriptor =
+            Target.instructionDescriptor(Instruction->opcode());
+        if (Descriptor != nullptr && Descriptor->Flags.has(InstructionFlag::Call)) {
+          HasCalls = true;
+          break;
+        }
+      }
+    }
+    const bool HasVariableObject =
+        std::ranges::any_of(Function.frameInfo().objects(), [](const StackObject &Object) {
+          return !Object.isTombstone() && !Object.description()->IsDead && Object.isVariableSized();
+        });
+    if (State.IsFrameAddressTaken || State.HasOpaqueSPAdjustment || HasVariableObject ||
+        RequiresRealignment)
+      return true;
+    switch (State.FramePointerPolicy) {
+    case MachineFramePointerPolicy::All:
+    case MachineFramePointerPolicy::Reserved:
+      return true;
+    case MachineFramePointerPolicy::NonLeaf:
+    case MachineFramePointerPolicy::NonLeafNoReserve:
+      return HasCalls;
+    case MachineFramePointerPolicy::None:
+    case MachineFramePointerPolicy::Count:
+      return false;
+    }
+    return false;
+  }
+
   [[nodiscard]] Expected<void> validateSpillReload(RegisterClassID Class,
                                                    const TargetDescription &Target) const override {
     const RegisterClassDesc *Description = Target.registers().registerClass(Class);

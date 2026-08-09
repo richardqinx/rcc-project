@@ -16,6 +16,8 @@ std::string_view getErrorCodeName(ErrorCode Code) noexcept {
     return "unsupported";
   case ErrorCode::RegisterAllocationFailed:
     return "register allocation failed";
+  case ErrorCode::FrameLayoutFailed:
+    return "frame layout failed";
   case ErrorCode::IoError:
     return "I/O error";
   case ErrorCode::InternalError:

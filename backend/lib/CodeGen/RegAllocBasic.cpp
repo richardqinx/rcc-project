@@ -42,7 +42,7 @@ private:
         if (!Marked)
           return std::unexpected(Marked.error());
       }
-      auto Candidates = regalloc_detail::allocationOrder(Function, Target, VirtualReg);
+      auto Candidates = regalloc_detail::allocationOrder(Function, Target, TargetInfo, VirtualReg);
       if (!Candidates)
         return std::unexpected(Candidates.error());
       bool Assigned = false;
@@ -105,6 +105,12 @@ Expected<MachinePassResult> BasicAllocatorPass::run(MachineFunction &Function,
   auto Trial = regalloc_detail::cloneForAllocation(Function, Target);
   if (!Trial)
     return std::unexpected(Trial.error());
+  const std::vector<PhysicalRegister> FunctionReserved =
+      regalloc_detail::functionReservedRegisters(Function, Target, *Info);
+  auto TrialReserved =
+      regalloc_detail::reserveFunctionRegisters(*Trial->ClonedFunction, FunctionReserved);
+  if (!TrialReserved)
+    return std::unexpected(TrialReserved.error());
   MachineAnalysisManager TrialAnalyses;
   auto Registered = registerStage11MachineAnalyses(TrialAnalyses);
   if (!Registered)
@@ -124,6 +130,10 @@ Expected<MachinePassResult> BasicAllocatorPass::run(MachineFunction &Function,
     return std::unexpected(regalloc_detail::withPrefix(
         Allocated.error(), "BasicAllocator diverged after a successful transaction preflight: "));
   }
+  auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
+  if (!Reserved)
+    return std::unexpected(Reserved.error());
+  Allocated->Changed |= *Reserved;
   return regalloc_detail::passResult(*Allocated);
 }
 

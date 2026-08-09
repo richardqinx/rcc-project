@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -399,6 +400,46 @@ void testRealAllocators(TestContext &Context, const rcc::TargetDescription &Targ
   }
 }
 
+void testFunctionReservedRegisters(TestContext &Context, const rcc::TargetDescription &Target) {
+  for (const auto [Kind, ID, Name] : {
+           std::tuple{AllocatorKind::Basic, std::uint64_t{13}, std::string_view{"Basic"}},
+           std::tuple{AllocatorKind::Fast, std::uint64_t{14}, std::string_view{"Fast"}},
+           std::tuple{AllocatorKind::PBQP, std::uint64_t{15}, std::string_view{"PBQP"}},
+       }) {
+    auto Fixture = createSimpleAllocationFunction(Target, ID);
+    auto Align64 = rcc::Alignment::create(64);
+    if (!Fixture || !Align64)
+      continue;
+    rcc::StackObjectDesc Description;
+    Description.Size = 8;
+    Description.Align = *Align64;
+    if (!Fixture->Function->frameInfo().createObject(std::move(Description)))
+      continue;
+    auto Allocated = runAllocator(*Fixture->Function, Target, Kind);
+    const rcc::PhysicalRegister FP =
+        *rcc::riscv::physicalRegister(rcc::riscv::PhysicalRegisterID::X8);
+    const rcc::PhysicalRegister BP =
+        *rcc::riscv::physicalRegister(rcc::riscv::PhysicalRegisterID::X9);
+    bool AllocatedFrameRegister = false;
+    for (const rcc::MachineInstr *Instruction : Fixture->Function->allInstructions()) {
+      if (Instruction == nullptr || Instruction->parent() == nullptr)
+        continue;
+      for (const rcc::MachineOperand &Operand : Instruction->operands()) {
+        const rcc::Register *Reg = Operand.getIf<rcc::Register>();
+        const auto Physical =
+            Reg != nullptr && Reg->isPhysical() ? Reg->physicalRegister() : std::nullopt;
+        AllocatedFrameRegister |= Physical && (*Physical == FP || *Physical == BP);
+      }
+    }
+    if (!Allocated)
+      std::cerr << "RV64GC " << Name << " reservation error: " << Allocated.error().message()
+                << '\n';
+    Context.expect(Allocated && Fixture->Function->registerInfo().isReserved(FP) &&
+                       Fixture->Function->registerInfo().isReserved(BP) && !AllocatedFrameRegister,
+                   "every allocator must persist and honor function-level FP/BP reservations");
+  }
+}
+
 [[nodiscard]] rcc::Expected<FunctionFixture>
 createPressureFunction(const rcc::TargetDescription &Target, std::uint64_t ID) {
   auto Fixture = createFunction("riscv-pressure-" + std::to_string(ID), ID);
@@ -486,6 +527,7 @@ int main() {
   testTargetHooks(Context, *Target);
   testRematerialization(Context, *Target);
   testRealAllocators(Context, *Target);
+  testFunctionReservedRegisters(Context, *Target);
   testRealPressureAndDeterminism(Context, *Target);
   return Context.result();
 }

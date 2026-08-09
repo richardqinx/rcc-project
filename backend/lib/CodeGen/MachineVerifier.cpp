@@ -657,6 +657,7 @@ private:
     for (const MachineMemOperand *MemOperand : Instruction.memOperands()) {
       const MemoryBase &Base = MemOperand->description().Base;
       if (const auto Frame = Base.frameIndex()) {
+        HasFrameIndex = true;
         auto FrameResult = verifyFrameIndex(*Frame);
         if (!FrameResult)
           return FrameResult;
@@ -849,6 +850,8 @@ private:
         (!Has(MachineFunctionProperty::NoVRegs) || !Has(MachineFunctionProperty::NoFrameIndices))) {
       return fail("FrameFinalized requires NoVRegs and NoFrameIndices");
     }
+    if (Has(MachineFunctionProperty::FrameFinalized) && !Function.frameInfo().isFrozen())
+      return fail("FrameFinalized requires a frozen frame layout");
 
     if (Has(MachineFunctionProperty::IsSSA)) {
       for (const auto &[Reg, DefinitionCount] : VirtualDefCounts) {

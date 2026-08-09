@@ -49,6 +49,7 @@ add_library(
   RCCBackendRISCV
   RISCVCodeGen.cpp
   RISCVCallLowering.cpp
+  RISCVFrameLowering.cpp
   RISCVRegisterAllocation.cpp
   RISCVTarget.cpp
   "${RCCBackendRISCVGeneratedRegisterHeader}"
@@ -94,6 +95,7 @@ install(
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCodeGen.h"
@@ -103,6 +105,7 @@ rcc_backend_register_format_files(
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
 )
