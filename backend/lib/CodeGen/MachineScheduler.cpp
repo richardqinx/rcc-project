@@ -129,7 +129,8 @@ struct ScheduleCandidate final {
 scheduleDAG(const ScheduleDAG &DAG, const MachineFunction &Function,
             const TargetDescription &Target, const TargetSchedulingModel &Model,
             ScheduleDAGMode Mode, const MachineBlockLiveness &Liveness,
-            std::uint64_t BlockFrequency, bool EnableBidirectionalScheduling) {
+            std::uint64_t BlockFrequency, bool EnableBidirectionalScheduling,
+            MachineActionReplay *Actions) {
   auto TopPressure = RegisterPressureTracker::create(DAG, Function, Target, Model, Mode, Liveness,
                                                      RegisterPressureDirection::TopDown);
   if (!TopPressure)
@@ -214,6 +215,14 @@ scheduleDAG(const ScheduleDAG &DAG, const MachineFunction &Function,
     }
 
     const ScheduleUnit &Selected = DAG.units()[Best->Unit];
+    if (Actions != nullptr) {
+      auto Accepted = Actions->request(Best->Bottom ? "schedule-bottom" : "schedule-top", Function,
+                                       Selected.StableID);
+      if (!Accepted)
+        return std::unexpected(Accepted.error());
+      if (!*Accepted)
+        return std::vector<std::size_t>{};
+    }
     Scheduled[Best->Unit] = true;
     if (Best->Bottom) {
       auto Issued = BottomHazards->issue(Selected, Best->Cycle);
@@ -263,7 +272,7 @@ scheduleRegion(MachineBasicBlock &Block, std::span<MachineInstr *const> Instruct
                MachineFunction &Function, const TargetDescription &Target,
                const TargetSchedulingModel &Model, ScheduleDAGMode Mode,
                const MachineBlockLiveness &Liveness, std::uint64_t BlockFrequency,
-               MachineSchedulerOptions Options) {
+               MachineSchedulerOptions Options, MachineActionReplay *Actions) {
   if (Instructions.size() < 2 || Instructions.size() > Options.MaximumRegionSize)
     return false;
   auto DAG = ScheduleDAG::build(Block, Instructions, Function, Target, Model, Mode);
@@ -272,9 +281,11 @@ scheduleRegion(MachineBasicBlock &Block, std::span<MachineInstr *const> Instruct
   if (DAG->units().size() < 2)
     return false;
   auto UnitOrder = scheduleDAG(*DAG, Function, Target, Model, Mode, Liveness, BlockFrequency,
-                               Options.EnableBidirectionalScheduling);
+                               Options.EnableBidirectionalScheduling, Actions);
   if (!UnitOrder)
     return std::unexpected(UnitOrder.error());
+  if (UnitOrder->empty())
+    return false;
 
   std::vector<MachineInstr *> NewOrder;
   NewOrder.reserve(Instructions.size());
@@ -305,10 +316,12 @@ scheduleRegion(MachineBasicBlock &Block, std::span<MachineInstr *const> Instruct
 
 } // namespace
 
-Expected<MachineSchedulingRunResult> runMachineScheduler(
-    MachineFunction &Function, const TargetDescription &Target, const TargetSchedulingModel &Model,
-    ScheduleDAGMode Mode, const LiveVariablesAnalysis::Result &Liveness,
-    const MachineBlockFrequencyAnalysis::Result &Frequencies, MachineSchedulerOptions Options) {
+Expected<MachineSchedulingRunResult>
+runMachineScheduler(MachineFunction &Function, const TargetDescription &Target,
+                    const TargetSchedulingModel &Model, ScheduleDAGMode Mode,
+                    const LiveVariablesAnalysis::Result &Liveness,
+                    const MachineBlockFrequencyAnalysis::Result &Frequencies,
+                    MachineSchedulerOptions Options, MachineActionReplay *Actions) {
   if (Options.MaximumRegionSize == 0) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine scheduler region budget must be nonzero");
@@ -324,7 +337,7 @@ Expected<MachineSchedulingRunResult> runMachineScheduler(
     std::vector<MachineInstr *> Region;
     auto FlushRegion = [&]() -> Expected<void> {
       auto Changed = scheduleRegion(*Block, Region, Function, Target, Model, Mode, *BlockLiveness,
-                                    Frequencies.frequency(*Block), Options);
+                                    Frequencies.frequency(*Block), Options, Actions);
       if (!Changed)
         return std::unexpected(Changed.error());
       BlockChanged |= *Changed;
@@ -403,9 +416,10 @@ Expected<MachinePassResult> MachineSchedulerPass::run(MachineFunction &Function,
       TrialAnalyses.getResult<MachineBlockFrequencyAnalysis>(*Trial->ClonedFunction, Target);
   if (!TrialFrequencies)
     return std::unexpected(TrialFrequencies.error());
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runMachineScheduler(*Trial->ClonedFunction, Target, *Model,
                                          ScheduleDAGMode::PreRegisterAllocation, **TrialLiveness,
-                                         **TrialFrequencies, Options);
+                                         **TrialFrequencies, Options, &Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
 
@@ -415,12 +429,16 @@ Expected<MachinePassResult> MachineSchedulerPass::run(MachineFunction &Function,
   auto Frequencies = Analyses.getResult<MachineBlockFrequencyAnalysis>(Function, Target);
   if (!Frequencies)
     return std::unexpected(Frequencies.error());
+  Actions.beginReplay();
   auto Run = runMachineScheduler(Function, Target, *Model, ScheduleDAGMode::PreRegisterAllocation,
-                                 **Liveness, **Frequencies, Options);
+                                 **Liveness, **Frequencies, Options, &Actions);
   if (!Run) {
     return std::unexpected(prefixedError(
         Run.error(), "machine scheduler diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
 
   MachinePassResult Result;
   Result.Changed = Run->Changed;

@@ -146,8 +146,8 @@ namespace {
     auto Info = Function.registerInfo().virtualRegisterInfo(*Reg);
     if (!Info)
       return std::unexpected(Info.error());
-    if (Info->get().Type && Info->get().Type->isFloat() &&
-        !Instruction.flags().has(MachineInstrFlag::NoFPExcept)) {
+    const auto &Type = Info->get().Type;
+    if (Type && Type->isFloat() && !Instruction.flags().has(MachineInstrFlag::NoFPExcept)) {
       return false;
     }
   }

@@ -109,7 +109,7 @@ const MachinePassContract &MachineBranchRelaxationPass::contract() const noexcep
 
 Expected<MachinePassResult> MachineBranchRelaxationPass::run(MachineFunction &Function,
                                                              const TargetDescription &Target,
-                                                             MachineAnalysisManager &) {
+                                                             MachineAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "branch relaxation requires finalized frame and tracked liveness");
@@ -119,20 +119,26 @@ Expected<MachinePassResult> MachineBranchRelaxationPass::run(MachineFunction &Fu
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
     return std::unexpected(prefixedError(Trial.error(), "branch relaxation setup failed: "));
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
-  auto Result = runImplementation(Function, Target);
+  Actions.beginReplay();
+  auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
     return std::unexpected(prefixedError(
         Result.error(), "branch relaxation diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
 Expected<MachinePassResult>
 MachineBranchRelaxationPass::runImplementation(MachineFunction &Function,
-                                               const TargetDescription &Target) const {
+                                               const TargetDescription &Target,
+                                               MachineActionReplay &Actions) const {
   if (Options.ConvergenceWatchdog == 0)
     return makeUnexpected(ErrorCode::InvalidArgument, "branch relaxation watchdog must be nonzero");
   MachinePassResult Result;
@@ -162,6 +168,13 @@ MachineBranchRelaxationPass::runImplementation(MachineFunction &Function,
           return std::unexpected(Offset.error());
         if (Info->isBranchOffsetInRange(*Instruction, *Offset))
           continue;
+        auto Accepted = Actions.request("relax-branch", Function, Instruction->stableID());
+        if (!Accepted)
+          return std::unexpected(Accepted.error());
+        if (!*Accepted) {
+          return makeUnexpected(ErrorCode::BranchRelaxationFailed,
+                                "required branch relaxation action was rejected");
+        }
         auto Relaxed = Info->relaxBranch(*Instruction, *Offset, Function, Target);
         if (!Relaxed)
           return std::unexpected(Relaxed.error());

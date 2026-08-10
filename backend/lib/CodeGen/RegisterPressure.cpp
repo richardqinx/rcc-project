@@ -102,12 +102,12 @@ struct RegisterPressureBuilder final {
     auto Info = Function->registerInfo().virtualRegisterInfo(Reg);
     if (!Info)
       return std::unexpected(Info.error());
-    if (!Info->get().RegClass) {
+    const auto &RegClass = Info->get().RegClass;
+    if (!RegClass) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "pre-RA pressure tracking requires constrained virtual registers");
     }
-    const std::span<const RegisterPressureSetID> Sets =
-        Model->pressureSetsForClass(*Info->get().RegClass);
+    const std::span<const RegisterPressureSetID> Sets = Model->pressureSetsForClass(*RegClass);
     return std::vector<RegisterPressureSetID>{Sets.begin(), Sets.end()};
   }
 

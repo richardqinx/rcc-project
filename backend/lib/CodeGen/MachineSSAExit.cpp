@@ -805,22 +805,26 @@ Expected<MachinePassResult> PHIEliminationPass::run(MachineFunction &Function,
     return std::unexpected(
         prefixedError(Trial.error(), "PHI-elimination transaction setup failed: "));
   }
-  MachineAnalysisManager TrialAnalyses;
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
 
-  auto Result = runImplementation(Function, Target, Analyses);
+  Actions.beginReplay();
+  auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
     return std::unexpected(prefixedError(
         Result.error(), "PHI elimination diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
 Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunction &Function,
                                                                   const TargetDescription &Target,
-                                                                  MachineAnalysisManager &) {
+                                                                  MachineActionReplay &Actions) {
   MachinePassResult Result;
   std::unordered_map<EdgeKey, MachineBasicBlock *, EdgeKeyHash> SplitEdges;
   const std::vector<MachineBasicBlock *> Blocks(Function.allBlocks().begin(),
@@ -834,6 +838,13 @@ Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunctio
       continue;
 
     for (PhiPlan &Plan : *Plans) {
+      auto Accepted = Actions.request("eliminate-phi", Function, Plan.Instruction->stableID());
+      if (!Accepted)
+        return std::unexpected(Accepted.error());
+      if (!*Accepted) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "required PHI elimination action was rejected");
+      }
       auto Fresh = cloneRegisterConstraints(Function, Plan.Destination.Reg);
       if (!Fresh)
         return std::unexpected(Fresh.error());
@@ -928,22 +939,26 @@ Expected<MachinePassResult> TwoAddressRewritePass::run(MachineFunction &Function
   if (!Trial) {
     return std::unexpected(prefixedError(Trial.error(), "two-address transaction setup failed: "));
   }
-  MachineAnalysisManager TrialAnalyses;
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
 
-  auto Result = runImplementation(Function, Target, Analyses);
+  Actions.beginReplay();
+  auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
     return std::unexpected(prefixedError(
         Result.error(), "two-address rewrite diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
 Expected<MachinePassResult>
 TwoAddressRewritePass::runImplementation(MachineFunction &Function, const TargetDescription &Target,
-                                         MachineAnalysisManager &) {
+                                         MachineActionReplay &Actions) {
   MachinePassResult Result;
   const std::vector<MachineInstr *> Instructions(Function.allInstructions().begin(),
                                                  Function.allInstructions().end());
@@ -951,6 +966,12 @@ TwoAddressRewritePass::runImplementation(MachineFunction &Function, const Target
     if (Instruction->parent() == nullptr)
       continue;
     if (Instruction->opcode() == opcode(GenericOpcode::REG_SEQUENCE)) {
+      auto Accepted = Actions.request("expand-reg-sequence", Function, Instruction->stableID());
+      if (!Accepted)
+        return std::unexpected(Accepted.error());
+      if (!*Accepted)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "required REG_SEQUENCE expansion action was rejected");
       auto Expanded = expandRegSequence(*Instruction, Function, Target, *Info);
       if (!Expanded)
         return std::unexpected(Expanded.error());
@@ -959,6 +980,12 @@ TwoAddressRewritePass::runImplementation(MachineFunction &Function, const Target
       continue;
     }
     if (Instruction->opcode() == opcode(GenericOpcode::INSERT_SUBREG)) {
+      auto Accepted = Actions.request("expand-insert-subreg", Function, Instruction->stableID());
+      if (!Accepted)
+        return std::unexpected(Accepted.error());
+      if (!*Accepted)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "required INSERT_SUBREG expansion action was rejected");
       auto Expanded = expandInsertSubreg(*Instruction, Function, Target, *Info);
       if (!Expanded)
         return std::unexpected(Expanded.error());
@@ -1004,6 +1031,12 @@ TwoAddressRewritePass::runImplementation(MachineFunction &Function, const Target
           continue;
 
         if (isImplicitlyUndef(Function, *Use)) {
+          auto Accepted = Actions.request("rewrite-undef-tie", Function, Instruction->stableID());
+          if (!Accepted)
+            return std::unexpected(Accepted.error());
+          if (!*Accepted)
+            return makeUnexpected(ErrorCode::VerificationError,
+                                  "required undef tie rewrite action was rejected");
           auto Rewritten = rewriteUndefTie(*Use, *Def);
           if (!Rewritten)
             return std::unexpected(Rewritten.error());
@@ -1012,28 +1045,46 @@ TwoAddressRewritePass::runImplementation(MachineFunction &Function, const Target
           continue;
         }
 
-        auto Commuted = tryCommute(*Instruction, UseIndex, *DefReg, Target, Function);
-        if (!Commuted)
-          return std::unexpected(Commuted.error());
-        if (*Commuted) {
-          Result.Changed = true;
-          Result.Changes.add(MachinePassChange::Operands);
-          continue;
+        auto AllowCommute =
+            Actions.request("commute-tied-operands", Function, Instruction->stableID());
+        if (!AllowCommute)
+          return std::unexpected(AllowCommute.error());
+        if (*AllowCommute) {
+          auto Commuted = tryCommute(*Instruction, UseIndex, *DefReg, Target, Function);
+          if (!Commuted)
+            return std::unexpected(Commuted.error());
+          if (*Commuted) {
+            Result.Changed = true;
+            Result.Changes.add(MachinePassChange::Operands);
+            continue;
+          }
         }
 
-        auto Converted =
-            Info->tryConvertToThreeAddress(*Instruction, DefIndex, UseIndex, Function, Target);
-        if (!Converted)
-          return std::unexpected(Converted.error());
-        if (*Converted) {
-          Result.Changed = true;
-          Result.Changes.add(MachinePassChange::Instructions);
-          Result.Changes.add(MachinePassChange::Operands);
-          Result.Changes.add(MachinePassChange::Registers);
-          Restart = true;
-          break;
+        auto AllowConversion =
+            Actions.request("convert-three-address", Function, Instruction->stableID());
+        if (!AllowConversion)
+          return std::unexpected(AllowConversion.error());
+        if (*AllowConversion) {
+          auto Converted =
+              Info->tryConvertToThreeAddress(*Instruction, DefIndex, UseIndex, Function, Target);
+          if (!Converted)
+            return std::unexpected(Converted.error());
+          if (*Converted) {
+            Result.Changed = true;
+            Result.Changes.add(MachinePassChange::Instructions);
+            Result.Changes.add(MachinePassChange::Operands);
+            Result.Changes.add(MachinePassChange::Registers);
+            Restart = true;
+            break;
+          }
         }
 
+        auto AllowCopy = Actions.request("insert-tied-copy", Function, Instruction->stableID());
+        if (!AllowCopy)
+          return std::unexpected(AllowCopy.error());
+        if (!*AllowCopy)
+          return makeUnexpected(ErrorCode::VerificationError,
+                                "required tied COPY insertion action was rejected");
         MachineBasicBlock *Block = Instruction->parent();
         if (Block == nullptr)
           return makeUnexpected(ErrorCode::InternalError,

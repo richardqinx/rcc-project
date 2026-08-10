@@ -1034,7 +1034,8 @@ void testLongJALRelaxation(TestContext &Context, const rcc::TargetDescription &T
   Context.expect(!TooFar && TooFar.error().code() == rcc::ErrorCode::BranchRelaxationFailed &&
                      JAL->parent() == Entry,
                  "long JAL relaxation must reject an unencodable PC-relative distance atomically");
-  auto Relaxed = rcc::riscv::branchInfo().relaxBranch(*JAL, 2 * 1024 * 1024, *Function, Target);
+  auto Relaxed =
+      rcc::riscv::branchInfo().relaxBranch(*JAL, std::int64_t{2} * 1024 * 1024, *Function, Target);
   if (!Relaxed)
     std::cerr << "long JAL relaxation failure: " << Relaxed.error().message() << '\n';
   rcc::MachineInstr *High = Entry->firstInstruction();

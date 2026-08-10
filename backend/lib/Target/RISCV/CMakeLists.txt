@@ -60,6 +60,7 @@ add_library(
   RISCVMachineCombiner.cpp
   RISCVMachineMemoryFolding.cpp
   RISCVOptimizationPipeline.cpp
+  RISCVPipeline.cpp
   RISCVPseudoExpansion.cpp
   RISCVRegisterAllocation.cpp
   RISCVScheduling.cpp
@@ -125,6 +126,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
@@ -138,6 +140,7 @@ rcc_backend_register_format_files(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVFixupKinds.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVMCCodeEmitter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVObjectFile.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVPipeline.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVMCTargetLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTarget.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTargetConstant.h"
@@ -157,6 +160,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"

@@ -279,7 +279,7 @@ const MachinePassContract &MachineCombinerPass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineCombinerPass::run(MachineFunction &Function,
                                                      const TargetDescription &Target,
-                                                     MachineAnalysisManager &) {
+                                                     MachineAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "machine combiner input does not satisfy its stage contract");
@@ -291,20 +291,25 @@ Expected<MachinePassResult> MachineCombinerPass::run(MachineFunction &Function,
     return std::unexpected(
         prefixedError(Trial.error(), "machine combiner transaction setup failed: "));
   }
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
-  auto Result = runImplementation(Function, Target);
+  Actions.beginReplay();
+  auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
     return std::unexpected(prefixedError(
         Result.error(), "machine combiner diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
 Expected<MachinePassResult>
-MachineCombinerPass::runImplementation(MachineFunction &Function,
-                                       const TargetDescription &Target) const {
+MachineCombinerPass::runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                                       MachineActionReplay &Actions) const {
   if (Options.MaximumIterations == 0)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine combiner iteration budget must be nonzero");
@@ -321,6 +326,13 @@ MachineCombinerPass::runImplementation(MachineFunction &Function,
             continue;
           if (Rewrites == Options.MaximumRewrites)
             break;
+          std::string Rule = "combine.";
+          Rule.append(Pattern.Name);
+          auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+          if (!Accepted)
+            return std::unexpected(Accepted.error());
+          if (!*Accepted)
+            continue;
           auto Executed = executePattern(*Instruction, Pattern, Function, Target);
           if (!Executed)
             return std::unexpected(Executed.error());

@@ -114,21 +114,25 @@ Expected<MachinePassResult> MachineBlockPlacementPass::run(MachineFunction &Func
   if (!Trial)
     return std::unexpected(prefixedError(Trial.error(), "block placement setup failed: "));
   MachineAnalysisManager TrialAnalyses;
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
-  auto Result = runImplementation(Function, Target, Analyses);
+  Actions.beginReplay();
+  auto Result = runImplementation(Function, Target, Analyses, Actions);
   if (!Result) {
     return std::unexpected(prefixedError(
         Result.error(), "block placement diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
-Expected<MachinePassResult>
-MachineBlockPlacementPass::runImplementation(MachineFunction &Function,
-                                             const TargetDescription &Target,
-                                             MachineAnalysisManager &Analyses) const {
+Expected<MachinePassResult> MachineBlockPlacementPass::runImplementation(
+    MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses,
+    MachineActionReplay &Actions) const {
   auto Probabilities = Analyses.getResult<MachineBranchProbabilityAnalysis>(Function, Target);
   if (!Probabilities)
     return std::unexpected(Probabilities.error());
@@ -154,7 +158,7 @@ MachineBlockPlacementPass::runImplementation(MachineFunction &Function,
     return Result;
   }
 
-  auto factsFor = [&Facts](const MachineBasicBlock &Block) -> const PlacementFacts & {
+  auto FactsFor = [&Facts](const MachineBasicBlock &Block) -> const PlacementFacts & {
     return *std::ranges::find_if(
         Facts, [&Block](const PlacementFacts &Value) { return Value.Block == &Block; });
   };
@@ -186,7 +190,7 @@ MachineBlockPlacementPass::runImplementation(MachineFunction &Function,
           continue;
         if (BestSuccessor == nullptr || BestProbability < Successor.Probability ||
             (BestProbability == Successor.Probability &&
-             betterRoot(factsFor(*Successor.Block), factsFor(*BestSuccessor)))) {
+             betterRoot(FactsFor(*Successor.Block), FactsFor(*BestSuccessor)))) {
           BestSuccessor = Successor.Block;
           BestProbability = Successor.Probability;
         }
@@ -223,7 +227,22 @@ MachineBlockPlacementPass::runImplementation(MachineFunction &Function,
 
   bool Changed = false;
   for (std::size_t Index = 1; Index < Order.size(); ++Index) {
-    Changed |= Order[Index - 1U]->next() != Order[Index];
+    if (Order[Index - 1U]->next() != Order[Index]) {
+      Changed = true;
+      break;
+    }
+  }
+  if (Changed) {
+    auto Accepted = Actions.request("apply-block-layout", Function);
+    if (!Accepted)
+      return std::unexpected(Accepted.error());
+    if (!*Accepted) {
+      MachinePassResult Result;
+      Result.Preserved = PreservedAnalyses::all();
+      return Result;
+    }
+  }
+  for (std::size_t Index = 1; Index < Order.size(); ++Index) {
     auto Moved = Function.moveBlockAfter(*Order[Index - 1U], *Order[Index]);
     if (!Moved)
       return std::unexpected(Moved.error());

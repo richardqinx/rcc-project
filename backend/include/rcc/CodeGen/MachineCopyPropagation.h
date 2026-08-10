@@ -33,8 +33,9 @@ public:
                                                 MachineAnalysisManager &Analyses) override;
 
 private:
-  [[nodiscard]] Expected<MachinePassResult>
-  runImplementation(MachineFunction &Function, const TargetDescription &Target) const;
+  [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
+                                                              const TargetDescription &Target,
+                                                              MachineActionReplay &Actions) const;
 
   const TargetSSAInfo *Info;
   MachineCopyPropagationStage Stage;

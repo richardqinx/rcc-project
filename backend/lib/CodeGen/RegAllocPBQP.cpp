@@ -15,9 +15,10 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <optional>
 #include <ranges>
-#include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,9 +31,9 @@ struct PBQPAllocationNode final {
   std::vector<std::optional<PhysicalRegister>> Options;
 };
 
-[[nodiscard]] std::set<std::pair<std::uint32_t, std::uint32_t>>
+[[nodiscard]] std::map<std::pair<std::uint32_t, std::uint32_t>, MachineInstrStableID>
 copyRelatedRegisters(const MachineFunction &Function) {
-  std::set<std::pair<std::uint32_t, std::uint32_t>> Result;
+  std::map<std::pair<std::uint32_t, std::uint32_t>, MachineInstrStableID> Result;
   for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
        Block = Block->next()) {
     for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
@@ -48,10 +49,31 @@ copyRelatedRegisters(const MachineFunction &Function) {
       std::uint32_t Right = Source->opaqueValue();
       if (Right < Left)
         std::swap(Left, Right);
-      Result.emplace(Left, Right);
+      Result.try_emplace({Left, Right}, Instruction->stableID());
     }
   }
   return Result;
+}
+
+[[nodiscard]] std::string_view reductionName(pbqp::ReductionKind Kind) noexcept {
+  switch (Kind) {
+  case pbqp::ReductionKind::DegreeZero:
+    return "degree-zero";
+  case pbqp::ReductionKind::DegreeOne:
+    return "degree-one";
+  case pbqp::ReductionKind::DegreeTwo:
+    return "degree-two";
+  case pbqp::ReductionKind::Heuristic:
+    return "heuristic";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] MachineInstrStableID actionInstructionForRegister(const MachineFunction &Function,
+                                                                Register Reg) noexcept {
+  const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Reg);
+  const MachineInstr *Instruction = Definition == nullptr ? nullptr : Definition->parent();
+  return Instruction == nullptr ? MachineInstrStableID{} : Instruction->stableID();
 }
 
 [[nodiscard]] pbqp::Cost boundedCost(std::uint64_t Value) noexcept {
@@ -63,8 +85,9 @@ class PBQPAllocatorEngine final : public RegAllocBase {
 public:
   PBQPAllocatorEngine(MachineFunction &Function, const TargetDescription &Target,
                       const TargetRegisterAllocationInfo &TargetInfo,
-                      MachineAnalysisManager &Analyses, RegisterAllocationOptions Options)
-      : RegAllocBase(Function, Target, TargetInfo, Analyses, Options) {}
+                      MachineAnalysisManager &Analyses, RegisterAllocationOptions Options,
+                      MachineActionReplay *Actions)
+      : RegAllocBase(Function, Target, TargetInfo, Analyses, Options, Actions) {}
 
 private:
   [[nodiscard]] Expected<AllocationRoundResult>
@@ -152,8 +175,14 @@ private:
         std::uint32_t RightKey = Right.VirtualReg.opaqueValue();
         if (RightKey < LeftKey)
           std::swap(LeftKey, RightKey);
-        const bool CopyRelated =
-            Options.EnableCopyCoalescing && CopyPairs.contains({LeftKey, RightKey});
+        const auto CopyPosition = CopyPairs.find({LeftKey, RightKey});
+        bool CopyRelated = Options.EnableCopyCoalescing && CopyPosition != CopyPairs.end();
+        if (CopyRelated && Actions != nullptr) {
+          auto Accepted = Actions->request("coalesce-copy", Function, CopyPosition->second);
+          if (!Accepted)
+            return std::unexpected(Accepted.error());
+          CopyRelated = *Accepted;
+        }
         pbqp::CostMatrix Costs(Left.Options.size(), Right.Options.size(), 0);
         bool HasCost = false;
         for (std::size_t LeftOption = 1; LeftOption < Left.Options.size(); ++LeftOption) {
@@ -188,7 +217,23 @@ private:
     }
 
     pbqp::DeterministicSolver Solver;
-    auto Solution = Solver.solve(Problem);
+    auto Solution = Solver.solve(Problem, [&](const pbqp::SolverAction &Action) -> Expected<bool> {
+      if (Actions == nullptr)
+        return true;
+      if (Action.Node.value() >= Nodes.size()) {
+        return makeUnexpected(ErrorCode::InternalError,
+                              "PBQP action names an unknown allocation node");
+      }
+      const Register VirtualReg = Nodes[Action.Node.value()].VirtualReg;
+      std::string Rule =
+          Action.Kind == pbqp::SolverActionKind::Reduction ? "pbqp-reduce." : "pbqp-choice.";
+      Rule.append(reductionName(Action.Reduction));
+      if (Action.Kind == pbqp::SolverActionKind::Choice) {
+        Rule.append(".option-");
+        Rule.append(std::to_string(Action.Value));
+      }
+      return Actions->request(Rule, Function, actionInstructionForRegister(Function, VirtualReg));
+    });
     if (!Solution)
       return std::unexpected(Solution.error());
 
@@ -267,7 +312,9 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
   auto Registered = registerStage11MachineAnalyses(TrialAnalyses);
   if (!Registered)
     return std::unexpected(Registered.error());
-  PBQPAllocatorEngine TrialAllocator(*Trial->ClonedFunction, Target, *Info, TrialAnalyses, Options);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  PBQPAllocatorEngine TrialAllocator(*Trial->ClonedFunction, Target, *Info, TrialAnalyses, Options,
+                                     &Actions);
   auto TrialRun = TrialAllocator.run();
   if (!TrialRun)
     return std::unexpected(TrialRun.error());
@@ -275,12 +322,16 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
       regalloc_detail::verifyAllocationTrial(*Trial->ClonedFunction, Target, contract());
   if (!TrialVerification)
     return std::unexpected(TrialVerification.error());
-  PBQPAllocatorEngine Allocator(Function, Target, *Info, Analyses, Options);
+  Actions.beginReplay();
+  PBQPAllocatorEngine Allocator(Function, Target, *Info, Analyses, Options, &Actions);
   auto Allocated = Allocator.run();
   if (!Allocated) {
     return std::unexpected(regalloc_detail::withPrefix(
         Allocated.error(), "PBQPAllocator diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
   if (!Reserved)
     return std::unexpected(Reserved.error());

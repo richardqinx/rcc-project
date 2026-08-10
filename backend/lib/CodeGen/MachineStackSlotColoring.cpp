@@ -178,7 +178,7 @@ collectSlotUses(MachineFunction &Function) {
 [[nodiscard]] bool intervalsOverlap(const SlotInterval &Left, const SlotInterval &Right) noexcept {
   if (Left.Block != Right.Block)
     return true;
-  return !(Left.Last < Right.First || Right.Last < Left.First);
+  return Left.Last >= Right.First && Right.Last >= Left.First;
 }
 
 struct StackColor final {

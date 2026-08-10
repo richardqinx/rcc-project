@@ -233,6 +233,36 @@ registerConfigurationFingerprint(const MachineRegisterInfo &RegInfo) noexcept {
   return Error(Source.code(), std::move(Prefix));
 }
 
+[[nodiscard]] std::string_view legalizationActionName(LegalizationAction Action) noexcept {
+  switch (Action) {
+  case LegalizationAction::Legal:
+    return "legal";
+  case LegalizationAction::Unsupported:
+    return "unsupported";
+  case LegalizationAction::Custom:
+    return "custom";
+  case LegalizationAction::Lower:
+    return "lower";
+  case LegalizationAction::Libcall:
+    return "libcall";
+  case LegalizationAction::WidenScalar:
+    return "widen-scalar";
+  case LegalizationAction::NarrowScalar:
+    return "narrow-scalar";
+  case LegalizationAction::MoreElements:
+    return "more-elements";
+  case LegalizationAction::FewerElements:
+    return "fewer-elements";
+  case LegalizationAction::Bitcast:
+    return "bitcast";
+  case LegalizationAction::ChangeElementType:
+    return "change-element-type";
+  case LegalizationAction::ChangeAddressSpace:
+    return "change-address-space";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] Expected<void> repairTrackedLiveness(MachineFunction &Function,
                                                    const TargetDescription &Target,
                                                    MachinePassResult &Result) {
@@ -268,21 +298,25 @@ Expected<MachinePassResult> LegalizerPass::run(MachineFunction &Function,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
     return std::unexpected(prefixedError(Trial.error(), "legalizer transaction setup failed: "));
-  MachineAnalysisManager TrialAnalyses;
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
-  auto Result = runImplementation(Function, Target, Analyses);
+  Actions.beginReplay();
+  auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
     return std::unexpected(prefixedError(
         Result.error(), "legalizer diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
 Expected<MachinePassResult> LegalizerPass::runImplementation(MachineFunction &Function,
                                                              const TargetDescription &Target,
-                                                             MachineAnalysisManager &) {
+                                                             MachineActionReplay &Actions) {
 
   MachinePassResult Result;
   std::unordered_set<OpcodeState, OpcodeStateHash> SeenStates;
@@ -328,6 +362,18 @@ Expected<MachinePassResult> LegalizerPass::runImplementation(MachineFunction &Fu
     if (!LoweringValidation)
       return std::unexpected(
           prefixedError(LoweringValidation.error(), "legalizer lowering precondition failed: "));
+    std::string Rule = "legalize.";
+    Rule.append(legalizationActionName(*Action));
+    Rule.push_back('.');
+    Rule.append(Descriptor->Name);
+    auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+    if (!Accepted)
+      return std::unexpected(Accepted.error());
+    if (!*Accepted) {
+      return std::unexpected(
+          passFailure("required legalizer action was rejected for '" + Descriptor->Name + "'",
+                      ErrorCode::VerificationError));
+    }
     auto Lowered = Info->lower(*Instruction, Function, Target, *Action);
     if (!Lowered)
       return std::unexpected(Lowered.error());
@@ -521,22 +567,26 @@ Expected<MachinePassResult> InstructionSelectPass::run(MachineFunction &Function
     return std::unexpected(
         prefixedError(Trial.error(), "instruction-selection transaction setup failed: "));
   }
-  MachineAnalysisManager TrialAnalyses;
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
-  auto Result = runImplementation(Function, Target, Analyses);
+  Actions.beginReplay();
+  auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
     return std::unexpected(
         prefixedError(Result.error(),
                       "instruction selection diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
 Expected<MachinePassResult>
 InstructionSelectPass::runImplementation(MachineFunction &Function, const TargetDescription &Target,
-                                         MachineAnalysisManager &) {
+                                         MachineActionReplay &Actions) {
 
   MachinePassResult Result;
   std::vector<MachineInstr *> Worklist;
@@ -580,6 +630,16 @@ InstructionSelectPass::runImplementation(MachineFunction &Function, const Target
     auto Match = Info->canSelect(*Instruction, Function, Target);
     if (!Match)
       return std::unexpected(Match.error());
+    std::string Rule = "select.";
+    Rule.append(CurrentDescriptor->Name);
+    auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+    if (!Accepted)
+      return std::unexpected(Accepted.error());
+    if (!*Accepted) {
+      return std::unexpected(passFailure("required selection action was rejected for '" +
+                                             CurrentDescriptor->Name + "'",
+                                         ErrorCode::VerificationError));
+    }
     auto Selection = Info->select(*Instruction, Function, Target);
     if (!Selection)
       return std::unexpected(Selection.error());

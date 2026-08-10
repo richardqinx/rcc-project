@@ -2,3 +2,4 @@
 
 add_subdirectory(DescriptionGenerator)
 add_subdirectory(AssemblyEmitter)
+add_subdirectory(MIRTool)

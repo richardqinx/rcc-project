@@ -406,6 +406,35 @@ void testUnserializableLowLevelType(TestContext &Context) {
 }
 
 void expectParseError(TestContext &Context, const rcc::TargetDescription &Target, std::string Body,
+                      std::string_view Message);
+
+void testCompatibleRegisterClassAndBankAnnotations(TestContext &Context) {
+  auto Target = createTarget();
+  auto Function = createFunction(Context, 5);
+  Context.expect(Target.has_value(), "register-constraint target must be valid");
+  if (!Target || !Function)
+    return;
+
+  rcc::mir::MIParser Parser(*Function, *Target, "compatible-register-constraints.mir",
+                            "bb.0:\n  %0:gpr64 = TEST_COPY $g0\n  $g1 = TEST_COPY %0:gpr\n");
+  auto Parsed = Parser.parse();
+  const auto Registers = Function->registerInfo().virtualRegisters();
+  Context.expect(Parsed.has_value() && Registers.size() == 1 &&
+                     Registers.front().RegClass == rcc::test::TestRegisterClass::GPR64 &&
+                     Registers.front().Bank == rcc::test::TestRegisterBank::GPR,
+                 "compatible class and bank annotations must coexist on a virtual register");
+  if (!Parsed) {
+    for (const rcc::TextDiagnostic &Diagnostic : Parser.diagnostics())
+      std::cerr << Diagnostic.Category << ": " << Diagnostic.Message << '\n';
+    std::cerr << "error: " << Parsed.error().message() << '\n';
+  }
+
+  expectParseError(Context, *Target,
+                   "bb.0:\n  %0:gpr64 = TEST_COPY $g0\n  $g1 = TEST_COPY %0:fpr\n",
+                   "conflicting virtual register bank");
+}
+
+void expectParseError(TestContext &Context, const rcc::TargetDescription &Target, std::string Body,
                       std::string_view Message) {
   auto Function = createFunction(Context, 10);
   if (!Function)
@@ -453,6 +482,7 @@ int main() {
   testTwoPassBodyParsing(Context);
   testAddressSpacePointerWidthResolver(Context);
   testUnserializableLowLevelType(Context);
+  testCompatibleRegisterClassAndBankAnnotations(Context);
   testDiagnostics(Context);
   return Context.result();
 }

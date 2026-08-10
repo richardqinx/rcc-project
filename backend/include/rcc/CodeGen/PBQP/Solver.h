@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -18,9 +19,24 @@
 
 namespace rcc::pbqp {
 
+enum class SolverActionKind : std::uint8_t {
+  Reduction,
+  Choice,
+};
+
+struct SolverAction final {
+  SolverActionKind Kind = SolverActionKind::Reduction;
+  ReductionKind Reduction = ReductionKind::DegreeZero;
+  NodeID Node;
+  std::size_t Value = 0;
+};
+
 class DeterministicSolver final {
 public:
-  [[nodiscard]] Expected<Solution> solve(const Graph &Problem) const {
+  using ActionCallback = std::function<Expected<bool>(const SolverAction &)>;
+
+  [[nodiscard]] Expected<Solution> solve(const Graph &Problem,
+                                         const ActionCallback &Action = {}) const {
     auto Verified = Problem.verify();
     if (!Verified)
       return std::unexpected(Verified.error());
@@ -31,10 +47,24 @@ public:
     while (Work.activeNodeCount() != 0) {
       const NodeID Selected = Work.selectReductionNode();
       const std::size_t Degree = Work.degree(Selected);
-      Expected<ReductionRecord> Reduced = Degree == 0   ? Work.reduceDegreeZero(Selected)
-                                          : Degree == 1 ? Work.reduceDegreeOne(Selected)
-                                          : Degree == 2 ? Work.reduceDegreeTwo(Selected)
-                                                        : Work.reduceHeuristically(Selected);
+      const ReductionKind Kind = Degree == 0   ? ReductionKind::DegreeZero
+                                 : Degree == 1 ? ReductionKind::DegreeOne
+                                 : Degree == 2 ? ReductionKind::DegreeTwo
+                                               : ReductionKind::Heuristic;
+      if (Action) {
+        auto Accepted = Action({SolverActionKind::Reduction, Kind, Selected, Degree});
+        if (!Accepted)
+          return std::unexpected(Accepted.error());
+        if (!*Accepted) {
+          return makeUnexpected(ErrorCode::RegisterAllocationFailed,
+                                "PBQP reduction action was rejected");
+        }
+      }
+      Expected<ReductionRecord> Reduced =
+          Kind == ReductionKind::DegreeZero  ? Work.reduceDegreeZero(Selected)
+          : Kind == ReductionKind::DegreeOne ? Work.reduceDegreeOne(Selected)
+          : Kind == ReductionKind::DegreeTwo ? Work.reduceDegreeTwo(Selected)
+                                             : Work.reduceHeuristically(Selected);
       if (!Reduced)
         return std::unexpected(Reduced.error());
       Reductions.push_back(std::move(*Reduced));
@@ -70,6 +100,15 @@ public:
         if (isInfinite(Best))
           return makeUnexpected(ErrorCode::RegisterAllocationFailed,
                                 "PBQP reductions produced no finite option");
+      }
+      if (Action) {
+        auto Accepted = Action({SolverActionKind::Choice, Record.Kind, Record.Node, Choice});
+        if (!Accepted)
+          return std::unexpected(Accepted.error());
+        if (!*Accepted) {
+          return makeUnexpected(ErrorCode::RegisterAllocationFailed,
+                                "PBQP choice action was rejected");
+        }
       }
       auto Set = Result.setSelection(Record.Node, Choice);
       if (!Set)

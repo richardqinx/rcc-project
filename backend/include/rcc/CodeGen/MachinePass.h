@@ -5,6 +5,7 @@
 
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
+#include "rcc/CodeGen/StableID.h"
 #include "rcc/Support/Error.h"
 
 #include <concepts>
@@ -279,6 +280,9 @@ public:
   [[nodiscard]] Expected<std::unique_ptr<MachineAnalysisManager>> forkEmpty() const;
   [[nodiscard]] Expected<bool>
   requestAction(std::string_view Action, const MachineFunction &Function, std::uint64_t Cost = 1);
+  [[nodiscard]] Expected<bool> requestAction(std::string_view Rule, const MachineFunction &Function,
+                                             MachineInstrStableID Instruction,
+                                             std::uint64_t Cost = 1);
 
 private:
   using ErasedRunner = std::function<Expected<std::shared_ptr<void>>(
@@ -315,6 +319,7 @@ private:
   std::unordered_map<MachineFunction *, std::unordered_map<AnalysisID, CacheEntry>> Cache;
   std::unordered_map<MachineFunction *, std::vector<AnalysisID>> ActiveComputations;
   MachinePassInstrumentation *Instrumentation = nullptr;
+  std::string ActivePass;
 
   friend class MachinePassManager;
   friend class CompilationUnitPassManager;
@@ -473,6 +478,58 @@ struct InstrumentationStatistic final {
   std::uint64_t TotalNanoseconds = 0;
 };
 
+struct MachineActionID final {
+  std::string Pass;
+  std::string Rule;
+  MachineFunctionStableID Function;
+  MachineInstrStableID Instruction;
+
+  [[nodiscard]] std::string toString() const;
+
+  friend bool operator==(const MachineActionID &, const MachineActionID &) = default;
+};
+
+struct MachineActionEvent final {
+  MachineActionID ID;
+  std::uint64_t Cost = 0;
+  bool Accepted = false;
+
+  friend bool operator==(const MachineActionEvent &, const MachineActionEvent &) = default;
+};
+
+class MachineActionReplay final {
+public:
+  explicit MachineActionReplay(MachineAnalysisManager &Analyses) noexcept : Analyses(&Analyses) {}
+  MachineActionReplay(
+      MachineAnalysisManager &Analyses,
+      const std::unordered_map<MachineInstrStableID, MachineInstrStableID> &SourceToClone)
+      : Analyses(&Analyses) {
+    for (const auto &[Source, Clone] : SourceToClone)
+      RecordingInstructionIDs.try_emplace(Clone, Source);
+  }
+
+  [[nodiscard]] Expected<bool> request(std::string_view Rule, const MachineFunction &Function,
+                                       MachineInstrStableID Instruction = {},
+                                       std::uint64_t Cost = 1);
+  void beginReplay() noexcept;
+  [[nodiscard]] Expected<void> finishReplay() const;
+
+private:
+  struct Decision final {
+    std::string Rule;
+    MachineFunctionStableID Function;
+    MachineInstrStableID Instruction;
+    std::uint64_t Cost = 0;
+    bool Accepted = false;
+  };
+
+  MachineAnalysisManager *Analyses = nullptr;
+  std::unordered_map<MachineInstrStableID, MachineInstrStableID> RecordingInstructionIDs;
+  std::vector<Decision> Decisions;
+  std::size_t NextDecision = 0;
+  bool IsReplaying = false;
+};
+
 class MachinePassInstrumentation final {
 public:
   using BeforeCallback = std::function<void(std::string_view, const MachineFunction &)>;
@@ -489,8 +546,7 @@ public:
       std::function<void(InstrumentationPhase, std::string_view, const MachineFunction &)>;
   using ChangeCallback =
       std::function<void(std::string_view, const MachineFunction &, MachinePassChanges, bool)>;
-  using ActionFilter =
-      std::function<bool(std::string_view, const MachineFunction &, std::uint64_t)>;
+  using ActionFilter = std::function<bool(const MachineActionID &, std::uint64_t)>;
 
   using BeforeUnitCallback = std::function<void(std::string_view, const CompilationUnit &)>;
   using AfterUnitCallback = std::function<void(std::string_view, const CompilationUnit &,
@@ -522,6 +578,7 @@ public:
   void addUnitAnalysisFailureCallback(UnitAnalysisFailureCallback Callback);
 
   [[nodiscard]] std::vector<InstrumentationStatistic> statistics() const;
+  [[nodiscard]] std::vector<MachineActionEvent> actionEvents() const;
   void clearStatistics();
 
 private:
@@ -548,7 +605,7 @@ private:
                        const Error &ErrorValue, std::uint64_t Nanoseconds) const;
   void change(std::string_view Name, const MachineFunction &Function, MachinePassChanges Changes,
               bool FingerprintChanged) const;
-  [[nodiscard]] Expected<bool> requestAction(std::string_view Action,
+  [[nodiscard]] Expected<bool> requestAction(const MachineActionID &Action,
                                              const MachineFunction &Function, std::uint64_t Cost);
 
   void beforeUnit(std::string_view Name, const CompilationUnit &Unit) const;
@@ -577,6 +634,7 @@ private:
   ActionFilter Filter;
   std::optional<std::uint64_t> PerFunctionFuel;
   std::unordered_map<std::uint64_t, std::uint64_t> ConsumedFuel;
+  std::vector<MachineActionEvent> ActionEvents;
 
   std::vector<BeforeUnitCallback> BeforeUnit;
   std::vector<AfterUnitCallback> AfterUnit;
@@ -602,6 +660,8 @@ struct MachinePassManagerOptions final {
 
 class MachinePassManager final {
 public:
+  using PassList = std::vector<std::unique_ptr<MachineFunctionPass>>;
+
   explicit MachinePassManager(MachinePassManagerOptions Options = {}) : Options(Options) {}
 
   MachinePassManager(const MachinePassManager &) = delete;
@@ -620,11 +680,15 @@ public:
     return Passes.size();
   }
 
+  [[nodiscard]] PassList takePasses() && noexcept {
+    return std::move(Passes);
+  }
+
 private:
   [[nodiscard]] Expected<void> validateContract(const MachinePassContract &Contract) const;
 
   MachinePassManagerOptions Options;
-  std::vector<std::unique_ptr<MachineFunctionPass>> Passes;
+  PassList Passes;
 };
 
 struct CompilationUnitPassManagerOptions final {

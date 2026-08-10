@@ -27,23 +27,35 @@ function(rcc_backend_add_developer_targets)
   if(TidyFiles)
     list(REMOVE_DUPLICATES TidyFiles)
 
+    # LLVM's repository runs clang-tidy-diff.py for changed lines. Keep the
+    # backend's explicit full audit deterministic by invoking clang-tidy once
+    # with the registered translation units instead of using a process pool.
     add_custom_target(
       rcc-backend-tidy
       COMMAND
-        "${RCC_BACKEND_CLANG_TIDY}" --warnings-as-errors=*
-        "-p=${CMAKE_BINARY_DIR}" ${TidyFiles}
+        "${RCC_BACKEND_CLANG_TIDY}"
+        "--quiet"
+        "-p=${CMAKE_BINARY_DIR}"
+        "--warnings-as-errors=*"
+        ${TidyFiles}
       COMMAND_EXPAND_LISTS
       COMMENT "Running clang-tidy on RCC Backend"
+      USES_TERMINAL
       VERBATIM
     )
 
     add_custom_target(
       rcc-backend-analyze
       COMMAND
-        "${RCC_BACKEND_CLANG_TIDY}" "--checks=-*,clang-analyzer-*"
-        --warnings-as-errors=* "-p=${CMAKE_BINARY_DIR}" ${TidyFiles}
+        "${RCC_BACKEND_CLANG_TIDY}"
+        "--quiet"
+        "-p=${CMAKE_BINARY_DIR}"
+        "-checks=-*,clang-analyzer-*"
+        "--warnings-as-errors=*"
+        ${TidyFiles}
       COMMAND_EXPAND_LISTS
       COMMENT "Running Clang Static Analyzer checks on RCC Backend"
+      USES_TERMINAL
       VERBATIM
     )
   endif()

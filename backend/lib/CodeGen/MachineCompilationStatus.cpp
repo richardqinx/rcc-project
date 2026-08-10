@@ -55,6 +55,12 @@ isKnownDiagnosticSeverity(MachineCompilationDiagnosticSeverity Severity) noexcep
   case ErrorCode::FixupApplicationFailed:
   case ErrorCode::RelocationFailed:
   case ErrorCode::ObjectWritingFailed:
+  case ErrorCode::InvalidInvocation:
+  case ErrorCode::ManifestError:
+  case ErrorCode::CacheMiss:
+  case ErrorCode::ReproducerError:
+  case ErrorCode::ReductionFailed:
+  case ErrorCode::FuzzingFailure:
   case ErrorCode::IoError:
   case ErrorCode::InternalError:
     return true;

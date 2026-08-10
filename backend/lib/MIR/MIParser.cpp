@@ -1098,14 +1098,21 @@ bool MIParser::Impl::parseRegisterOperand(bool IsDef, ParsedOperand &Result) {
     } else if (at(MITokenKind::Identifier)) {
       if (const RegisterClassDesc *Class =
               Target.registers().registerClass(token().stringValue())) {
-        if ((Info.RegClass && *Info.RegClass != Class->ID) || Info.Bank)
+        if ((Info.RegClass && *Info.RegClass != Class->ID) ||
+            (Info.Bank && *Info.Bank != Class->DefaultBank))
           return fail("conflicting virtual register class");
         auto SetClass = Function.registerInfo().setRegisterClass(Reg, Class->ID);
         if (!SetClass)
           return importError(token(), SetClass.error());
+        auto SetBank = Function.registerInfo().setRegisterBank(Reg, Class->DefaultBank);
+        if (!SetBank)
+          return importError(token(), SetBank.error());
       } else if (const RegisterBankDesc *Bank =
                      Target.registers().registerBank(token().stringValue())) {
-        if ((Info.Bank && *Info.Bank != Bank->ID) || Info.RegClass)
+        const RegisterClassDesc *ExistingClass =
+            Info.RegClass ? Target.registers().registerClass(*Info.RegClass) : nullptr;
+        if ((Info.Bank && *Info.Bank != Bank->ID) ||
+            (Info.RegClass && (ExistingClass == nullptr || ExistingClass->DefaultBank != Bank->ID)))
           return fail("conflicting virtual register bank");
         auto SetBank = Function.registerInfo().setRegisterBank(Reg, Bank->ID);
         if (!SetBank)

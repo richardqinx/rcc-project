@@ -63,7 +63,8 @@ Expected<regalloc_detail::AllocationRunResult> RegAllocBase::run() {
     std::ranges::sort(Round->Spilled, [](Register Left, Register Right) {
       return Left.opaqueValue() < Right.opaqueValue();
     });
-    Spiller ValueSpiller(Function, Target, TargetInfo, Mapping, Options.EnableRematerialization);
+    Spiller ValueSpiller(Function, Target, TargetInfo, Mapping, Options.EnableRematerialization,
+                         Actions);
     for (const Register VirtualReg : Round->Spilled) {
       VirtRegMapEntry *Entry = Mapping.entry(VirtualReg);
       if (Entry != nullptr) {

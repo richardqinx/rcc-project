@@ -286,7 +286,8 @@ MachineTailDuplicationPass::runImplementation(MachineFunction &Function,
       Tail = Next;
       continue;
     }
-    const std::size_t Cost = (*Candidate)->Body.size() + 1U;
+    const auto &TailCandidate = Candidate->value();
+    const std::size_t Cost = TailCandidate.Body.size() + 1U;
     const std::vector<MachineBasicBlock *> Predecessors(Tail->predecessors().begin(),
                                                         Tail->predecessors().end());
     for (MachineBasicBlock *Predecessor : Predecessors) {
@@ -296,7 +297,7 @@ MachineTailDuplicationPass::runImplementation(MachineFunction &Function,
         break;
       }
       auto Duplicated =
-          duplicateTailIntoPredecessor(**Candidate, *Tail, *Predecessor, Function, Target, *Info);
+          duplicateTailIntoPredecessor(TailCandidate, *Tail, *Predecessor, Function, Target, *Info);
       if (!Duplicated)
         return std::unexpected(Duplicated.error());
       if (!*Duplicated)

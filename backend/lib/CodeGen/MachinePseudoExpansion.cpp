@@ -202,7 +202,7 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
 
 [[nodiscard]] Expected<MachinePassResult>
 prepareImplementation(MachineFunction &Function, const TargetDescription &Target,
-                      const TargetPseudoExpansionInfo &Info) {
+                      const TargetPseudoExpansionInfo &Info, MachineActionReplay &Actions) {
   bool Changed = false;
   for (MachineInstr *Instruction : Function.allInstructions()) {
     if (Instruction == nullptr || Instruction->parent() == nullptr)
@@ -213,6 +213,15 @@ prepareImplementation(MachineFunction &Function, const TargetDescription &Target
                             "pseudo preparation encountered an unknown opcode");
     if (Descriptor->Owner != PseudoOwner::PostRAExpansion)
       continue;
+    std::string Rule = "prepare-pseudo.";
+    Rule.append(Descriptor->Name);
+    auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+    if (!Accepted)
+      return std::unexpected(Accepted.error());
+    if (!*Accepted) {
+      return makeUnexpected(ErrorCode::PseudoExpansionFailed,
+                            "required pseudo preparation action was rejected");
+    }
     auto Prepared = Info.preparePostRAPseudo(*Instruction, Function, Target);
     if (!Prepared)
       return std::unexpected(Prepared.error());
@@ -232,7 +241,7 @@ prepareImplementation(MachineFunction &Function, const TargetDescription &Target
 [[nodiscard]] Expected<MachinePassResult>
 expandImplementation(MachineFunction &Function, const TargetDescription &Target,
                      const TargetPseudoExpansionInfo &Info, MachinePseudoExpansionPhase Phase,
-                     const TargetBranchInfo *BranchInfo) {
+                     const TargetBranchInfo *BranchInfo, MachineActionReplay &Actions) {
   const ResourceSnapshot Before = snapshotResources(Function);
   std::optional<BlockSizeSnapshot> SizesBefore;
   if (Phase == MachinePseudoExpansionPhase::TargetLate) {
@@ -260,6 +269,15 @@ expandImplementation(MachineFunction &Function, const TargetDescription &Target,
                             "pseudo expansion encountered an unknown opcode");
     if (!Descriptor->Flags.has(InstructionFlag::Pseudo) || Descriptor->Owner != ownerFor(Phase)) {
       continue;
+    }
+    std::string Rule = "expand-pseudo.";
+    Rule.append(Descriptor->Name);
+    auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+    if (!Accepted)
+      return std::unexpected(Accepted.error());
+    if (!*Accepted) {
+      return makeUnexpected(ErrorCode::PseudoExpansionFailed,
+                            "required pseudo expansion action was rejected");
     }
     MachineBasicBlock *ExpansionBlock = Instruction->parent();
     std::optional<std::uint64_t> ExpansionSizeBefore;
@@ -335,40 +353,51 @@ expandImplementation(MachineFunction &Function, const TargetDescription &Target,
 
 [[nodiscard]] Expected<MachinePassResult>
 runPreparationTransaction(MachineFunction &Function, const TargetDescription &Target,
-                          const TargetPseudoExpansionInfo &Info) {
+                          const TargetPseudoExpansionInfo &Info, MachineAnalysisManager &Analyses) {
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
     return std::unexpected(prefixedError(Trial.error(), "pseudo preparation setup failed: "));
-  auto TrialResult = prepareImplementation(*Trial->ClonedFunction, Target, Info);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult = prepareImplementation(*Trial->ClonedFunction, Target, Info, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
-  auto Result = prepareImplementation(Function, Target, Info);
+  Actions.beginReplay();
+  auto Result = prepareImplementation(Function, Target, Info, Actions);
   if (!Result) {
     return std::unexpected(
         prefixedError(Result.error(), "pseudo preparation diverged after successful preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
 [[nodiscard]] Expected<MachinePassResult>
 runExpansionTransaction(MachineFunction &Function, const TargetDescription &Target,
                         const TargetPseudoExpansionInfo &Info, MachinePseudoExpansionPhase Phase,
-                        const TargetBranchInfo *BranchInfo) {
+                        const TargetBranchInfo *BranchInfo, MachineAnalysisManager &Analyses) {
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
     return std::unexpected(prefixedError(Trial.error(), "pseudo expansion setup failed: "));
-  auto TrialResult = expandImplementation(*Trial->ClonedFunction, Target, Info, Phase, BranchInfo);
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  auto TrialResult =
+      expandImplementation(*Trial->ClonedFunction, Target, Info, Phase, BranchInfo, Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
-  auto Result = expandImplementation(Function, Target, Info, Phase, BranchInfo);
+  Actions.beginReplay();
+  auto Result = expandImplementation(Function, Target, Info, Phase, BranchInfo, Actions);
   if (!Result) {
     return std::unexpected(
         prefixedError(Result.error(), "pseudo expansion diverged after successful preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   return Result;
 }
 
@@ -380,11 +409,11 @@ const MachinePassContract &PreparePostRAPseudosPass::contract() const noexcept {
 
 Expected<MachinePassResult> PreparePostRAPseudosPass::run(MachineFunction &Function,
                                                           const TargetDescription &Target,
-                                                          MachineAnalysisManager &) {
+                                                          MachineAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "post-RA pseudo preparation requires selected MachineIR");
-  return runPreparationTransaction(Function, Target, *Info);
+  return runPreparationTransaction(Function, Target, *Info, Analyses);
 }
 
 const MachinePassContract &PrePEITargetPseudoExpansionPass::contract() const noexcept {
@@ -393,12 +422,12 @@ const MachinePassContract &PrePEITargetPseudoExpansionPass::contract() const noe
 
 Expected<MachinePassResult> PrePEITargetPseudoExpansionPass::run(MachineFunction &Function,
                                                                  const TargetDescription &Target,
-                                                                 MachineAnalysisManager &) {
+                                                                 MachineAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "pre-PEI pseudo expansion requires allocated tracked-liveness MIR");
   return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::PrePEI,
-                                 nullptr);
+                                 nullptr, Analyses);
 }
 
 const MachinePassContract &ExpandPostRAPseudosPass::contract() const noexcept {
@@ -407,12 +436,12 @@ const MachinePassContract &ExpandPostRAPseudosPass::contract() const noexcept {
 
 Expected<MachinePassResult> ExpandPostRAPseudosPass::run(MachineFunction &Function,
                                                          const TargetDescription &Target,
-                                                         MachineAnalysisManager &) {
+                                                         MachineAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "post-RA pseudo expansion requires finalized frame and liveness");
   return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::PostRA,
-                                 nullptr);
+                                 nullptr, Analyses);
 }
 
 const MachinePassContract &TargetLatePseudoExpansionPass::contract() const noexcept {
@@ -421,12 +450,12 @@ const MachinePassContract &TargetLatePseudoExpansionPass::contract() const noexc
 
 Expected<MachinePassResult> TargetLatePseudoExpansionPass::run(MachineFunction &Function,
                                                                const TargetDescription &Target,
-                                                               MachineAnalysisManager &) {
+                                                               MachineAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "target-late pseudo expansion requires finalized allocated MIR");
   return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::TargetLate,
-                                 BranchInfo);
+                                 BranchInfo, Analyses);
 }
 
 } // namespace rcc

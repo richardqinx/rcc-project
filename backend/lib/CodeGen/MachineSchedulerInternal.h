@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// The private header has no stable include-root-relative guard name.
+// NOLINTNEXTLINE(llvm-header-guard)
 #ifndef RCC_LIB_CODEGEN_MACHINESCHEDULERINTERNAL_H
 #define RCC_LIB_CODEGEN_MACHINESCHEDULERINTERNAL_H
 
@@ -14,6 +16,7 @@
 namespace rcc {
 
 class MachineBasicBlock;
+class MachineActionReplay;
 class MachineFunction;
 class TargetDescription;
 class TargetSchedulingModel;
@@ -22,10 +25,12 @@ struct MachineSchedulingRunResult final {
   std::vector<MachineBasicBlock *> ChangedBlocks;
 };
 
-[[nodiscard]] Expected<MachineSchedulingRunResult> runMachineScheduler(
-    MachineFunction &Function, const TargetDescription &Target, const TargetSchedulingModel &Model,
-    ScheduleDAGMode Mode, const LiveVariablesAnalysis::Result &Liveness,
-    const MachineBlockFrequencyAnalysis::Result &Frequencies, MachineSchedulerOptions Options);
+[[nodiscard]] Expected<MachineSchedulingRunResult>
+runMachineScheduler(MachineFunction &Function, const TargetDescription &Target,
+                    const TargetSchedulingModel &Model, ScheduleDAGMode Mode,
+                    const LiveVariablesAnalysis::Result &Liveness,
+                    const MachineBlockFrequencyAnalysis::Result &Frequencies,
+                    MachineSchedulerOptions Options, MachineActionReplay *Actions = nullptr);
 
 } // namespace rcc
 

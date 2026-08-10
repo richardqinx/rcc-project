@@ -287,9 +287,10 @@ Expected<MachinePassResult> PostRASchedulerPass::run(MachineFunction &Function,
       TrialAnalyses.getResult<MachineBlockFrequencyAnalysis>(*Trial->ClonedFunction, Target);
   if (!TrialFrequencies)
     return std::unexpected(TrialFrequencies.error());
+  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialRun = runMachineScheduler(*Trial->ClonedFunction, Target, *Model,
                                       ScheduleDAGMode::PostRegisterAllocation, **TrialLiveness,
-                                      **TrialFrequencies, Options);
+                                      **TrialFrequencies, Options, &Actions);
   if (!TrialRun)
     return std::unexpected(TrialRun.error());
   auto TrialRepair =
@@ -303,12 +304,16 @@ Expected<MachinePassResult> PostRASchedulerPass::run(MachineFunction &Function,
   auto Frequencies = Analyses.getResult<MachineBlockFrequencyAnalysis>(Function, Target);
   if (!Frequencies)
     return std::unexpected(Frequencies.error());
+  Actions.beginReplay();
   auto Run = runMachineScheduler(Function, Target, *Model, ScheduleDAGMode::PostRegisterAllocation,
-                                 **Liveness, **Frequencies, Options);
+                                 **Liveness, **Frequencies, Options, &Actions);
   if (!Run) {
     return std::unexpected(prefixedError(
         Run.error(), "post-RA scheduler diverged after a successful transaction preflight: "));
   }
+  auto Replayed = Actions.finishReplay();
+  if (!Replayed)
+    return std::unexpected(Replayed.error());
   auto Repaired = repairPostRAMachineBlockLiveness(Run->ChangedBlocks, Target, **Liveness);
   if (!Repaired)
     return std::unexpected(Repaired.error());

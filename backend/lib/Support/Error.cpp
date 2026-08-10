@@ -38,6 +38,18 @@ std::string_view getErrorCodeName(ErrorCode Code) noexcept {
     return "relocation failed";
   case ErrorCode::ObjectWritingFailed:
     return "object writing failed";
+  case ErrorCode::InvalidInvocation:
+    return "invalid backend invocation";
+  case ErrorCode::ManifestError:
+    return "manifest error";
+  case ErrorCode::CacheMiss:
+    return "cache miss";
+  case ErrorCode::ReproducerError:
+    return "reproducer error";
+  case ErrorCode::ReductionFailed:
+    return "reduction failed";
+  case ErrorCode::FuzzingFailure:
+    return "fuzzing failure";
   case ErrorCode::IoError:
     return "I/O error";
   case ErrorCode::InternalError:

@@ -1,26 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineOptimizationPipeline.h"
-#include "rcc/CodeGen/MachinePass.h"
-#include "rcc/CodeGen/MachinePipelinePasses.h"
-#include "rcc/CodeGen/MachineSSAExit.h"
-#include "rcc/CodeGen/RegAllocPBQP.h"
 #include "rcc/MIR/MIRDocument.h"
 #include "rcc/Support/TextDiagnostic.h"
 #include "rcc/Target/RISCV/RISCVAssemblyPrinter.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
 #include "rcc/Target/RISCV/RISCVObjectFile.h"
+#include "rcc/Target/RISCV/RISCVPipeline.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <memory>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 namespace {
@@ -115,67 +108,6 @@ void printUsage() {
   return true;
 }
 
-template <typename PassT, typename... ArgumentT>
-[[nodiscard]] rcc::Expected<void> addPass(rcc::MachinePassManager &Pipeline,
-                                          ArgumentT &&...Arguments) {
-  return Pipeline.addPass(std::make_unique<PassT>(std::forward<ArgumentT>(Arguments)...));
-}
-
-[[nodiscard]] rcc::Expected<void> runBackendPipeline(rcc::MachineFunction &Function,
-                                                     const rcc::TargetDescription &Target) {
-  rcc::MachinePassManager Pipeline;
-  const rcc::MachineOptimizationPipelineTargetInfo TargetInfo =
-      rcc::riscv::optimizationPipelineInfo();
-
-  if (!Function.properties().has(rcc::MachineFunctionProperty::Legalized)) {
-    auto Added = addPass<rcc::LegalizerPass>(Pipeline, rcc::riscv::legalizerInfo());
-    if (!Added)
-      return std::unexpected(Added.error());
-  }
-  if (!Function.properties().has(rcc::MachineFunctionProperty::RegBankSelected)) {
-    auto Added = addPass<rcc::RegisterBankSelectPass>(Pipeline, rcc::riscv::registerBankInfo());
-    if (!Added)
-      return std::unexpected(Added.error());
-  }
-  if (!Function.properties().has(rcc::MachineFunctionProperty::Selected)) {
-    auto Added = addPass<rcc::InstructionSelectPass>(Pipeline, rcc::riscv::instructionSelector());
-    if (!Added)
-      return std::unexpected(Added.error());
-  }
-  if (!Function.properties().has(rcc::MachineFunctionProperty::NoPHIs)) {
-    auto Added = rcc::addSelectedSSAOptimizationPipeline(Pipeline, TargetInfo);
-    if (!Added)
-      return std::unexpected(Added.error());
-    Added = addPass<rcc::PHIEliminationPass>(Pipeline, rcc::riscv::ssaInfo());
-    if (!Added)
-      return std::unexpected(Added.error());
-  }
-  if (!Function.properties().has(rcc::MachineFunctionProperty::TiedOpsRewritten)) {
-    auto Added = addPass<rcc::TwoAddressRewritePass>(Pipeline, rcc::riscv::ssaInfo());
-    if (!Added)
-      return std::unexpected(Added.error());
-  }
-  if (!Function.properties().has(rcc::MachineFunctionProperty::NoVRegs)) {
-    auto Added = rcc::addPreRegisterAllocationOptimizationPipeline(Pipeline, TargetInfo);
-    if (!Added)
-      return std::unexpected(Added.error());
-    Added = addPass<rcc::PBQPAllocatorPass>(Pipeline, rcc::riscv::registerAllocationInfo());
-    if (!Added)
-      return std::unexpected(Added.error());
-  }
-  if (!Function.properties().has(rcc::MachineFunctionProperty::NoExecutablePseudos)) {
-    auto Added = rcc::addPostRegisterAllocationPipeline(Pipeline, TargetInfo);
-    if (!Added)
-      return std::unexpected(Added.error());
-  }
-
-  rcc::MachineAnalysisManager Analyses;
-  auto Registered = rcc::registerMachineOptimizationAnalyses(Analyses);
-  if (!Registered)
-    return std::unexpected(Registered.error());
-  return Pipeline.run(Function, Target, Analyses);
-}
-
 } // namespace
 
 int main(int ArgumentCount, char *Arguments[]) {
@@ -211,7 +143,7 @@ int main(int ArgumentCount, char *Arguments[]) {
       std::cerr << "rcc-backend-asm: parsed document contains a null function\n";
       return 1;
     }
-    auto Run = runBackendPipeline(*Function, *Target);
+    auto Run = rcc::riscv::runCanonicalPipeline(*Function, *Target);
     if (!Run) {
       std::cerr << "rcc-backend-asm: backend pipeline failed for '" << Function->name()
                 << "': " << Run.error().message() << '\n';

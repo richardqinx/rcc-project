@@ -7,6 +7,7 @@
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
+#include "rcc/CodeGen/MachinePass.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/Spiller.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -42,11 +43,11 @@ Expected<std::optional<std::vector<Register>>> Spiller::tryRematerialize(Registe
   const MachineInstr *DefiningInstruction = Definition == nullptr ? nullptr : Definition->parent();
   if (DefiningInstruction == nullptr || DefiningInstruction->parent() == nullptr)
     return std::optional<std::vector<Register>>{};
-  auto Accepted =
+  auto Rematerializable =
       TargetInfo->isRematerializable(*DefiningInstruction, VirtualReg, *Function, *Target);
-  if (!Accepted)
-    return std::unexpected(Accepted.error());
-  if (!*Accepted)
+  if (!Rematerializable)
+    return std::unexpected(Rematerializable.error());
+  if (!*Rematerializable)
     return std::optional<std::vector<Register>>{};
 
   struct UseSite final {
@@ -76,6 +77,16 @@ Expected<std::optional<std::vector<Register>>> Spiller::tryRematerialize(Registe
   }
   if (Sites.empty())
     return std::optional<std::vector<Register>>{};
+
+  if (Actions != nullptr) {
+    for (const UseSite &Site : Sites) {
+      auto Accepted = Actions->request("rematerialize", *Function, Site.Instruction->stableID());
+      if (!Accepted)
+        return std::unexpected(Accepted.error());
+      if (!*Accepted)
+        return std::optional<std::vector<Register>>{};
+    }
+  }
 
   std::vector<Register> NewRegisters;
   NewRegisters.reserve(Sites.size());
@@ -169,6 +180,19 @@ Expected<std::vector<Register>> Spiller::spillAtInstructions(Register VirtualReg
   }
 
   std::vector<Register> NewRegisters;
+  if (Actions != nullptr) {
+    for (const SpillSite &Site : Sites) {
+      if (Site.OperandIndices.empty())
+        continue;
+      auto Accepted = Actions->request("split-live-range", *Function, Site.Instruction->stableID());
+      if (!Accepted)
+        return std::unexpected(Accepted.error());
+      if (!*Accepted) {
+        return makeUnexpected(ErrorCode::RegisterAllocationFailed,
+                              "required live-range split action was rejected");
+      }
+    }
+  }
   for (SpillSite &Site : Sites) {
     for (const std::size_t Index : Site.DebugIndices) {
       MachineOperand *Operand = Site.Instruction->operandAt(Index);
@@ -258,6 +282,19 @@ Expected<std::vector<Register>> Spiller::spill(Register VirtualReg) {
   if (!Mapping->isSpillable(VirtualReg)) {
     return makeUnexpected(ErrorCode::RegisterAllocationFailed,
                           "register pressure requires spilling a non-spillable value");
+  }
+  if (Actions != nullptr) {
+    const MachineOperand *Definition = Function->registerInfo().getUniqueVRegDef(VirtualReg);
+    const MachineInstr *Instruction = Definition == nullptr ? nullptr : Definition->parent();
+    auto Accepted =
+        Actions->request("spill", *Function,
+                         Instruction == nullptr ? MachineInstrStableID{} : Instruction->stableID());
+    if (!Accepted)
+      return std::unexpected(Accepted.error());
+    if (!*Accepted) {
+      return makeUnexpected(ErrorCode::RegisterAllocationFailed,
+                            "required spill action was rejected");
+    }
   }
   auto Rematerialized = tryRematerialize(VirtualReg);
   if (!Rematerialized)

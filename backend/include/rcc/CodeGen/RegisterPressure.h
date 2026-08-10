@@ -22,7 +22,7 @@ struct MachineBlockLiveness;
 
 namespace detail {
 struct RegisterPressureBuilder;
-}
+} // namespace detail
 
 struct RegisterPressureValue final {
   RegisterPressureSetID Set;

@@ -161,8 +161,11 @@ template <typename ValueT>
     if (Reg == nullptr || !Reg->isVirtual())
       continue;
     auto Info = Registers.virtualRegisterInfo(*Reg);
-    if (Info && Info->get().Type && Info->get().Type->isFloat())
-      return true;
+    if (Info) {
+      const auto &Type = Info->get().Type;
+      if (Type && Type->isFloat())
+        return true;
+    }
   }
   return false;
 }

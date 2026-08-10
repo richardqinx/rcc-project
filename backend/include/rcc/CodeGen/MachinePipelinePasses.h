@@ -21,7 +21,7 @@ public:
 private:
   [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
                                                               const TargetDescription &Target,
-                                                              MachineAnalysisManager &Analyses);
+                                                              MachineActionReplay &Actions);
 
   const TargetLegalizerInfo *Info;
 };
@@ -53,7 +53,7 @@ public:
 private:
   [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
                                                               const TargetDescription &Target,
-                                                              MachineAnalysisManager &Analyses);
+                                                              MachineActionReplay &Actions);
 
   const TargetInstructionSelector *Info;
 };

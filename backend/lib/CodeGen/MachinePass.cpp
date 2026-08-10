@@ -141,6 +141,79 @@ void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
 
 } // namespace
 
+std::string MachineActionID::toString() const {
+  std::string Result;
+  Result.reserve(Pass.size() + Rule.size() + 48U);
+  Result.append(Pass);
+  Result.push_back(':');
+  Result.append(Rule);
+  Result.append(":f");
+  Result.append(std::to_string(Function.value()));
+  Result.append(":i");
+  Result.append(std::to_string(Instruction.value()));
+  return Result;
+}
+
+Expected<bool> MachineActionReplay::request(std::string_view Rule, const MachineFunction &Function,
+                                            MachineInstrStableID Instruction, std::uint64_t Cost) {
+  if (!IsReplaying) {
+    const auto Position = RecordingInstructionIDs.find(Instruction);
+    const MachineInstrStableID CanonicalInstruction =
+        Position == RecordingInstructionIDs.end() ? Instruction : Position->second;
+    auto Accepted = Analyses->requestAction(Rule, Function, CanonicalInstruction, Cost);
+    if (!Accepted)
+      return std::unexpected(Accepted.error());
+    Decisions.push_back({
+        .Rule = std::string(Rule),
+        .Function = Function.stableID(),
+        .Instruction = CanonicalInstruction,
+        .Cost = Cost,
+        .Accepted = *Accepted,
+    });
+    return *Accepted;
+  }
+
+  if (NextDecision >= Decisions.size()) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "machine action replay requested an unrecorded decision");
+  }
+  const Decision &Recorded = Decisions[NextDecision++];
+  if (Recorded.Rule != Rule || Recorded.Function != Function.stableID() ||
+      Recorded.Instruction != Instruction || Recorded.Cost != Cost) {
+    std::string Message = "machine action replay diverged from transaction preflight: recorded ";
+    Message.append(Recorded.Rule);
+    Message.append(":f");
+    Message.append(std::to_string(Recorded.Function.value()));
+    Message.append(":i");
+    Message.append(std::to_string(Recorded.Instruction.value()));
+    Message.append(" cost=");
+    Message.append(std::to_string(Recorded.Cost));
+    Message.append(", requested ");
+    Message.append(Rule);
+    Message.append(":f");
+    Message.append(std::to_string(Function.stableID().value()));
+    Message.append(":i");
+    Message.append(std::to_string(Instruction.value()));
+    Message.append(" cost=");
+    Message.append(std::to_string(Cost));
+    return makeUnexpected(ErrorCode::InternalError, std::move(Message));
+  }
+  return Recorded.Accepted;
+}
+
+void MachineActionReplay::beginReplay() noexcept {
+  IsReplaying = true;
+  NextDecision = 0;
+}
+
+Expected<void> MachineActionReplay::finishReplay() const {
+  if (!IsReplaying || NextDecision != Decisions.size()) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "machine action replay did not consume every recorded decision");
+  }
+  return {};
+}
+
 Expected<void>
 MachineAnalysisManager::registerAnalysisImpl(MachineAnalysisRegistration Registration,
                                              ErasedRunner Runner, ErasedInvalidator Invalidator) {
@@ -374,12 +447,25 @@ Expected<void> MachineAnalysisManager::validateParallelRequirements(
 Expected<bool> MachineAnalysisManager::requestAction(std::string_view Action,
                                                      const MachineFunction &Function,
                                                      std::uint64_t Cost) {
-  if (Action.empty() || Cost == 0)
+  return requestAction(Action, Function, MachineInstrStableID{}, Cost);
+}
+
+Expected<bool> MachineAnalysisManager::requestAction(std::string_view Rule,
+                                                     const MachineFunction &Function,
+                                                     MachineInstrStableID Instruction,
+                                                     std::uint64_t Cost) {
+  if (Rule.empty() || Cost == 0)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine action requires a name and nonzero cost");
   if (Instrumentation == nullptr)
     return true;
-  return Instrumentation->requestAction(Action, Function, Cost);
+  MachineActionID ID{
+      .Pass = ActivePass.empty() ? "unscoped" : ActivePass,
+      .Rule = std::string(Rule),
+      .Function = Function.stableID(),
+      .Instruction = Instruction,
+  };
+  return Instrumentation->requestAction(ID, Function, Cost);
 }
 
 Expected<void> CompilationUnitAnalysisManager::registerAnalysisImpl(
@@ -639,6 +725,7 @@ void MachinePassInstrumentation::setPerFunctionFuel(std::optional<std::uint64_t>
   std::scoped_lock Lock(Mutex);
   PerFunctionFuel = Fuel;
   ConsumedFuel.clear();
+  ActionEvents.clear();
 }
 
 void MachinePassInstrumentation::addBeforeUnitCallback(BeforeUnitCallback Callback) {
@@ -879,25 +966,37 @@ void MachinePassInstrumentation::change(std::string_view Name, const MachineFunc
     Callback(Name, Function, Changes, FingerprintChanged);
 }
 
-Expected<bool> MachinePassInstrumentation::requestAction(std::string_view Action,
+Expected<bool> MachinePassInstrumentation::requestAction(const MachineActionID &Action,
                                                          const MachineFunction &Function,
                                                          std::uint64_t Cost) {
+  if (Action.Pass.empty() || Action.Rule.empty() || Action.Function != Function.stableID() ||
+      Cost == 0) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "machine action identity is invalid");
+  }
   std::scoped_lock ActionLock(ActionMutex);
   ActionFilter CurrentFilter;
   {
     std::scoped_lock Lock(Mutex);
     CurrentFilter = Filter;
   }
-  if (CurrentFilter && !CurrentFilter(Action, Function, Cost))
+  if (CurrentFilter && !CurrentFilter(Action, Cost)) {
+    std::scoped_lock Lock(Mutex);
+    ActionEvents.push_back({Action, Cost, false});
     return false;
+  }
 
   std::scoped_lock Lock(Mutex);
-  if (!PerFunctionFuel)
+  if (!PerFunctionFuel) {
+    ActionEvents.push_back({Action, Cost, true});
     return true;
+  }
   std::uint64_t &Consumed = ConsumedFuel[Function.stableID().value()];
-  if (Consumed > *PerFunctionFuel || Cost > *PerFunctionFuel - Consumed)
+  if (Consumed > *PerFunctionFuel || Cost > *PerFunctionFuel - Consumed) {
+    ActionEvents.push_back({Action, Cost, false});
     return false;
+  }
   Consumed += Cost;
+  ActionEvents.push_back({Action, Cost, true});
   return true;
 }
 
@@ -1007,10 +1106,33 @@ std::vector<InstrumentationStatistic> MachinePassInstrumentation::statistics() c
   return Result;
 }
 
+std::vector<MachineActionEvent> MachinePassInstrumentation::actionEvents() const {
+  std::vector<MachineActionEvent> Result;
+  {
+    std::scoped_lock Lock(Mutex);
+    Result = ActionEvents;
+  }
+  std::ranges::sort(Result, [](const MachineActionEvent &Left, const MachineActionEvent &Right) {
+    if (Left.ID.Function.value() != Right.ID.Function.value())
+      return Left.ID.Function.value() < Right.ID.Function.value();
+    if (Left.ID.Instruction.value() != Right.ID.Instruction.value())
+      return Left.ID.Instruction.value() < Right.ID.Instruction.value();
+    if (Left.ID.Pass != Right.ID.Pass)
+      return Left.ID.Pass < Right.ID.Pass;
+    if (Left.ID.Rule != Right.ID.Rule)
+      return Left.ID.Rule < Right.ID.Rule;
+    if (Left.Cost != Right.Cost)
+      return Left.Cost < Right.Cost;
+    return Left.Accepted < Right.Accepted;
+  });
+  return Result;
+}
+
 void MachinePassInstrumentation::clearStatistics() {
   std::scoped_lock Lock(Mutex);
   Statistics.clear();
   ConsumedFuel.clear();
+  ActionEvents.clear();
 }
 
 Expected<void> MachinePassManager::validateContract(const MachinePassContract &Contract) const {
@@ -1087,7 +1209,9 @@ Expected<void> MachinePassManager::run(MachineFunction &Function, const TargetDe
     if (Instrumentation != nullptr)
       Instrumentation->before(Name, Function);
     const Clock::time_point Start = Clock::now();
+    Analyses.ActivePass = std::string(Name);
     auto PassResult = Pass->run(Function, Target, Analyses);
+    Analyses.ActivePass.clear();
     const std::uint64_t Duration = elapsedNanoseconds(Start);
     if (!PassResult) {
       Error Failure =

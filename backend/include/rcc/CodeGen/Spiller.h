@@ -11,13 +11,16 @@
 
 namespace rcc {
 
+class MachineActionReplay;
+
 class Spiller final {
 public:
   Spiller(MachineFunction &Function, const TargetDescription &Target,
           const TargetRegisterAllocationInfo &TargetInfo, VirtRegMap &Mapping,
-          bool EnableRematerialization = true)
+          bool EnableRematerialization = true, MachineActionReplay *Actions = nullptr)
       : Function(&Function), Target(&Target), TargetInfo(&TargetInfo), Mapping(&Mapping),
-        Edit(Function, Target, Mapping), EnableRematerialization(EnableRematerialization) {}
+        Edit(Function, Target, Mapping), EnableRematerialization(EnableRematerialization),
+        Actions(Actions) {}
 
   [[nodiscard]] Expected<std::vector<Register>> spill(Register VirtualReg);
 
@@ -34,6 +37,7 @@ private:
   VirtRegMap *Mapping;
   LiveRangeEdit Edit;
   bool EnableRematerialization;
+  MachineActionReplay *Actions;
 };
 
 } // namespace rcc

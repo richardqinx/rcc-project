@@ -21,7 +21,7 @@ public:
 private:
   [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
                                                               const TargetDescription &Target,
-                                                              MachineAnalysisManager &Analyses);
+                                                              MachineActionReplay &Actions);
 
   const TargetSSAInfo *Info = nullptr;
 };
@@ -39,7 +39,7 @@ public:
 private:
   [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
                                                               const TargetDescription &Target,
-                                                              MachineAnalysisManager &Analyses);
+                                                              MachineActionReplay &Actions);
 
   const TargetSSAInfo *Info = nullptr;
 };

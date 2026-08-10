@@ -30,6 +30,12 @@ enum class ErrorCode : std::uint8_t {
   FixupApplicationFailed,
   RelocationFailed,
   ObjectWritingFailed,
+  InvalidInvocation,
+  ManifestError,
+  CacheMiss,
+  ReproducerError,
+  ReductionFailed,
+  FuzzingFailure,
 };
 
 [[nodiscard]] std::string_view getErrorCodeName(ErrorCode Code) noexcept;

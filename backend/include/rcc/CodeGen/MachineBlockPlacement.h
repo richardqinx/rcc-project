@@ -15,9 +15,10 @@ public:
                                                 MachineAnalysisManager &Analyses) override;
 
 private:
-  [[nodiscard]] Expected<MachinePassResult>
-  runImplementation(MachineFunction &Function, const TargetDescription &Target,
-                    MachineAnalysisManager &Analyses) const;
+  [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
+                                                              const TargetDescription &Target,
+                                                              MachineAnalysisManager &Analyses,
+                                                              MachineActionReplay &Actions) const;
 };
 
 } // namespace rcc
