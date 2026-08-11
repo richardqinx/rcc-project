@@ -884,16 +884,38 @@ void testRISCVReservedRegisterLiveness(TestContext &Context) {
   auto Instruction = Immediate
                          ? Pending->build()
                          : rcc::Expected<rcc::MachineInstr *>{std::unexpected(Immediate.error())};
-  if (!Instruction) {
+  auto DeadDef =
+      Instruction ? Builder.buildInstr(rcc::Opcode::fromValue(
+                        static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADDI)))
+                  : rcc::Expected<rcc::MachineInstrBuilder>{std::unexpected(Instruction.error())};
+  auto DeadDefDestination = DeadDef ? DeadDef->addDef(rcc::Register::fromPhysical(*X0))
+                                    : rcc::Expected<void>{std::unexpected(DeadDef.error())};
+  auto DeadDefSource = DeadDefDestination
+                           ? DeadDef->addUse(rcc::Register::fromPhysical(*X0))
+                           : rcc::Expected<void>{std::unexpected(DeadDefDestination.error())};
+  auto DeadDefImmediate = DeadDefSource
+                              ? DeadDef->addImmediate(0)
+                              : rcc::Expected<void>{std::unexpected(DeadDefSource.error())};
+  auto DeadDefInstruction =
+      DeadDefImmediate
+          ? DeadDef->build()
+          : rcc::Expected<rcc::MachineInstr *>{std::unexpected(DeadDefImmediate.error())};
+  if (!Instruction || !DeadDefInstruction) {
     Context.expect(false, "RV64GC reserved-register liveness instruction must be built");
     return;
   }
 
   auto Rebuilt = rcc::rebuildMachineLiveness(*Fixture->Function, *Target);
   const rcc::MachineOperand *ZeroUse = (*Instruction)->operandAt(1);
+  const rcc::MachineOperand *ZeroDef = (*DeadDefInstruction)->operandAt(0);
+  const rcc::MachineOperand *DeadDefZeroUse = (*DeadDefInstruction)->operandAt(1);
   Context.expect(Rebuilt && Fixture->Blocks[0]->liveIns().empty() && ZeroUse != nullptr &&
-                     !ZeroUse->registerFlags().has(rcc::RegisterOperandFlag::Kill),
-                 "reserved registers must remain available without live-ins or kill flags");
+                     !ZeroUse->registerFlags().has(rcc::RegisterOperandFlag::Kill) &&
+                     ZeroDef != nullptr &&
+                     ZeroDef->registerFlags().has(rcc::RegisterOperandFlag::Dead) &&
+                     DeadDefZeroUse != nullptr &&
+                     !DeadDefZeroUse->registerFlags().has(rcc::RegisterOperandFlag::Kill),
+                 "reserved uses must remain available while dead defs retain precise liveness");
 }
 
 } // namespace

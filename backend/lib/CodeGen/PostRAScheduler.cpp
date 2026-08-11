@@ -182,7 +182,7 @@ buildBlockLivenessRepairPlan(MachineBasicBlock &Block, const TargetDescription &
       auto Units = physicalOperandUnits(*Operand, Target);
       if (!Units)
         return std::unexpected(Units.error());
-      if (!isReservedPhysicalRegister(*Reg, Block.function(), Target) && !intersects(Live, *Units))
+      if (!intersects(Live, *Units))
         Update.Flags.set(RegisterOperandFlag::Dead);
     }
 
