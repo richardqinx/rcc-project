@@ -108,9 +108,10 @@ bool MIRDocumentParser::parseStackObjects(const yaml::Node &Root, MachineFunctio
       Description.Offset = 0;
       if (const yaml::Node *NameNode = mappingValue(*Element, "name")) {
         std::string_view Name;
-        if (scalar(*NameNode, Name, "stack object name") || Name.empty())
-          return fail(NameNode->range(), "stack object name cannot be empty");
-        Description.AllocaName = std::string(Name);
+        if (scalar(*NameNode, Name, "stack object name"))
+          return true;
+        if (!Name.empty())
+          Description.AllocaName = std::string(Name);
       }
       if (const yaml::Node *TypeNode = mappingValue(*Element, "type")) {
         std::string_view Type;

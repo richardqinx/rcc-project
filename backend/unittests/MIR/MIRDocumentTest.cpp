@@ -351,6 +351,7 @@ stack:
       debug-info-variable: '!0',
       debug-info-expression: '!DIExpression(DW_OP_LLVM_arg, 0, 18446744073709551615)',
       debug-info-location: '!DILocation(line: 4, column: 2, scope: !1, isImplicitCode: true)' }
+  - { id: 5, name: '', size: 4, alignment: 4 }
 entry_values:
   - { entry-value-register: '$g0', debug-info-variable: '!0',
       debug-info-expression: '!DIExpression(DW_OP_stack_value)', debug-info-location: '!2' }
@@ -431,7 +432,7 @@ void testDocumentTransaction(TestContext &Context) {
                      Function->registerInfo().liveIns().size() == 1 &&
                      Function->records().hasCalleeSavedRegisters(),
                  "register tables must publish into the common MachineIR model");
-  Context.expect(Function->frameInfo().liveObjectCount() == 2 &&
+  Context.expect(Function->frameInfo().liveObjectCount() == 3 &&
                      Function->frameInfo().state().StackSize == 32 &&
                      Function->frameInfo().state().SavePoints.size() == 1,
                  "frame records and stack objects must publish together");
