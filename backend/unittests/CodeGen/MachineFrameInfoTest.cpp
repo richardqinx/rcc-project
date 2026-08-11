@@ -57,6 +57,8 @@ void testObjectLifecycle(TestContext &Context) {
   rcc::StackObjectDesc VariableDescription;
   VariableDescription.Kind = rcc::StackObjectKind::VariableSized;
   VariableDescription.Align = *rcc::Alignment::create(32);
+  VariableDescription.Offset = 0;
+  VariableDescription.LocalOffset = 0;
   auto Variable = Frame.createObject(VariableDescription);
 
   Context.expect(Local && Fixed && Spill && Variable, "valid stack object kinds must be created");
@@ -72,10 +74,14 @@ void testObjectLifecycle(TestContext &Context) {
 
   Context.expect(Frame.setObjectOffset(*Local, -8).has_value() &&
                      Frame.setObjectOffset(*Spill, -16).has_value() &&
+                     Frame.setObjectOffset(*Variable, -64).has_value() &&
                      Frame.markObjectDead(*Spill).has_value(),
                  "live stack objects must support controlled pre-freeze updates");
   Context.expect(Frame.object(*Spill)->description()->IsDead,
                  "dead stack object state must remain explicit");
+  Context.expect(Frame.object(*Variable)->description()->Offset == -64 &&
+                     Frame.object(*Variable)->description()->LocalOffset == 0,
+                 "variable-sized stack objects must preserve LLVM MIR frame offsets");
 
   Context.expect(Frame.eraseObject(*Fixed).has_value() && Frame.object(*Fixed) == nullptr &&
                      Frame.liveObjectCount() == 3,

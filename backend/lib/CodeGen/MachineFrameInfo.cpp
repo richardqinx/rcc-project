@@ -114,9 +114,9 @@ Expected<void> MachineFrameInfo::verifyDescription(const StackObjectDesc &Descri
   const bool IsVariable = Description.Kind == StackObjectKind::VariableSized ||
                           Description.Kind == StackObjectKind::DynamicAlloca;
   if (IsVariable) {
-    if (Description.Size || Description.Offset) {
+    if (Description.Size) {
       return makeUnexpected(ErrorCode::InvalidArgument,
-                            "variable-sized stack objects cannot have a fixed size or offset");
+                            "variable-sized stack objects cannot have a fixed size");
     }
   } else if (!Description.Size) {
     return makeUnexpected(ErrorCode::InvalidArgument,
@@ -254,10 +254,6 @@ Expected<void> MachineFrameInfo::setObjectOffset(FrameIndex Index, std::int64_t 
                           "live stack object unexpectedly lacks a description");
   }
   StackObjectDesc Description = *CurrentDescription;
-  if ((*Object)->isVariableSized()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "variable-sized stack object cannot have a fixed offset");
-  }
   Description.Offset = Offset;
   (*Object)->Description.emplace<StackObjectDesc>(std::move(Description));
   return {};
