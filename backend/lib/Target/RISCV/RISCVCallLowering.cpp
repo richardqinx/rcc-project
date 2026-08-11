@@ -79,8 +79,7 @@ constexpr std::uint32_t AllowedDirectCallFlags =
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "LP64D ABI value requires a source or destination register");
   }
-  if (!Value.Type.isValid() || !Value.Type.isScalarValue() || Value.Type.isAnyScalar() ||
-      Value.Type.scalarBitWidth() > 64) {
+  if (!Value.Type.isValid() || !Value.Type.isScalarValue() || Value.Type.scalarBitWidth() > 64) {
     return makeUnexpected(
         ErrorCode::Unsupported,
         "LP64D accepts explicitly classified integer, pointer, f32, and f64 scalar fragments");
@@ -92,7 +91,7 @@ constexpr std::uint32_t AllowedDirectCallFlags =
   if (Value.Type.isPointer() && Value.Type.scalarBitWidth() != 64) {
     return makeUnexpected(ErrorCode::Unsupported, "RV64GC LP64D requires 64-bit machine pointers");
   }
-  if (Value.Type.isInteger() && Value.Type.scalarBitWidth() < 64) {
+  if ((Value.Type.isInteger() || Value.Type.isAnyScalar()) && Value.Type.scalarBitWidth() < 64) {
     if (Value.Extension == ABIExtensionKind::None) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "narrow LP64D integer fragments require an explicit extension kind");

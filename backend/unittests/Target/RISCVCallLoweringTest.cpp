@@ -63,6 +63,13 @@ private:
   return *Type;
 }
 
+[[nodiscard]] rcc::LLT anyScalar(std::uint32_t Bits) {
+  const auto Type = rcc::LLT::makeAnyScalar(Bits);
+  if (!Type)
+    std::terminate();
+  return *Type;
+}
+
 [[nodiscard]] rcc::LLT floating(rcc::FloatSemantics Semantics) {
   const auto Type = rcc::LLT::makeFloat(Semantics);
   if (!Type)
@@ -230,6 +237,15 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
                      isLocation(MixedPlan->argumentAssignments()[0], argumentFPR(0)) &&
                      isLocation(MixedPlan->argumentAssignments()[1], argumentGPR(0)),
                  "a mixed floating/integer aggregate must use one FPR and one GPR");
+
+  auto GenericScalar = callRequest({abiValue(anyScalar(64), 0)}, 1);
+  GenericScalar.Results = {abiValue(anyScalar(64), 0)};
+  auto GenericScalarPlan = rcc::riscv::callLowering().planCall(GenericScalar);
+  Context.expect(GenericScalarPlan && GenericScalarPlan->argumentAssignments().size() == 1 &&
+                     GenericScalarPlan->returnAssignments().size() == 1 &&
+                     GenericScalarPlan->argumentAssignments()[0].ValueType == anyScalar(64) &&
+                     GenericScalarPlan->returnAssignments()[0].ValueType == anyScalar(64),
+                 "LLVM generic scalar LLTs must use integer ABI transport without type loss");
 
   auto Narrow = abiValue(integer(32), 0);
   auto InvalidNarrow = callRequest({Narrow}, 1);
