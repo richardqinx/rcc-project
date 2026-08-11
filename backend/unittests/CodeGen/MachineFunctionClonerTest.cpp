@@ -800,11 +800,11 @@ void testCloneFailures(TestContext &Context) {
                                  rcc::MachineFunctionCloneOptions{
                                      rcc::MachineFunctionStableID::fromValue(0), std::nullopt}),
       "clone must reject an invalid destination StableID");
-  Context.expect(
-      !rcc::cloneMachineFunction(*Source, *Target,
-                                 rcc::MachineFunctionCloneOptions{
-                                     rcc::MachineFunctionStableID::fromValue(3), std::string()}),
-      "clone must reject an explicitly empty destination name");
+  auto EmptyName = rcc::cloneMachineFunction(
+      *Source, *Target,
+      rcc::MachineFunctionCloneOptions{rcc::MachineFunctionStableID::fromValue(3), std::string()});
+  Context.expect(EmptyName && EmptyName->ClonedFunction->name().empty(),
+                 "clone must preserve an explicitly empty destination name");
 
   auto Invalid = createFunction(Context, "invalid_source", 4);
   rcc::MachineBasicBlock *Block = Invalid ? createBlock(Context, *Invalid) : nullptr;
