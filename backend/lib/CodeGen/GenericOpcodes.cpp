@@ -1028,7 +1028,7 @@ void configureCoreOpcodes(DescriptorRegistry &Registry) {
                      {TransferDef, repeated(TransferUse), repeated(immediate())}, 1, {}, true, 1,
                      false, PseudoOwner::TwoAddressRewrite, PipelineStage::TiedOpsRewritten);
   Registry.configure({GO::COPY}, {TransferDef, TransferUse}, 1, {}, false, 0, false,
-                     PseudoOwner::PostRAExpansion, PipelineStage::PostRAFinalized);
+                     PseudoOwner::PostRAExpansion, PipelineStage::PostRAFinalized, true);
   Registry.configure({GO::COPY_LANEMASK}, {RegDef, RegUse, kind(MachineOperand::Kind::LaneMask)}, 1,
                      {}, false, 0, false, PseudoOwner::PostRAExpansion,
                      PipelineStage::PostRAFinalized);

@@ -263,11 +263,16 @@ void testCoreOpcodeContracts(TestContext &Context) {
   const auto InlineAsmBr = std::ranges::find_if(Descriptors, [](const auto &Descriptor) {
     return Descriptor.InstructionOpcode == rcc::opcode(rcc::GenericOpcode::INLINEASM_BR);
   });
+  const auto Copy = std::ranges::find_if(Descriptors, [](const auto &Descriptor) {
+    return Descriptor.InstructionOpcode == rcc::opcode(rcc::GenericOpcode::COPY);
+  });
   Context.expect(InlineAsm != Descriptors.end() && InlineAsmBr != Descriptors.end() &&
                      !InlineAsm->Flags.has(rcc::InstructionFlag::HasSideEffects) &&
                      InlineAsmBr->Flags.has(rcc::InstructionFlag::HasSideEffects),
                  "INLINEASM_BR must be intrinsically side-effecting while INLINEASM uses its "
                  "operand flags");
+  Context.expect(Copy != Descriptors.end() && Copy->AllowExtraImplicitOperands,
+                 "COPY must allow dynamic implicit super-register operands");
 }
 
 void testShapesAndTypes(TestContext &Context) {
