@@ -927,7 +927,7 @@ private:
     if (MemoryOperands.size() != 1 ||
         MemoryOperands.front()->description().AtomicKind != AtomicOperation::ReadModifyWrite)
       return semanticError("generic atomic RMW requires one read-modify-write MMO");
-    return VerifySingleAccess(1, 0, true, true, SizeRelation::Equal);
+    return VerifySingleAccess(1, 0, true, true, SizeRelation::NoLarger);
   case GO::G_PREFETCH: {
     if (MemoryOperands.size() != 1)
       return semanticError("G_PREFETCH requires exactly one MMO");

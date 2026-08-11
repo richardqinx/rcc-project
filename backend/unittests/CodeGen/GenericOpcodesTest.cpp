@@ -527,6 +527,7 @@ void testInstructionMemorySemantics(TestContext &Context) {
   const rcc::LLT P1 = *rcc::LLT::makePointer(1, 64);
   const rcc::Register Dst32 = createVirtualRegister(**Function, I32);
   const rcc::Register Dst64 = createVirtualRegister(**Function, I64);
+  const rcc::Register Src32 = createVirtualRegister(**Function, I32);
   const rcc::Register Src64 = createVirtualRegister(**Function, I64);
   const rcc::Register Float64 = createVirtualRegister(**Function, F64);
   const rcc::Register Status = createVirtualRegister(**Function, I1);
@@ -605,6 +606,30 @@ void testInstructionMemorySemantics(TestContext &Context) {
                                   rcc::AtomicOperation::CompareExchange));
   Context.expect(!Set->validateInstruction(WrongAtomic, (*Function)->registerInfo()),
                  "generic atomic RMW must reject a compare-exchange MMO");
+
+  std::vector<rcc::MachineOperand> NarrowAtomicOperands;
+  NarrowAtomicOperands.push_back(registerOperand(Dst64, true));
+  NarrowAtomicOperands.push_back(registerOperand(Address0, false));
+  NarrowAtomicOperands.push_back(registerOperand(Src64, false));
+  rcc::MachineInstr &NarrowAtomic = createInstruction(
+      **Function, rcc::GenericOpcode::G_ATOMICRMW_ADD, std::move(NarrowAtomicOperands));
+  addMemOperand(**Function, NarrowAtomic,
+                memoryDescription({rcc::MemoryAccessFlag::Load, rcc::MemoryAccessFlag::Store}, 1, 0,
+                                  rcc::AtomicOperation::ReadModifyWrite));
+  Context.expect(Set->validateInstruction(NarrowAtomic, (*Function)->registerInfo()).has_value(),
+                 "generic atomic RMW must accept an MMO narrower than its register container");
+
+  std::vector<rcc::MachineOperand> OversizedAtomicOperands;
+  OversizedAtomicOperands.push_back(registerOperand(Dst32, true));
+  OversizedAtomicOperands.push_back(registerOperand(Address0, false));
+  OversizedAtomicOperands.push_back(registerOperand(Src32, false));
+  rcc::MachineInstr &OversizedAtomic = createInstruction(
+      **Function, rcc::GenericOpcode::G_ATOMICRMW_ADD, std::move(OversizedAtomicOperands));
+  addMemOperand(**Function, OversizedAtomic,
+                memoryDescription({rcc::MemoryAccessFlag::Load, rcc::MemoryAccessFlag::Store}, 8, 0,
+                                  rcc::AtomicOperation::ReadModifyWrite));
+  Context.expect(!Set->validateInstruction(OversizedAtomic, (*Function)->registerInfo()),
+                 "generic atomic RMW must reject an MMO wider than its register container");
 
   std::vector<rcc::MachineOperand> FloatingAtomicOperands;
   FloatingAtomicOperands.push_back(registerOperand(Float64, true));
