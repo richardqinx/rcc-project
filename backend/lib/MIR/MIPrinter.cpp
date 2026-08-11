@@ -273,8 +273,7 @@ private:
   [[nodiscard]] Expected<void> printOperand(const MachineOperand &Operand, bool IsExplicitDef,
                                             bool PrintVirtualType = true);
   [[nodiscard]] Expected<void> printInlineAsmExtraInfo(const MachineOperand &Operand);
-  [[nodiscard]] Expected<std::size_t>
-  printInlineAsmOperandFlag(const MachineOperand &Operand);
+  [[nodiscard]] Expected<std::size_t> printInlineAsmOperandFlag(const MachineOperand &Operand);
   [[nodiscard]] Expected<void> printRegisterOperand(const MachineOperand &Operand,
                                                     bool IsExplicitDef, bool PrintVirtualType);
   [[nodiscard]] Expected<void> printTargetFlags(std::uint32_t Flags);
@@ -482,8 +481,8 @@ Expected<void> BodyPrinter::printDILocation(const MachineDILocation &Location,
   return {};
 }
 
-Expected<void> BodyPrinter::printRegisterOperand(const MachineOperand &Operand,
-                                                 bool IsExplicitDef, bool PrintVirtualType) {
+Expected<void> BodyPrinter::printRegisterOperand(const MachineOperand &Operand, bool IsExplicitDef,
+                                                 bool PrintVirtualType) {
   const RegisterOperandFlags Flags = Operand.registerFlags();
   if (Flags.has(RegisterOperandFlag::Implicit) && Flags.has(RegisterOperandFlag::Define)) {
     Output.append("implicit-def ");
@@ -1407,8 +1406,7 @@ Expected<void> BodyPrinter::printInstruction(const MachineInstr &Instruction) {
     }
     bool PrintVirtualType = true;
     if (Descriptor->Flags.has(InstructionFlag::Generic) &&
-        !Descriptor->Flags.has(InstructionFlag::Phi) &&
-        Index < Descriptor->Operands.size()) {
+        !Descriptor->Flags.has(InstructionFlag::Phi) && Index < Descriptor->Operands.size()) {
       const std::optional<OperandTypeConstraint> &UseConstraint =
           Descriptor->Operands[Index].TypeConstraint;
       if (UseConstraint) {
@@ -1425,8 +1423,7 @@ Expected<void> BodyPrinter::printInstruction(const MachineInstr &Instruction) {
       } else if (const Register *UseRegister = Operand.getIf<Register>();
                  UseRegister != nullptr && UseRegister->isVirtual()) {
         const auto UseInfo = Function.registerInfo().virtualRegisterInfo(*UseRegister);
-        for (std::size_t DefIndex = 0; DefIndex < ExplicitDefs && UseInfo &&
-                                       UseInfo->get().Type;
+        for (std::size_t DefIndex = 0; DefIndex < ExplicitDefs && UseInfo && UseInfo->get().Type;
              ++DefIndex) {
           if (DefIndex >= Descriptor->Operands.size() ||
               Descriptor->Operands[DefIndex].TypeConstraint)

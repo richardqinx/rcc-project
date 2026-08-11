@@ -234,14 +234,13 @@ int main() {
 
   rcc::tooling::BackendInvocation NoPassInvocation = Invocation;
   NoPassInvocation.PassPipeline = {"none"};
-  auto NoPassInput = rcc::tooling::parseAndCanonicalizeMIR(
-      "no-pass.mir", *Source, *Target, NoPassInvocation);
+  auto NoPassInput =
+      rcc::tooling::parseAndCanonicalizeMIR("no-pass.mir", *Source, *Target, NoPassInvocation);
   if (!NoPassInput)
     return tooling_test::fail(NoPassInput.error().message());
   const std::string NoPassExpected = NoPassInput->Text;
-  auto NoPassRun = rcc::tooling::runBackend(
-      std::move(*NoPassInput), *Target, NoPassInvocation,
-      rcc::tooling::BackendOutputKind::FinalMIR);
+  auto NoPassRun = rcc::tooling::runBackend(std::move(*NoPassInput), *Target, NoPassInvocation,
+                                            rcc::tooling::BackendOutputKind::FinalMIR);
   if (!NoPassRun || !NoPassRun->Pipeline.ExecutedPasses.empty() ||
       NoPassRun->text() != NoPassExpected) {
     return tooling_test::fail("the LLVM-compatible none pass must preserve canonical MIR");

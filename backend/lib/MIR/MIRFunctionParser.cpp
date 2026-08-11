@@ -185,8 +185,9 @@ bool MIRDocumentParser::recomputeProperties(const yaml::Node &Root, MachineFunct
   }
 
   if (DocumentInfo.HasFakeUses && !*DocumentInfo.HasFakeUses && HasFakeUse) {
-    return fail(Root.range(), std::string(Function.name()) +
-                                  " has explicit property hasFakeUses=false, but contains fake uses");
+    return fail(Root.range(),
+                std::string(Function.name()) +
+                    " has explicit property hasFakeUses=false, but contains fake uses");
   }
   if (DocumentInfo.HasFakeUses.value_or(HasFakeUse))
     Function.attributes().set(MachineFunctionAttribute::HasFakeUses);
@@ -473,9 +474,9 @@ bool MIRDocumentParser::parseBody(const yaml::Node &Root, MachineFunction &Funct
   auto Parsed = Parser.parse();
   if (!Parsed) {
     if (!Parser.diagnostics().empty()) {
-      const TextRange Range = Body == nullptr
-                                  ? BodyRange
-                                  : scalarDiagnosticRange(*Body, Parser.diagnostics().front().Range);
+      const TextRange Range =
+          Body == nullptr ? BodyRange
+                          : scalarDiagnosticRange(*Body, Parser.diagnostics().front().Range);
       return fail(Range, Parser.diagnostics().front().Message, "mir-body");
     }
     return importError(BodyRange, Parsed.error(), "mir-body");
