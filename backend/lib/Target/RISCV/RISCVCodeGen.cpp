@@ -128,6 +128,7 @@ extendIntegerImmediate(const IntegerImmediate &Value, std::uint32_t DestinationW
                           "RISC-V constant extension requires virtual-register operands");
   }
   const Register SourceRegister = *Source;
+  const Register DestinationRegister = *Destination;
   const MachineOperand *SourceDefinition = Function.registerInfo().getUniqueVRegDef(SourceRegister);
   const MachineInstr *SourceDef = SourceDefinition == nullptr ? nullptr : SourceDefinition->parent();
   if (SourceDef == nullptr || SourceDef->opcode() != opcode(GenericOpcode::G_CONSTANT))
@@ -149,6 +150,23 @@ extendIntegerImmediate(const IntegerImmediate &Value, std::uint32_t DestinationW
   auto Extended = extendIntegerImmediate(Integer->Value, DestinationWidth, SignExtend);
   if (!Extended)
     return std::unexpected(Extended.error());
+
+  if (Function.registerInfo().hasOneUse(SourceRegister)) {
+    MachineInstr *Def = const_cast<MachineInstr *>(SourceDef);
+    if (auto Replaced = Def->operandAt(0)->setRegister(DestinationRegister); !Replaced)
+      return std::unexpected(Replaced.error());
+    auto Erased = Def->eraseOperand(1);
+    if (!Erased)
+      return std::unexpected(Erased.error());
+    auto Added = Def->addOperand(MachineOperand::integerImmediate(std::move(*Extended)));
+    if (!Added)
+      return std::unexpected(Added.error());
+    MachineBasicBlock *Parent = Instruction.parent();
+    if (Parent == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V constant extension is detached during folding");
+    return Parent->removeInstruction(Instruction);
+  }
 
   auto SetOpcode = Instruction.setOpcode(opcode(GenericOpcode::G_CONSTANT));
   if (!SetOpcode)

@@ -1090,11 +1090,16 @@ void testIntegerCompareReusesConstantExtension(TestContext &Context) {
     return;
   auto Constant = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_CONSTANT));
   if (!Constant || !Constant->addDef(*Right) ||
-      !Constant->addIntegerImmediate(std::move(*Immediate)) || !Constant->build())
+      !Constant->addIntegerImmediate(std::move(*Immediate)))
+    return;
+  auto BuiltConstant = Constant->build();
+  if (!BuiltConstant)
     return;
   auto Extension = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_ANYEXT));
-  if (!Extension || !Extension->addDef(*WideRight) || !Extension->addUse(*Right) ||
-      !Extension->build())
+  if (!Extension || !Extension->addDef(*WideRight) || !Extension->addUse(*Right))
+    return;
+  auto BuiltExtension = Extension->build();
+  if (!BuiltExtension)
     return;
 
   auto Action = rcc::riscv::legalizerInfo().classify(*Compare, *Function, *Target);
@@ -1107,6 +1112,18 @@ void testIntegerCompareReusesConstantExtension(TestContext &Context) {
                  "RV64 integer comparison legalization must reuse an existing constant extension");
   Context.expect(Function->registerInfo().verifyDefUseChains().has_value(),
                  "integer comparison extension reuse must preserve exact def-use chains");
+
+  auto ExtensionAction = rcc::riscv::legalizerInfo().classify(**BuiltExtension, *Function, *Target);
+  auto Folded = ExtensionAction ? rcc::riscv::legalizerInfo().lower(**BuiltExtension, *Function,
+                                                                    *Target, *ExtensionAction)
+                                : rcc::Expected<void>(std::unexpected(ExtensionAction.error()));
+  const rcc::Register *FoldedResult = (*BuiltConstant)->operandAt(0)->getIf<rcc::Register>();
+  Context.expect(ExtensionAction && *ExtensionAction == rcc::LegalizationAction::Custom && Folded &&
+                     (*BuiltExtension)->parent() == nullptr && FoldedResult != nullptr &&
+                     *FoldedResult == *WideRight &&
+                     Function->firstBlock()->firstInstruction() == *BuiltConstant &&
+                     Function->registerInfo().verifyDefUseChains(),
+                 "single-use constant extension folding must preserve the source layout position");
 }
 
 void testAtomicSelection(TestContext &Context) {
