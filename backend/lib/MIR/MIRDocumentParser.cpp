@@ -201,16 +201,30 @@ MIRDocumentParseResult MIRDocumentParser::run() {
 
   MIRDocument Staging;
   ActiveDocument = &Staging;
-  std::size_t FirstFunction = 0;
-  const yaml::Node *FirstRoot = node(Stream->documents().front().Root);
+  const auto IsEmptyDocument = [this](std::size_t Index) {
+    const yaml::Node *Root = node(Stream->documents()[Index].Root);
+    return Root != nullptr && Root->kind() == yaml::NodeKind::Null &&
+           Root->range().Begin.Offset == Root->range().End.Offset;
+  };
+  std::size_t FirstContent = 0;
+  while (FirstContent < Stream->documents().size() && IsEmptyDocument(FirstContent))
+    ++FirstContent;
+  if (FirstContent == Stream->documents().size()) {
+    static_cast<void>(fail(Stream->documents().front().Range,
+                           "MIR stream must contain at least one machine function document"));
+    return std::move(Result);
+  }
+
+  std::size_t FirstFunction = FirstContent;
+  const yaml::Node *FirstRoot = node(Stream->documents()[FirstContent].Root);
   if (FirstRoot != nullptr && FirstRoot->kind() == yaml::NodeKind::Scalar) {
     EmbeddedIRIndexResult Embedded = indexEmbeddedIR(
         std::string(Result.Source.name()) + ":embedded-ir", std::string(FirstRoot->scalar()));
     if (!Embedded.succeeded()) {
       const auto Diagnostics = Embedded.diagnostics();
       if (Diagnostics.empty()) {
-        static_cast<void>(fail(FirstRoot->range(), "embedded LLVM IR indexing failed",
-                               "mir-embedded-ir"));
+        static_cast<void>(
+            fail(FirstRoot->range(), "embedded LLVM IR indexing failed", "mir-embedded-ir"));
       } else {
         const TextDiagnostic &Diagnostic = Diagnostics.front();
         const TextRange Range = scalarDiagnosticRange(*FirstRoot, Diagnostic.Range);
@@ -219,13 +233,13 @@ MIRDocumentParseResult MIRDocumentParser::run() {
       return std::move(Result);
     }
     Staging.EmbeddedIR = std::move(Embedded).takeIndex();
-    FirstFunction = 1;
+    FirstFunction = FirstContent + 1;
   }
 
   if (const EmbeddedIRReferenceIndex *Embedded = Staging.embeddedIR()) {
     if (const auto DataLayout = Embedded->dataLayout();
         DataLayout && !Options.DataLayout.empty() && *DataLayout != Options.DataLayout) {
-      static_cast<void>(fail(Stream->documents().front().Range,
+      static_cast<void>(fail(Stream->documents()[FirstContent].Range,
                              "explicit DataLayout does not match embedded LLVM IR data layout"));
       return std::move(Result);
     }
@@ -233,24 +247,27 @@ MIRDocumentParseResult MIRDocumentParser::run() {
   if (!effectiveDataLayout().empty()) {
     auto PointerSize = llvmPointerSizeInBits(0, pointerLayoutOptions());
     if (!PointerSize) {
-      static_cast<void>(
-          importError(Stream->documents().front().Range, PointerSize.error(), "mir-data-layout"));
+      static_cast<void>(importError(Stream->documents()[FirstContent].Range, PointerSize.error(),
+                                    "mir-data-layout"));
       return std::move(Result);
     }
   }
 
-  if (FirstFunction == Stream->documents().size()) {
-    static_cast<void>(fail(Stream->documents().front().Range,
-                           "MIR stream must contain at least one machine function document"));
-    return std::move(Result);
-  }
-
+  bool SawFunction = false;
   for (std::size_t Index = FirstFunction; Index < Stream->documents().size(); ++Index) {
+    if (IsEmptyDocument(Index))
+      continue;
     const yaml::Node *Root = node(Stream->documents()[Index].Root);
     if (Root == nullptr || requireKind(*Root, yaml::NodeKind::Mapping, "machine function") ||
         parseFunction(*Root, Staging)) {
       return std::move(Result);
     }
+    SawFunction = true;
+  }
+  if (!SawFunction) {
+    static_cast<void>(fail(Stream->documents()[FirstContent].Range,
+                           "MIR stream must contain at least one machine function document"));
+    return std::move(Result);
   }
 
   auto UnitResult = Staging.Unit.verify();
@@ -329,8 +346,8 @@ bool MIRDocumentParser::parseFunction(const yaml::Node &Root, MIRDocument &Docum
       IRFunction = Document.EmbeddedIR->function(Name);
     }
     if (IRFunction == nullptr)
-      return fail(NameNode->range(), "function '" + std::string(Name) +
-                                         "' isn't defined in the provided LLVM IR");
+      return fail(NameNode->range(),
+                  "function '" + std::string(Name) + "' isn't defined in the provided LLVM IR");
   }
 
   if (!Name.empty() && Document.Unit.function(Name) != nullptr)

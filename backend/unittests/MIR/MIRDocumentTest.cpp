@@ -513,6 +513,36 @@ void testDocumentTransaction(TestContext &Context) {
                  "printer must reject output that omits required embedded LLVM IR");
 }
 
+void testEmptyYAMLDocuments(TestContext &Context) {
+  auto Target = createTarget();
+  if (!Target)
+    return;
+
+  constexpr std::string_view Boundary = "\n---\nname: documented";
+  std::string WithEmptyDocuments(ValidDocument);
+  const std::size_t BoundaryPosition = WithEmptyDocuments.find(Boundary);
+  Context.expect(BoundaryPosition != std::string::npos,
+                 "MIR empty-document fixture must find its document boundary");
+  if (BoundaryPosition == std::string::npos)
+    return;
+  WithEmptyDocuments.replace(BoundaryPosition, Boundary.size(), "\n---\n---\nname: documented");
+  WithEmptyDocuments.insert(0, "---\n");
+  WithEmptyDocuments.append("\n...\n---\n");
+  auto Parsed =
+      rcc::mir::parseMIRDocument(*Target, "empty-documents.mir", std::move(WithEmptyDocuments));
+  Context.expect(Parsed.succeeded() && Parsed.document() != nullptr &&
+                     Parsed.document()->unit().functionCount() == 1,
+                 "MIR must ignore leading, intermediate, and trailing empty YAML documents");
+  if (!Parsed.succeeded())
+    printDiagnostics(Parsed);
+
+  std::string ExplicitNull(ValidDocument);
+  ExplicitNull.replace(BoundaryPosition, Boundary.size(), "\n---\nnull\n---\nname: documented");
+  auto Rejected = rcc::mir::parseMIRDocument(*Target, "explicit-null.mir", std::move(ExplicitNull));
+  Context.expect(!Rejected.succeeded(),
+                 "MIR must not treat an explicit null document as an empty separator");
+}
+
 void testHeterogeneousPointerLayout(TestContext &Context) {
   auto Target = createTarget();
   Context.expect(Target.has_value(), "heterogeneous-layout target must be valid");
@@ -1028,6 +1058,7 @@ body: |
 int main() {
   TestContext Context;
   testDocumentTransaction(Context);
+  testEmptyYAMLDocuments(Context);
   testHeterogeneousPointerLayout(Context);
   testEmbeddedReferenceValidation(Context);
   testReferencesWithoutEmbeddedIR(Context);
