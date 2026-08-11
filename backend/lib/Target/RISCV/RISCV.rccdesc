@@ -3351,6 +3351,8 @@ instructions:
       - { kinds: [immediate, integer_immediate] }
       - { kinds: [immediate, integer_immediate] }
     num_explicit_defs: 0
+    implicit_defs: [{ register: X2 }]
+    implicit_uses: [{ register: X2 }]
     flags: [pseudo, allowed_pre_legalizer, has_side_effects]
     owner: prologue_epilogue_insertion
     deadline: frame_finalized
@@ -3362,6 +3364,8 @@ instructions:
       - { kinds: [immediate, integer_immediate] }
       - { kinds: [immediate, integer_immediate] }
     num_explicit_defs: 0
+    implicit_defs: [{ register: X2 }]
+    implicit_uses: [{ register: X2 }]
     flags: [pseudo, allowed_pre_legalizer, has_side_effects]
     owner: prologue_epilogue_insertion
     deadline: frame_finalized

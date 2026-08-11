@@ -347,7 +347,7 @@ buildMoveToDouble(rcc::MachineFunction &Function, const rcc::TargetDescription &
 [[nodiscard]] rcc::Expected<rcc::MachineInstr *>
 buildCallFramePseudo(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
                      rcc::MachineBasicBlock &Block, rcc::riscv::InstructionOpcode OpcodeValue,
-                     std::int64_t Amount, std::int64_t Alignment = 16) {
+                     std::int64_t Amount, std::int64_t PreparedBytes = 0) {
   rcc::MachineIRBuilder Builder(Function, Target);
   if (auto Result = Builder.setInsertPoint(Block); !Result)
     return std::unexpected(Result.error());
@@ -356,7 +356,7 @@ buildCallFramePseudo(rcc::MachineFunction &Function, const rcc::TargetDescriptio
     return std::unexpected(Pending.error());
   if (auto Result = Pending->addImmediate(Amount); !Result)
     return std::unexpected(Result.error());
-  if (auto Result = Pending->addImmediate(Alignment); !Result)
+  if (auto Result = Pending->addImmediate(PreparedBytes); !Result)
     return std::unexpected(Result.error());
   return Pending->build();
 }
@@ -804,14 +804,14 @@ void testCallFrames(TestContext &Context, const rcc::TargetDescription &Target) 
   auto Computed = createFunction("computed-call-frame", 17);
   if (!Computed)
     return;
-  auto ComputedOutgoingAlign = rcc::Alignment::create(16);
+  auto ComputedOutgoingAlign = rcc::Alignment::create(64);
   if (!ComputedOutgoingAlign)
     return;
   rcc::StackObjectDesc ComputedOutgoingDescription;
   ComputedOutgoingDescription.Kind = rcc::StackObjectKind::Target;
   ComputedOutgoingDescription.Size = 8;
   ComputedOutgoingDescription.Align = *ComputedOutgoingAlign;
-  ComputedOutgoingDescription.LocalOffset = 48;
+  ComputedOutgoingDescription.LocalOffset = 0;
   ComputedOutgoingDescription.TargetFlags =
       static_cast<std::uint64_t>(rcc::riscv::CallStackObjectFlag::OutgoingArgument);
   auto ComputedOutgoing =
@@ -825,9 +825,9 @@ void testCallFrames(TestContext &Context, const rcc::TargetDescription &Target) 
                         rcc::riscv::InstructionOpcode::SD,
                         physical(rcc::riscv::PhysicalRegisterID::X11), *ComputedLocal, 0) ||
       !buildCallFramePseudo(*Computed->Function, Target, *Computed->Block,
-                            rcc::riscv::InstructionOpcode::ADJCALLSTACKDOWN, 48, 64) ||
+                            rcc::riscv::InstructionOpcode::ADJCALLSTACKDOWN, 64) ||
       !buildCallFramePseudo(*Computed->Function, Target, *Computed->Block,
-                            rcc::riscv::InstructionOpcode::ADJCALLSTACKUP, 48, 64) ||
+                            rcc::riscv::InstructionOpcode::ADJCALLSTACKUP, 64) ||
       !buildReturn(*Computed->Function, Target, *Computed->Block)) {
     return;
   }
@@ -846,7 +846,7 @@ void testCallFrames(TestContext &Context, const rcc::TargetDescription &Target) 
       !buildCallFramePseudo(*Mismatched->Function, Target, *Mismatched->Block,
                             rcc::riscv::InstructionOpcode::ADJCALLSTACKDOWN, 48, 16) ||
       !buildCallFramePseudo(*Mismatched->Function, Target, *Mismatched->Block,
-                            rcc::riscv::InstructionOpcode::ADJCALLSTACKUP, 48, 32) ||
+                            rcc::riscv::InstructionOpcode::ADJCALLSTACKUP, 48, 24) ||
       !buildReturn(*Mismatched->Function, Target, *Mismatched->Block)) {
     return;
   }
@@ -877,17 +877,18 @@ void testCallFrames(TestContext &Context, const rcc::TargetDescription &Target) 
     return;
   auto Variable =
       createStackObject(*Dynamic->Function, rcc::StackObjectKind::DynamicAlloca, std::nullopt, 16);
-  if (!Variable ||
+  auto OverAligned = createStackObject(*Dynamic->Function, rcc::StackObjectKind::Default, 8, 32);
+  if (!Variable || !OverAligned ||
       !buildCallFramePseudo(*Dynamic->Function, Target, *Dynamic->Block,
-                            rcc::riscv::InstructionOpcode::ADJCALLSTACKDOWN, 4096, 32) ||
+                            rcc::riscv::InstructionOpcode::ADJCALLSTACKDOWN, 4096) ||
       !buildCallFramePseudo(*Dynamic->Function, Target, *Dynamic->Block,
-                            rcc::riscv::InstructionOpcode::ADJCALLSTACKUP, 4096, 32) ||
+                            rcc::riscv::InstructionOpcode::ADJCALLSTACKUP, 4096) ||
       !buildReturn(*Dynamic->Function, Target, *Dynamic->Block)) {
     return;
   }
   Context.expect(rcc::riscv::registerAllocationInfo().isReservedForFunction(
                      *Dynamic->Function, physReg(rcc::riscv::PhysicalRegisterID::X9), Target),
-                 "over-aligned call frames must reserve BP before register allocation");
+                 "over-aligned dynamic frames must reserve BP before register allocation");
   auto DynamicResult = runFrameLowering(*Dynamic->Function, Target);
   Context.expect(
       DynamicResult &&

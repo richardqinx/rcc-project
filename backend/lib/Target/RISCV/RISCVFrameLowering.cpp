@@ -102,29 +102,33 @@ constexpr std::uint8_t DwarfOpBaseRegisterExtended = 0x92U;
 
 struct CallFrameRequirement final {
   std::int64_t Amount = 0;
-  std::int64_t Alignment = 0;
+  std::int64_t PreparedBytes = 0;
   std::int64_t AlignedAmount = 0;
 };
 
 [[nodiscard]] Expected<CallFrameRequirement> callFrameRequirement(const MachineInstr &Instruction) {
-  if (Instruction.operandCount() != 2) {
+  if (Instruction.operandCount() < 2) {
     return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V call-frame pseudo requires exactly amount and alignment");
+                          "RISC-V call-frame pseudo requires amount and prepared-byte operands");
+  }
+  for (std::size_t Index = 2; Index < Instruction.operandCount(); ++Index) {
+    const MachineOperand *Operand = Instruction.operandAt(Index);
+    if (Operand == nullptr || !Operand->isRegister() || !Operand->isImplicit()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V call-frame pseudo has an unexpected explicit operand");
+    }
   }
   auto Amount = immediateValue(*Instruction.operandAt(0));
-  auto RequestedAlignment = immediateValue(*Instruction.operandAt(1));
-  if (!Amount || !RequestedAlignment || *Amount < 0 || *RequestedAlignment <= 0 ||
-      !std::has_single_bit(static_cast<std::uint64_t>(*RequestedAlignment))) {
+  auto PreparedBytes = immediateValue(*Instruction.operandAt(1));
+  if (!Amount || !PreparedBytes || *Amount < 0 || *PreparedBytes < 0) {
     return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V call-frame amount or alignment is invalid");
+                          "RISC-V call-frame amount or prepared-byte count is invalid");
   }
-  const std::uint64_t Alignment =
-      std::max(StackAlignmentBytes, static_cast<std::uint64_t>(*RequestedAlignment));
-  auto Aligned = alignTo(static_cast<std::uint64_t>(*Amount), Alignment);
+  auto Aligned = alignTo(static_cast<std::uint64_t>(*Amount), StackAlignmentBytes);
   if (!Aligned || *Aligned > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
     return makeUnexpected(ErrorCode::FrameLayoutFailed, "RISC-V call-frame amount is too large");
   }
-  return CallFrameRequirement{*Amount, *RequestedAlignment, static_cast<std::int64_t>(*Aligned)};
+  return CallFrameRequirement{*Amount, *PreparedBytes, static_cast<std::int64_t>(*Aligned)};
 }
 
 [[nodiscard]] Expected<std::int64_t> callFrameAmount(const MachineInstr &Instruction) {
@@ -147,23 +151,6 @@ struct CallFrameRequirement final {
   for (const StackObject &Object : Function.frameInfo().objects()) {
     if (!Object.isTombstone() && !Object.description()->IsDead)
       Result = std::max(Result, Object.description()->Align.bytes());
-  }
-  for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
-       Block = Block->next()) {
-    for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
-         Instruction = Instruction->next()) {
-      if (Instruction->opcode() != targetOpcode(InstructionOpcode::ADJCALLSTACKDOWN) &&
-          Instruction->opcode() != targetOpcode(InstructionOpcode::ADJCALLSTACKUP)) {
-        continue;
-      }
-      if (Instruction->operandCount() < 2)
-        continue;
-      auto Requested = immediateValue(*Instruction->operandAt(1));
-      if (Requested && *Requested > 0 &&
-          std::has_single_bit(static_cast<std::uint64_t>(*Requested))) {
-        Result = std::max(Result, static_cast<std::uint64_t>(*Requested));
-      }
-    }
   }
   return Result;
 }
@@ -314,7 +301,8 @@ struct CallFrameRequirement final {
         return makeUnexpected(ErrorCode::VerificationError,
                               "RISC-V call-frame destroy has no matching setup");
       }
-      if (Active->Amount != Requirement->Amount || Active->Alignment != Requirement->Alignment) {
+      if (Active->Amount != Requirement->Amount ||
+          Active->PreparedBytes != Requirement->PreparedBytes) {
         return makeUnexpected(ErrorCode::VerificationError,
                               "RISC-V call-frame setup and destroy requirements differ");
       }

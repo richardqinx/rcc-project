@@ -483,6 +483,8 @@ void testOrdinaryAndIndirectEmission(TestContext &Context) {
     return;
 
   const auto Instructions = instructions(*Block);
+  rcc::MachineInstr *FrameDown = Instructions.empty() ? nullptr : Instructions.front();
+  rcc::MachineInstr *FrameUp = Instructions.size() > 3 ? Instructions[3] : nullptr;
   rcc::MachineInstr *Call = findInstruction(*Block, rcc::riscv::InstructionOpcode::PseudoCALL);
   Context.expect(Instructions.size() == 5 &&
                      Instructions.front()->opcode() ==
@@ -497,6 +499,39 @@ void testOrdinaryAndIndirectEmission(TestContext &Context) {
                      Call->operandAt(2)->kind() == rcc::MachineOperand::Kind::RegisterMask,
                  "ordinary emission must materialize canonical full-value copies, call-frame, "
                  "target, ID, and RegMask");
+  const rcc::Register StackPointer =
+      rcc::Register::fromPhysical(physical(rcc::riscv::PhysicalRegisterID::X2));
+  const auto HasStackPointerEffects = [StackPointer](const rcc::MachineInstr *Instruction) {
+    bool HasDef = false;
+    bool HasUse = false;
+    if (Instruction == nullptr)
+      return false;
+    for (const rcc::MachineOperand &Operand : Instruction->operands()) {
+      if (!Operand.isRegister() || !Operand.isImplicit() ||
+          Operand.registerValue() != StackPointer) {
+        continue;
+      }
+      HasDef |= Operand.isDef();
+      HasUse |= Operand.isUse();
+    }
+    return HasDef && HasUse;
+  };
+  const auto ImmediateAt = [](const rcc::MachineInstr *Instruction, std::size_t Index) {
+    const rcc::MachineOperand *Operand =
+        Instruction == nullptr ? nullptr : Instruction->operandAt(Index);
+    return Operand == nullptr ? nullptr : Operand->getIf<std::int64_t>();
+  };
+  const auto *DownAmount = ImmediateAt(FrameDown, 0);
+  const auto *DownPrepared = ImmediateAt(FrameDown, 1);
+  const auto *UpAmount = ImmediateAt(FrameUp, 0);
+  const auto *UpPrepared = ImmediateAt(FrameUp, 1);
+  Context.expect(
+      DownAmount != nullptr && *DownAmount == 0 && DownPrepared != nullptr && *DownPrepared == 0 &&
+          UpAmount != nullptr && *UpAmount == 0 && UpPrepared != nullptr && *UpPrepared == 0 &&
+          HasStackPointerEffects(FrameDown) && HasStackPointerEffects(FrameUp) &&
+          !FrameDown->flags().has(rcc::MachineInstrFlag::FrameSetup) &&
+          !FrameUp->flags().has(rcc::MachineInstrFlag::FrameDestroy),
+      "call-frame pseudos must use LLVM amount/prepared-byte operands and implicit SP effects");
   bool HasArgumentUse = false;
   bool HasResultDef = false;
   for (const rcc::MachineOperand &Operand : Call->operands()) {

@@ -1172,20 +1172,20 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
 
 [[nodiscard]] Expected<void> emitCallFrameAdjustment(MachineIRBuilder &Builder,
                                                      InstructionOpcode OpcodeValue,
-                                                     const CallFrameRequirements &Frame,
-                                                     MachineInstrFlag Flag) {
+                                                     const CallFrameRequirements &Frame) {
+  if (Frame.SizeBytes > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "RISC-V call-frame size does not fit a MIR immediate");
+  }
   auto Instruction = Builder.buildInstr(targetOpcode(OpcodeValue));
   if (!Instruction)
     return std::unexpected(Instruction.error());
-  auto Size = addUnsignedImmediate(*Instruction, Frame.SizeBytes);
+  auto Size = Instruction->addImmediate(static_cast<std::int64_t>(Frame.SizeBytes));
   if (!Size)
     return std::unexpected(Size.error());
-  auto Align = addUnsignedImmediate(*Instruction, Frame.Align.bytes());
-  if (!Align)
-    return std::unexpected(Align.error());
-  auto Flags = Instruction->setFlags({Flag});
-  if (!Flags)
-    return std::unexpected(Flags.error());
+  auto PreparedBytes = Instruction->addImmediate(0);
+  if (!PreparedBytes)
+    return std::unexpected(PreparedBytes.error());
   auto Built = Instruction->build();
   if (!Built)
     return std::unexpected(Built.error());
@@ -1371,8 +1371,8 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
 
 [[nodiscard]] Expected<void> emitCall(MachineIRBuilder &Builder, const CallLoweringPlan &Plan) {
   if (Plan.callFrame().EmitSetup) {
-    auto Down = emitCallFrameAdjustment(Builder, InstructionOpcode::ADJCALLSTACKDOWN,
-                                        Plan.callFrame(), MachineInstrFlag::FrameSetup);
+    auto Down =
+        emitCallFrameAdjustment(Builder, InstructionOpcode::ADJCALLSTACKDOWN, Plan.callFrame());
     if (!Down)
       return std::unexpected(Down.error());
   }
@@ -1388,8 +1388,7 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
     return std::unexpected(Call.error());
 
   if (Plan.callFrame().EmitDestroy) {
-    auto Up = emitCallFrameAdjustment(Builder, InstructionOpcode::ADJCALLSTACKUP, Plan.callFrame(),
-                                      MachineInstrFlag::FrameDestroy);
+    auto Up = emitCallFrameAdjustment(Builder, InstructionOpcode::ADJCALLSTACKUP, Plan.callFrame());
     if (!Up)
       return std::unexpected(Up.error());
   }
