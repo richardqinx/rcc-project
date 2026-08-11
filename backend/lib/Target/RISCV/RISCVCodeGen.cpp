@@ -546,6 +546,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
       OriginalType->scalarBitWidth() >= 64)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V narrow compare-exchange has invalid operands");
+  const Register OriginalDestination = *Destination;
 
   auto WideType = LLT::makeAnyScalar(64);
   if (!WideType)
@@ -561,7 +562,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
     return std::unexpected(WideNewValue.error());
 
   Register WideDestination;
-  MachineInstr *FoldedExtension = singleRegisterUse(Function, *Destination);
+  MachineInstr *FoldedExtension = singleRegisterUse(Function, OriginalDestination);
   if (FoldedExtension != nullptr && FoldedExtension->opcode() == opcode(GenericOpcode::G_ANYEXT) &&
       operandType(Function, *FoldedExtension, 0)
           .transform([](LLT Type) { return Type.scalarBitWidth() == 64; })
@@ -597,7 +598,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
   auto Truncation = Builder.buildInstr(opcode(GenericOpcode::G_TRUNC));
   if (!Truncation)
     return std::unexpected(Truncation.error());
-  if (auto Added = Truncation->addDef(*Destination); !Added)
+  if (auto Added = Truncation->addDef(OriginalDestination); !Added)
     return std::unexpected(Added.error());
   if (auto Added = Truncation->addUse(WideDestination); !Added)
     return std::unexpected(Added.error());

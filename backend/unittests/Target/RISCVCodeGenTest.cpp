@@ -907,6 +907,43 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
                      Target->validateInstruction(**BuiltAtomic, (*Function)->registerInfo()) &&
                      LegalAction && *LegalAction == rcc::LegalizationAction::Legal,
                  "compare-exchange widening must preserve the narrow MMO in a legal i64 container");
+
+  auto FallbackCompare = (*Function)->registerInfo().createVirtualRegister(*I8);
+  auto FallbackNewValue = (*Function)->registerInfo().createVirtualRegister(*I8);
+  auto FallbackResult = (*Function)->registerInfo().createVirtualRegister(*I8);
+  if (!FallbackCompare || !FallbackNewValue || !FallbackResult || !Builder.setInsertPoint(**Block))
+    return;
+  for (rcc::Register Definition : {*FallbackCompare, *FallbackNewValue}) {
+    auto Implicit = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_IMPLICIT_DEF));
+    if (!Implicit || !Implicit->addDef(Definition) || !Implicit->build())
+      return;
+  }
+  auto Fallback = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_ATOMIC_CMPXCHG));
+  if (!Fallback || !Fallback->addDef(*FallbackResult) || !Fallback->addUse(*Address) ||
+      !Fallback->addUse(*FallbackCompare) || !Fallback->addUse(*FallbackNewValue) ||
+      !Fallback->addMemOperand(**Memory))
+    return;
+  auto BuiltFallback = Fallback->build();
+  if (!BuiltFallback)
+    return;
+  auto FallbackAction = rcc::riscv::legalizerInfo().classify(**BuiltFallback, **Function, *Target);
+  auto FallbackLowered =
+      FallbackAction
+          ? rcc::riscv::legalizerInfo().lower(**BuiltFallback, **Function, *Target, *FallbackAction)
+          : rcc::Expected<void>(std::unexpected(FallbackAction.error()));
+  rcc::MachineInstr *Truncation = (*BuiltFallback)->next();
+  const rcc::Register *WideFallbackResult = (*BuiltFallback)->operandAt(0)->getIf<rcc::Register>();
+  const rcc::Register *TruncatedResult =
+      Truncation == nullptr ? nullptr : Truncation->operandAt(0)->getIf<rcc::Register>();
+  const rcc::Register *TruncationSource =
+      Truncation == nullptr ? nullptr : Truncation->operandAt(1)->getIf<rcc::Register>();
+  Context.expect(FallbackLowered && WideFallbackResult != nullptr &&
+                     *WideFallbackResult != *FallbackResult && Truncation != nullptr &&
+                     Truncation->opcode() == rcc::opcode(rcc::GenericOpcode::G_TRUNC) &&
+                     TruncatedResult != nullptr && *TruncatedResult == *FallbackResult &&
+                     TruncationSource != nullptr && *TruncationSource == *WideFallbackResult &&
+                     Target->validateInstruction(*Truncation, (*Function)->registerInfo()),
+                 "general compare-exchange widening must truncate from the new i64 result");
 }
 
 void testAtomicSelection(TestContext &Context) {
