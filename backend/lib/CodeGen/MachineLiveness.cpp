@@ -239,6 +239,13 @@ void addPhysicalRegister(RegisterUnitLaneSet &Set, const PhysicalRegisterDesc &D
   Set.unite(physicalRegisterCoverage(Description, Requested));
 }
 
+[[nodiscard]] bool isReservedPhysicalRegister(Register Reg, const MachineFunction &Function,
+                                              const TargetDescription &Target) noexcept {
+  const std::optional<PhysicalRegister> Physical = Reg.physicalRegister();
+  return Physical && (Function.registerInfo().isReserved(*Physical) ||
+                      Target.registers().isReservedRegister(*Physical));
+}
+
 [[nodiscard]] Expected<void> addRegisterMaskDefs(RegisterUnitLaneSet &Set, const RegisterMask &Mask,
                                                  const TargetDescription &Target) {
   for (const PhysicalRegisterDesc &Description : Target.registers().physicalRegisters()) {
@@ -274,6 +281,8 @@ void addPhysicalRegister(RegisterUnitLaneSet &Set, const PhysicalRegisterDesc &D
     VirtualUses.add(*Reg, *Lanes);
     return {};
   }
+  if (isReservedPhysicalRegister(*Reg, Function, Target))
+    return {};
   auto Units = physicalOperandUnits(Operand, Target);
   if (!Units)
     return std::unexpected(Units.error());
@@ -851,6 +860,8 @@ struct LivenessRebuildPlan final {
       return std::unexpected(Lanes.error());
     return Virtual.intersects(*Reg, *Lanes);
   }
+  if (isReservedPhysicalRegister(*Reg, Function, Target))
+    return true;
   auto Units = physicalOperandUnits(Operand, Target);
   if (!Units)
     return std::unexpected(Units.error());

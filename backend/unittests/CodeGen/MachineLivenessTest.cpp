@@ -856,6 +856,46 @@ void testRISCVLiveness(TestContext &Context) {
                  "production RV64GC register units must participate in LiveIntervals");
 }
 
+void testRISCVReservedRegisterLiveness(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  auto Fixture = createFunction("riscv-reserved-liveness", 10, 1);
+  if (!Target || !Fixture) {
+    Context.expect(false, "RV64GC reserved-register liveness fixture creation must succeed");
+    return;
+  }
+  auto X0 = rcc::riscv::physicalRegister(rcc::riscv::PhysicalRegisterID::X0);
+  auto X5 = rcc::riscv::physicalRegister(rcc::riscv::PhysicalRegisterID::X5);
+  if (!X0 || !X5) {
+    Context.expect(false, "RV64GC reserved-register fixture registers must resolve");
+    return;
+  }
+
+  rcc::MachineIRBuilder Builder(*Fixture->Function, *Target);
+  auto Point = Builder.setInsertPoint(*Fixture->Blocks[0]);
+  auto Pending = Point ? Builder.buildInstr(rcc::Opcode::fromValue(
+                             static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADDI)))
+                       : rcc::Expected<rcc::MachineInstrBuilder>{std::unexpected(Point.error())};
+  auto Def = Pending ? Pending->addDef(rcc::Register::fromPhysical(*X5))
+                     : rcc::Expected<void>{std::unexpected(Pending.error())};
+  auto Use = Def ? Pending->addUse(rcc::Register::fromPhysical(*X0))
+                 : rcc::Expected<void>{std::unexpected(Def.error())};
+  auto Immediate =
+      Use ? Pending->addImmediate(1) : rcc::Expected<void>{std::unexpected(Use.error())};
+  auto Instruction = Immediate
+                         ? Pending->build()
+                         : rcc::Expected<rcc::MachineInstr *>{std::unexpected(Immediate.error())};
+  if (!Instruction) {
+    Context.expect(false, "RV64GC reserved-register liveness instruction must be built");
+    return;
+  }
+
+  auto Rebuilt = rcc::rebuildMachineLiveness(*Fixture->Function, *Target);
+  const rcc::MachineOperand *ZeroUse = (*Instruction)->operandAt(1);
+  Context.expect(Rebuilt && Fixture->Blocks[0]->liveIns().empty() && ZeroUse != nullptr &&
+                     !ZeroUse->registerFlags().has(rcc::RegisterOperandFlag::Kill),
+                 "reserved registers must remain available without live-ins or kill flags");
+}
+
 } // namespace
 
 int main() {
@@ -874,5 +914,6 @@ int main() {
   testFailedRebuildIsAtomic(Context, *Target);
   testAnalysisRegistrationAndInvalidation(Context, *Target);
   testRISCVLiveness(Context);
+  testRISCVReservedRegisterLiveness(Context);
   return Context.result();
 }
