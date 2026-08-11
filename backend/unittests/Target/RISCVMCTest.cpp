@@ -90,6 +90,12 @@ symbolExpression(rcc::mc::MCContext &Context, std::string_view Name, std::uint32
                         {0x13, 0x86, 0xf6, 0xfe}, "ADDI") &&
          expectEncoding(Emitter, instruction(SRAI, {reg(X14), reg(X15), imm(63)}),
                         {0x13, 0xd7, 0xf7, 0x43}, "SRAI") &&
+         expectEncoding(Emitter, instruction(SH1ADD, {reg(X8), reg(X9), reg(X10)}),
+                        {0x33, 0xa4, 0xa4, 0x20}, "SH1ADD") &&
+         expectEncoding(Emitter, instruction(SEXT_B, {reg(X8), reg(X9)}), {0x13, 0x94, 0x44, 0x60},
+                        "SEXT.B") &&
+         expectEncoding(Emitter, instruction(ZEXT_H_RV64, {reg(X8), reg(X9)}),
+                        {0x3b, 0xc4, 0x04, 0x08}, "ZEXT.H") &&
          expectEncoding(Emitter, instruction(SD, {reg(X16), reg(X17), imm(-32)}),
                         {0x23, 0xb0, 0x08, 0xff}, "SD") &&
          expectEncoding(Emitter, instruction(BGE, {reg(X18), reg(X19), imm(18)}),
@@ -297,6 +303,11 @@ int main() {
       static_cast<std::uint32_t>(rcc::riscv::RISCVMCExprKind::AbsoluteLow), "symbol");
   if (!PrintedHigh || *PrintedHigh != "%hi(symbol)" || !PrintedLow || *PrintedLow != "%lo(symbol)")
     return fail("RISC-V absolute address modifiers do not print canonically");
+  auto PrintedUnary = Printer.printInstruction(instruction(
+      rcc::riscv::InstructionOpcode::SEXT_B,
+      {reg(rcc::riscv::PhysicalRegisterID::X8), reg(rcc::riscv::PhysicalRegisterID::X9)}));
+  if (!PrintedUnary || *PrintedUnary != "sext.b x8, x9")
+    return fail("RISC-V unary integer instructions do not print canonically");
   if (!testEncodings(Emitter))
     return fail("RISC-V MC encodings differ from the RV64GC reference encodings");
   if (!testFixups(Emitter, Backend))

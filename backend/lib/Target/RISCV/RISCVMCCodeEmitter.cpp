@@ -270,6 +270,7 @@ namespace {
     break;
   case AssemblyFormat::RD_FRS1:
   case AssemblyFormat::FRD_RS1:
+  case AssemblyFormat::RD_RS1:
     RegisterCount = 2;
     break;
   default:
@@ -358,6 +359,18 @@ namespace {
            static_cast<std::uint32_t>(*Predecessor) << 24U |
            static_cast<std::uint32_t>(*Successor) << 20U;
   }
+  if (Format == AssemblyFormat::RD_RS1) {
+    auto Count = requireOperandCount(Instruction, 2);
+    if (!Count)
+      return std::unexpected(Count.error());
+    auto Destination = registerEncoding(Instruction, 0, Target);
+    auto Source = registerEncoding(Instruction, 1, Target);
+    if (!Destination)
+      return std::unexpected(Destination.error());
+    if (!Source)
+      return std::unexpected(Source.error());
+    return (Assembly.Encoding & ~std::uint32_t{0x000f8f80}) | *Destination << 7U | *Source << 15U;
+  }
   if (Format != AssemblyFormat::RD_RS1_IMM && Format != AssemblyFormat::RD_OFFSET_RS1 &&
       Format != AssemblyFormat::FRD_OFFSET_RS1) {
     return makeUnexpected(ErrorCode::InstructionEncodingFailed,
@@ -376,8 +389,8 @@ namespace {
       (Assembly.Encoding & ~std::uint32_t{0x000f8f80}) | *Destination << 7U | *Source << 15U;
 
   const auto Opcode = static_cast<InstructionOpcode>(Instruction.opcode().value());
-  const bool Shift64 = Opcode == InstructionOpcode::SLLI || Opcode == InstructionOpcode::SRLI ||
-                       Opcode == InstructionOpcode::SRAI;
+  const bool Shift64 = Opcode == InstructionOpcode::SLLI || Opcode == InstructionOpcode::SLLI_UW ||
+                       Opcode == InstructionOpcode::SRLI || Opcode == InstructionOpcode::SRAI;
   const bool Shift32 = Opcode == InstructionOpcode::SLLIW || Opcode == InstructionOpcode::SRLIW ||
                        Opcode == InstructionOpcode::SRAIW;
   if (Shift64 || Shift32) {

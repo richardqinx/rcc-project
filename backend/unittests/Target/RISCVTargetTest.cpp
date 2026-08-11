@@ -164,7 +164,7 @@ void testABIAndDebugFacts(TestContext &Context) {
 
 void testInstructionFacts(TestContext &Context) {
   constexpr std::size_t TargetInstructionCount =
-      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::WriteFFLAGS) -
+      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::MAXU) -
       static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::LUI) + 1U;
   auto Target = rcc::riscv::createTargetDescription();
   Context.expect(Target.has_value(), "RV64GC target description must be structurally valid");
@@ -183,6 +183,14 @@ void testInstructionFacts(TestContext &Context) {
       rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::FADD_S)));
   const auto *Atomic = Target->instructionDescriptor(
       rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::LR_W)));
+  const auto *ShiftAdd = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::SH1ADD)));
+  const auto *ShiftLeftUnsignedWord = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::SLLI_UW)));
+  const auto *SignExtendByte = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::SEXT_B)));
+  const auto *SignedMinimum = Target->instructionDescriptor(
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::MIN)));
   const auto *Compressed = Target->instructionDescriptor(rcc::Opcode::fromValue(
       static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::C_ADDI16SP)));
   const auto *GenericAdd = Target->instructionDescriptor(rcc::opcode(rcc::GenericOpcode::G_ADD));
@@ -260,12 +268,20 @@ void testInstructionFacts(TestContext &Context) {
               rcc::opcode(rcc::GenericOpcode::G_LOAD),
               std::span<const rcc::MachineMemOperand *const>{}),
       "target memory operands must be optional while generic memory operands remain required");
+  Context.expect(ShiftAdd != nullptr && ShiftAdd->Operands.size() == 3 &&
+                     ShiftLeftUnsignedWord != nullptr &&
+                     ShiftLeftUnsignedWord->Operands.size() == 3 &&
+                     ShiftLeftUnsignedWord->Operands.back().ImmediatePredicate &&
+                     SignExtendByte != nullptr && SignExtendByte->Operands.size() == 2 &&
+                     SignedMinimum != nullptr && SignedMinimum->Operands.size() == 3 &&
+                     SignedMinimum->Flags.has(rcc::InstructionFlag::Commutable),
+                 "RISC-V Zba and Zbb instructions must expose complete generated constraints");
 
   const auto Schedules = rcc::riscv::schedulingClasses();
   const auto Encodings = rcc::riscv::encodingCategories();
   const auto Formats = rcc::riscv::assemblyFormats();
-  Context.expect(Schedules.size() == 15 && Encodings.size() == 10 && Formats.size() == 34 &&
-                     rcc::riscv::assemblyInstructions().size() == 195 && FenceAssembly != nullptr &&
+  Context.expect(Schedules.size() == 15 && Encodings.size() == 10 && Formats.size() == 35 &&
+                     rcc::riscv::assemblyInstructions().size() == 211 && FenceAssembly != nullptr &&
                      FenceAssembly->Mnemonic == "fence.i" &&
                      std::ranges::any_of(Schedules,
                                          [](const rcc::riscv::SchedulingClassInfo &Class) {

@@ -48,6 +48,7 @@ constexpr std::array LinearFormats{
     LinearFormat{"rs1-target", 2},
     LinearFormat{"rs1", 1},
     LinearFormat{"rd-rs2", 2},
+    LinearFormat{"rd-rs1", 2},
 };
 
 [[nodiscard]] const AssemblyFormatInfo *assemblyFormat(AssemblyFormatID ID) noexcept {

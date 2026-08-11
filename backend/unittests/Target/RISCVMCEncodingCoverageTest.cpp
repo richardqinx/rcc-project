@@ -117,6 +117,7 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
       addRegister(Result, Descriptor, Source1Encoding);
       addImmediate(Result, (Encoding >> 12U) & 7U);
       return Result;
+    case RD_RS1:
     case RD_FRS1:
       addRegister(Result, Descriptor, DestinationEncoding);
       addRegister(Result, Descriptor, Source1Encoding);
@@ -138,12 +139,17 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
       addImmediate(Result, (Encoding >> 20U) & 0xfU);
       return Result;
     }
+    if (Format == RD_RS1) {
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
+      return Result;
+    }
     const bool FloatingDestination = Format == FRD_OFFSET_RS1;
     if (Format != RD_RS1_IMM && Format != RD_OFFSET_RS1 && !FloatingDestination)
       return fixtureError("unsupported I-type reference fixture format");
     addRegister(Result, Descriptor, DestinationEncoding);
     addRegister(Result, Descriptor, Source1Encoding);
-    const bool Shift64 = Opcode == SLLI || Opcode == SRLI || Opcode == SRAI;
+    const bool Shift64 = Opcode == SLLI || Opcode == SLLI_UW || Opcode == SRLI || Opcode == SRAI;
     const bool Shift32 = Opcode == SLLIW || Opcode == SRLIW || Opcode == SRAIW;
     if (Shift64)
       addImmediate(Result, (Encoding >> 20U) & 0x3fU);
@@ -387,8 +393,8 @@ int main() {
   }
   const std::span<const rcc::riscv::AssemblyInstructionInfo> Instructions =
       rcc::riscv::assemblyInstructions();
-  if (Instructions.size() != 195) {
-    std::cerr << "RV64GC encoding coverage does not contain all 195 instructions\n";
+  if (Instructions.size() != 211) {
+    std::cerr << "RISC-V encoding coverage does not contain all 211 instructions\n";
     return 1;
   }
 

@@ -450,6 +450,7 @@ assembly_formats:
   - { id: 32, symbol: RS2_OFFSET_SP, name: rs2-offset-sp }
   - { id: 33, symbol: FRD_OFFSET_SP, name: frd-offset-sp }
   - { id: 34, symbol: FRS2_OFFSET_SP, name: frs2-offset-sp }
+  - { id: 35, symbol: RD_RS1, name: rd-rs1 }
 
 instructions:
   -
@@ -1521,6 +1522,242 @@ instructions:
     scheduling_class: ALU
     encoding_category: I
     assembly_format: RD_RS1_IMM
+  -
+    id: 1247
+    symbol: SH1ADD
+    name: SH1ADD
+    assembly_mnemonic: sh1add
+    encoding: 547660851
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1248
+    symbol: SH2ADD
+    name: SH2ADD
+    assembly_mnemonic: sh2add
+    encoding: 547669043
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1249
+    symbol: SH3ADD
+    name: SH3ADD
+    assembly_mnemonic: sh3add
+    encoding: 547677235
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1250
+    symbol: SH1ADD_UW
+    name: SH1ADD_UW
+    assembly_mnemonic: sh1add.uw
+    encoding: 547660859
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1251
+    symbol: SH2ADD_UW
+    name: SH2ADD_UW
+    assembly_mnemonic: sh2add.uw
+    encoding: 547669051
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1252
+    symbol: SH3ADD_UW
+    name: SH3ADD_UW
+    assembly_mnemonic: sh3add.uw
+    encoding: 547677243
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1253
+    symbol: SLLI_UW
+    name: SLLI_UW
+    assembly_mnemonic: slli.uw
+    encoding: 135566363
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: UIMM6, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: I
+    assembly_format: RD_RS1_IMM
+  -
+    id: 1254
+    symbol: ADD_UW
+    name: ADD_UW
+    assembly_mnemonic: add.uw
+    encoding: 144999483
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1255
+    symbol: SEXT_B
+    name: SEXT_B
+    assembly_mnemonic: sext.b
+    encoding: 1615107091
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: I
+    assembly_format: RD_RS1
+  -
+    id: 1256
+    symbol: SEXT_H
+    name: SEXT_H
+    assembly_mnemonic: sext.h
+    encoding: 1616155667
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: I
+    assembly_format: RD_RS1
+  -
+    id: 1257
+    symbol: ZEXT_H_RV32
+    name: ZEXT_H_RV32
+    assembly_mnemonic: zext.h
+    encoding: 134530099
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1
+  -
+    id: 1258
+    symbol: ZEXT_H_RV64
+    name: ZEXT_H_RV64
+    assembly_mnemonic: zext.h
+    encoding: 134530107
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1
+  -
+    id: 1259
+    symbol: MIN
+    name: MIN
+    assembly_mnemonic: min
+    encoding: 178570291
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code, commutable]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1260
+    symbol: MINU
+    name: MINU
+    assembly_mnemonic: minu
+    encoding: 178574387
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code, commutable]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1261
+    symbol: MAX
+    name: MAX
+    assembly_mnemonic: max
+    encoding: 178578483
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code, commutable]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1262
+    symbol: MAXU
+    name: MAXU
+    assembly_mnemonic: maxu
+    encoding: 178582579
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code, commutable]
+    scheduling_class: ALU
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
   -
     id: 1096
     symbol: LR_W
