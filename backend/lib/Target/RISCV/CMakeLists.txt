@@ -66,6 +66,7 @@ add_library(
   RISCVPseudoExpansion.cpp
   RISCVRegisterAllocation.cpp
   RISCVScheduling.cpp
+  RISCVSubtarget.cpp
   RISCVTarget.cpp
   RISCVTargetConstant.cpp
   "${RCCBackendRISCVGeneratedRegisterHeader}"
@@ -135,6 +136,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSubtarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetConstant.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCodeGen.h"
@@ -147,6 +149,7 @@ rcc_backend_register_format_files(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVMCCodeEmitter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVObjectFile.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVPipeline.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVSubtarget.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVMCTargetLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTarget.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTargetConstant.h"
@@ -172,6 +175,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSubtarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetConstant.cpp"
 )

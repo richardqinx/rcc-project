@@ -5,6 +5,7 @@
 
 #include "rcc/CodeGen/MachinePass.h"
 #include "rcc/Support/Error.h"
+#include "rcc/Target/RISCV/RISCVSubtarget.h"
 
 #include <memory>
 #include <string>
@@ -20,8 +21,13 @@ namespace riscv {
 
 [[nodiscard]] Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline,
                                                   const MachineFunction &Function);
+[[nodiscard]] Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline,
+                                                  const MachineFunction &Function,
+                                                  RISCVSubtargetFeatures Features);
 [[nodiscard]] Expected<std::unique_ptr<MachineFunctionPass>>
 createCanonicalPipelinePass(std::string_view Name);
+[[nodiscard]] Expected<std::unique_ptr<MachineFunctionPass>>
+createCanonicalPipelinePass(std::string_view Name, RISCVSubtargetFeatures Features);
 [[nodiscard]] Expected<std::vector<std::string>>
 canonicalPipelinePassNames(const MachineFunction &Function);
 [[nodiscard]] Expected<void>

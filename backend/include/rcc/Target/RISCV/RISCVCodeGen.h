@@ -12,10 +12,15 @@
 #include "rcc/CodeGen/TargetPseudoExpansion.h"
 #include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
 #include "rcc/CodeGen/TargetSchedulingModel.h"
+#include "rcc/Target/RISCV/RISCVSubtarget.h"
+
+#include <memory>
 
 namespace rcc::riscv {
 
 [[nodiscard]] const TargetLegalizerInfo &legalizerInfo() noexcept;
+[[nodiscard]] std::unique_ptr<TargetLegalizerInfo>
+createLegalizerInfo(RISCVSubtargetFeatures Features);
 [[nodiscard]] const TargetRegisterBankInfo &registerBankInfo() noexcept;
 [[nodiscard]] const TargetInstructionSelector &instructionSelector() noexcept;
 [[nodiscard]] const TargetSSAInfo &ssaInfo() noexcept;

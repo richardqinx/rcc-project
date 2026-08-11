@@ -25,8 +25,9 @@ template <typename PassT, typename... ArgumentT>
   return Pipeline.addPass(std::make_unique<PassT>(std::forward<ArgumentT>(Arguments)...));
 }
 
-[[nodiscard]] Expected<void> addInitialPipeline(MachinePassManager &Pipeline) {
-  auto Added = addPass<LegalizerPass>(Pipeline, legalizerInfo());
+[[nodiscard]] Expected<void> addInitialPipeline(MachinePassManager &Pipeline,
+                                                RISCVSubtargetFeatures Features) {
+  auto Added = addPass<LegalizerPass>(Pipeline, createLegalizerInfo(Features));
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<RegisterBankSelectPass>(Pipeline, registerBankInfo());
@@ -52,8 +53,9 @@ template <typename PassT, typename... ArgumentT>
   return addPass<PBQPAllocatorPass>(Pipeline, registerAllocationInfo());
 }
 
-[[nodiscard]] Expected<void> addCompleteRegistry(MachinePassManager &Pipeline) {
-  auto Added = addInitialPipeline(Pipeline);
+[[nodiscard]] Expected<void> addCompleteRegistry(MachinePassManager &Pipeline,
+                                                 RISCVSubtargetFeatures Features) {
+  auto Added = addInitialPipeline(Pipeline, Features);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addSSAExitPipeline(Pipeline);
@@ -68,8 +70,13 @@ template <typename PassT, typename... ArgumentT>
 } // namespace
 
 Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineFunction &Function) {
+  return addCanonicalPipeline(Pipeline, Function, RISCVSubtargetFeatures::rv64gc());
+}
+
+Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineFunction &Function,
+                                    RISCVSubtargetFeatures Features) {
   if (!Function.properties().has(MachineFunctionProperty::Legalized)) {
-    auto Added = addPass<LegalizerPass>(Pipeline, legalizerInfo());
+    auto Added = addPass<LegalizerPass>(Pipeline, createLegalizerInfo(Features));
     if (!Added)
       return std::unexpected(Added.error());
   }
@@ -112,10 +119,15 @@ Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineF
 }
 
 Expected<std::unique_ptr<MachineFunctionPass>> createCanonicalPipelinePass(std::string_view Name) {
+  return createCanonicalPipelinePass(Name, RISCVSubtargetFeatures::rv64gc());
+}
+
+Expected<std::unique_ptr<MachineFunctionPass>>
+createCanonicalPipelinePass(std::string_view Name, RISCVSubtargetFeatures Features) {
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidArgument, "pipeline pass name cannot be empty");
   MachinePassManager Registry;
-  auto Added = addCompleteRegistry(Registry);
+  auto Added = addCompleteRegistry(Registry, Features);
   if (!Added)
     return std::unexpected(Added.error());
   MachinePassManager::PassList Passes = std::move(Registry).takePasses();

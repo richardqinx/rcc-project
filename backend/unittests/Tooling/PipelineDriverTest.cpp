@@ -102,6 +102,25 @@ int main() {
   if (!Source)
     return tooling_test::fail(Source.error().message());
 
+  rcc::tooling::BackendInvocation AtomicOnlyInvocation = Invocation;
+  AtomicOnlyInvocation.Features = {"+a", "+zacas", "+zabha"};
+  AtomicOnlyInvocation.PassPipeline = {"Legalizer"};
+  auto CanonicalAtomicOnly = AtomicOnlyInvocation.canonicalizeAndVerify();
+  if (!CanonicalAtomicOnly)
+    return tooling_test::fail(CanonicalAtomicOnly.error().message());
+  auto AtomicOnlyRun = runInput("atomic-only.mir", *Source, *Target, AtomicOnlyInvocation,
+                                rcc::tooling::BackendOutputKind::LegalizedMIR);
+  if (!AtomicOnlyRun)
+    return tooling_test::fail(AtomicOnlyRun.error().message());
+
+  rcc::tooling::BackendInvocation UnsupportedFeatureInvocation = Invocation;
+  UnsupportedFeatureInvocation.Features = {"+v"};
+  auto CanonicalUnsupported = UnsupportedFeatureInvocation.canonicalizeAndVerify();
+  if (!CanonicalUnsupported)
+    return tooling_test::fail(CanonicalUnsupported.error().message());
+  if (rcc::tooling::verifyRV64GCInvocation(UnsupportedFeatureInvocation))
+    return tooling_test::fail("RV64 backend invocation must reject unsupported target features");
+
   constexpr std::array StageCases{
       std::pair{rcc::tooling::BackendOutputKind::PreLegalizerMIR,
                 rcc::tooling::BackendStage::PreLegalizerMIR},

@@ -72,10 +72,10 @@ struct FunctionRunResult final {
 
 [[nodiscard]] Expected<MachinePassManager::PassList>
 createPasses(const MachineFunction &Function, const BackendInvocation &Invocation,
-             MachinePassManagerOptions Options) {
+             riscv::RISCVSubtargetFeatures Features, MachinePassManagerOptions Options) {
   MachinePassManager Pipeline(Options);
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
-    auto Added = riscv::addCanonicalPipeline(Pipeline, Function);
+    auto Added = riscv::addCanonicalPipeline(Pipeline, Function, Features);
     if (!Added)
       return std::unexpected(Added.error());
   } else {
@@ -86,7 +86,7 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
     for (const std::string &Name : Invocation.PassPipeline) {
       if (Name == "none")
         continue;
-      auto Pass = riscv::createCanonicalPipelinePass(Name);
+      auto Pass = riscv::createCanonicalPipelinePass(Name, Features);
       if (!Pass)
         return std::unexpected(Pass.error());
       auto Added = Pipeline.addPass(std::move(*Pass));
@@ -171,14 +171,15 @@ captureSnapshot(FunctionRunResult &Result, const mir::MIRDocument &Document,
 [[nodiscard]] Expected<FunctionRunResult>
 runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetDescription &Target,
             const BackendInvocation &Invocation, const PipelineControls &Controls,
-            bool AllowSnapshots, MachinePassInstrumentation *Instrumentation) {
+            riscv::RISCVSubtargetFeatures Features, bool AllowSnapshots,
+            MachinePassInstrumentation *Instrumentation) {
   FunctionRunResult Result;
   MachinePassManagerOptions ManagerOptions{
       .VerifyBefore = true,
       .VerifyEach = Controls.VerifyEach,
       .DetectUnreportedChanges = Controls.DetectUnreportedChanges,
   };
-  auto Passes = createPasses(Function, Invocation, ManagerOptions);
+  auto Passes = createPasses(Function, Invocation, Features, ManagerOptions);
   if (!Passes)
     return std::unexpected(Passes.error());
   MachineAnalysisManager Analyses;
@@ -326,11 +327,14 @@ Expected<void> verifyRV64GCInvocation(const BackendInvocation &Invocation) {
                           "RV64GC backend invocation must be canonicalized before execution");
   }
   const BackendInvocation Expected = defaultRV64GCInvocation();
+  auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
+  if (!Features)
+    return std::unexpected(Features.error());
   if (Invocation.Triple != Expected.Triple || Invocation.CPU != Expected.CPU ||
-      Invocation.TuneCPU != Expected.TuneCPU || Invocation.Features != Expected.Features ||
-      Invocation.ABI != Expected.ABI || Invocation.DataLayout != Expected.DataLayout) {
+      Invocation.TuneCPU != Expected.TuneCPU || Invocation.ABI != Expected.ABI ||
+      Invocation.DataLayout != Expected.DataLayout) {
     return makeUnexpected(ErrorCode::InvalidInvocation,
-                          "backend invocation does not select the supported RV64GC LP64D target");
+                          "backend invocation does not select the supported RV64 LP64D target");
   }
   if (Invocation.MIRReferenceRevision != LLVMReferenceRevision ||
       Invocation.GenericOpcodeVersion != GenericOpcodeReferenceVersion ||
@@ -349,6 +353,9 @@ Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
   auto InvocationVerification = verifyRV64GCInvocation(Invocation);
   if (!InvocationVerification)
     return std::unexpected(InvocationVerification.error());
+  auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
+  if (!Features)
+    return std::unexpected(Features.error());
   auto ControlVerification = validateControls(Controls);
   if (!ControlVerification)
     return std::unexpected(ControlVerification.error());
@@ -383,7 +390,7 @@ Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
       if (Function == nullptr)
         return makeUnexpected(ErrorCode::InternalError,
                               "compilation unit contains a null function");
-      auto Run = runFunction(*Function, Document, Target, Invocation, Controls, true,
+      auto Run = runFunction(*Function, Document, Target, Invocation, Controls, *Features, true,
                              ActiveInstrumentation);
       if (!Run)
         return std::unexpected(Run.error());
@@ -404,7 +411,7 @@ Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
               Error(ErrorCode::InternalError, "compilation unit contains a null function");
           continue;
         }
-        auto Run = runFunction(*Function, Document, Target, Invocation, Controls, false,
+        auto Run = runFunction(*Function, Document, Target, Invocation, Controls, *Features, false,
                                ActiveInstrumentation);
         if (!Run) {
           FunctionResults[Index].Failure = Run.error();

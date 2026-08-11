@@ -2879,9 +2879,15 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
 
 class RISCVLegalizerInfo final : public TargetLegalizerInfo {
 public:
+  explicit RISCVLegalizerInfo(RISCVSubtargetFeatures Features) : Features(Features) {}
+
   [[nodiscard]] Expected<LegalizationAction> classify(const MachineInstr &Instruction,
                                                       const MachineFunction &Function,
                                                       const TargetDescription &) const override {
+    if (!Features.has(RISCVExtension::I)) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "RISC-V legalizer requires the base I extension");
+    }
     if (!isGenericOpcode(Instruction.opcode()))
       return LegalizationAction::Legal;
 
@@ -3560,6 +3566,9 @@ public:
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V legalizer has no lowering rule for this instruction");
   }
+
+private:
+  RISCVSubtargetFeatures Features;
 };
 
 class RISCVRegisterBankInfo final : public TargetRegisterBankInfo {
@@ -6284,8 +6293,12 @@ private:
 } // namespace
 
 const TargetLegalizerInfo &legalizerInfo() noexcept {
-  static const RISCVLegalizerInfo Value;
+  static const RISCVLegalizerInfo Value(RISCVSubtargetFeatures::rv64gc());
   return Value;
+}
+
+std::unique_ptr<TargetLegalizerInfo> createLegalizerInfo(RISCVSubtargetFeatures Features) {
+  return std::make_unique<RISCVLegalizerInfo>(Features);
 }
 
 const TargetRegisterBankInfo &registerBankInfo() noexcept {
