@@ -1789,9 +1789,9 @@ Expected<void> verifyTrackedMachineLiveness(const MachineFunction &Function,
     auto Expected = liveInUnits(BlockPlan.RebuiltLiveIns, Target);
     if (!Expected)
       return std::unexpected(Expected.error());
-    if (*Actual != *Expected) {
+    if (!isSubset(*Expected, *Actual)) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "TracksLiveness block has stale physical live-ins");
+                            "TracksLiveness block is missing required physical live-ins");
     }
   }
   for (const OperandFlagPlan &OperandPlan : Plan->Operands) {

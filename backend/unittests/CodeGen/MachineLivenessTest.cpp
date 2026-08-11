@@ -656,6 +656,12 @@ void testLivenessRebuildAndVerifier(TestContext &Context, const rcc::TargetDescr
   Context.expect(rcc::MachineVerifier::verify(Function, Target).has_value(),
                  "rebuilt tracked liveness must pass the MachineVerifier");
 
+  auto ConservativeLiveIn = Entry.addLiveIn(physical(rcc::test::TestRegister::F0));
+  Context.expect(ConservativeLiveIn.has_value() &&
+                     rcc::MachineVerifier::verify(Function, Target).has_value(),
+                 "MachineVerifier must accept conservative physical live-ins");
+  Entry.clearLiveIns();
+
   rcc::MachineOperand *FirstUseOperand = (*FirstUse)->operandAt(0);
   if (FirstUseOperand == nullptr) {
     Context.expect(false, "first use operand must exist");
