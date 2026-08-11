@@ -1126,6 +1126,74 @@ void testIntegerCompareReusesConstantExtension(TestContext &Context) {
                  "single-use constant extension folding must preserve the source layout position");
 }
 
+void testNarrowAnyExtBinaryArtifacts(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  auto Function = rcc::MachineFunction::create("riscv_narrow_binary_artifacts",
+                                               rcc::MachineFunctionStableID::fromValue(1301));
+  auto I1 = rcc::LLT::makeAnyScalar(1);
+  auto I32 = rcc::LLT::makeAnyScalar(32);
+  auto I64 = rcc::LLT::makeAnyScalar(64);
+  if (!Target || !Function || !I1 || !I32 || !I64)
+    return;
+  auto Block = (*Function)->createBasicBlock();
+  if (!Block || !(*Function)->appendBlock(**Block))
+    return;
+  auto WideLeft = (*Function)->registerInfo().createVirtualRegister(*I64);
+  auto WideRight = (*Function)->registerInfo().createVirtualRegister(*I64);
+  auto NarrowLeft = (*Function)->registerInfo().createVirtualRegister(*I32);
+  auto CopiedLeft = (*Function)->registerInfo().createVirtualRegister(*I32);
+  auto NarrowRight = (*Function)->registerInfo().createVirtualRegister(*I1);
+  auto ExtendedRight = (*Function)->registerInfo().createVirtualRegister(*I32);
+  auto Product = (*Function)->registerInfo().createVirtualRegister(*I32);
+  auto Result = (*Function)->registerInfo().createVirtualRegister(*I64);
+  if (!WideLeft || !WideRight || !NarrowLeft || !CopiedLeft || !NarrowRight || !ExtendedRight ||
+      !Product || !Result)
+    return;
+
+  rcc::MachineIRBuilder Builder(**Function, *Target);
+  if (!Builder.setInsertPoint(**Block))
+    return;
+  const auto BuildUnary = [&](rcc::GenericOpcode Generic, rcc::Register Destination,
+                              rcc::Register Source) -> rcc::MachineInstr * {
+    auto Pending = Builder.buildInstr(rcc::opcode(Generic));
+    if (!Pending || !Pending->addDef(Destination) || !Pending->addUse(Source))
+      return nullptr;
+    auto Built = Pending->build();
+    return Built ? *Built : nullptr;
+  };
+  rcc::MachineInstr *LeftTrunc = BuildUnary(rcc::GenericOpcode::G_TRUNC, *NarrowLeft, *WideLeft);
+  rcc::MachineInstr *LeftCopy = BuildUnary(rcc::GenericOpcode::COPY, *CopiedLeft, *NarrowLeft);
+  rcc::MachineInstr *RightTrunc = BuildUnary(rcc::GenericOpcode::G_TRUNC, *NarrowRight, *WideRight);
+  rcc::MachineInstr *RightExtension =
+      BuildUnary(rcc::GenericOpcode::G_ANYEXT, *ExtendedRight, *NarrowRight);
+  auto Multiply = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_MUL));
+  if (LeftTrunc == nullptr || LeftCopy == nullptr || RightTrunc == nullptr ||
+      RightExtension == nullptr || !Multiply || !Multiply->addDef(*Product) ||
+      !Multiply->addUse(*CopiedLeft) || !Multiply->addUse(*ExtendedRight))
+    return;
+  auto BuiltMultiply = Multiply->build();
+  rcc::MachineInstr *OuterExtension = BuildUnary(rcc::GenericOpcode::G_ANYEXT, *Result, *Product);
+  if (!BuiltMultiply || OuterExtension == nullptr)
+    return;
+
+  auto Action = rcc::riscv::legalizerInfo().classify(*OuterExtension, **Function, *Target);
+  auto Lowered =
+      Action ? rcc::riscv::legalizerInfo().lower(*OuterExtension, **Function, *Target, *Action)
+             : rcc::Expected<void>(std::unexpected(Action.error()));
+  const rcc::Register *LegalLeft = OuterExtension->operandAt(1)->getIf<rcc::Register>();
+  const rcc::Register *LegalRight = OuterExtension->operandAt(2)->getIf<rcc::Register>();
+  Context.expect(
+      Action && *Action == rcc::LegalizationAction::Custom && Lowered &&
+          OuterExtension->opcode() == rcc::opcode(rcc::GenericOpcode::G_MUL) &&
+          LegalLeft != nullptr && *LegalLeft == *WideLeft && LegalRight != nullptr &&
+          *LegalRight == *WideRight && LeftTrunc->parent() == nullptr &&
+          LeftCopy->parent() == nullptr && RightTrunc->parent() == nullptr &&
+          RightExtension->parent() == nullptr && (*BuiltMultiply)->parent() == nullptr &&
+          (*Function)->registerInfo().verifyDefUseChains() &&
+          Target->validateInstruction(*OuterExtension, (*Function)->registerInfo()),
+      "narrow any-extension binary folding must remove copy, truncation, and extension artifacts");
+}
+
 void testAtomicSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   if (!Target)
@@ -1406,6 +1474,7 @@ int main() {
   testAtomicCompareExchangeLegalization(Context);
   testConstantExtensionPreservesLiveSource(Context);
   testIntegerCompareReusesConstantExtension(Context);
+  testNarrowAnyExtBinaryArtifacts(Context);
   testAtomicSelection(Context);
   testUnsupportedTypes(Context);
   testMemoryOffsetSelection(Context);

@@ -417,7 +417,7 @@ struct NarrowAnyExtBinaryPlan final {
   MachineInstr *Binary = nullptr;
   GenericOpcode Generic = GenericOpcode::Invalid;
   std::array<Register, 2> WideInputs{};
-  std::vector<MachineInstr *> Truncations;
+  std::vector<MachineInstr *> Artifacts;
   std::vector<MachineInstr *> Constants;
   std::uint32_t SourceWidth = 0;
 };
@@ -449,14 +449,35 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
     return std::nullopt;
   const GenericOpcode Generic = static_cast<GenericOpcode>(Binary->opcode().value());
   if (Generic != GenericOpcode::G_ADD && Generic != GenericOpcode::G_SUB &&
-      Generic != GenericOpcode::G_AND && Generic != GenericOpcode::G_OR &&
-      Generic != GenericOpcode::G_XOR && Generic != GenericOpcode::G_SHL)
+      Generic != GenericOpcode::G_MUL && Generic != GenericOpcode::G_AND &&
+      Generic != GenericOpcode::G_OR && Generic != GenericOpcode::G_XOR &&
+      Generic != GenericOpcode::G_SHL)
     return std::nullopt;
 
   NarrowAnyExtBinaryPlan Plan;
   Plan.Binary = Binary;
   Plan.Generic = Generic;
   Plan.SourceWidth = SourceType.scalarBitWidth();
+  const auto AddArtifact = [&Plan](MachineInstr *Artifact) {
+    if (std::ranges::find(Plan.Artifacts, Artifact) == Plan.Artifacts.end())
+      Plan.Artifacts.push_back(Artifact);
+  };
+  const auto TruncatedWideSource = [&](MachineInstr *Truncation,
+                                       MachineInstr *OnlyUse) -> std::optional<Register> {
+    if (Truncation == nullptr || Truncation->opcode() != opcode(GenericOpcode::G_TRUNC) ||
+        Truncation->operandCount() != 2)
+      return std::nullopt;
+    const MachineOperand *NarrowOperand = Truncation->operandAt(0);
+    const Register *Narrow = NarrowOperand == nullptr ? nullptr : NarrowOperand->getIf<Register>();
+    const MachineOperand *WideOperand = Truncation->operandAt(1);
+    const Register *Wide = WideOperand == nullptr ? nullptr : WideOperand->getIf<Register>();
+    const std::optional<LLT> WideType =
+        WideOperand == nullptr ? std::nullopt : registerType(Function, *WideOperand);
+    if (Narrow == nullptr || Wide == nullptr || !Wide->isVirtual() || !WideType ||
+        *WideType != DestinationType || singleRegisterUse(Function, *Narrow) != OnlyUse)
+      return std::nullopt;
+    return *Wide;
+  };
   for (std::size_t Index = 0; Index != Plan.WideInputs.size(); ++Index) {
     const MachineOperand *Operand = Binary->operandAt(Index + 1U);
     const Register *Reg = Operand == nullptr ? nullptr : Operand->getIf<Register>();
@@ -474,18 +495,29 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
 
     const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(*Reg);
     MachineInstr *Def = Definition == nullptr ? nullptr : const_cast<MachineInstr *>(Definition->parent());
-    if (Def != nullptr && Def->opcode() == opcode(GenericOpcode::G_TRUNC) &&
-        Def->operandCount() == 2) {
-      const MachineOperand *WideOperand = Def->operandAt(1);
-      const Register *Wide = WideOperand == nullptr ? nullptr : WideOperand->getIf<Register>();
-      if (Wide == nullptr || !Wide->isVirtual())
-        return std::nullopt;
-      const auto WideInfo = Function.registerInfo().virtualRegisterInfo(*Wide);
-      if (!WideInfo || !WideInfo->get().Type || *WideInfo->get().Type != DestinationType)
-        return std::nullopt;
+    if (auto Wide = TruncatedWideSource(Def, Binary)) {
       Plan.WideInputs[Index] = *Wide;
-      Plan.Truncations.push_back(Def);
+      AddArtifact(Def);
       continue;
+    }
+    if (Def != nullptr &&
+        (Def->opcode() == opcode(GenericOpcode::COPY) ||
+         Def->opcode() == opcode(GenericOpcode::G_ANYEXT)) &&
+        Def->operandCount() == 2 && singleRegisterUse(Function, *Reg) == Binary) {
+      const MachineOperand *NarrowOperand = Def->operandAt(1);
+      const Register *Narrow =
+          NarrowOperand == nullptr ? nullptr : NarrowOperand->getIf<Register>();
+      const MachineOperand *NarrowDefinition =
+          Narrow == nullptr ? nullptr : Function.registerInfo().getUniqueVRegDef(*Narrow);
+      MachineInstr *Truncation = NarrowDefinition == nullptr
+                                     ? nullptr
+                                     : const_cast<MachineInstr *>(NarrowDefinition->parent());
+      if (auto Wide = TruncatedWideSource(Truncation, Def)) {
+        Plan.WideInputs[Index] = *Wide;
+        AddArtifact(Def);
+        AddArtifact(Truncation);
+        continue;
+      }
     }
     if (Def != nullptr && Def->opcode() == opcode(GenericOpcode::G_CONSTANT) &&
         singleRegisterUse(Function, *Reg) == Binary) {
@@ -887,8 +919,10 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
     if (!Replaced)
       return std::unexpected(Replaced.error());
   }
-  for (MachineInstr *Truncation : Plan->Truncations) {
-    auto Removed = Truncation->parent()->removeInstruction(*Truncation);
+  for (MachineInstr *Artifact : Plan->Artifacts) {
+    if (Artifact->parent() == nullptr)
+      continue;
+    auto Removed = Artifact->parent()->removeInstruction(*Artifact);
     if (!Removed)
       return std::unexpected(Removed.error());
   }
