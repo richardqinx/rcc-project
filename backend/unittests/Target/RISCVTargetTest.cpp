@@ -50,10 +50,11 @@ void testRegisterFacts(TestContext &Context) {
   const rcc::PhysicalRegister F31D = registerID(rcc::riscv::PhysicalRegisterID::F31_D);
   const rcc::PhysicalRegister F31F = registerID(rcc::riscv::PhysicalRegisterID::F31_F);
   const rcc::PhysicalRegister FFLAGS = registerID(rcc::riscv::PhysicalRegisterID::FFLAGS);
+  const rcc::PhysicalRegister FRM = registerID(rcc::riscv::PhysicalRegisterID::FRM);
 
   Context.expect(
-      Registers->physicalRegisters().size() == 97 && Registers->registerUnits().size() == 65 &&
-          Registers->registerClasses().size() == 9 && Registers->registerBanks().size() == 3,
+      Registers->physicalRegisters().size() == 98 && Registers->registerUnits().size() == 66 &&
+          Registers->registerClasses().size() == 10 && Registers->registerBanks().size() == 3,
       "RV64GC must expose scalar, compressed, restricted, and status register classes");
   Context.expect(Registers->physicalRegister("x0") != nullptr &&
                      Registers->physicalRegister("zero") == nullptr &&
@@ -84,6 +85,12 @@ void testRegisterFacts(TestContext &Context) {
                      Registers->registerClass("fflags") != nullptr &&
                      !Registers->registerClass("fflags")->Allocatable,
                  "FFLAGS must be a reserved nonallocatable status register");
+  Context.expect(Registers->physicalRegister("frm") != nullptr &&
+                     Registers->physicalRegister("frm")->Reg == FRM &&
+                     Registers->isReservedRegister(FRM) &&
+                     Registers->registerClass("frm") != nullptr &&
+                     !Registers->registerClass("frm")->Allocatable,
+                 "FRM must be a reserved nonallocatable status register");
 
   const auto *GPR = Registers->registerClass("gpr");
   Context.expect(
@@ -194,11 +201,12 @@ void testInstructionFacts(TestContext &Context) {
           Branch->Flags.has(rcc::InstructionFlag::Terminator) &&
           Branch->Flags.has(rcc::InstructionFlag::Branch) && Floating != nullptr &&
           Floating->Operands.size() == 4 && Floating->Operands.back().ImmediatePredicate &&
-          Atomic != nullptr && Atomic->Flags.has(rcc::InstructionFlag::MayLoad) &&
-          Atomic->RequiresMemoryOperands && Compressed != nullptr &&
-          Compressed->ImplicitDefs.size() == 1 && Compressed->ImplicitUses.size() == 1 &&
-          GenericAdd != nullptr && GenericAdd->Flags.has(rcc::InstructionFlag::Generic) &&
-          PseudoCall != nullptr && PseudoCall->Flags.has(rcc::InstructionFlag::Pseudo) &&
+          Floating->AllowExtraImplicitOperands && Atomic != nullptr &&
+          Atomic->Flags.has(rcc::InstructionFlag::MayLoad) && Atomic->RequiresMemoryOperands &&
+          Compressed != nullptr && Compressed->ImplicitDefs.size() == 1 &&
+          Compressed->ImplicitUses.size() == 1 && GenericAdd != nullptr &&
+          GenericAdd->Flags.has(rcc::InstructionFlag::Generic) && PseudoCall != nullptr &&
+          PseudoCall->Flags.has(rcc::InstructionFlag::Pseudo) &&
           PseudoCall->Flags.has(rcc::InstructionFlag::Call) &&
           rcc::riscv::assemblyInstruction(PseudoCall->InstructionOpcode) == nullptr &&
           Assembly != nullptr && Assembly->Mnemonic == "addi" &&
