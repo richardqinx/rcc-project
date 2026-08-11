@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1458,6 +1459,85 @@ void testUnsupportedTypes(TestContext &Context) {
                  "unsupported selection diagnostics must name the rejected opcode");
 }
 
+void testVACopyLegalization(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  Context.expect(Target.has_value(), "RV64GC target must be available for va_copy legalization");
+  if (!Target)
+    return;
+  Context.expect(Target->mirText().intrinsic("llvm.va_copy") ==
+                     rcc::intrinsicID(rcc::GenericIntrinsic::VACopy),
+                 "RV64GC MIR text must expose the generic va_copy intrinsic identity");
+
+  auto Function =
+      rcc::MachineFunction::create("riscv_vacopy", rcc::MachineFunctionStableID::fromValue(102));
+  if (!Function)
+    return;
+  auto Block = (*Function)->createBasicBlock();
+  auto Pointer = rcc::LLT::makePointer(0, 64);
+  if (!Block || !Pointer || !(*Function)->appendBlock(**Block))
+    return;
+  auto Destination = (*Function)->registerInfo().createVirtualRegister(*Pointer);
+  auto Source = (*Function)->registerInfo().createVirtualRegister(*Pointer);
+  if (!Destination || !Source)
+    return;
+
+  rcc::MachineIRBuilder Builder(**Function, *Target);
+  if (!Builder.setInsertPoint(**Block))
+    return;
+  auto Pending = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_INTRINSIC_W_SIDE_EFFECTS));
+  if (!Pending || !Pending->addIntrinsic(rcc::intrinsicID(rcc::GenericIntrinsic::VACopy)) ||
+      !Pending->addUse(*Destination) || !Pending->addUse(*Source)) {
+    return;
+  }
+  auto Built = Pending->build();
+  if (!Built)
+    return;
+  auto Action = rcc::riscv::legalizerInfo().classify(**Built, **Function, *Target);
+  Context.expect(Action && *Action == rcc::LegalizationAction::Custom,
+                 "RV64GC must custom-legalize va_copy");
+  if (!Action)
+    return;
+  auto Lowered = rcc::riscv::legalizerInfo().lower(**Built, **Function, *Target, *Action);
+  Context.expect(Lowered.has_value(), "RV64GC va_copy legalization must succeed");
+  if (!Lowered)
+    return;
+
+  rcc::MachineInstr *Load = (*Function)->firstBlock()->firstInstruction();
+  rcc::MachineInstr *Store = Load == nullptr ? nullptr : Load->next();
+  const rcc::Register *Loaded = Load == nullptr || Load->operandAt(0) == nullptr
+                                    ? nullptr
+                                    : Load->operandAt(0)->getIf<rcc::Register>();
+  const rcc::Register *LoadAddress = Load == nullptr || Load->operandAt(1) == nullptr
+                                         ? nullptr
+                                         : Load->operandAt(1)->getIf<rcc::Register>();
+  const rcc::Register *Stored = Store == nullptr || Store->operandAt(0) == nullptr
+                                    ? nullptr
+                                    : Store->operandAt(0)->getIf<rcc::Register>();
+  const rcc::Register *StoreAddress = Store == nullptr || Store->operandAt(1) == nullptr
+                                          ? nullptr
+                                          : Store->operandAt(1)->getIf<rcc::Register>();
+  Context.expect(
+      (*Built)->parent() == nullptr && Load != nullptr && Store != nullptr &&
+          Store->next() == nullptr && Load->opcode() == rcc::opcode(rcc::GenericOpcode::G_LOAD) &&
+          Store->opcode() == rcc::opcode(rcc::GenericOpcode::G_STORE) && Loaded != nullptr &&
+          Stored != nullptr && *Loaded == *Stored && LoadAddress != nullptr &&
+          *LoadAddress == *Source && StoreAddress != nullptr && *StoreAddress == *Destination,
+      "va_copy must become a pointer load followed by a store to the destination list");
+  const auto LoadMemory =
+      Load == nullptr ? std::span<const rcc::MachineMemOperand *const>{} : Load->memOperands();
+  const auto StoreMemory =
+      Store == nullptr ? std::span<const rcc::MachineMemOperand *const>{} : Store->memOperands();
+  Context.expect(
+      LoadMemory.size() == 1 && StoreMemory.size() == 1 &&
+          LoadMemory.front()->description().Accesses.has(rcc::MemoryAccessFlag::Load) &&
+          StoreMemory.front()->description().Accesses.has(rcc::MemoryAccessFlag::Store) &&
+          LoadMemory.front()->description().Size.minimumBytes() == 8 &&
+          StoreMemory.front()->description().Size.minimumBytes() == 8 &&
+          LoadMemory.front()->description().MemoryType == *Pointer &&
+          StoreMemory.front()->description().MemoryType == *Pointer,
+      "va_copy expansion must attach complete pointer-sized load/store memory operands");
+}
+
 void testMemoryOffsetSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   Context.expect(Target.has_value(), "RV64GC target must be available for memory selection");
@@ -1541,6 +1621,7 @@ int main() {
   testMultiplyLibcallWithoutM(Context);
   testAtomicSelection(Context);
   testUnsupportedTypes(Context);
+  testVACopyLegalization(Context);
   testMemoryOffsetSelection(Context);
   return Context.result();
 }

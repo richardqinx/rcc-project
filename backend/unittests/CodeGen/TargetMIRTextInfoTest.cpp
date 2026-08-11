@@ -109,9 +109,12 @@ void testTextSchemaQueries(TestContext &Context) {
           !Text->machineMemOperandFlagNames(0x4) && !Text->virtualRegisterFlagNames(0x4),
       "MMO and virtual-register flags must reject every unregistered bit");
 
-  Context.expect(Text->intrinsic("llvm.test.seven") == rcc::IntrinsicID::fromValue(7) &&
-                     Text->intrinsicName(rcc::IntrinsicID::fromValue(17)) == "llvm.test.seventeen",
-                 "intrinsic names and strong IDs must round-trip");
+  Context.expect(
+      Text->intrinsic("llvm.test.seven") == rcc::IntrinsicID::fromValue(7) &&
+          Text->intrinsicName(rcc::IntrinsicID::fromValue(17)) == "llvm.test.seventeen" &&
+          Text->intrinsic("llvm.va_copy") == rcc::intrinsicID(rcc::GenericIntrinsic::VACopy) &&
+          Text->intrinsicName(rcc::intrinsicID(rcc::GenericIntrinsic::VACopy)) == "llvm.va_copy",
+      "intrinsic names and strong IDs must round-trip");
 
   const auto G0 = phys(rcc::test::TestRegister::G0);
   Context.expect(Text->dwarfRegister(G0) == rcc::test::TestRegister::G0 &&

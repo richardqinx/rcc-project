@@ -2975,6 +2975,102 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
   return true;
 }
 
+struct VACopyPlan final {
+  Register Destination;
+  Register Source;
+  LLT PointerType;
+};
+
+[[nodiscard]] std::optional<VACopyPlan> vacopyPlan(const MachineInstr &Instruction,
+                                                   const MachineFunction &Function) {
+  if (Instruction.opcode() != opcode(GenericOpcode::G_INTRINSIC_W_SIDE_EFFECTS) ||
+      Instruction.operandCount() != 3 || !Instruction.memOperands().empty()) {
+    return std::nullopt;
+  }
+  const MachineOperand *IntrinsicIDOperand = Instruction.operandAt(0);
+  const MachineOperand *DestinationOperand = Instruction.operandAt(1);
+  const MachineOperand *SourceOperand = Instruction.operandAt(2);
+  const auto *Intrinsic =
+      IntrinsicIDOperand == nullptr ? nullptr : IntrinsicIDOperand->getIf<IntrinsicOperand>();
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+  const std::optional<LLT> DestinationType = operandType(Function, Instruction, 1);
+  const std::optional<LLT> SourceType = operandType(Function, Instruction, 2);
+  if (Intrinsic == nullptr || Intrinsic->ID != intrinsicID(GenericIntrinsic::VACopy) ||
+      Destination == nullptr || Source == nullptr || !Destination->isVirtual() ||
+      !Source->isVirtual() || !DestinationOperand->isUse() || !SourceOperand->isUse() ||
+      !DestinationType || !SourceType || *DestinationType != *SourceType ||
+      !DestinationType->isPointer() || DestinationType->addressSpace() != 0 ||
+      DestinationType->scalarBitWidth() != 64) {
+    return std::nullopt;
+  }
+  return VACopyPlan{*Destination, *Source, *DestinationType};
+}
+
+[[nodiscard]] Expected<void> lowerVACopy(MachineInstr &Instruction, MachineFunction &Function,
+                                         const TargetDescription &Target) {
+  const auto Plan = vacopyPlan(Instruction, Function);
+  if (!Plan) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V va_copy legalization requires two p0 operands");
+  }
+  auto Size = MemorySize::fixed(8);
+  auto Align = Alignment::create(8);
+  if (!Size || !Align)
+    return makeUnexpected(ErrorCode::InternalError, "RISC-V pointer memory facts are invalid");
+
+  MachineMemOperandDesc LoadDescription;
+  LoadDescription.Accesses = {MemoryAccessFlag::Load};
+  LoadDescription.Size = *Size;
+  LoadDescription.MemoryType = Plan->PointerType;
+  LoadDescription.Align = *Align;
+  auto LoadMemory = Function.createMemOperand(std::move(LoadDescription));
+  if (!LoadMemory)
+    return std::unexpected(LoadMemory.error());
+
+  MachineMemOperandDesc StoreDescription;
+  StoreDescription.Accesses = {MemoryAccessFlag::Store};
+  StoreDescription.Size = *Size;
+  StoreDescription.MemoryType = Plan->PointerType;
+  StoreDescription.Align = *Align;
+  auto StoreMemory = Function.createMemOperand(std::move(StoreDescription));
+  if (!StoreMemory)
+    return std::unexpected(StoreMemory.error());
+
+  auto Value = Function.registerInfo().createVirtualRegister(Plan->PointerType);
+  if (!Value)
+    return std::unexpected(Value.error());
+  MachineIRBuilder Builder(Function, Target);
+  if (auto Point = Builder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+
+  auto Load = Builder.buildInstr(opcode(GenericOpcode::G_LOAD));
+  if (!Load)
+    return std::unexpected(Load.error());
+  if (auto Added = Load->addDef(*Value); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Load->addUse(Plan->Source); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Load->addMemOperand(**LoadMemory); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = Load->build(); !Built)
+    return std::unexpected(Built.error());
+
+  auto Store = Builder.buildInstr(opcode(GenericOpcode::G_STORE));
+  if (!Store)
+    return std::unexpected(Store.error());
+  if (auto Added = Store->addUse(*Value); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Store->addUse(Plan->Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Store->addMemOperand(**StoreMemory); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = Store->build(); !Built)
+    return std::unexpected(Built.error());
+  return eraseInstruction(Instruction);
+}
+
 class RISCVLegalizerInfo final : public TargetLegalizerInfo {
 public:
   explicit RISCVLegalizerInfo(RISCVSubtargetFeatures Features) : Features(Features) {}
@@ -2992,6 +3088,9 @@ public:
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
     const std::optional<LLT> Type = resultType(Function, Instruction);
     switch (Generic) {
+    case GenericOpcode::G_INTRINSIC_W_SIDE_EFFECTS:
+      return vacopyPlan(Instruction, Function) ? LegalizationAction::Custom
+                                               : LegalizationAction::Unsupported;
     case GenericOpcode::G_BR:
       return LegalizationAction::Legal;
     case GenericOpcode::G_BRCOND: {
@@ -3617,6 +3716,10 @@ public:
   [[nodiscard]] Expected<void> lower(MachineInstr &Instruction, MachineFunction &Function,
                                      const TargetDescription &Target,
                                      LegalizationAction Action) const override {
+    if (Action == LegalizationAction::Custom &&
+        Instruction.opcode() == opcode(GenericOpcode::G_INTRINSIC_W_SIDE_EFFECTS)) {
+      return lowerVACopy(Instruction, Function, Target);
+    }
     if (Instruction.opcode() == opcode(GenericOpcode::G_MUL) && !Features.has(RISCVExtension::M)) {
       if (Action == LegalizationAction::Custom)
         return widenNarrowMultiply(Instruction, Function, Target);

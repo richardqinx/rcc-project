@@ -73,6 +73,15 @@ using JumpTableIndex = MachineIndex<detail::JumpTableIndexTag>;
 using TargetIndex = MachineIndex<detail::TargetIndexTag>;
 using CFIInstructionIndex = MachineIndex<detail::CFIInstructionIndexTag>;
 using IntrinsicID = MachineIndex<detail::IntrinsicIDTag>;
+
+enum class GenericIntrinsic : std::uint32_t {
+  VACopy = 1,
+};
+
+[[nodiscard]] constexpr IntrinsicID intrinsicID(GenericIntrinsic Intrinsic) noexcept {
+  return IntrinsicID::fromValue(static_cast<std::uint32_t>(Intrinsic));
+}
+
 using SubRegIndex = MachineIndex<detail::SubRegIndexTag>;
 using RegisterUnitID = MachineIndex<detail::RegisterUnitIDTag>;
 using RegisterBankID = MachineIndex<detail::RegisterBankIDTag>;

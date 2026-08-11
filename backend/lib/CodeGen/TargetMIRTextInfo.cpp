@@ -137,6 +137,7 @@ Expected<void> MIRTargetNode::verify() const {
 
 Expected<TargetMIRTextInfo> TargetMIRTextInfo::create(TargetMIRTextInfoDesc Description,
                                                       const TargetRegisterInfo &Registers) {
+  Description.Intrinsics.push_back({"llvm.va_copy", intrinsicID(GenericIntrinsic::VACopy)});
   TargetMIRTextInfo Result(std::move(Description));
 
   for (std::size_t Index = 0; Index < Result.Description.RegisterMasks.size(); ++Index) {
