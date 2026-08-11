@@ -8,6 +8,7 @@
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
+#include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <array>
@@ -1194,6 +1195,63 @@ void testNarrowAnyExtBinaryArtifacts(TestContext &Context) {
       "narrow any-extension binary folding must remove copy, truncation, and extension artifacts");
 }
 
+void testMultiplyLibcallWithoutM(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  const std::vector<std::string> FeatureNames{"+a"};
+  auto Features = rcc::riscv::RISCVSubtargetFeatures::fromFeatureList(FeatureNames);
+  auto Legalizer = Features ? rcc::riscv::createLegalizerInfo(*Features) : nullptr;
+  auto Multiply64 =
+      Target ? createBinary(Context, *Target, rcc::GenericOpcode::G_MUL, 64) : InstructionFixture{};
+  if (!Target || !Features || !Legalizer || Multiply64.Instruction == nullptr)
+    return;
+
+  auto Action = Legalizer->classify(*Multiply64.Instruction, *Multiply64.Function, *Target);
+  auto Lowered =
+      Action ? Legalizer->lower(*Multiply64.Instruction, *Multiply64.Function, *Target, *Action)
+             : rcc::Expected<void>(std::unexpected(Action.error()));
+  rcc::MachineInstr *Call = nullptr;
+  for (rcc::MachineInstr *Instruction : Multiply64.Function->allInstructions()) {
+    if (Instruction->parent() != nullptr &&
+        Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
+                                     rcc::riscv::InstructionOpcode::PseudoCALL))) {
+      Call = Instruction;
+      break;
+    }
+  }
+  const rcc::MachineOperand *Callee = Call == nullptr ? nullptr : Call->operandAt(0);
+  const auto *External = Callee == nullptr ? nullptr : Callee->getIf<rcc::ExternalSymbolOperand>();
+  Context.expect(Action && *Action == rcc::LegalizationAction::Libcall && Lowered &&
+                     Multiply64.Instruction->parent() == nullptr && External != nullptr &&
+                     External->Name == "__muldi3" &&
+                     Multiply64.Function->frameInfo().state().HasCalls,
+                 "s64 G_MUL without M must lower through the LP64 __muldi3 call path");
+
+  auto Multiply32 = createBinary(Context, *Target, rcc::GenericOpcode::G_MUL, 32);
+  if (Multiply32.Instruction == nullptr)
+    return;
+  auto NarrowAction = Legalizer->classify(*Multiply32.Instruction, *Multiply32.Function, *Target);
+  auto NarrowLowered = NarrowAction ? Legalizer->lower(*Multiply32.Instruction,
+                                                       *Multiply32.Function, *Target, *NarrowAction)
+                                    : rcc::Expected<void>(std::unexpected(NarrowAction.error()));
+  rcc::MachineInstr *WideMultiply = nullptr;
+  for (rcc::MachineInstr *Instruction : Multiply32.Function->allInstructions()) {
+    if (Instruction->parent() != nullptr &&
+        Instruction->opcode() == rcc::opcode(rcc::GenericOpcode::G_MUL)) {
+      WideMultiply = Instruction;
+      break;
+    }
+  }
+  auto WideAction = WideMultiply == nullptr
+                        ? rcc::Expected<rcc::LegalizationAction>(std::unexpected(
+                              rcc::Error(rcc::ErrorCode::InternalError, "missing wide multiply")))
+                        : Legalizer->classify(*WideMultiply, *Multiply32.Function, *Target);
+  Context.expect(NarrowAction && *NarrowAction == rcc::LegalizationAction::Custom &&
+                     NarrowLowered &&
+                     Multiply32.Instruction->opcode() == rcc::opcode(rcc::GenericOpcode::G_TRUNC) &&
+                     WideAction && *WideAction == rcc::LegalizationAction::Libcall,
+                 "narrow G_MUL without M must widen to the single s64 multiply libcall type");
+}
+
 void testAtomicSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   if (!Target)
@@ -1475,6 +1533,7 @@ int main() {
   testConstantExtensionPreservesLiveSource(Context);
   testIntegerCompareReusesConstantExtension(Context);
   testNarrowAnyExtBinaryArtifacts(Context);
+  testMultiplyLibcallWithoutM(Context);
   testAtomicSelection(Context);
   testUnsupportedTypes(Context);
   testMemoryOffsetSelection(Context);

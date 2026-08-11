@@ -3,7 +3,6 @@
 #include "rcc/Target/RISCV/RISCVCodeGen.h"
 
 #include "RISCVImmediateMaterialization.h"
-
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -14,6 +13,7 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/Target/RISCV/RISCVCallLowering.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <algorithm>
@@ -1419,10 +1419,108 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     return std::unexpected(Def.error());
   if (auto Added = Instruction.addOperand(std::move(*Def)); !Added)
     return std::unexpected(Added.error());
-  auto Use = MachineOperand::registerOperand(Source, RegisterOperandFlags{RegisterOperandFlag::Use});
+  auto Use =
+      MachineOperand::registerOperand(Source, RegisterOperandFlags{RegisterOperandFlag::Use});
   if (!Use)
     return std::unexpected(Use.error());
   return Instruction.addOperand(std::move(*Use));
+}
+
+[[nodiscard]] Expected<void> widenNarrowMultiply(MachineInstr &Instruction,
+                                                 MachineFunction &Function,
+                                                 const TargetDescription &Target) {
+  const std::optional<LLT> Type = resultType(Function, Instruction);
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *LeftOperand = Instruction.operandAt(1);
+  const MachineOperand *RightOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+  const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+  if (!Type || Destination == nullptr || Left == nullptr || Right == nullptr ||
+      Type->scalarBitWidth() >= 64) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V narrow multiply has invalid operands");
+  }
+
+  MachineInstr *Extension = singleRegisterUse(Function, *Destination);
+  if (Extension != nullptr && Extension->opcode() == opcode(GenericOpcode::G_ANYEXT)) {
+    const auto Plan = narrowAnyExtBinaryPlan(*Extension, Function);
+    if (Plan && Plan->Binary == &Instruction)
+      return foldNarrowAnyExtBinary(*Extension, Function, Target);
+  }
+
+  auto WideType = LLT::makeAnyScalar(64);
+  if (!WideType)
+    return std::unexpected(WideType.error());
+  MachineIRBuilder Builder(Function, Target);
+  auto WideLeft = buildUnaryBefore(Builder, Instruction, GenericOpcode::G_ANYEXT, *WideType, *Left);
+  if (!WideLeft)
+    return std::unexpected(WideLeft.error());
+  auto WideRight =
+      buildUnaryBefore(Builder, Instruction, GenericOpcode::G_ANYEXT, *WideType, *Right);
+  if (!WideRight)
+    return std::unexpected(WideRight.error());
+  auto Product = buildBinaryBefore(Builder, Instruction, GenericOpcode::G_MUL, *WideType, *WideLeft,
+                                   *WideRight);
+  if (!Product)
+    return std::unexpected(Product.error());
+  return rewriteUnary(Instruction, GenericOpcode::G_TRUNC, *Destination, *Product);
+}
+
+[[nodiscard]] Expected<void> lowerMultiplyLibcall(MachineInstr &Instruction,
+                                                  MachineFunction &Function,
+                                                  const TargetDescription &Target) {
+  const std::optional<LLT> Type = resultType(Function, Instruction);
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *LeftOperand = Instruction.operandAt(1);
+  const MachineOperand *RightOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+  const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+  if (!Type || Destination == nullptr || Left == nullptr || Right == nullptr ||
+      Type->scalarBitWidth() != 64) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V multiply libcall requires three s64 registers");
+  }
+  auto ABIAlignment = Alignment::create(8);
+  auto Callee = MachineCallTarget::externalSymbol("__muldi3");
+  if (!ABIAlignment || !Callee)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "RISC-V multiply libcall ABI facts are unavailable");
+  const auto Value = [Type = *Type, Alignment = *ABIAlignment](Register Reg, std::uint32_t Number) {
+    return ABIValue{
+        .Value = Reg,
+        .Type = Type,
+        .OriginalValue = Number,
+        .FragmentIndex = 0,
+        .FragmentCount = 1,
+        .FragmentOffsetBytes = 0,
+        .OriginalAlignment = Alignment,
+        .Extension = ABIExtensionKind::None,
+        .Flags = {},
+        .ByValSizeBytes = 0,
+        .ByValAlignment = Alignment,
+    };
+  };
+
+  CallLoweringRequest Request;
+  Request.Convention = callingConventionID(CallingConvention::LP64D);
+  Request.Callee = std::move(*Callee);
+  Request.Arguments = {Value(*Left, 0), Value(*Right, 1)};
+  Request.Results = {Value(*Destination, 0)};
+  Request.FixedArgumentCount = Request.Arguments.size();
+  Request.CallSiteID = Instruction.stableID().value();
+
+  MachineIRBuilder Builder(Function, Target);
+  auto Point = Builder.setInsertPointBefore(Instruction);
+  if (!Point)
+    return std::unexpected(Point.error());
+  auto Lowered = callLowering().lowerCall(Builder, Request);
+  if (!Lowered)
+    return std::unexpected(Lowered.error());
+  return eraseInstruction(Instruction);
 }
 
 [[nodiscard]] Expected<void> rewriteBinary(MachineInstr &Instruction, GenericOpcode Generic,
@@ -3465,8 +3563,24 @@ public:
                    ? LegalizationAction::Custom
                    : LegalizationAction::Unsupported;
       }
+      if (Generic == GenericOpcode::G_MUL && !Features.has(RISCVExtension::M)) {
+        if (Type->scalarBitWidth() == 64)
+          return LegalizationAction::Libcall;
+        const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+        const Register *Destination =
+            DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+        MachineInstr *Extension =
+            Destination == nullptr ? nullptr : singleRegisterUse(Function, *Destination);
+        const std::optional<LLT> ExtensionType =
+            Extension == nullptr ? std::nullopt : resultType(Function, *Extension);
+        if (Extension != nullptr && Extension->opcode() == opcode(GenericOpcode::G_ANYEXT) &&
+            ExtensionType && ExtensionType->scalarBitWidth() == 64) {
+          return LegalizationAction::Legal;
+        }
+        return LegalizationAction::Custom;
+      }
       return isSupportedIntegerScalar(*Type) ? LegalizationAction::Legal
-                                              : LegalizationAction::Unsupported;
+                                             : LegalizationAction::Unsupported;
     }
     case GenericOpcode::G_PTR_ADD: {
       const std::optional<LLT> Pointer = operandType(Function, Instruction, 1);
@@ -3503,6 +3617,12 @@ public:
   [[nodiscard]] Expected<void> lower(MachineInstr &Instruction, MachineFunction &Function,
                                      const TargetDescription &Target,
                                      LegalizationAction Action) const override {
+    if (Instruction.opcode() == opcode(GenericOpcode::G_MUL) && !Features.has(RISCVExtension::M)) {
+      if (Action == LegalizationAction::Custom)
+        return widenNarrowMultiply(Instruction, Function, Target);
+      if (Action == LegalizationAction::Libcall)
+        return lowerMultiplyLibcall(Instruction, Function, Target);
+    }
     if (Action == LegalizationAction::Custom &&
         resultType(Function, Instruction)
             .transform([](LLT Type) { return Type.scalarBitWidth() > 64; })
