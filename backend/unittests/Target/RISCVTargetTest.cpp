@@ -188,6 +188,8 @@ void testInstructionFacts(TestContext &Context) {
   const auto *GenericAdd = Target->instructionDescriptor(rcc::opcode(rcc::GenericOpcode::G_ADD));
   const auto *PseudoCall = Target->instructionDescriptor(rcc::Opcode::fromValue(
       static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::PseudoCALL)));
+  const auto *PseudoTail = Target->instructionDescriptor(rcc::Opcode::fromValue(
+      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::PseudoTAIL)));
   const auto *Assembly = rcc::riscv::assemblyInstruction(
       rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADDI)));
   const auto *FenceAssembly = rcc::riscv::assemblyInstruction(
@@ -239,7 +241,9 @@ void testInstructionFacts(TestContext &Context) {
           Compressed != nullptr && Compressed->ImplicitDefs.size() == 1 &&
           Compressed->ImplicitUses.size() == 1 && GenericAdd != nullptr &&
           GenericAdd->Flags.has(rcc::InstructionFlag::Generic) && PseudoCall != nullptr &&
-          PseudoCall->Flags.has(rcc::InstructionFlag::Pseudo) &&
+          PseudoCall->Operands.size() == 2 && PseudoCall->Operands[1].Optional &&
+          PseudoTail != nullptr && PseudoTail->Operands.size() == 2 &&
+          PseudoTail->Operands[1].Optional && PseudoCall->Flags.has(rcc::InstructionFlag::Pseudo) &&
           PseudoCall->Flags.has(rcc::InstructionFlag::Call) &&
           rcc::riscv::assemblyInstruction(PseudoCall->InstructionOpcode) == nullptr &&
           Assembly != nullptr && Assembly->Mnemonic == "addi" &&

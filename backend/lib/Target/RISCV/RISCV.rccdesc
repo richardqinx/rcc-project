@@ -3643,7 +3643,7 @@ instructions:
     name: PseudoCALL
     operands:
       - { kinds: [global_symbol, external_symbol, register], role: use, allowed_target_flags: 1 }
-      - { kinds: [register_mask] }
+      - { kinds: [register_mask], optional: true }
     num_explicit_defs: 0
     implicit_defs: [{ register: X1 }]
     allow_extra_implicit_operands: true
@@ -3656,7 +3656,7 @@ instructions:
     name: PseudoTAIL
     operands:
       - { kinds: [global_symbol, external_symbol, register], role: use, allowed_target_flags: 1 }
-      - { kinds: [register_mask] }
+      - { kinds: [register_mask], optional: true }
     num_explicit_defs: 0
     allow_extra_implicit_operands: true
     flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, call, barrier, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
