@@ -391,8 +391,6 @@ buildIndirectTail(rcc::MachineFunction &Function, const rcc::TargetDescription &
     return std::unexpected(Pending.error());
   if (auto Result = Pending->addUse(Callee); !Result)
     return std::unexpected(Result.error());
-  if (auto Result = Pending->addImmediate(1); !Result)
-    return std::unexpected(Result.error());
   if (auto Result = Pending->addRegisterMask(std::move(Mask)); !Result)
     return std::unexpected(Result.error());
   return Pending->build();

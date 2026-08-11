@@ -246,28 +246,27 @@ Expected<CallLoweringPlan> CallLoweringPlan::create(CallLoweringPlanDesc Descrip
   switch (Description.Kind) {
   case CallLoweringPlanKind::FormalArguments:
     if (!Description.ReturnAssignments.empty() || Description.Callee || Description.PreservedMask ||
-        Description.CallSiteID != 0 || Description.TailDecision != TailCallKind::NotTail ||
-        Description.CallFrame.EmitSetup || Description.CallFrame.ReusesIncomingArea ||
-        !Description.ByValCopies.empty() || !Description.TailRejectionReason.empty()) {
+        Description.TailDecision != TailCallKind::NotTail || Description.CallFrame.EmitSetup ||
+        Description.CallFrame.ReusesIncomingArea || !Description.ByValCopies.empty() ||
+        !Description.TailRejectionReason.empty()) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "formal-argument plan contains call or return state");
     }
     break;
   case CallLoweringPlanKind::Return:
     if (!Description.ArgumentAssignments.empty() || Description.Callee ||
-        Description.PreservedMask || Description.CallSiteID != 0 ||
-        Description.TailDecision != TailCallKind::NotTail || Description.CallFrame.EmitSetup ||
-        Description.CallFrame.ReusesIncomingArea || !Description.ByValCopies.empty() ||
-        Description.VarArgs.IsVariadic || !Description.TailRejectionReason.empty()) {
+        Description.PreservedMask || Description.TailDecision != TailCallKind::NotTail ||
+        Description.CallFrame.EmitSetup || Description.CallFrame.ReusesIncomingArea ||
+        !Description.ByValCopies.empty() || Description.VarArgs.IsVariadic ||
+        !Description.TailRejectionReason.empty()) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "return plan contains formal-argument or call state");
     }
     break;
   case CallLoweringPlanKind::Call:
-    if (!Description.Callee || !Description.Callee->isValid() || !Description.PreservedMask ||
-        Description.CallSiteID == 0) {
+    if (!Description.Callee || !Description.Callee->isValid() || !Description.PreservedMask) {
       return makeUnexpected(ErrorCode::InvalidArgument,
-                            "call plan requires a callee, call-site ID, and preserved mask");
+                            "call plan requires a callee and preserved mask");
     }
     if (Description.TailDecision == TailCallKind::NotTail) {
       if (!Description.CallFrame.EmitSetup || Description.CallFrame.ReusesIncomingArea) {

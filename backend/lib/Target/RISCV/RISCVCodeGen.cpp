@@ -1511,7 +1511,6 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
   Request.Arguments = {Value(*Left, 0), Value(*Right, 1)};
   Request.Results = {Value(*Destination, 0)};
   Request.FixedArgumentCount = Request.Arguments.size();
-  Request.CallSiteID = Instruction.stableID().value();
 
   MachineIRBuilder Builder(Function, Target);
   auto Point = Builder.setInsertPointBefore(Instruction);

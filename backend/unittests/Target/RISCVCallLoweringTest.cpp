@@ -176,7 +176,6 @@ abiValue(rcc::LLT Type, std::uint32_t OriginalValue, rcc::Register Value = plann
   Request.Callee = externalTarget();
   Request.Arguments = std::move(Arguments);
   Request.FixedArgumentCount = FixedArgumentCount;
-  Request.CallSiteID = 17;
   Request.IsVariadic = IsVariadic;
   return Request;
 }
@@ -491,14 +490,13 @@ void testOrdinaryAndIndirectEmission(TestContext &Context) {
                          opcode(rcc::riscv::InstructionOpcode::ADJCALLSTACKDOWN) &&
                      Instructions[1]->opcode() == rcc::opcode(rcc::GenericOpcode::COPY) &&
                      Instructions.back()->opcode() == rcc::opcode(rcc::GenericOpcode::COPY) &&
-                     Call != nullptr && Call->operandCount() >= 6 &&
+                     Call != nullptr && Call->operandCount() >= 5 &&
                      Call->operandAt(0)->kind() == rcc::MachineOperand::Kind::ExternalSymbol &&
                      Call->operandAt(0)->targetFlags() ==
                          static_cast<std::uint32_t>(rcc::riscv::CallTargetFlag::DirectCall) &&
-                     Call->operandAt(1)->kind() == rcc::MachineOperand::Kind::IntegerImmediate &&
-                     Call->operandAt(2)->kind() == rcc::MachineOperand::Kind::RegisterMask,
+                     Call->operandAt(1)->kind() == rcc::MachineOperand::Kind::RegisterMask,
                  "ordinary emission must materialize canonical full-value copies, call-frame, "
-                 "target, ID, and RegMask");
+                 "target, and RegMask");
   const rcc::Register StackPointer =
       rcc::Register::fromPhysical(physical(rcc::riscv::PhysicalRegisterID::X2));
   const auto HasStackPointerEffects = [StackPointer](const rcc::MachineInstr *Instruction) {

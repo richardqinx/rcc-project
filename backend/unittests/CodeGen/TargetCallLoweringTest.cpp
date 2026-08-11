@@ -81,7 +81,6 @@ private:
     Description.CallFrame.EmitDestroy = true;
     Description.PreservedMask = rcc::test::createTestCallPreservedMask();
     Description.Callee = *rcc::MachineCallTarget::externalSymbol("callee");
-    Description.CallSiteID = 1;
   }
   return Description;
 }

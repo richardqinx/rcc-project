@@ -3375,7 +3375,6 @@ instructions:
     name: PseudoCALL
     operands:
       - { kinds: [global_symbol, external_symbol, register], role: use, allowed_target_flags: 1 }
-      - { kinds: [immediate, integer_immediate] }
       - { kinds: [register_mask] }
     num_explicit_defs: 0
     implicit_defs: [{ register: X1 }]
@@ -3389,7 +3388,6 @@ instructions:
     name: PseudoTAIL
     operands:
       - { kinds: [global_symbol, external_symbol, register], role: use, allowed_target_flags: 1 }
-      - { kinds: [immediate, integer_immediate] }
       - { kinds: [register_mask] }
     num_explicit_defs: 0
     allow_extra_implicit_operands: true
@@ -3416,7 +3414,6 @@ instructions:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [immediate, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
-      - { kinds: [immediate, integer_immediate] }
       - { kinds: [register_mask] }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
@@ -3434,7 +3431,6 @@ instructions:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [immediate, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
-      - { kinds: [immediate, integer_immediate] }
       - { kinds: [register_mask] }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true

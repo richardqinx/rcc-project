@@ -1130,8 +1130,7 @@ void testPostRAPseudoExpansionAndFinalization(TestContext &Context,
   }
   auto Call = Builder.buildInstr(opcode(rcc::riscv::InstructionOpcode::PseudoCALL));
   auto Preserved = rcc::riscv::createCallPreservedMask();
-  if (!Call || !Call->addExternalSymbol("callee", 0, 1) || !Call->addImmediate(11) ||
-      !Call->addRegisterMask(Preserved) ||
+  if (!Call || !Call->addExternalSymbol("callee", 0, 1) || !Call->addRegisterMask(Preserved) ||
       !Call->addImplicitUse(physical(rcc::riscv::PhysicalRegisterID::X10)) || !Call->build()) {
     Context.expect(false, "post-RA call pseudo construction must succeed");
     return;

@@ -159,7 +159,6 @@ struct CallLoweringRequest final {
   std::vector<ABIValue> Arguments;
   std::vector<ABIValue> Results;
   std::size_t FixedArgumentCount = 0;
-  std::uint64_t CallSiteID = 0;
   bool IsVariadic = false;
   TailCallKind TailKind = TailCallKind::NotTail;
   std::optional<TailCallContext> TailContext;
@@ -306,7 +305,6 @@ struct CallLoweringPlanDesc final {
   std::vector<ByValCopyAssignment> ByValCopies;
   std::shared_ptr<const RegisterMask> PreservedMask;
   std::optional<MachineCallTarget> Callee;
-  std::uint64_t CallSiteID = 0;
   TailCallKind TailDecision = TailCallKind::NotTail;
   std::string TailRejectionReason;
 };
@@ -357,10 +355,6 @@ public:
 
   [[nodiscard]] const MachineCallTarget *callee() const noexcept {
     return Description.Callee ? &*Description.Callee : nullptr;
-  }
-
-  [[nodiscard]] std::uint64_t callSiteID() const noexcept {
-    return Description.CallSiteID;
   }
 
   [[nodiscard]] TailCallKind tailDecision() const noexcept {

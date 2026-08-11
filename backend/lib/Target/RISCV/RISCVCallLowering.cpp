@@ -574,10 +574,8 @@ Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "call request has an invalid fixed/variadic argument boundary");
   }
-  if (Request.CallSiteID == 0 || !Request.Callee.isValid()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "call request requires a valid callee and nonzero call-site ID");
-  }
+  if (!Request.Callee.isValid())
+    return makeUnexpected(ErrorCode::InvalidArgument, "call request requires a valid callee");
   if (hasStructReturn(Request.Arguments) &&
       (Request.Arguments.empty() ||
        !Request.Arguments.front().Flags.has(ABIValueFlag::StructReturn))) {
@@ -704,7 +702,6 @@ Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest
   Plan.ByValCopies = std::move(ByValCopies);
   Plan.PreservedMask = createCallPreservedMask();
   Plan.Callee = std::move(EffectiveCallee);
-  Plan.CallSiteID = Request.CallSiteID;
   Plan.TailDecision = Decision;
   Plan.TailRejectionReason = std::move(RejectionReason);
   return CallLoweringPlan::create(std::move(Plan));
@@ -1337,9 +1334,6 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
   auto Callee = addCallTarget(*Instruction, *Plan.callee());
   if (!Callee)
     return std::unexpected(Callee.error());
-  auto CallSite = addUnsignedImmediate(*Instruction, Plan.callSiteID());
-  if (!CallSite)
-    return std::unexpected(CallSite.error());
   auto Mask = Instruction->addRegisterMask(Plan.preservedMask());
   if (!Mask)
     return std::unexpected(Mask.error());

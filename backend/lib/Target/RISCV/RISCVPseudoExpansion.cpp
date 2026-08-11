@@ -338,9 +338,8 @@ copyRegisters(const MachineInstr &Instruction) {
                                         const TargetDescription &Target, bool IsTail) {
   MachineBasicBlock *Block = Instruction.parent();
   const MachineOperand *Callee = Instruction.operandAt(0);
-  const MachineOperand *CallSite = Instruction.operandAt(1);
-  const MachineOperand *Mask = Instruction.operandAt(2);
-  if (Block == nullptr || Callee == nullptr || CallSite == nullptr || Mask == nullptr ||
+  const MachineOperand *Mask = Instruction.operandAt(1);
+  if (Block == nullptr || Callee == nullptr || Mask == nullptr ||
       Mask->kind() != MachineOperand::Kind::RegisterMask) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V call pseudo has malformed explicit operands");
@@ -409,14 +408,11 @@ copyRegisters(const MachineInstr &Instruction) {
       Anchor ? LowPending->addMCSymbol(*Anchor, 0, PCRelativeLowFlag) : LowPending->addImmediate(0);
   if (!LowOffset)
     return std::unexpected(LowOffset.error());
-  auto LowCallSite = LowPending->addOperand(CallSite->cloneDetached());
-  if (!LowCallSite)
-    return std::unexpected(LowCallSite.error());
   auto LowMask = LowPending->addOperand(Mask->cloneDetached());
   if (!LowMask)
     return std::unexpected(LowMask.error());
   auto Implicit = copyExtraImplicitOperands(
-      Instruction, 3, *LowPending, IsTail ? std::nullopt : std::optional<PhysicalRegister>{*Link},
+      Instruction, 2, *LowPending, IsTail ? std::nullopt : std::optional<PhysicalRegister>{*Link},
       std::nullopt);
   if (!Implicit)
     return std::unexpected(Implicit.error());
