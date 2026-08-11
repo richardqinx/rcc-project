@@ -1626,6 +1626,55 @@ void testVAArgLegalization(TestContext &Context) {
                  "va_arg expansion must attach typed MMOs to every concrete memory access");
 }
 
+void testFrameIndexLegalization(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  Context.expect(Target.has_value(),
+                 "RV64GC target must be available for frame-index legalization");
+  if (!Target)
+    return;
+  auto Function = rcc::MachineFunction::create("riscv_frame_index",
+                                               rcc::MachineFunctionStableID::fromValue(104));
+  if (!Function)
+    return;
+  auto Block = (*Function)->createBasicBlock();
+  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto OtherAddressSpace = rcc::LLT::makePointer(1, 64);
+  rcc::StackObjectDesc StackSlot;
+  StackSlot.Size = 8;
+  StackSlot.Align = *rcc::Alignment::create(8);
+  auto Frame = (*Function)->frameInfo().createObject(StackSlot);
+  if (!Block || !Pointer || !OtherAddressSpace || !Frame || !(*Function)->appendBlock(**Block))
+    return;
+  auto Result = (*Function)->registerInfo().createVirtualRegister(*Pointer);
+  auto UnsupportedResult = (*Function)->registerInfo().createVirtualRegister(*OtherAddressSpace);
+  if (!Result || !UnsupportedResult)
+    return;
+
+  rcc::MachineIRBuilder Builder(**Function, *Target);
+  if (!Builder.setInsertPoint(**Block))
+    return;
+  auto Legal = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_FRAME_INDEX));
+  if (!Legal || !Legal->addDef(*Result) || !Legal->addFrameIndex(*Frame))
+    return;
+  auto BuiltLegal = Legal->build();
+  auto Unsupported = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_FRAME_INDEX));
+  if (!BuiltLegal || !Unsupported || !Unsupported->addDef(*UnsupportedResult) ||
+      !Unsupported->addFrameIndex(*Frame)) {
+    return;
+  }
+  auto BuiltUnsupported = Unsupported->build();
+  if (!BuiltUnsupported)
+    return;
+
+  auto LegalAction = rcc::riscv::legalizerInfo().classify(**BuiltLegal, **Function, *Target);
+  auto UnsupportedAction =
+      rcc::riscv::legalizerInfo().classify(**BuiltUnsupported, **Function, *Target);
+  Context.expect(LegalAction && *LegalAction == rcc::LegalizationAction::Legal,
+                 "RV64GC must legalize G_FRAME_INDEX for p0");
+  Context.expect(UnsupportedAction && *UnsupportedAction == rcc::LegalizationAction::Unsupported,
+                 "RV64GC must reject G_FRAME_INDEX outside p0");
+}
+
 void testMemoryOffsetSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   Context.expect(Target.has_value(), "RV64GC target must be available for memory selection");
@@ -1711,6 +1760,7 @@ int main() {
   testUnsupportedTypes(Context);
   testVACopyLegalization(Context);
   testVAArgLegalization(Context);
+  testFrameIndexLegalization(Context);
   testMemoryOffsetSelection(Context);
   return Context.result();
 }

@@ -3273,6 +3273,10 @@ public:
     case GenericOpcode::G_VAARG:
       return vaargPlan(Instruction, Function) ? LegalizationAction::Custom
                                               : LegalizationAction::Unsupported;
+    case GenericOpcode::G_FRAME_INDEX:
+      return Type && Type->isPointer() && Type->addressSpace() == 0 && Type->scalarBitWidth() == 64
+                 ? LegalizationAction::Legal
+                 : LegalizationAction::Unsupported;
     case GenericOpcode::G_BR:
       return LegalizationAction::Legal;
     case GenericOpcode::G_BRCOND: {
