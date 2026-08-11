@@ -3342,6 +3342,169 @@ instructions:
     owner: instruction_select
     deadline: selected
   -
+    id: 1230
+    symbol: G_SRAW
+    name: G_SRAW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1231
+    symbol: G_DIVW
+    name: G_DIVW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1232
+    symbol: G_CLZW
+    name: G_CLZW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1233
+    symbol: G_CTZW
+    name: G_CTZW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1234
+    symbol: G_FCVT_W_RV64
+    name: G_FCVT_W_RV64
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [immediate] }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1235
+    symbol: G_FCLASS
+    name: G_FCLASS
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1236
+    symbol: G_ROLW
+    name: G_ROLW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1237
+    symbol: G_SRLW
+    name: G_SRLW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1238
+    symbol: G_DIVUW
+    name: G_DIVUW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1239
+    symbol: G_REMUW
+    name: G_REMUW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1240
+    symbol: G_RORW
+    name: G_RORW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1241
+    symbol: G_BREV8
+    name: G_BREV8
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1242
+    symbol: G_FCVT_WU_RV64
+    name: G_FCVT_WU_RV64
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [immediate] }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1243
+    symbol: G_CLSW
+    name: G_CLSW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
     id: 1216
     symbol: PseudoCC_COPY
     name: PseudoCC_COPY
