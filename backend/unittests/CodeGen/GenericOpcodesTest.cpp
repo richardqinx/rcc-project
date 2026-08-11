@@ -456,9 +456,20 @@ void testShapesAndTypes(TestContext &Context) {
                      .has_value(),
                  "G_ICMP must accept an i1 result and homogeneous integer sources");
   CompareOperands[0] = registerOperand(*Dst32, true);
+  Context.expect(Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_ICMP),
+                                               CompareOperands, (*Function)->registerInfo())
+                     .has_value(),
+                 "G_ICMP must accept a legalized integer result container");
+  CompareOperands[2] = registerOperand(*Address, false);
+  CompareOperands[3] = registerOperand(*NewAddress, false);
+  Context.expect(Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_ICMP),
+                                               CompareOperands, (*Function)->registerInfo())
+                     .has_value(),
+                 "G_ICMP must accept homogeneous pointer sources");
+  CompareOperands[3] = registerOperand(*Src32B, false);
   Context.expect(!Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_ICMP),
                                                 CompareOperands, (*Function)->registerInfo()),
-                 "G_ICMP must reject a non-i1 result");
+                 "G_ICMP must reject mixed pointer and integer sources");
 
   std::vector<rcc::MachineOperand> FloatingLoad;
   FloatingLoad.push_back(registerOperand(Float64, true));

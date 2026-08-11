@@ -43,6 +43,11 @@ using GO = GenericOpcode;
   return {LLT::Kind::AnyScalar, LLT::Kind::Integer, LLT::Kind::VectorAny, LLT::Kind::VectorInteger};
 }
 
+[[nodiscard]] LLTKindSet integerOrPointerKinds() {
+  return {LLT::Kind::AnyScalar, LLT::Kind::Integer,       LLT::Kind::Pointer,
+          LLT::Kind::VectorAny, LLT::Kind::VectorInteger, LLT::Kind::VectorPointer};
+}
+
 [[nodiscard]] LLTKindSet scalarIntegerKinds() {
   return {LLT::Kind::AnyScalar, LLT::Kind::Integer};
 }
@@ -393,8 +398,7 @@ private:
     if (Payload == nullptr)
       return semanticError("G_FCONSTANT requires a floating-point immediate");
     const LLT DestinationType = TypeAt(0);
-    const std::optional<FloatSemantics> DestinationSemantics =
-        DestinationType.floatSemantics();
+    const std::optional<FloatSemantics> DestinationSemantics = DestinationType.floatSemantics();
     if ((DestinationSemantics && Payload->Bits.semantics() != *DestinationSemantics) ||
         (!DestinationSemantics && Payload->Bits.bitWidth() != DestinationType.scalarBitWidth())) {
       return semanticError("G_FCONSTANT semantics must match its destination LLT");
@@ -1137,6 +1141,7 @@ void configureCoreOpcodes(DescriptorRegistry &Registry) {
 void configureGenericOpcodes(DescriptorRegistry &Registry) {
   const LLTKindSet AnyTypes = anyValueKinds();
   const LLTKindSet IntTypes = integerKinds();
+  const LLTKindSet IntegerOrPointers = integerOrPointerKinds();
   const LLTKindSet ScalarValues = scalarValueKinds();
   const LLTKindSet ScalarInts = scalarIntegerKinds();
   const LLTKindSet ScalarIntegerOrPointers = scalarIntegerOrPointerKinds();
@@ -1155,6 +1160,7 @@ void configureGenericOpcodes(DescriptorRegistry &Registry) {
   const auto IntDef1 = typedRegister(RegisterOperandRole::Def, IntTypes, 1);
   const auto IntUse0 = typedRegister(RegisterOperandRole::Use, IntTypes, 0);
   const auto IntUse1 = typedRegister(RegisterOperandRole::Use, IntTypes, 1);
+  const auto IntegerOrPointerUse1 = typedRegister(RegisterOperandRole::Use, IntegerOrPointers, 1);
   const auto ScalarIntDef0 = typedRegister(RegisterOperandRole::Def, ScalarInts, 0);
   const auto ScalarIntDef1 = typedRegister(RegisterOperandRole::Def, ScalarInts, 1);
   const auto ScalarIntUse0 = typedRegister(RegisterOperandRole::Use, ScalarInts, 0);
@@ -1314,8 +1320,10 @@ void configureGenericOpcodes(DescriptorRegistry &Registry) {
       {GO::G_SHL, GO::G_LSHR, GO::G_ASHR, GO::G_ROTR, GO::G_ROTL, GO::G_USHLSAT, GO::G_SSHLSAT},
       {IntDef0, IntUse0, IntUse1}, 1);
   Registry.configure({GO::G_FSHL, GO::G_FSHR}, {IntDef0, IntUse0, IntUse0, IntUse1}, 1);
-  Registry.configure({GO::G_ICMP},
-                     {IntDef0, kind(MachineOperand::Kind::Predicate), IntUse1, IntUse1}, 1);
+  Registry.configure(
+      {GO::G_ICMP},
+      {IntDef0, kind(MachineOperand::Kind::Predicate), IntegerOrPointerUse1, IntegerOrPointerUse1},
+      1);
   Registry.configure({GO::G_FCMP},
                      {IntDef0, kind(MachineOperand::Kind::Predicate), FloatUse1, FloatUse1}, 1);
   Registry.configure({GO::G_SCMP, GO::G_UCMP}, {IntDef0, IntUse1, IntUse1}, 1);
