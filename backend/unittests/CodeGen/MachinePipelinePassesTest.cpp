@@ -64,6 +64,34 @@ public:
   }
 };
 
+class BackwardInvalidatingLegalizer final : public rcc::TargetLegalizerInfo {
+public:
+  [[nodiscard]] rcc::Expected<rcc::LegalizationAction>
+  classify(const rcc::MachineInstr &Instruction, const rcc::MachineFunction &,
+           const rcc::TargetDescription &) const override {
+    return Instruction.opcode() == rcc::opcode(rcc::GenericOpcode::G_SUB)
+               ? rcc::LegalizationAction::Custom
+               : rcc::LegalizationAction::Legal;
+  }
+
+  [[nodiscard]] rcc::Expected<void> lower(rcc::MachineInstr &Instruction,
+                                          rcc::MachineFunction &Function,
+                                          const rcc::TargetDescription &,
+                                          rcc::LegalizationAction) const override {
+    for (rcc::MachineInstr *Candidate : Function.allInstructions()) {
+      if (Candidate != &Instruction &&
+          Candidate->opcode() == rcc::opcode(rcc::GenericOpcode::G_ADD)) {
+        auto Invalidated = Candidate->setOpcode(rcc::opcode(rcc::GenericOpcode::G_SUB));
+        if (!Invalidated)
+          return std::unexpected(Invalidated.error());
+        break;
+      }
+    }
+    return Instruction.setOpcode(
+        rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADD)));
+  }
+};
+
 class MutatingFailingSelector final : public rcc::TargetInstructionSelector {
 public:
   [[nodiscard]] rcc::Expected<void> canSelect(const rcc::MachineInstr &,
@@ -408,6 +436,38 @@ void testLegalizerCycleDiagnostic(TestContext &Context) {
                  "a failed legalization cycle must not publish Legalized");
 }
 
+void testLegalizerRevisitsInvalidatedInstructions(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  auto Fixture = createFixture(Context, "pipeline_legalizer_revisit", 7);
+  if (!Target || !Fixture.Function || Fixture.Entry == nullptr)
+    return;
+  const rcc::Register Left = createRegister(Context, *Fixture.Function, 64);
+  const rcc::Register Right = createRegister(Context, *Fixture.Function, 64);
+  const rcc::Register FirstResult = createRegister(Context, *Fixture.Function, 64);
+  const rcc::Register SecondResult = createRegister(Context, *Fixture.Function, 64);
+  rcc::MachineIRBuilder Builder(*Fixture.Function, *Target);
+  if (Left.isNoRegister() || Right.isNoRegister() || FirstResult.isNoRegister() ||
+      SecondResult.isNoRegister() || !Builder.setInsertPoint(*Fixture.Entry) ||
+      !buildAdd(Context, Builder, FirstResult, Left, Right) ||
+      !buildAdd(Context, Builder, SecondResult, Left, Right))
+    return;
+  rcc::MachineInstr *First = Fixture.Entry->firstInstruction();
+  rcc::MachineInstr *Second = First == nullptr ? nullptr : First->next();
+  if (Second == nullptr || !Second->setOpcode(rcc::opcode(rcc::GenericOpcode::G_SUB)))
+    return;
+
+  Fixture.Function->properties() = {rcc::MachineFunctionProperty::IsSSA,
+                                    rcc::MachineFunctionProperty::TracksLiveness};
+  BackwardInvalidatingLegalizer Legalizer;
+  rcc::LegalizerPass Pass(Legalizer);
+  rcc::MachineAnalysisManager Analyses;
+  auto Run = Pass.run(*Fixture.Function, *Target, Analyses);
+  const rcc::Opcode LegalOpcode =
+      rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADD));
+  Context.expect(Run && First->opcode() == LegalOpcode && Second->opcode() == LegalOpcode,
+                 "legalizer must revisit an earlier instruction invalidated by a later lowering");
+}
+
 void testInstructionSelectionTransaction(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   auto Fixture = createFixture(Context, "pipeline_selection_transaction", 8);
@@ -621,6 +681,7 @@ int main() {
   testBankConflict(Context);
   testBankClassOnlyChange(Context);
   testLegalizerCycleDiagnostic(Context);
+  testLegalizerRevisitsInvalidatedInstructions(Context);
   testInstructionSelectionTransaction(Context);
   testInstructionSelectionOrder(Context);
   testInstructionSelectionWorklist(Context);

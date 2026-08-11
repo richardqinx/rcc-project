@@ -352,11 +352,13 @@ Expected<MachinePassResult> LegalizerPass::runImplementation(MachineFunction &Fu
   std::unordered_set<OpcodeState, OpcodeStateHash> SeenStates;
 
   std::vector<MachineInstr *> Worklist = layoutInstructions(Function);
-  std::unordered_set<MachineInstrStableID> DiscoveredInstructions;
+  std::unordered_set<MachineInstrStableID> PendingInstructions;
   for (const MachineInstr *Instruction : Worklist)
-    DiscoveredInstructions.insert(Instruction->stableID());
+    PendingInstructions.insert(Instruction->stableID());
   for (std::size_t Index = 0; Index < Worklist.size(); ++Index) {
     MachineInstr *Instruction = Worklist[Index];
+    if (Instruction != nullptr)
+      PendingInstructions.erase(Instruction->stableID());
     if (Instruction == nullptr || Instruction->parent() == nullptr)
       continue;
 
@@ -418,19 +420,16 @@ Expected<MachinePassResult> LegalizerPass::runImplementation(MachineFunction &Fu
     Result.Changed = true;
     Result.Changes.add(MachinePassChange::Instructions);
 
-    if (!InstructionWasErased) {
-      const InstructionDescriptor *LoweredDescriptor =
-          Target.instructionDescriptor(Instruction->opcode());
-      if (LoweredDescriptor == nullptr)
-        return std::unexpected(
-            passFailure("legalizer produced an unknown instruction descriptor"));
-      if (LoweredDescriptor->Flags.has(InstructionFlag::Generic))
-        Worklist.push_back(Instruction);
-    }
     const std::vector<MachineInstr *> Current = layoutInstructions(Function);
     for (MachineInstr *Candidate : Current) {
-      if (DiscoveredInstructions.insert(Candidate->stableID()).second)
+      const InstructionDescriptor *CandidateDescriptor =
+          Target.instructionDescriptor(Candidate->opcode());
+      if (CandidateDescriptor == nullptr)
+        return std::unexpected(passFailure("legalizer produced an unknown instruction descriptor"));
+      if (CandidateDescriptor->Flags.has(InstructionFlag::Generic) &&
+          PendingInstructions.insert(Candidate->stableID()).second) {
         Worklist.push_back(Candidate);
+      }
     }
   }
 
