@@ -3870,8 +3870,8 @@ public:
       const std::optional<LLT> Pointer = operandType(Function, Instruction, 1);
       const std::optional<LLT> Offset = operandType(Function, Instruction, 2);
       return Type && Pointer && Offset && Type->isPointer() && Type->addressSpace() == 0 &&
-                     Type->scalarBitWidth() == 64 && *Pointer == *Type && Offset->isInteger() &&
-                     Offset->scalarBitWidth() == 64
+                     Type->scalarBitWidth() == 64 && *Pointer == *Type &&
+                     isSupportedIntegerScalar(*Offset) && Offset->scalarBitWidth() == 64
                  ? LegalizationAction::Legal
                  : LegalizationAction::Unsupported;
     }

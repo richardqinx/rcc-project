@@ -1675,6 +1675,32 @@ void testFrameIndexLegalization(TestContext &Context) {
                  "RV64GC must reject G_FRAME_INDEX outside p0");
 }
 
+void testPointerArithmeticLegalization(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  Context.expect(Target.has_value(), "RV64GC target must be available for pointer legalization");
+  if (!Target)
+    return;
+  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto S64 = rcc::LLT::makeAnyScalar(64);
+  auto S32 = rcc::LLT::makeAnyScalar(32);
+  if (!Pointer || !S64 || !S32)
+    return;
+  auto Legal = createRegisterOnlyFunction(Context, *Target, rcc::GenericOpcode::G_PTR_ADD,
+                                          {*Pointer}, {*Pointer, *S64});
+  auto Unsupported = createRegisterOnlyFunction(Context, *Target, rcc::GenericOpcode::G_PTR_ADD,
+                                                {*Pointer}, {*Pointer, *S32});
+  if (!Legal || !Unsupported)
+    return;
+  auto LegalAction = rcc::riscv::legalizerInfo().classify(*Legal->firstBlock()->firstInstruction(),
+                                                          *Legal, *Target);
+  auto UnsupportedAction = rcc::riscv::legalizerInfo().classify(
+      *Unsupported->firstBlock()->firstInstruction(), *Unsupported, *Target);
+  Context.expect(LegalAction && *LegalAction == rcc::LegalizationAction::Legal,
+                 "RV64GC must legalize G_PTR_ADD for p0 and s64");
+  Context.expect(UnsupportedAction && *UnsupportedAction == rcc::LegalizationAction::Unsupported,
+                 "RV64GC must reject G_PTR_ADD with a non-XLen offset");
+}
+
 void testMemoryOffsetSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   Context.expect(Target.has_value(), "RV64GC target must be available for memory selection");
@@ -1761,6 +1787,7 @@ int main() {
   testVACopyLegalization(Context);
   testVAArgLegalization(Context);
   testFrameIndexLegalization(Context);
+  testPointerArithmeticLegalization(Context);
   testMemoryOffsetSelection(Context);
   return Context.result();
 }
