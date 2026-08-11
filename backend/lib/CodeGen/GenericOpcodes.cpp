@@ -891,12 +891,12 @@ private:
     if (MemoryOperands.size() != 1 ||
         MemoryOperands.front()->description().AtomicKind != AtomicOperation::CompareExchange)
       return semanticError("G_ATOMIC_CMPXCHG_WITH_SUCCESS requires one compare-exchange MMO");
-    return VerifySingleAccess(2, 0, true, true, SizeRelation::Equal);
+    return VerifySingleAccess(2, 0, true, true, SizeRelation::NoLarger);
   case GO::G_ATOMIC_CMPXCHG:
     if (MemoryOperands.size() != 1 ||
         MemoryOperands.front()->description().AtomicKind != AtomicOperation::CompareExchange)
       return semanticError("G_ATOMIC_CMPXCHG requires one compare-exchange MMO");
-    return VerifySingleAccess(1, 0, true, true, SizeRelation::Equal);
+    return VerifySingleAccess(1, 0, true, true, SizeRelation::NoLarger);
   case GO::G_ATOMICRMW_XCHG:
   case GO::G_ATOMICRMW_ADD:
   case GO::G_ATOMICRMW_SUB:

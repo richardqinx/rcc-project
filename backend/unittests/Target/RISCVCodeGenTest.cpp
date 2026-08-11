@@ -824,6 +824,91 @@ void testOverflowSelection(TestContext &Context) {
   }
 }
 
+void testAtomicCompareExchangeLegalization(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  auto Function = rcc::MachineFunction::create("riscv_atomic_cmpxchg",
+                                               rcc::MachineFunctionStableID::fromValue(1299));
+  if (!Target || !Function)
+    return;
+  auto Block = (*Function)->createBasicBlock();
+  auto I8 = rcc::LLT::makeAnyScalar(8);
+  auto I64 = rcc::LLT::makeAnyScalar(64);
+  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto Size = rcc::MemorySize::fixed(1);
+  auto Align = rcc::Alignment::create(1);
+  if (!Block || !(*Function)->appendBlock(**Block) || !I8 || !I64 || !Pointer || !Size || !Align)
+    return;
+  auto Address = (*Function)->registerInfo().createVirtualRegister(*Pointer);
+  auto Compare = (*Function)->registerInfo().createVirtualRegister(*I8);
+  auto NewValue = (*Function)->registerInfo().createVirtualRegister(*I8);
+  auto Result = (*Function)->registerInfo().createVirtualRegister(*I8);
+  auto Extended = (*Function)->registerInfo().createVirtualRegister(*I64);
+  if (!Address || !Compare || !NewValue || !Result || !Extended)
+    return;
+
+  rcc::MachineIRBuilder Builder(**Function, *Target);
+  if (!Builder.setInsertPoint(**Block))
+    return;
+  auto AddressDefinition = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_IMPLICIT_DEF));
+  if (!AddressDefinition || !AddressDefinition->addDef(*Address) || !AddressDefinition->build())
+    return;
+  const auto BuildConstant = [&](rcc::Register Destination, std::uint64_t Value) -> bool {
+    auto Immediate = rcc::IntegerImmediate::fromUnsigned(8, Value);
+    auto Pending = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_CONSTANT));
+    return Immediate && Pending && Pending->addDef(Destination) &&
+           Pending->addIntegerImmediate(std::move(*Immediate)) && Pending->build();
+  };
+  if (!BuildConstant(*Compare, 0) || !BuildConstant(*NewValue, 1))
+    return;
+
+  rcc::MachineMemOperandDesc Description;
+  Description.Accesses = {rcc::MemoryAccessFlag::Load, rcc::MemoryAccessFlag::Store};
+  Description.AtomicKind = rcc::AtomicOperation::CompareExchange;
+  Description.SuccessOrdering = rcc::AtomicOrdering::Monotonic;
+  Description.Size = *Size;
+  Description.MemoryType = *I8;
+  Description.Align = *Align;
+  Description.Base = rcc::MemoryBase::stack();
+  auto Memory = (*Function)->createMemOperand(std::move(Description));
+  auto Atomic = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_ATOMIC_CMPXCHG));
+  if (!Memory || !Atomic || !Atomic->addDef(*Result) || !Atomic->addUse(*Address) ||
+      !Atomic->addUse(*Compare) || !Atomic->addUse(*NewValue) || !Atomic->addMemOperand(**Memory))
+    return;
+  auto BuiltAtomic = Atomic->build();
+  auto Extension = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_ANYEXT));
+  if (!BuiltAtomic || !Extension || !Extension->addDef(*Extended) || !Extension->addUse(*Result))
+    return;
+  auto BuiltExtension = Extension->build();
+  if (!BuiltExtension)
+    return;
+
+  auto Action = rcc::riscv::legalizerInfo().classify(**BuiltAtomic, **Function, *Target);
+  auto Lowered =
+      Action ? rcc::riscv::legalizerInfo().lower(**BuiltAtomic, **Function, *Target, *Action)
+             : rcc::Expected<void>(std::unexpected(Action.error()));
+  Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered.has_value(),
+                 "narrow RV64 compare-exchange must use the widening legalizer rule");
+  if (!Lowered)
+    return;
+
+  const auto CompareInfo = (*Function)->registerInfo().virtualRegisterInfo(*Compare);
+  const auto NewValueInfo = (*Function)->registerInfo().virtualRegisterInfo(*NewValue);
+  const rcc::Register *AtomicResult = (*BuiltAtomic)->operandAt(0)->getIf<rcc::Register>();
+  const auto AtomicResultInfo =
+      AtomicResult == nullptr
+          ? rcc::Expected<std::reference_wrapper<const rcc::VirtualRegisterInfo>>(std::unexpected(
+                rcc::Error(rcc::ErrorCode::InvalidArgument, "missing compare-exchange result")))
+          : (*Function)->registerInfo().virtualRegisterInfo(*AtomicResult);
+  auto LegalAction = rcc::riscv::legalizerInfo().classify(**BuiltAtomic, **Function, *Target);
+  Context.expect(CompareInfo && CompareInfo->get().Type == *I64 && NewValueInfo &&
+                     NewValueInfo->get().Type == *I64 && AtomicResultInfo &&
+                     AtomicResultInfo->get().Type == *I64 &&
+                     (*BuiltExtension)->parent() == nullptr &&
+                     Target->validateInstruction(**BuiltAtomic, (*Function)->registerInfo()) &&
+                     LegalAction && *LegalAction == rcc::LegalizationAction::Legal,
+                 "compare-exchange widening must preserve the narrow MMO in a legal i64 container");
+}
+
 void testAtomicSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   if (!Target)
@@ -1101,6 +1186,7 @@ int main() {
   testComparisonsAndControl(Context);
   testCompositeScalarSelection(Context);
   testOverflowSelection(Context);
+  testAtomicCompareExchangeLegalization(Context);
   testAtomicSelection(Context);
   testUnsupportedTypes(Context);
   testMemoryOffsetSelection(Context);

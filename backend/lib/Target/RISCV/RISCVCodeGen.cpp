@@ -386,6 +386,11 @@ buildBinaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
                   GenericOpcode Generic, LLT Type, Register Left,
                   Register Right);
 
+[[nodiscard]] Expected<Register> buildUnaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
+                                                  GenericOpcode Generic, LLT Type, Register Source);
+
+[[nodiscard]] Expected<void> eraseInstruction(MachineInstr &Instruction);
+
 struct NarrowAnyExtBinaryPlan final {
   MachineInstr *Binary = nullptr;
   GenericOpcode Generic = GenericOpcode::Invalid;
@@ -498,6 +503,107 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
   auto Added = Instruction.addOperand(MachineOperand::integerImmediate(std::move(*Extended)));
   if (!Added)
     return std::unexpected(Added.error());
+  return {};
+}
+
+[[nodiscard]] Expected<Register> widenAtomicCompareExchangeSource(MachineInstr &Instruction,
+                                                                  MachineFunction &Function,
+                                                                  MachineIRBuilder &Builder,
+                                                                  Register Source, LLT WideType) {
+  const auto SourceInfo = Function.registerInfo().virtualRegisterInfo(Source);
+  if (!SourceInfo || !SourceInfo->get().Type)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V compare-exchange source has no scalar type");
+  if (SourceInfo->get().Type->scalarBitWidth() == WideType.scalarBitWidth())
+    return Source;
+
+  const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Source);
+  MachineInstr *Def =
+      Definition == nullptr ? nullptr : const_cast<MachineInstr *>(Definition->parent());
+  if (Def != nullptr && Def->opcode() == opcode(GenericOpcode::G_CONSTANT) &&
+      singleRegisterUse(Function, Source) == &Instruction) {
+    auto Widened = widenConstantToRV64(*Def, Function);
+    if (!Widened)
+      return std::unexpected(Widened.error());
+    return Source;
+  }
+  return buildUnaryBefore(Builder, Instruction, GenericOpcode::G_ANYEXT, WideType, Source);
+}
+
+[[nodiscard]] Expected<void> lowerAtomicCompareExchange(MachineInstr &Instruction,
+                                                        MachineFunction &Function,
+                                                        const TargetDescription &Target) {
+  const std::optional<LLT> OriginalType = resultType(Function, Instruction);
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *CompareOperand = Instruction.operandAt(2);
+  const MachineOperand *NewValueOperand = Instruction.operandAt(3);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Compare = CompareOperand == nullptr ? nullptr : CompareOperand->getIf<Register>();
+  const Register *NewValue =
+      NewValueOperand == nullptr ? nullptr : NewValueOperand->getIf<Register>();
+  if (!OriginalType || Destination == nullptr || Compare == nullptr || NewValue == nullptr ||
+      OriginalType->scalarBitWidth() >= 64)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V narrow compare-exchange has invalid operands");
+
+  auto WideType = LLT::makeAnyScalar(64);
+  if (!WideType)
+    return std::unexpected(WideType.error());
+  MachineIRBuilder Builder(Function, Target);
+  auto WideCompare =
+      widenAtomicCompareExchangeSource(Instruction, Function, Builder, *Compare, *WideType);
+  if (!WideCompare)
+    return std::unexpected(WideCompare.error());
+  auto WideNewValue =
+      widenAtomicCompareExchangeSource(Instruction, Function, Builder, *NewValue, *WideType);
+  if (!WideNewValue)
+    return std::unexpected(WideNewValue.error());
+
+  Register WideDestination;
+  MachineInstr *FoldedExtension = singleRegisterUse(Function, *Destination);
+  if (FoldedExtension != nullptr && FoldedExtension->opcode() == opcode(GenericOpcode::G_ANYEXT) &&
+      operandType(Function, *FoldedExtension, 0)
+          .transform([](LLT Type) { return Type.scalarBitWidth() == 64; })
+          .value_or(false)) {
+    const MachineOperand *WideDestinationOperand = FoldedExtension->operandAt(0);
+    const Register *FoldedDestination =
+        WideDestinationOperand == nullptr ? nullptr : WideDestinationOperand->getIf<Register>();
+    if (FoldedDestination == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V compare-exchange extension has no destination");
+    WideDestination = *FoldedDestination;
+  } else {
+    auto Created = Function.registerInfo().createVirtualRegister(*WideType);
+    if (!Created)
+      return std::unexpected(Created.error());
+    WideDestination = *Created;
+    FoldedExtension = nullptr;
+  }
+
+  if (auto Replaced = Instruction.operandAt(0)->setRegister(WideDestination); !Replaced)
+    return std::unexpected(Replaced.error());
+  if (auto Replaced = Instruction.operandAt(2)->setRegister(*WideCompare); !Replaced)
+    return std::unexpected(Replaced.error());
+  if (auto Replaced = Instruction.operandAt(3)->setRegister(*WideNewValue); !Replaced)
+    return std::unexpected(Replaced.error());
+
+  if (FoldedExtension != nullptr)
+    return eraseInstruction(*FoldedExtension);
+
+  auto Point = Builder.setInsertPointAfter(Instruction);
+  if (!Point)
+    return std::unexpected(Point.error());
+  auto Truncation = Builder.buildInstr(opcode(GenericOpcode::G_TRUNC));
+  if (!Truncation)
+    return std::unexpected(Truncation.error());
+  if (auto Added = Truncation->addDef(*Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Truncation->addUse(WideDestination); !Added)
+    return std::unexpected(Added.error());
+  auto Built = Truncation->build();
+  if (!Built)
+    return std::unexpected(Built.error());
   return {};
 }
 
@@ -735,6 +841,21 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
          Description.Size.isKnown() && !Description.Size.isScalable() &&
          Description.Size.minimumBytes() == Bytes && Description.Align.bytes() >= Bytes &&
          Description.SyncScope.value() == 0;
+}
+
+[[nodiscard]] bool isSupportedAtomicContainerAccess(const MachineInstr &Instruction,
+                                                    AtomicOperation Operation,
+                                                    std::uint64_t ContainerBytes) noexcept {
+  if (Instruction.memOperands().size() != 1 || ContainerBytes == 0)
+    return false;
+  const MachineMemOperandDesc &Description = Instruction.memOperands().front()->description();
+  if (Description.AtomicKind != Operation || Description.AddressSpace != 0 ||
+      !Description.Size.isKnown() || Description.Size.isScalable() ||
+      Description.SyncScope.value() != 0)
+    return false;
+  const std::uint64_t MemoryBytes = Description.Size.minimumBytes();
+  return (MemoryBytes == 1 || MemoryBytes == 2 || MemoryBytes == 4 || MemoryBytes == 8) &&
+         MemoryBytes <= ContainerBytes && Description.Align.bytes() >= MemoryBytes;
 }
 
 [[nodiscard]] std::optional<std::uint64_t>
@@ -2911,6 +3032,22 @@ public:
                  ? LegalizationAction::Legal
                  : LegalizationAction::Unsupported;
     }
+    case GenericOpcode::G_ATOMIC_CMPXCHG: {
+      const std::optional<LLT> Address = operandType(Function, Instruction, 1);
+      const std::optional<LLT> Compare = operandType(Function, Instruction, 2);
+      const std::optional<LLT> NewValue = operandType(Function, Instruction, 3);
+      if (!Type || !Address || !Compare || !NewValue || *Compare != *Type || *NewValue != *Type ||
+          (!Type->isInteger() && !Type->isAnyScalar()) ||
+          (Type->scalarBitWidth() != 8 && Type->scalarBitWidth() != 16 &&
+           Type->scalarBitWidth() != 32 && Type->scalarBitWidth() != 64) ||
+          !Address->isPointer() || Address->addressSpace() != 0 ||
+          Address->scalarBitWidth() != 64 ||
+          !isSupportedAtomicContainerAccess(Instruction, AtomicOperation::CompareExchange,
+                                            (Type->scalarBitWidth() + 7U) / 8U)) {
+        return LegalizationAction::Unsupported;
+      }
+      return Type->scalarBitWidth() == 64 ? LegalizationAction::Legal : LegalizationAction::Custom;
+    }
     case GenericOpcode::G_FENCE: {
       const MachineOperand *OrderingOperand = Instruction.operandAt(0);
       const MachineOperand *ScopeOperand = Instruction.operandAt(1);
@@ -3071,6 +3208,9 @@ public:
     if (Action == LegalizationAction::Custom &&
         Instruction.opcode() == opcode(GenericOpcode::G_PHI))
       return lowerNarrowPhi(Instruction, Function, Target);
+    if (Action == LegalizationAction::Custom &&
+        Instruction.opcode() == opcode(GenericOpcode::G_ATOMIC_CMPXCHG))
+      return lowerAtomicCompareExchange(Instruction, Function, Target);
     if (Action == LegalizationAction::Custom &&
         (Instruction.opcode() == opcode(GenericOpcode::G_ANYEXT) ||
          Instruction.opcode() == opcode(GenericOpcode::G_SEXT) ||
