@@ -195,10 +195,11 @@ void testInstructionFacts(TestContext &Context) {
       Target->instructions().descriptors().size() ==
               TargetInstructionCount + rcc::genericInstructionDescriptors().size() &&
           Addi != nullptr && Addi->Name == "ADDI" && Addi->NumExplicitDefs == 1 &&
-          Addi->Operands.size() == 3 && Addi->Operands.back().ImmediatePredicate &&
-          Load != nullptr && Load->Flags.has(rcc::InstructionFlag::MayLoad) &&
-          Load->RequiresMemoryOperands && Branch != nullptr &&
-          Branch->Flags.has(rcc::InstructionFlag::Terminator) &&
+          Addi->Operands.size() == 3 &&
+          Addi->Operands[1].Kinds.contains(rcc::MachineOperand::Kind::FrameIndex) &&
+          Addi->Operands.back().ImmediatePredicate && Load != nullptr &&
+          Load->Flags.has(rcc::InstructionFlag::MayLoad) && Load->RequiresMemoryOperands &&
+          Branch != nullptr && Branch->Flags.has(rcc::InstructionFlag::Terminator) &&
           Branch->Flags.has(rcc::InstructionFlag::Branch) && Floating != nullptr &&
           Floating->Operands.size() == 4 && Floating->Operands.back().ImmediatePredicate &&
           Floating->AllowExtraImplicitOperands && Atomic != nullptr &&

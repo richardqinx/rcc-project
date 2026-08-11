@@ -488,7 +488,7 @@ instructions:
     encoding: 1344531
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
-      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 68, name: IMM }
     num_explicit_defs: 1
     flags: [produces_code, rematerializable]
