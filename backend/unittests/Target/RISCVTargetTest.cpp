@@ -5,6 +5,7 @@
 #include "rcc/CodeGen/GenericOpcodes.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <ranges>
@@ -121,6 +122,9 @@ void testABIAndDebugFacts(TestContext &Context) {
 }
 
 void testInstructionFacts(TestContext &Context) {
+  constexpr std::size_t TargetInstructionCount =
+      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::G_SLLW) -
+      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::LUI) + 1U;
   auto Target = rcc::riscv::createTargetDescription();
   Context.expect(Target.has_value(), "RV64GC target description must be structurally valid");
   if (!Target) {
@@ -149,7 +153,7 @@ void testInstructionFacts(TestContext &Context) {
       rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::FENCE_I)));
   Context.expect(
       Target->instructions().descriptors().size() ==
-              204 + rcc::genericInstructionDescriptors().size() &&
+              TargetInstructionCount + rcc::genericInstructionDescriptors().size() &&
           Addi != nullptr && Addi->Name == "ADDI" && Addi->NumExplicitDefs == 1 &&
           Addi->Operands.size() == 3 && Addi->Operands.back().ImmediatePredicate &&
           Load != nullptr && Load->Flags.has(rcc::InstructionFlag::MayLoad) &&
