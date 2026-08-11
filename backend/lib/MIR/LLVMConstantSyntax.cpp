@@ -121,6 +121,17 @@ public:
       Limbs.push_back(static_cast<std::uint32_t>(Carry));
   }
 
+  [[nodiscard]] std::uint32_t divideSmall(std::uint32_t Divisor) {
+    std::uint64_t Remainder = 0;
+    for (std::size_t Index = Limbs.size(); Index != 0; --Index) {
+      const std::uint64_t Dividend = (Remainder << 32U) | Limbs[Index - 1U];
+      Limbs[Index - 1U] = static_cast<std::uint32_t>(Dividend / Divisor);
+      Remainder = Dividend % Divisor;
+    }
+    normalize();
+    return static_cast<std::uint32_t>(Remainder);
+  }
+
   void addSmall(std::uint32_t Value) {
     std::uint64_t Carry = Value;
     std::size_t Index = 0;
@@ -157,6 +168,51 @@ public:
       Carry = Current & 1U;
     }
     normalize();
+  }
+
+  [[nodiscard]] std::size_t countrZero() const noexcept {
+    std::size_t Result = 0;
+    for (const std::uint32_t Limb : Limbs) {
+      if (Limb == 0) {
+        Result += 32U;
+        continue;
+      }
+      return Result + static_cast<std::size_t>(std::countr_zero(Limb));
+    }
+    return Result;
+  }
+
+  void shiftRight(std::size_t Amount) noexcept {
+    if (Amount == 0 || isZero())
+      return;
+    const std::size_t LimbOffset = Amount / 32U;
+    if (LimbOffset >= Limbs.size()) {
+      Limbs.clear();
+      return;
+    }
+    if (LimbOffset != 0)
+      Limbs.erase(Limbs.begin(), Limbs.begin() + static_cast<std::ptrdiff_t>(LimbOffset));
+    const unsigned BitOffset = static_cast<unsigned>(Amount % 32U);
+    if (BitOffset != 0) {
+      std::uint32_t Carry = 0;
+      for (std::size_t Index = Limbs.size(); Index != 0; --Index) {
+        const std::uint32_t Current = Limbs[Index - 1U];
+        Limbs[Index - 1U] = (Current >> BitOffset) | Carry;
+        Carry = Current << (32U - BitOffset);
+      }
+    }
+    normalize();
+  }
+
+  [[nodiscard]] std::string toDecimal() const {
+    if (isZero())
+      return "0";
+    BigUnsigned Remaining = *this;
+    std::string Digits;
+    while (!Remaining.isZero())
+      Digits.push_back(static_cast<char>('0' + Remaining.divideSmall(10)));
+    std::ranges::reverse(Digits);
+    return Digits;
   }
 
   [[nodiscard]] BigUnsigned shiftedLeft(std::size_t Amount) const {
@@ -2382,6 +2438,225 @@ Expected<std::string> printType(const GenericConstantType &Type) {
   return makeUnexpected(ErrorCode::VerificationError, "generic constant type is invalid");
 }
 
+enum class PrintedFloatCategory : std::uint8_t {
+  Zero,
+  Finite,
+  Infinity,
+  QuietNaN,
+  SignalingNaN,
+};
+
+struct PrintedBinaryFloat final {
+  PrintedFloatCategory Category = PrintedFloatCategory::Zero;
+  bool Negative = false;
+  BigUnsigned Significand;
+  std::int32_t BinaryExponent = 0;
+  BigUnsigned NaNPayload;
+  std::uint32_t QuietNaNBit = 0;
+};
+
+[[nodiscard]] std::uint64_t extractFloatField(std::span<const std::uint64_t> Words,
+                                              std::uint32_t Begin, std::uint32_t Width) noexcept {
+  std::uint64_t Result = 0;
+  for (std::uint32_t Bit = 0; Bit < Width; ++Bit) {
+    if (hasFloatBit(Words, Begin + Bit))
+      Result |= std::uint64_t{1} << Bit;
+  }
+  return Result;
+}
+
+[[nodiscard]] BigUnsigned extractFloatBits(std::span<const std::uint64_t> Words,
+                                           std::uint32_t Begin, std::uint32_t Width) {
+  BigUnsigned Result;
+  for (std::uint32_t Bit = 0; Bit < Width; ++Bit) {
+    if (hasFloatBit(Words, Begin + Bit))
+      Result.setBit(Bit);
+  }
+  return Result;
+}
+
+[[nodiscard]] std::optional<PrintedBinaryFloat> decodePrintedFloat(const FloatingPointBits &Bits) {
+  std::optional<BinaryFloatFormat> Format = binaryFloatFormat(Bits.semantics());
+  std::span<const std::uint64_t> Words = Bits.words();
+  if (!Format)
+    return std::nullopt;
+
+  if (Bits.semantics() == FloatSemantics::PPCDoubleDouble ||
+      Bits.semantics() == FloatSemantics::PPCDoubleDoubleLegacy) {
+    if (Words.size() != 2 || Words[1] != 0)
+      return std::nullopt;
+    Format = binaryFloatFormat(FloatSemantics::IEEEDouble);
+    Words = Words.first(1);
+  }
+  if (!Format || Format->ExponentBitWidth == 0)
+    return std::nullopt;
+
+  PrintedBinaryFloat Result;
+  Result.Negative = hasFloatBit(Words, Format->StorageBitWidth - 1U);
+  const std::uint32_t StoredSignificandWidth =
+      Format->HasExplicitIntegerBit ? Format->Precision : Format->Precision - 1U;
+  const std::uint64_t Exponent =
+      extractFloatField(Words, StoredSignificandWidth, Format->ExponentBitWidth);
+  const std::uint64_t MaximumExponent = (std::uint64_t{1} << Format->ExponentBitWidth) - 1U;
+
+  if (Exponent == MaximumExponent) {
+    const std::uint32_t PayloadWidth = Format->Precision - 1U;
+    Result.NaNPayload = extractFloatBits(Words, 0, PayloadWidth);
+    if (Result.NaNPayload.isZero()) {
+      Result.Category = PrintedFloatCategory::Infinity;
+      return Result;
+    }
+    Result.QuietNaNBit = PayloadWidth - 1U;
+    Result.Category = hasFloatBit(Words, Result.QuietNaNBit) ? PrintedFloatCategory::QuietNaN
+                                                             : PrintedFloatCategory::SignalingNaN;
+    return Result;
+  }
+
+  Result.Significand = extractFloatBits(Words, 0, StoredSignificandWidth);
+  if (Exponent != 0 && !Format->HasExplicitIntegerBit)
+    Result.Significand.setBit(Format->Precision - 1U);
+  if (Result.Significand.isZero()) {
+    Result.Category = PrintedFloatCategory::Zero;
+    return Result;
+  }
+
+  const std::int64_t Bias = 1 - static_cast<std::int64_t>(Format->MinExponent);
+  const std::int64_t UnbiasedExponent =
+      Exponent == 0 ? Format->MinExponent : static_cast<std::int64_t>(Exponent) - Bias;
+  Result.BinaryExponent = static_cast<std::int32_t>(UnbiasedExponent - (Format->Precision - 1U));
+  Result.Category = PrintedFloatCategory::Finite;
+  return Result;
+}
+
+[[nodiscard]] std::string printNaNPayload(BigUnsigned Payload, std::uint32_t QuietNaNBit) {
+  Payload.clearBit(QuietNaNBit);
+  const auto Width = static_cast<std::uint32_t>(std::max<std::size_t>(Payload.bitWidth(), 1U));
+  std::array<std::uint64_t, 2> Words{Payload.word(0), Payload.word(1)};
+  std::string Digits = hexadecimalWords(Words, Width);
+  const std::size_t FirstNonzero = Digits.find_first_not_of('0');
+  if (FirstNonzero == std::string::npos)
+    return "0x0";
+  Digits.erase(0, FirstNonzero);
+  return "0x" + Digits;
+}
+
+[[nodiscard]] std::string formatFiniteFloat(PrintedBinaryFloat Value) {
+  std::string Result;
+  if (Value.Negative)
+    Result.push_back('-');
+  if (Value.Category == PrintedFloatCategory::Zero) {
+    Result.append("0.000000e+00");
+    return Result;
+  }
+
+  const std::size_t TrailingZeros = Value.Significand.countrZero();
+  Value.Significand.shiftRight(TrailingZeros);
+  Value.BinaryExponent += static_cast<std::int32_t>(TrailingZeros);
+
+  std::int32_t DecimalExponent = 0;
+  if (Value.BinaryExponent >= 0) {
+    Value.Significand =
+        Value.Significand.shiftedLeft(static_cast<std::size_t>(Value.BinaryExponent));
+  } else {
+    DecimalExponent = Value.BinaryExponent;
+    for (std::int32_t Power = 0; Power < -Value.BinaryExponent; ++Power)
+      Value.Significand.multiplySmall(5);
+  }
+
+  std::string Digits = Value.Significand.toDecimal();
+  while (Digits.size() > 1U && Digits.back() == '0') {
+    Digits.pop_back();
+    ++DecimalExponent;
+  }
+
+  constexpr std::size_t FormatPrecision = 6;
+  if (Digits.size() > FormatPrecision) {
+    std::size_t Removed = Digits.size() - FormatPrecision;
+    const bool RoundUp = Digits[FormatPrecision] >= '5';
+    Digits.resize(FormatPrecision);
+    if (RoundUp) {
+      std::size_t Position = Digits.size();
+      while (Position != 0 && Digits[Position - 1U] == '9') {
+        Digits[Position - 1U] = '0';
+        --Position;
+      }
+      if (Position == 0)
+        Digits.insert(Digits.begin(), '1');
+      else
+        ++Digits[Position - 1U];
+    }
+    while (Digits.size() > 1U && Digits.back() == '0') {
+      Digits.pop_back();
+      ++Removed;
+    }
+    DecimalExponent += static_cast<std::int32_t>(Removed);
+  }
+
+  DecimalExponent += static_cast<std::int32_t>(Digits.size() - 1U);
+  Result.push_back(Digits.front());
+  Result.push_back('.');
+  Result.append(Digits.substr(1));
+  Result.append(7U - Digits.size(), '0');
+  Result.push_back('e');
+  Result.push_back(DecimalExponent < 0 ? '-' : '+');
+  const std::uint32_t Magnitude = static_cast<std::uint32_t>(
+      DecimalExponent < 0 ? -static_cast<std::int64_t>(DecimalExponent) : DecimalExponent);
+  std::string Exponent = std::to_string(Magnitude);
+  if (Exponent.size() < 2U)
+    Result.push_back('0');
+  Result.append(Exponent);
+  return Result;
+}
+
+[[nodiscard]] std::string exactFloatingText(const FloatingPointBits &Bits) {
+  return "f0x" + hexadecimalWords(Bits.words(), Bits.bitWidth());
+}
+
+[[nodiscard]] std::string canonicalFloatingText(const FloatingPointBits &Bits) {
+  auto Decoded = decodePrintedFloat(Bits);
+  if (!Decoded)
+    return exactFloatingText(Bits);
+
+  std::string Candidate;
+  switch (Decoded->Category) {
+  case PrintedFloatCategory::Zero:
+  case PrintedFloatCategory::Finite:
+    Candidate = formatFiniteFloat(std::move(*Decoded));
+    break;
+  case PrintedFloatCategory::Infinity:
+    Candidate = Decoded->Negative ? "-inf" : "+inf";
+    break;
+  case PrintedFloatCategory::QuietNaN: {
+    BigUnsigned Payload = Decoded->NaNPayload;
+    Payload.clearBit(Decoded->QuietNaNBit);
+    if (Payload.isZero()) {
+      Candidate = Decoded->Negative ? "-qnan" : "+qnan";
+      break;
+    }
+    Candidate = Decoded->Negative ? "-nan(" : "+nan(";
+    Candidate.append(printNaNPayload(Decoded->NaNPayload, Decoded->QuietNaNBit));
+    Candidate.push_back(')');
+    break;
+  }
+  case PrintedFloatCategory::SignalingNaN:
+    Candidate = Decoded->Negative ? "-snan(" : "+snan(";
+    Candidate.append(printNaNPayload(Decoded->NaNPayload, Decoded->QuietNaNBit));
+    Candidate.push_back(')');
+    break;
+  }
+
+  auto Type = GenericConstantType::floating(Bits.semantics());
+  if (!Type)
+    return exactFloatingText(Bits);
+  auto TypeText = printType(*Type);
+  if (!TypeText)
+    return exactFloatingText(Bits);
+  auto Parsed = parseLLVMConstant(*TypeText + " " + Candidate);
+  if (!Parsed || !Parsed->FloatingValue || *Parsed->FloatingValue != Bits)
+    return exactFloatingText(Bits);
+  return Candidate;
+}
+
 [[nodiscard]] std::string_view
 expressionOpcodeName(GenericConstantExpressionOpcode Opcode) noexcept {
   switch (Opcode) {
@@ -2464,9 +2739,7 @@ Expected<std::string> printValue(const GenericConstantData &Value, bool IncludeT
     if (!Value.FloatingValue)
       return makeUnexpected(ErrorCode::VerificationError,
                             "floating constant is missing its floating payload");
-    Result.append("f0x");
-    Result.append(hexadecimalWords(Value.FloatingValue.value().words(),
-                                   Value.FloatingValue.value().bitWidth()));
+    Result.append(canonicalFloatingText(*Value.FloatingValue));
     return Result;
   case GenericConstantKind::NullPointer:
     Result.append("null");

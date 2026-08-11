@@ -6,6 +6,7 @@
 #include "rcc/Support/TextDiagnostic.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <span>
@@ -52,6 +53,10 @@ public:
     return IsDefinition;
   }
 
+  [[nodiscard]] bool isUnnamed() const noexcept {
+    return IsUnnamed;
+  }
+
   [[nodiscard]] std::span<const EmbeddedIRReference> blocks() const noexcept {
     return Blocks;
   }
@@ -80,9 +85,12 @@ private:
   std::string Name;
   TextRange NameRange;
   bool IsDefinition = false;
+  bool IsUnnamed = false;
+  std::uint64_t NextUnnamedSlot = 0;
   std::vector<EmbeddedIRReference> Blocks;
   std::vector<EmbeddedIRReference> Allocas;
   std::vector<EmbeddedIRReference> Values;
+  std::vector<EmbeddedIRReference> LocalReferences;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> BlockNameToIndex;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> AllocaNameToIndex;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> ValueNameToIndex;
@@ -131,6 +139,7 @@ public:
   }
 
   [[nodiscard]] const EmbeddedIRFunction *function(std::string_view Name) const noexcept;
+  [[nodiscard]] const EmbeddedIRFunction *unnamedFunction(std::size_t Ordinal) const noexcept;
   [[nodiscard]] const EmbeddedIRReference *globalObject(std::string_view Name) const noexcept;
   [[nodiscard]] const EmbeddedIRMetadataDefinition *metadata(std::string_view Name) const noexcept;
   [[nodiscard]] const EmbeddedIRTypeDefinition *

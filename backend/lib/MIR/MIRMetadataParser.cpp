@@ -20,6 +20,7 @@
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 #include "rcc/MIR/LLVMConstantSyntax.h"
+#include "rcc/MIR/MILexer.h"
 
 #include <algorithm>
 #include <array>
@@ -89,7 +90,8 @@ bool MIRDocumentParser::parseVariableDebugInfo(const yaml::Node &Entry, MachineF
       MetadataTextParser Parser(std::string(Text), Resolve);
       auto Value = Parser.parseValue();
       if (!Value)
-        return importError(ExpressionNode->range(), Value.error(), "mir-debug-metadata");
+        return importError(scalarDiagnosticRange(*ExpressionNode, Parser.diagnosticRange()),
+                           Value.error(), "mir-debug-metadata");
       if (Value->reference() != nullptr &&
           Value->reference()->scope() != MachineMetadataScope::EmbeddedIR) {
         return fail(ExpressionNode->range(),
@@ -148,64 +150,149 @@ bool MIRDocumentParser::parseMetadata(const yaml::Node &Root, MachineFunction &F
   if (requireKind(*Metadata, yaml::NodeKind::Sequence, "machine metadata nodes"))
     return true;
 
+  enum class ParsedElementKind : std::uint8_t {
+    Null,
+    Reference,
+    String,
+  };
+  struct ParsedElement final {
+    ParsedElementKind Kind = ParsedElementKind::Reference;
+    std::uint32_t Reference = 0;
+    std::string String;
+    TextRange Range;
+  };
   struct Definition final {
     const yaml::Node *Node = nullptr;
     std::uint32_t Slot = 0;
     bool IsDistinct = false;
-    std::string_view Elements;
+    std::vector<ParsedElement> Elements;
   };
   std::vector<Definition> Definitions;
   std::unordered_set<std::uint32_t> Slots;
 
+  const auto TranslateRange = [this](const yaml::Node &Node, const TextRange &Range) {
+    std::size_t ContentBegin = Node.range().Begin.Offset;
+    if (Node.scalarStyle() == yaml::ScalarStyle::SingleQuoted ||
+        Node.scalarStyle() == yaml::ScalarStyle::DoubleQuoted) {
+      ++ContentBegin;
+    }
+    return Result.Source.range(ContentBegin + Range.Begin.Offset, ContentBegin + Range.End.Offset);
+  };
+
   for (const yaml::NodeID DefinitionID : Metadata->sequence()) {
     const yaml::Node *DefinitionNode = node(DefinitionID);
     std::string_view Text;
-    if (DefinitionNode == nullptr || scalar(*DefinitionNode, Text, "machine metadata definition")) {
+    if (DefinitionNode == nullptr || scalar(*DefinitionNode, Text, "machine metadata definition"))
       return true;
-    }
-    Text = trim(Text);
-    if (!Text.starts_with('!'))
-      return fail(DefinitionNode->range(), "machine metadata definition must start with '!N'");
-    const std::size_t Equals = Text.find('=');
-    if (Equals == std::string_view::npos)
-      return fail(DefinitionNode->range(), "machine metadata definition requires '='");
+
+    MILexer Lexer("machine-metadata", std::string(Text));
+    MIToken Token = Lexer.next();
+    const auto LexerFailed = [this, &Lexer, DefinitionNode, &TranslateRange,
+                              &Token]() -> bool {
+      if (!Token.is(MITokenKind::Error))
+        return false;
+      const auto Diagnostics = Lexer.diagnostics();
+      const TextRange Range = Diagnostics.empty()
+                                  ? TranslateRange(*DefinitionNode, Token.range())
+                                  : TranslateRange(*DefinitionNode, Diagnostics.front().Range);
+      return fail(Range, Diagnostics.empty() ? "invalid machine metadata node"
+                                             : Diagnostics.front().Message);
+    };
+    const auto Advance = [&Lexer, &Token, &LexerFailed]() -> bool {
+      Token = Lexer.next();
+      return LexerFailed();
+    };
+    const auto FailAtToken = [this, DefinitionNode, &TranslateRange](const MIToken &At,
+                                                                    std::string Message) {
+      return fail(TranslateRange(*DefinitionNode, At.range()), std::move(Message));
+    };
+
+    if (LexerFailed())
+      return true;
+    if (!Token.is(MITokenKind::Exclaim))
+      return FailAtToken(Token, "expected a metadata node");
+    if (Advance())
+      return true;
     std::uint32_t Slot = 0;
-    if (!parseUnsigned32(trim(Text.substr(1, Equals - 1)), Slot))
-      return fail(DefinitionNode->range(), "machine metadata definition has an invalid slot");
-    if (!Slots.insert(Slot).second)
-      return fail(DefinitionNode->range(), "duplicate machine metadata slot");
-    std::string_view Right = trim(Text.substr(Equals + 1));
-    bool IsDistinct = false;
-    if (Right.starts_with("distinct")) {
-      Right = trim(Right.substr(std::string_view("distinct").size()));
-      IsDistinct = true;
+    if (!Token.is(MITokenKind::IntegerLiteral) ||
+        !parseUnsigned32(Token.integerValue(), Slot)) {
+      return FailAtToken(Token, "expected metadata id after '!'");
     }
-    if (!Right.starts_with("!{") || !Right.ends_with('}'))
-      return fail(DefinitionNode->range(), "machine metadata node must be a metadata tuple");
+    if (Advance())
+      return true;
+    if (!Token.is(MITokenKind::Equal))
+      return FailAtToken(Token, "expected '='");
+    if (Advance())
+      return true;
+
+    const bool IsDistinct = Token.isKeyword("distinct");
+    if (IsDistinct && Advance())
+      return true;
+    if (!Token.is(MITokenKind::Exclaim))
+      return FailAtToken(Token, "expected a metadata node");
+    if (Advance())
+      return true;
+    if (!Token.is(MITokenKind::LeftBrace))
+      return FailAtToken(Token, "expected '{' here");
+    if (Advance())
+      return true;
+
+    std::vector<ParsedElement> Elements;
+    if (!Token.is(MITokenKind::RightBrace)) {
+      while (true) {
+        if (Token.hasStringValue() && Token.stringValue() == "null") {
+          Elements.push_back({.Kind = ParsedElementKind::Null,
+                              .Reference = 0,
+                              .String = {},
+                              .Range = TranslateRange(*DefinitionNode, Token.range())});
+        } else {
+          if (!Token.is(MITokenKind::Exclaim))
+            return FailAtToken(Token, "expected '!' here");
+          const TextRange ReferenceRange = TranslateRange(*DefinitionNode, Token.range());
+          if (Advance())
+            return true;
+
+          if (Token.is(MITokenKind::StringConstant)) {
+            Elements.push_back({.Kind = ParsedElementKind::String,
+                                .Reference = 0,
+                                .String = std::string(Token.stringValue()),
+                                .Range = TranslateRange(*DefinitionNode, Token.range())});
+          } else {
+            std::uint32_t Reference = 0;
+            if (!Token.is(MITokenKind::IntegerLiteral) ||
+                !parseUnsigned32(Token.integerValue(), Reference)) {
+              return FailAtToken(Token, "expected metadata id after '!'");
+            }
+            Elements.push_back({.Kind = ParsedElementKind::Reference,
+                                .Reference = Reference,
+                                .String = {},
+                                .Range = ReferenceRange});
+          }
+        }
+        if (Advance())
+          return true;
+        if (!Token.is(MITokenKind::Comma))
+          break;
+        if (Advance())
+          return true;
+      }
+    }
+    if (!Token.is(MITokenKind::RightBrace))
+      return FailAtToken(Token, "expected end of metadata node");
+    if (Advance())
+      return true;
+    if (!Token.is(MITokenKind::EndOfFile))
+      return FailAtToken(Token, "expected end of metadata node");
+    if (!Slots.insert(Slot).second)
+      return FailAtToken(Token, "Metadata id is already used");
+
     Definitions.push_back({.Node = DefinitionNode,
                            .Slot = Slot,
                            .IsDistinct = IsDistinct,
-                           .Elements = Right.substr(2, Right.size() - 3)});
+                           .Elements = std::move(Elements)});
     Context.Metadata.push_back(
         {.TextID = Slot, .Reference = MachineMetadataReference::machineFunction(Slot)});
   }
-
-  auto ResolveReference = [this,
-                           &Slots](std::uint32_t Slot,
-                                   const TextRange &Range) -> Expected<MachineMetadataElement> {
-    MachineMetadataReference Reference;
-    if (ActiveDocument->EmbeddedIR != std::nullopt &&
-        ActiveDocument->EmbeddedIR->metadata(std::to_string(Slot)) != nullptr) {
-      Reference = MachineMetadataReference::embeddedIR(Slot);
-    } else if (Slots.contains(Slot)) {
-      Reference = MachineMetadataReference::machineFunction(Slot);
-    } else {
-      return makeUnexpected(ErrorCode::ParseError, "metadata tuple references undefined slot '!" +
-                                                       std::to_string(Slot) + "' at line " +
-                                                       std::to_string(Range.Begin.Line));
-    }
-    return MachineMetadataElement::reference(Reference);
-  };
 
   for (const Definition &Definition : Definitions) {
     MachineMetadataNode NewNode{
@@ -213,67 +300,30 @@ bool MIRDocumentParser::parseMetadata(const yaml::Node &Root, MachineFunction &F
         .IsDistinct = Definition.IsDistinct,
         .Elements = {},
     };
-    std::string_view Remaining = trim(Definition.Elements);
-    while (!Remaining.empty()) {
-      std::size_t End = 0;
-      bool InString = false;
-      bool Escaped = false;
-      for (; End < Remaining.size(); ++End) {
-        const char Character = Remaining[End];
-        if (InString && Escaped) {
-          Escaped = false;
-          continue;
-        }
-        if (InString && Character == '\\') {
-          Escaped = true;
-          continue;
-        }
-        if (Character == '"') {
-          InString = !InString;
-          continue;
-        }
-        if (!InString && Character == ',')
-          break;
-      }
-      if (InString)
-        return fail(Definition.Node->range(), "unterminated machine metadata string");
-      std::string_view Element = trim(Remaining.substr(0, End));
-      if (Element.empty())
-        return fail(Definition.Node->range(), "empty machine metadata tuple element");
-
-      if (Element == "null") {
+    for (const ParsedElement &Element : Definition.Elements) {
+      if (Element.Kind == ParsedElementKind::Null) {
         NewNode.Elements.push_back(MachineMetadataElement::null());
-      } else if (Element.starts_with('!') && Element.size() > 1 && Element[1] >= '0' &&
-                 Element[1] <= '9') {
-        std::uint32_t ReferenceSlot = 0;
-        if (!parseUnsigned32(Element.substr(1), ReferenceSlot))
-          return fail(Definition.Node->range(), "invalid metadata tuple reference");
-        auto Reference = ResolveReference(ReferenceSlot, Definition.Node->range());
-        if (!Reference)
-          return importError(Definition.Node->range(), Reference.error());
-        NewNode.Elements.push_back(std::move(*Reference));
-      } else if (Element.starts_with("!\"") && Element.ends_with('"')) {
-        std::string Value;
-        std::string_view Encoded = Element.substr(2, Element.size() - 3);
-        for (std::size_t Index = 0; Index < Encoded.size(); ++Index) {
-          if (Encoded[Index] == '\\' && Index + 1 < Encoded.size()) {
-            const char EscapedCharacter = Encoded[++Index];
-            if (EscapedCharacter != '\\' && EscapedCharacter != '"')
-              return fail(Definition.Node->range(), "unsupported machine metadata string escape");
-            Value.push_back(EscapedCharacter);
-          } else {
-            Value.push_back(Encoded[Index]);
-          }
-        }
-        NewNode.Elements.push_back(MachineMetadataElement::string(std::move(Value)));
-      } else {
-        return fail(Definition.Node->range(), "unsupported machine metadata tuple element");
+        continue;
+      }
+      if (Element.Kind == ParsedElementKind::String) {
+        NewNode.Elements.push_back(MachineMetadataElement::string(Element.String));
+        continue;
       }
 
-      if (End == Remaining.size())
-        Remaining = {};
-      else
-        Remaining = trim(Remaining.substr(End + 1));
+      MachineMetadataReference Reference;
+      if (ActiveDocument->EmbeddedIR != std::nullopt &&
+          ActiveDocument->EmbeddedIR->metadata(std::to_string(Element.Reference)) != nullptr) {
+        Reference = MachineMetadataReference::embeddedIR(Element.Reference);
+      } else if (Slots.contains(Element.Reference)) {
+        Reference = MachineMetadataReference::machineFunction(Element.Reference);
+      } else {
+        return fail(Element.Range,
+                    "use of undefined metadata '!" + std::to_string(Element.Reference) + "'");
+      }
+      auto Resolved = MachineMetadataElement::reference(Reference);
+      if (!Resolved)
+        return importError(Element.Range, Resolved.error());
+      NewNode.Elements.push_back(std::move(*Resolved));
     }
     auto AddResult = Function.metadata().addNode(std::move(NewNode));
     if (!AddResult)

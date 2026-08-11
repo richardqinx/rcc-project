@@ -165,10 +165,9 @@ bool MIRDocumentParser::recomputeProperties(const yaml::Node &Root, MachineFunct
 
   const auto ApplyComputed = [this, &Root, &Function](std::optional<bool> Explicit, bool Computed,
                                                       MachineFunctionProperty Property,
-                                                      std::string_view Name) -> bool {
+                                                      std::string_view Conflict) -> bool {
     if (Explicit && *Explicit && !Computed) {
-      return fail(Root.range(), "explicit property '" + std::string(Name) +
-                                    "' conflicts with the parsed machine function");
+      return fail(Root.range(), std::string(Function.name()) + std::string(Conflict));
     }
     if (Explicit.value_or(Computed))
       Function.properties().set(Property);
@@ -176,15 +175,18 @@ bool MIRDocumentParser::recomputeProperties(const yaml::Node &Root, MachineFunct
       Function.properties().clear(Property);
     return false;
   };
-  if (ApplyComputed(DocumentInfo.NoPHIs, NoPHIs, MachineFunctionProperty::NoPHIs, "noPhis") ||
-      ApplyComputed(DocumentInfo.IsSSA, IsSSA, MachineFunctionProperty::IsSSA, "isSSA") ||
-      ApplyComputed(DocumentInfo.NoVRegs, NoVRegs, MachineFunctionProperty::NoVRegs, "noVRegs")) {
+  if (ApplyComputed(DocumentInfo.NoPHIs, NoPHIs, MachineFunctionProperty::NoPHIs,
+                    " has explicit property NoPhi, but contains at least one PHI") ||
+      ApplyComputed(DocumentInfo.IsSSA, IsSSA, MachineFunctionProperty::IsSSA,
+                    " has explicit property IsSSA, but is not valid SSA") ||
+      ApplyComputed(DocumentInfo.NoVRegs, NoVRegs, MachineFunctionProperty::NoVRegs,
+                    " has explicit property NoVRegs, but contains virtual registers")) {
     return true;
   }
 
   if (DocumentInfo.HasFakeUses && !*DocumentInfo.HasFakeUses && HasFakeUse) {
-    return fail(Root.range(),
-                "explicit property 'hasFakeUses: false' conflicts with a fake-use instruction");
+    return fail(Root.range(), std::string(Function.name()) +
+                                  " has explicit property hasFakeUses=false, but contains fake uses");
   }
   if (DocumentInfo.HasFakeUses.value_or(HasFakeUse))
     Function.attributes().set(MachineFunctionAttribute::HasFakeUses);
@@ -302,7 +304,7 @@ bool MIRDocumentParser::parseRegisters(const yaml::Node &Root, MachineFunction &
           const auto Flag = Target.mirText().virtualRegisterFlag(Name);
           if (!Flag)
             return fail(FlagNode->range(),
-                        "unknown virtual-register flag '" + std::string(Name) + "'");
+                        "use of undefined register flag '" + std::string(Name) + "'");
           if ((Mask & *Flag) != 0)
             return fail(FlagNode->range(), "duplicate virtual-register flag");
           Mask = static_cast<std::uint8_t>(Mask | *Flag);
@@ -368,15 +370,23 @@ bool MIRDocumentParser::parseRegisters(const yaml::Node &Root, MachineFunction &
   return false;
 }
 
-TextRange MIRDocumentParser::bodyDiagnosticRange(const yaml::Node &Body,
-                                                 const TextRange &BodyRange) const noexcept {
-  if (Body.scalarStyle() != yaml::ScalarStyle::Literal)
-    return Body.range();
+TextRange MIRDocumentParser::scalarDiagnosticRange(const yaml::Node &Scalar,
+                                                   const TextRange &ScalarRange) const noexcept {
+  if (Scalar.scalarStyle() != yaml::ScalarStyle::Literal &&
+      Scalar.scalarStyle() != yaml::ScalarStyle::Folded) {
+    std::size_t ContentOffset = Scalar.range().Begin.Offset;
+    if (Scalar.scalarStyle() == yaml::ScalarStyle::SingleQuoted ||
+        Scalar.scalarStyle() == yaml::ScalarStyle::DoubleQuoted) {
+      ++ContentOffset;
+    }
+    return Result.Source.range(ContentOffset + ScalarRange.Begin.Offset,
+                               ContentOffset + ScalarRange.End.Offset);
+  }
 
-  const std::size_t FirstBodyLine = Body.range().Begin.Line + 1U;
-  const std::size_t LastBodyLine = Body.range().End.Line;
+  const std::size_t FirstBodyLine = Scalar.range().Begin.Line + 1U;
+  const std::size_t LastBodyLine = Scalar.range().End.Line;
   if (FirstBodyLine > LastBodyLine || FirstBodyLine == 0)
-    return Body.range();
+    return Scalar.range();
 
   std::size_t Indent = 0;
   bool FoundContent = false;
@@ -392,9 +402,9 @@ TextRange MIRDocumentParser::bodyDiagnosticRange(const yaml::Node &Body,
     break;
   }
   if (!FoundContent)
-    return Body.range();
+    return Scalar.range();
 
-  const TextPosition Fallback = Body.range().Begin;
+  const TextPosition Fallback = Scalar.range().Begin;
   const auto MapPosition = [this, FirstBodyLine, LastBodyLine, Indent,
                             Fallback](TextPosition Position) {
     const std::size_t SourceLine = FirstBodyLine + Position.Line - 1U;
@@ -407,7 +417,7 @@ TextRange MIRDocumentParser::bodyDiagnosticRange(const yaml::Node &Body,
     const std::size_t Offset = Result.Source.lineOffsets()[SourceLine - 1U] + SourceColumn;
     return Result.Source.positionAt(Offset);
   };
-  return {.Begin = MapPosition(BodyRange.Begin), .End = MapPosition(BodyRange.End)};
+  return {.Begin = MapPosition(ScalarRange.Begin), .End = MapPosition(ScalarRange.End)};
 }
 
 bool MIRDocumentParser::parseBody(const yaml::Node &Root, MachineFunction &Function,
@@ -460,7 +470,7 @@ bool MIRDocumentParser::parseBody(const yaml::Node &Root, MachineFunction &Funct
     if (!Parser.diagnostics().empty()) {
       const TextRange Range = Body == nullptr
                                   ? BodyRange
-                                  : bodyDiagnosticRange(*Body, Parser.diagnostics().front().Range);
+                                  : scalarDiagnosticRange(*Body, Parser.diagnostics().front().Range);
       return fail(Range, Parser.diagnostics().front().Message, "mir-body");
     }
     return importError(BodyRange, Parsed.error(), "mir-body");

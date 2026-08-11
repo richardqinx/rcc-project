@@ -34,7 +34,7 @@ int main() {
       .Range = Range,
   };
   const std::string Formatted = rcc::formatTextDiagnostic(Diagnostic, Source);
-  if (Formatted != "input.mir:2:3: error[yaml]: invalid scalar\nsecond line\n  ^~~~~~")
+  if (Formatted != "error: input.mir:2:3: invalid scalar\nsecond line\n  ^~~~~~")
     return fail("Text diagnostics must have deterministic source rendering");
 
   if (rcc::getDiagnosticSeverityName(rcc::DiagnosticSeverity::Warning) != "warning")

@@ -49,8 +49,6 @@ using parser_detail::trim;
 
 bool MIRDocumentParser::fail(const TextRange &Range, std::string Message, std::string Category) {
   if (Result.Diagnostics.empty()) {
-    if (ActiveFunction != nullptr)
-      Message = "function '" + std::string(ActiveFunction->name()) + "': " + std::move(Message);
     Result.Diagnostics.push_back(TextDiagnostic{
         .Severity = DiagnosticSeverity::Error,
         .Category = std::move(Category),
@@ -210,7 +208,14 @@ MIRDocumentParseResult MIRDocumentParser::run() {
         std::string(Result.Source.name()) + ":embedded-ir", std::string(FirstRoot->scalar()));
     if (!Embedded.succeeded()) {
       const auto Diagnostics = Embedded.diagnostics();
-      Result.Diagnostics.assign(Diagnostics.begin(), Diagnostics.end());
+      if (Diagnostics.empty()) {
+        static_cast<void>(fail(FirstRoot->range(), "embedded LLVM IR indexing failed",
+                               "mir-embedded-ir"));
+      } else {
+        const TextDiagnostic &Diagnostic = Diagnostics.front();
+        const TextRange Range = scalarDiagnosticRange(*FirstRoot, Diagnostic.Range);
+        static_cast<void>(fail(Range, Diagnostic.Message, Diagnostic.Category));
+      }
       return std::move(Result);
     }
     Staging.EmbeddedIR = std::move(Embedded).takeIndex();
@@ -301,21 +306,35 @@ bool MIRDocumentParser::parseFunction(const yaml::Node &Root, MIRDocument &Docum
       std::string_view{"prefetch-targets"},
       std::string_view{"body"},
   };
-  if (validateKeys(Root, Keys, "machine function"))
-    return true;
   const yaml::Node *NameNode = mappingValue(Root, "name");
   if (NameNode == nullptr)
-    return fail(Root.range(), "machine function requires 'name'");
+    return fail(Root.range(), "missing required key 'name'");
+  if (validateKeys(Root, Keys, "machine function"))
+    return true;
   std::string_view Name;
-  if (scalar(*NameNode, Name, "machine function name") || Name.empty())
-    return fail(NameNode->range(), "machine function name cannot be empty");
+  if (scalar(*NameNode, Name, "machine function name"))
+    return true;
 
+  const EmbeddedIRFunction *IRFunction = nullptr;
   if (Document.EmbeddedIR) {
-    const EmbeddedIRFunction *IRFunction = Document.EmbeddedIR->function(Name);
+    if (Name.empty()) {
+      std::size_t AnonymousOrdinal = 0;
+      for (std::size_t Index = 0; Index < Document.Unit.functionCount(); ++Index) {
+        const MachineFunction *Existing = Document.Unit.functionAt(Index);
+        if (Existing != nullptr && Existing->name().empty())
+          ++AnonymousOrdinal;
+      }
+      IRFunction = Document.EmbeddedIR->unnamedFunction(AnonymousOrdinal);
+    } else {
+      IRFunction = Document.EmbeddedIR->function(Name);
+    }
     if (IRFunction == nullptr)
-      return fail(NameNode->range(),
-                  "machine function has no corresponding embedded LLVM IR function");
+      return fail(NameNode->range(), "function '" + std::string(Name) +
+                                         "' isn't defined in the provided LLVM IR");
   }
+
+  if (!Name.empty() && Document.Unit.function(Name) != nullptr)
+    return fail(NameNode->range(), "redefinition of machine function '" + std::string(Name) + "'");
 
   auto Created = Document.Unit.createMachineFunction(std::string(Name));
   if (!Created)
@@ -332,6 +351,11 @@ bool MIRDocumentParser::parseFunction(const yaml::Node &Root, MIRDocument &Docum
   };
   MIParserContext Context;
   Context.DefaultPointerSizeInBits = Options.DefaultPointerSizeInBits;
+  if (IRFunction != nullptr) {
+    Context.HasIRBlock = [IRFunction](std::string_view BlockName) {
+      return IRFunction->block(BlockName) != nullptr;
+    };
+  }
 
   std::vector<PendingJumpTable> PendingJumpTables;
   if (parseFunctionScalars(Root, Function, DocumentInfo) ||

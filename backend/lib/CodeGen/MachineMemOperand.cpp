@@ -4,11 +4,21 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <ranges>
 #include <utility>
 
 namespace rcc {
 namespace {
+
+[[nodiscard]] std::uint64_t effectiveAlignment(std::uint64_t BaseAlignment,
+                                               std::int64_t Offset) noexcept {
+  if (Offset == 0)
+    return BaseAlignment;
+  const auto OffsetBits = static_cast<std::uint64_t>(Offset);
+  const std::uint64_t OffsetAlignment = std::uint64_t{1} << std::countr_zero(OffsetBits);
+  return std::min(BaseAlignment, OffsetAlignment);
+}
 
 [[nodiscard]] bool isValidAtomicLoadOrdering(AtomicOrdering Ordering) noexcept {
   return Ordering == AtomicOrdering::Unordered || Ordering == AtomicOrdering::Monotonic ||
@@ -167,6 +177,17 @@ MemoryBase MemoryBase::irValue(std::string Name) {
   return MemoryBase(Kind::IRValue, std::move(Name));
 }
 
+Expected<MemoryBase> MemoryBase::irConstant(GenericConstantData Constant) {
+  auto Verification = Constant.verify();
+  if (!Verification)
+    return std::unexpected(Verification.error());
+  if (Constant.Type.Kind != GenericConstantTypeKind::Pointer) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine memory IR constant base must have pointer type");
+  }
+  return MemoryBase(Kind::IRConstant, std::move(Constant));
+}
+
 MemoryBase MemoryBase::stack() {
   return MemoryBase(Kind::Stack, std::monostate{});
 }
@@ -222,6 +243,12 @@ std::optional<std::string_view> MemoryBase::symbolName() const noexcept {
   return std::get<std::string>(Value);
 }
 
+const GenericConstantData *MemoryBase::constantValue() const noexcept {
+  if (BaseKind != Kind::IRConstant)
+    return nullptr;
+  return std::get_if<GenericConstantData>(&Value);
+}
+
 Expected<MachineMemOperand> MachineMemOperand::create(MachineMemOperandDesc Description) {
   const bool IsLoad = Description.Accesses.has(MemoryAccessFlag::Load);
   const bool IsStore = Description.Accesses.has(MemoryAccessFlag::Store);
@@ -233,9 +260,16 @@ Expected<MachineMemOperand> MachineMemOperand::create(MachineMemOperandDesc Desc
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine memory operand address space must fit in 24 bits");
   }
-  if (Description.BaseAlign && Description.BaseAlign->bytes() < Description.Align.bytes()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "machine memory operand base alignment cannot be smaller than alignment");
+  if (Description.BaseAlign) {
+    const std::uint64_t Effective =
+        effectiveAlignment(Description.BaseAlign->bytes(), Description.Offset);
+    if (Effective != Description.Align.bytes()) {
+      return makeUnexpected(
+          ErrorCode::InvalidArgument,
+          "machine memory operand alignment is inconsistent with base alignment and offset");
+    }
+    if (*Description.BaseAlign == Description.Align)
+      Description.BaseAlign.reset();
   }
   if (Description.Accesses.has(MemoryAccessFlag::Invariant) && (!IsLoad || IsStore)) {
     return makeUnexpected(ErrorCode::InvalidArgument,

@@ -74,11 +74,11 @@ Expected<MachineDIExpression> MetadataTextParser::parseExpression() {
   while (!at(MITokenKind::RightParen)) {
     if (at(MITokenKind::Identifier)) {
       const auto Opcode = parseDIExpressionOpcodeName(token().stringValue());
-      if (!Opcode) {
-        return makeUnexpected(ErrorCode::ParseError, "unknown DIExpression opcode '" +
-                                                         std::string(token().stringValue()) + "'");
-      }
-      Elements.push_back(*Opcode);
+      const auto Encoding = parseDIExpressionAttributeEncodingName(token().stringValue());
+      if (!Opcode && !Encoding)
+        return makeUnexpected(ErrorCode::ParseError,
+                              invalidDIExpressionElementMessage(token().stringValue()));
+      Elements.push_back(Opcode ? *Opcode : *Encoding);
       advance();
     } else if (at(MITokenKind::IntegerLiteral)) {
       std::int64_t Signed = 0;

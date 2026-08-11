@@ -65,6 +65,7 @@ struct MIParserContext final {
   std::vector<MIJumpTableSlot> JumpTables;
   std::vector<MIMetadataSlot> Metadata;
   std::vector<MISyncScopeSlot> SyncScopes;
+  std::function<bool(std::string_view)> HasIRBlock;
   std::function<Expected<SyncScopeID>(std::string_view)> InternSyncScope;
   std::function<Expected<std::uint32_t>(std::uint32_t)> PointerSizeInBits;
   std::uint32_t DefaultPointerSizeInBits = 0;

@@ -3,6 +3,7 @@
 #include "rcc/CodeGen/MachineDebugInfo.h"
 
 #include "Target/TestTarget.h"
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
@@ -26,8 +27,8 @@
 
 namespace {
 
-constexpr std::uint32_t ValueOpcode = 1;
-constexpr std::uint32_t MetaOpcode = 2;
+constexpr std::uint32_t ValueOpcode = 1024;
+constexpr std::uint32_t MetaOpcode = 1025;
 
 class TestContext final {
 public:
@@ -64,7 +65,11 @@ private:
   std::vector<rcc::InstructionDescriptor> Descriptors;
   Descriptors.push_back(std::move(Value));
   Descriptors.push_back(std::move(Meta));
-  auto Instructions = rcc::InstructionSet::create(std::move(Descriptors));
+  std::vector<rcc::ImmediatePredicate> Predicates;
+  auto Generic = rcc::appendGenericInstructionInfo(Descriptors, Predicates);
+  if (!Generic)
+    return std::unexpected(Generic.error());
+  auto Instructions = rcc::InstructionSet::create(std::move(Descriptors), std::move(Predicates));
   if (!Instructions)
     return std::unexpected(Instructions.error());
   return rcc::test::createTestTargetDescription(std::move(*Instructions));
@@ -417,6 +422,30 @@ void testVerifierFailures(TestContext &Context) {
   auto Target = createTarget();
   if (!Target)
     return;
+
+  {
+    auto Function = createFunction(Context, 9, "missing-debug-location");
+    if (Function == nullptr)
+      return;
+    rcc::MachineBasicBlock *Block = appendBlock(Context, *Function);
+    if (Block == nullptr)
+      return;
+    auto Instruction = Function->createInstruction(rcc::opcode(rcc::GenericOpcode::DBG_VALUE));
+    if (!Instruction)
+      return;
+    for (const std::int64_t Value : {1, 2, 3, 4}) {
+      if (!(*Instruction)->addOperand(rcc::MachineOperand::immediate(Value)))
+        return;
+    }
+    Context.expect(Block->appendInstruction(**Instruction).has_value(),
+                   "four-operand DBG_VALUE must be linkable for verifier coverage");
+    auto Verification = rcc::MachineVerifier::verify(*Function, *Target);
+    Context.expect(!Verification &&
+                       Verification.error().message().find(
+                           "Bad machine code: Missing DebugLoc for debug instruction\n"
+                           "- instruction: DBG_VALUE 1, 2, 3, 4") != std::string_view::npos,
+                   "complete DBG_VALUE must require a DebugLoc with LLVM-compatible diagnostics");
+  }
 
   {
     auto Function = createFunction(Context, 10, "debug-meta");

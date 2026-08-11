@@ -17,6 +17,7 @@
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 #include "rcc/MIR/LLVMConstantSyntax.h"
+#include "rcc/MIR/MIDebugSyntax.h"
 #include "rcc/MIR/MIRDocument.h"
 
 #include <algorithm>
@@ -38,16 +39,206 @@
 namespace rcc::mir {
 namespace {
 
+enum class YAMLQuoting : std::uint8_t {
+  None,
+  Single,
+  Double,
+};
+
+[[nodiscard]] bool isASCIIAlphanumeric(unsigned char Character) noexcept {
+  return (Character >= '0' && Character <= '9') || (Character >= 'A' && Character <= 'Z') ||
+         (Character >= 'a' && Character <= 'z');
+}
+
+[[nodiscard]] bool isYAMLNumeric(std::string_view Value) noexcept {
+  if (Value.empty() || Value == "+" || Value == "-")
+    return false;
+  if (Value == ".nan" || Value == ".NaN" || Value == ".NAN")
+    return true;
+
+  std::string_view Tail = Value;
+  if (Tail.front() == '+' || Tail.front() == '-')
+    Tail.remove_prefix(1);
+  if (Tail == ".inf" || Tail == ".Inf" || Tail == ".INF")
+    return true;
+  if (Value.starts_with("0o")) {
+    return Value.size() > 2U &&
+           Value.substr(2).find_first_not_of("01234567") == std::string_view::npos;
+  }
+  if (Value.starts_with("0x")) {
+    return Value.size() > 2U &&
+           Value.substr(2).find_first_not_of("0123456789abcdefABCDEF") == std::string_view::npos;
+  }
+
+  if (Tail.empty() || Tail.front() == 'e' || Tail.front() == 'E')
+    return false;
+  std::size_t Position = 0;
+  if (Tail.front() == '.') {
+    ++Position;
+    if (Position == Tail.size() || Tail[Position] < '0' || Tail[Position] > '9')
+      return false;
+    while (Position < Tail.size() && Tail[Position] >= '0' && Tail[Position] <= '9')
+      ++Position;
+  } else {
+    while (Position < Tail.size() && Tail[Position] >= '0' && Tail[Position] <= '9')
+      ++Position;
+    if (Position == 0)
+      return false;
+  }
+
+  if (Position < Tail.size() && Tail[Position] == '.') {
+    ++Position;
+    while (Position < Tail.size() && Tail[Position] >= '0' && Tail[Position] <= '9')
+      ++Position;
+  }
+  if (Position == Tail.size())
+    return true;
+  if (Tail[Position] != 'e' && Tail[Position] != 'E')
+    return false;
+  ++Position;
+  if (Position < Tail.size() && (Tail[Position] == '+' || Tail[Position] == '-'))
+    ++Position;
+  const std::size_t ExponentBegin = Position;
+  while (Position < Tail.size() && Tail[Position] >= '0' && Tail[Position] <= '9')
+    ++Position;
+  return Position == Tail.size() && Position != ExponentBegin;
+}
+
+[[nodiscard]] YAMLQuoting yamlQuoting(std::string_view Value) noexcept {
+  if (Value.empty())
+    return YAMLQuoting::Single;
+
+  YAMLQuoting Result = YAMLQuoting::None;
+  const auto IsSpace = [](unsigned char Character) {
+    return Character == ' ' || Character == '\t' || Character == '\r' || Character == '\n' ||
+           Character == '\f' || Character == '\v';
+  };
+  if (IsSpace(static_cast<unsigned char>(Value.front())) ||
+      IsSpace(static_cast<unsigned char>(Value.back())) || Value == "null" || Value == "Null" ||
+      Value == "NULL" || Value == "~" || Value == "true" || Value == "True" || Value == "TRUE" ||
+      Value == "false" || Value == "False" || Value == "FALSE" || isYAMLNumeric(Value)) {
+    Result = YAMLQuoting::Single;
+  }
+
+  switch (Value.front()) {
+  case '-':
+  case '?':
+  case ':':
+  case '\\':
+  case ',':
+  case '[':
+  case ']':
+  case '{':
+  case '}':
+  case '#':
+  case '&':
+  case '*':
+  case '!':
+  case '|':
+  case '>':
+  case '\'':
+  case '"':
+  case '%':
+  case '@':
+  case '`':
+    Result = YAMLQuoting::Single;
+    break;
+  default:
+    break;
+  }
+
+  for (const char RawCharacter : Value) {
+    const auto Character = static_cast<unsigned char>(RawCharacter);
+    if (isASCIIAlphanumeric(Character))
+      continue;
+    switch (Character) {
+    case '_':
+    case '-':
+    case '^':
+    case '.':
+    case ',':
+    case ' ':
+    case '\t':
+      continue;
+    case '\n':
+    case '\r':
+    case 0x7f:
+      return YAMLQuoting::Double;
+    default:
+      if (Character <= 0x1fU || (Character & 0x80U) != 0)
+        return YAMLQuoting::Double;
+      Result = YAMLQuoting::Single;
+      break;
+    }
+  }
+  return Result;
+}
+
 [[nodiscard]] std::string yamlScalar(std::string_view Value) {
+  const YAMLQuoting Quoting = yamlQuoting(Value);
+  if (Quoting == YAMLQuoting::None)
+    return std::string(Value);
+
   std::string Result;
   Result.reserve(Value.size() + 2U);
-  Result.push_back('\'');
+  const char Quote = Quoting == YAMLQuoting::Single ? '\'' : '"';
+  Result.push_back(Quote);
   for (const char Character : Value) {
-    Result.push_back(Character);
-    if (Character == '\'')
-      Result.push_back('\'');
+    if (Quoting == YAMLQuoting::Single) {
+      Result.push_back(Character);
+      if (Character == '\'')
+        Result.push_back('\'');
+      continue;
+    }
+    switch (Character) {
+    case '\\':
+      Result.append("\\\\");
+      break;
+    case '"':
+      Result.append("\\\"");
+      break;
+    case '\0':
+      Result.append("\\0");
+      break;
+    case '\a':
+      Result.append("\\a");
+      break;
+    case '\b':
+      Result.append("\\b");
+      break;
+    case '\t':
+      Result.append("\\t");
+      break;
+    case '\n':
+      Result.append("\\n");
+      break;
+    case '\v':
+      Result.append("\\v");
+      break;
+    case '\f':
+      Result.append("\\f");
+      break;
+    case '\r':
+      Result.append("\\r");
+      break;
+    case '\x1b':
+      Result.append("\\e");
+      break;
+    default: {
+      const auto Byte = static_cast<unsigned char>(Character);
+      if (Byte < 0x20U || Byte == 0x7fU) {
+        static constexpr std::string_view Hex = "0123456789ABCDEF";
+        Result.append("\\x");
+        Result.push_back(Hex[Byte >> 4U]);
+        Result.push_back(Hex[Byte & 0xfU]);
+      } else {
+        Result.push_back(Character);
+      }
+      break;
+    }
+    }
   }
-  Result.push_back('\'');
+  Result.push_back(Quote);
   return Result;
 }
 
@@ -396,14 +587,7 @@ Expected<std::string> MIRDocumentPrinter::metadataValue(const MachineMetadataVal
   const MachineDIExpression *Expression = Value.expression();
   if (Expression == nullptr)
     return makeUnexpected(ErrorCode::VerificationError, "metadata value is not printable");
-  std::string Text = "!DIExpression(";
-  for (std::size_t Index = 0; Index < Expression->elements().size(); ++Index) {
-    if (Index != 0)
-      Text.append(", ");
-    Text.append(std::to_string(Expression->elements()[Index]));
-  }
-  Text.push_back(')');
-  return Text;
+  return formatDIExpression(Expression->elements());
 }
 
 Expected<std::string> MIRDocumentPrinter::diLocation(const MachineDILocation &Location,
@@ -679,24 +863,34 @@ Expected<void> MIRDocumentPrinter::printFrameInfo(const MachineFunction &Functio
     Output.append(getMachineFramePointerPolicyName(State.FramePointerPolicy));
     Output.push_back('\n');
   }
-  if (State.StackProtector) {
-    auto Reference = frameReference(*State.StackProtector, Context);
-    if (!Reference)
-      return std::unexpected(Reference.error());
+  if (Options.Mode == MIPrintMode::Complete || State.StackProtector) {
+    std::string Reference;
+    if (State.StackProtector) {
+      auto PrintedReference = frameReference(*State.StackProtector, Context);
+      if (!PrintedReference)
+        return std::unexpected(PrintedReference.error());
+      Reference = std::move(*PrintedReference);
+    }
     Output.append("  stackProtector: ");
-    Output.append(yamlScalar(*Reference));
+    Output.append(yamlScalar(Reference));
     Output.push_back('\n');
   }
-  if (State.FunctionContext) {
-    auto Reference = frameReference(*State.FunctionContext, Context);
-    if (!Reference)
-      return std::unexpected(Reference.error());
+  if (Options.Mode == MIPrintMode::Complete || State.FunctionContext) {
+    std::string Reference;
+    if (State.FunctionContext) {
+      auto PrintedReference = frameReference(*State.FunctionContext, Context);
+      if (!PrintedReference)
+        return std::unexpected(PrintedReference.error());
+      Reference = std::move(*PrintedReference);
+    }
     Output.append("  functionContext: ");
-    Output.append(yamlScalar(*Reference));
+    Output.append(yamlScalar(Reference));
     Output.push_back('\n');
   }
-  if (State.MaxCallFrameSize)
-    Unsigned("maxCallFrameSize", *State.MaxCallFrameSize);
+  if (Options.Mode == MIPrintMode::Complete || State.MaxCallFrameSize) {
+    Unsigned("maxCallFrameSize",
+             State.MaxCallFrameSize.value_or(std::numeric_limits<std::uint32_t>::max()));
+  }
   Unsigned("cvBytesOfCalleeSavedRegisters", State.CVBytesOfCalleeSavedRegisters);
   Bool("hasOpaqueSPAdjustment", State.HasOpaqueSPAdjustment);
   Bool("hasVAStart", State.HasVAStart);
@@ -1161,15 +1355,18 @@ Expected<void> MIRDocumentPrinter::printFunctionRecords(const MachineFunction &F
   }
 
   if (!Records.prefetchTargets().empty()) {
-    Output.append("prefetch-targets:\n");
-    for (const MachinePrefetchTarget &TargetValue : Records.prefetchTargets()) {
+    Output.append("prefetch-targets: [ ");
+    const auto Targets = Records.prefetchTargets();
+    for (std::size_t Index = 0; Index < Targets.size(); ++Index) {
+      if (Index != 0)
+        Output.append(", ");
+      const MachinePrefetchTarget &TargetValue = Targets[Index];
       std::string Text = "bb_id " + std::to_string(TargetValue.Block.BaseID) + ", " +
                          std::to_string(TargetValue.Block.CloneID) + ", " +
                          std::to_string(TargetValue.CallsiteIndex);
-      Output.append("  - ");
       Output.append(yamlScalar(Text));
-      Output.push_back('\n');
     }
+    Output.append(" ]\n");
   }
   return {};
 }
@@ -1188,9 +1385,9 @@ Expected<void> MIRDocumentPrinter::printFunction(const MachineFunction &Function
   Output.append(yamlScalar(Function.name()));
   Output.push_back('\n');
   const auto Alignment = Function.attributes().alignment();
-  if (Alignment) {
+  if (Options.Mode == MIPrintMode::Complete || Alignment) {
     Output.append("alignment: ");
-    Output.append(std::to_string(Alignment->bytes()));
+    Output.append(std::to_string(Alignment ? Alignment->bytes() : 1U));
     Output.push_back('\n');
   }
 
@@ -1244,6 +1441,7 @@ Expected<void> MIRDocumentPrinter::printFunction(const MachineFunction &Function
     return std::unexpected(Body.error());
   Output.append("body: |\n");
   appendBlockScalar(Output, *Body, 2);
+  Output.append("...\n");
   return {};
 }
 
@@ -1281,6 +1479,7 @@ Expected<std::string> MIRDocumentPrinter::run() {
   if (Options.EmitEmbeddedIR && Document.embeddedIR() != nullptr) {
     Output.append("--- |\n");
     appendBlockScalar(Output, Document.embeddedIR()->source().text(), 2);
+    Output.append("...\n");
   }
   for (std::size_t Index = 0; Index < Document.unit().functionCount(); ++Index) {
     const MachineFunction *Function = Document.unit().functionAt(Index);

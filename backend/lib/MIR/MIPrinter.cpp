@@ -2,6 +2,7 @@
 
 #include "rcc/MIR/MIPrinter.h"
 
+#include "rcc/CodeGen/InlineAsm.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFIInfo.h"
@@ -14,6 +15,8 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
+#include "rcc/MIR/LLVMConstantSyntax.h"
+#include "rcc/MIR/MIDebugSyntax.h"
 
 #include <algorithm>
 #include <array>
@@ -81,52 +84,6 @@ namespace {
     Result[DigitCount - Digit - 1U] = Hex[Nibble];
   }
   return Result;
-}
-
-[[nodiscard]] std::string unsignedDecimal(std::span<const std::uint64_t> InputWords) {
-  std::vector<std::uint64_t> Words(InputWords.begin(), InputWords.end());
-  while (!Words.empty() && Words.back() == 0)
-    Words.pop_back();
-  if (Words.empty())
-    return "0";
-
-  std::string Reversed;
-  while (!Words.empty()) {
-    std::uint64_t Remainder = 0;
-    for (std::size_t Index = Words.size(); Index != 0; --Index) {
-      const unsigned __int128 Dividend =
-          (static_cast<unsigned __int128>(Remainder) << 64U) | Words[Index - 1U];
-      Words[Index - 1U] = static_cast<std::uint64_t>(Dividend / 10U);
-      Remainder = static_cast<std::uint64_t>(Dividend % 10U);
-    }
-    Reversed.push_back(static_cast<char>('0' + Remainder));
-    while (!Words.empty() && Words.back() == 0)
-      Words.pop_back();
-  }
-  std::ranges::reverse(Reversed);
-  return Reversed;
-}
-
-[[nodiscard]] std::string_view floatKeyword(FloatSemantics Semantics) noexcept {
-  switch (Semantics) {
-  case FloatSemantics::IEEEHalf:
-    return "half";
-  case FloatSemantics::BFloat:
-    return "bfloat";
-  case FloatSemantics::IEEESingle:
-    return "float";
-  case FloatSemantics::IEEEDouble:
-    return "double";
-  case FloatSemantics::IEEEQuad:
-    return "fp128";
-  case FloatSemantics::PPCDoubleDouble:
-  case FloatSemantics::PPCDoubleDoubleLegacy:
-    return "ppc_fp128";
-  case FloatSemantics::X87DoubleExtended:
-    return "x86_fp80";
-  default:
-    return {};
-  }
 }
 
 [[nodiscard]] std::string_view integerPredicateName(IntegerPredicate Predicate) noexcept {
@@ -314,9 +271,13 @@ private:
   [[nodiscard]] Expected<void> initialize();
   [[nodiscard]] Expected<void> printBlock(const MachineBasicBlock &Block);
   [[nodiscard]] Expected<void> printInstruction(const MachineInstr &Instruction);
-  [[nodiscard]] Expected<void> printOperand(const MachineOperand &Operand, bool IsExplicitDef);
+  [[nodiscard]] Expected<void> printOperand(const MachineOperand &Operand, bool IsExplicitDef,
+                                            bool PrintVirtualType = true);
+  [[nodiscard]] Expected<void> printInlineAsmExtraInfo(const MachineOperand &Operand);
+  [[nodiscard]] Expected<std::size_t>
+  printInlineAsmOperandFlag(const MachineOperand &Operand);
   [[nodiscard]] Expected<void> printRegisterOperand(const MachineOperand &Operand,
-                                                    bool IsExplicitDef);
+                                                    bool IsExplicitDef, bool PrintVirtualType);
   [[nodiscard]] Expected<void> printTargetFlags(std::uint32_t Flags);
   [[nodiscard]] Expected<void> printMetadataReference(MachineMetadataReference Reference);
   [[nodiscard]] Expected<void> printDILocation(const MachineDILocation &Location,
@@ -437,11 +398,6 @@ Expected<void> BodyPrinter::appendPhysicalRegister(PhysicalRegister Register) {
 void BodyPrinter::appendBlockReference(const MachineBasicBlock &Block) {
   Output.append("%bb.");
   Output.append(std::to_string(BlockIDs.at(&Block)));
-  const auto &Name = Block.attributes().name();
-  if (Name) {
-    Output.push_back('.');
-    Output.append(quoteName(*Name));
-  }
 }
 
 void BodyPrinter::appendOffset(std::int64_t Offset) {
@@ -528,7 +484,7 @@ Expected<void> BodyPrinter::printDILocation(const MachineDILocation &Location,
 }
 
 Expected<void> BodyPrinter::printRegisterOperand(const MachineOperand &Operand,
-                                                 bool IsExplicitDef) {
+                                                 bool IsExplicitDef, bool PrintVirtualType) {
   const RegisterOperandFlags Flags = Operand.registerFlags();
   if (Flags.has(RegisterOperandFlag::Implicit) && Flags.has(RegisterOperandFlag::Define)) {
     Output.append("implicit-def ");
@@ -570,11 +526,19 @@ Expected<void> BodyPrinter::printRegisterOperand(const MachineOperand &Operand,
     if (!Printed)
       return Printed;
   } else {
-    auto VirtualIndex = virtualRegisterID(Reg);
-    if (!VirtualIndex)
-      return std::unexpected(VirtualIndex.error());
+    auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
+    if (!Info)
+      return std::unexpected(Info.error());
+    const VirtualRegisterInfo &RegisterInfo = Info->get();
     Output.push_back('%');
-    Output.append(std::to_string(*VirtualIndex));
+    if (RegisterInfo.Name) {
+      Output.append(*RegisterInfo.Name);
+    } else {
+      auto VirtualIndex = virtualRegisterID(Reg);
+      if (!VirtualIndex)
+        return std::unexpected(VirtualIndex.error());
+      Output.append(std::to_string(*VirtualIndex));
+    }
     if (Operand.subReg().value() != 0) {
       const SubRegIndexDesc *SubReg = Target.registers().subRegIndex(Operand.subReg());
       if (SubReg == nullptr)
@@ -584,28 +548,26 @@ Expected<void> BodyPrinter::printRegisterOperand(const MachineOperand &Operand,
       Output.append(SubReg->Name);
     }
 
-    auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
-    if (!Info)
-      return std::unexpected(Info.error());
-    const VirtualRegisterInfo &RegisterInfo = Info->get();
-    if (RegisterInfo.RegClass) {
+    const bool PrintRegisterConstraint =
+        IsExplicitDef || Function.registerInfo().getUniqueVRegDef(Reg) == nullptr;
+    if (PrintRegisterConstraint && RegisterInfo.RegClass) {
       const auto Name = Target.registers().registerClassMIRName(*RegisterInfo.RegClass);
       if (!Name)
         return makeUnexpected(ErrorCode::VerificationError,
                               "virtual register class has no MIR name");
       Output.push_back(':');
       Output.append(*Name);
-    } else if (RegisterInfo.Bank) {
+    } else if (PrintRegisterConstraint && RegisterInfo.Bank) {
       const auto Name = Target.registers().registerBankMIRName(*RegisterInfo.Bank);
       if (!Name)
         return makeUnexpected(ErrorCode::VerificationError,
                               "virtual register bank has no MIR name");
       Output.push_back(':');
       Output.append(*Name);
-    } else if (RegisterInfo.Type) {
+    } else if (PrintRegisterConstraint && RegisterInfo.Type) {
       Output.append(":_");
     }
-    if (RegisterInfo.Type) {
+    if (PrintVirtualType && RegisterInfo.Type) {
       auto Type = llvmMIRLowLevelType(*RegisterInfo.Type);
       if (!Type)
         return std::unexpected(Type.error());
@@ -801,9 +763,10 @@ Expected<void> BodyPrinter::printCFIInstruction(CFIInstructionIndex Index) {
   return makeUnexpected(ErrorCode::InternalError, "CFI printer did not handle an operation");
 }
 
-Expected<void> BodyPrinter::printOperand(const MachineOperand &Operand, bool IsExplicitDef) {
+Expected<void> BodyPrinter::printOperand(const MachineOperand &Operand, bool IsExplicitDef,
+                                         bool PrintVirtualType) {
   if (Operand.isRegister())
-    return printRegisterOperand(Operand, IsExplicitDef);
+    return printRegisterOperand(Operand, IsExplicitDef, PrintVirtualType);
   if (auto Flags = printTargetFlags(Operand.targetFlags()); !Flags)
     return Flags;
 
@@ -819,19 +782,21 @@ Expected<void> BodyPrinter::printOperand(const MachineOperand &Operand, bool IsE
     Output.push_back('i');
     Output.append(std::to_string(Value.bitWidth()));
     Output.push_back(' ');
-    Output.append(unsignedDecimal(Value.words()));
+    if (Value.bitWidth() == 1U)
+      Output.append(Value.isZero() ? "false" : "true");
+    else
+      Output.append(Value.toSignedDecimal());
     return {};
   }
   case MachineOperand::Kind::FloatingImmediate: {
     const FloatingPointBits &Bits = Operand.getIf<FloatingImmediateOperand>()->Bits;
-    const std::string_view Keyword = floatKeyword(Bits.semantics());
-    if (Keyword.empty()) {
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "floating-point semantics has no LLVM MIR spelling");
-    }
-    Output.append(Keyword);
-    Output.append(" f0x");
-    Output.append(hexadecimalWords(Bits.words(), Bits.bitWidth()));
+    auto Constant = GenericConstantData::floating(Bits);
+    if (!Constant)
+      return std::unexpected(Constant.error());
+    auto Text = printLLVMConstant(*Constant);
+    if (!Text)
+      return std::unexpected(Text.error());
+    Output.append(*Text);
     return {};
   }
   case MachineOperand::Kind::BasicBlock: {
@@ -952,14 +917,7 @@ Expected<void> BodyPrinter::printOperand(const MachineOperand &Operand, bool IsE
       return makeUnexpected(ErrorCode::VerificationError,
                             "metadata operand has no printable value");
     }
-    Output.append("!DIExpression(");
-    const auto Elements = Expression->elements();
-    for (std::size_t Index = 0; Index < Elements.size(); ++Index) {
-      if (Index != 0)
-        Output.append(", ");
-      Output.append(std::to_string(Elements[Index]));
-    }
-    Output.push_back(')');
+    Output.append(formatDIExpression(Expression->elements()));
     return {};
   }
   case MachineOperand::Kind::TargetIndex: {
@@ -1037,6 +995,68 @@ Expected<void> BodyPrinter::printOperand(const MachineOperand &Operand, bool IsE
     return makeUnexpected(ErrorCode::VerificationError, "machine operand has an invalid kind");
   }
   return makeUnexpected(ErrorCode::InternalError, "machine operand printer did not handle a kind");
+}
+
+Expected<void> BodyPrinter::printInlineAsmExtraInfo(const MachineOperand &Operand) {
+  const auto *Value = Operand.getIf<std::int64_t>();
+  if (Value == nullptr || Operand.targetFlags() != 0) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "inline assembly extra info must be an unflagged immediate");
+  }
+  const InlineAsmExtraInfo ExtraInfo(static_cast<std::uint32_t>(*Value));
+  const std::vector<std::string_view> Names = ExtraInfo.names();
+  for (std::size_t Index = 0; Index < Names.size(); ++Index) {
+    if (Index != 0)
+      Output.push_back(' ');
+    Output.append(Names[Index]);
+  }
+  return {};
+}
+
+Expected<std::size_t> BodyPrinter::printInlineAsmOperandFlag(const MachineOperand &Operand) {
+  const auto *Value = Operand.getIf<std::int64_t>();
+  if (Value == nullptr || *Value < 0 ||
+      static_cast<std::uint64_t>(*Value) > std::numeric_limits<std::uint32_t>::max() ||
+      Operand.targetFlags() != 0) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "inline assembly operand flag must be an unflagged 32-bit immediate");
+  }
+
+  const InlineAsmOperandFlag Flag(static_cast<std::uint32_t>(*Value));
+  const std::string_view KindName = InlineAsmOperandFlag::kindName(Flag.kind());
+  if (KindName.empty() || Flag.operandCount() == 0) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "inline assembly operand flag has an invalid kind or operand count");
+  }
+  Output.append(KindName);
+
+  if (const auto MatchingOperand = Flag.matchingOperand()) {
+    Output.append(" tiedto:$");
+    Output.append(std::to_string(*MatchingOperand));
+    return Flag.operandCount();
+  }
+  if (Flag.kind() == InlineAsmOperandKind::Memory ||
+      Flag.kind() == InlineAsmOperandKind::Function) {
+    const auto Constraint = InlineAsmOperandFlag::memoryConstraintName(Flag.memoryConstraint());
+    if (Constraint) {
+      Output.push_back(':');
+      Output.append(*Constraint);
+    }
+    return Flag.operandCount();
+  }
+  if (Flag.isRegisterKind()) {
+    if (const auto RegisterClass = Flag.registerClass()) {
+      const auto Name =
+          Target.registers().registerClassMIRName(RegisterClassID::fromValue(*RegisterClass));
+      if (!Name) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "inline assembly operand flag references an unknown register class");
+      }
+      Output.push_back(':');
+      Output.append(*Name);
+    }
+  }
+  return Flag.operandCount();
 }
 
 Expected<void> BodyPrinter::printMemoryBase(const MemoryBase &Base, std::int64_t Offset) {
@@ -1121,6 +1141,20 @@ Expected<void> BodyPrinter::printMemoryBase(const MemoryBase &Base, std::int64_t
     }
     Output.append("%ir.");
     Output.append(quoteName(*Name));
+    break;
+  }
+  case MemoryBase::Kind::IRConstant: {
+    const GenericConstantData *Constant = Base.constantValue();
+    if (Constant == nullptr) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "IR-constant memory base has no constant value");
+    }
+    auto Printed = printLLVMConstant(*Constant);
+    if (!Printed)
+      return std::unexpected(Printed.error());
+    Output.push_back('`');
+    Output.append(*Printed);
+    Output.push_back('`');
     break;
   }
   case MemoryBase::Kind::Stack:
@@ -1219,18 +1253,27 @@ Expected<void> BodyPrinter::printMemoryOperand(const MachineMemOperand &Operand)
   }
 
   Output.push_back(' ');
-  switch (Description.Size.kind()) {
-  case MemorySize::Kind::Unknown:
-    Output.append("unknown-size");
-    break;
-  case MemorySize::Kind::Fixed:
-    Output.append(std::to_string(Description.Size.minimumBytes()));
-    break;
-  case MemorySize::Kind::Scalable:
-    Output.append("(<vscale x ");
-    Output.append(std::to_string(Description.Size.minimumBytes()));
-    Output.append(" x s8>)");
-    break;
+  if (Description.MemoryType) {
+    auto Type = llvmMIRLowLevelType(*Description.MemoryType);
+    if (!Type)
+      return std::unexpected(Type.error());
+    Output.push_back('(');
+    Output.append(*Type);
+    Output.push_back(')');
+  } else {
+    switch (Description.Size.kind()) {
+    case MemorySize::Kind::Unknown:
+      Output.append("unknown-size");
+      break;
+    case MemorySize::Kind::Fixed:
+      Output.append(std::to_string(Description.Size.minimumBytes()));
+      break;
+    case MemorySize::Kind::Scalable:
+      Output.append("(<vscale x ");
+      Output.append(std::to_string(Description.Size.minimumBytes()));
+      Output.append(" x s8>)");
+      break;
+    }
   }
 
   const std::string_view Preposition =
@@ -1240,9 +1283,13 @@ Expected<void> BodyPrinter::printMemoryOperand(const MachineMemOperand &Operand)
     return Printed;
   }
 
-  Output.append(", align ");
-  Output.append(std::to_string(Description.Align.bytes()));
-  if (Description.BaseAlign) {
+  if (!Description.Size.isKnown() ||
+      (Description.Size.minimumBytes() != 0 &&
+       Description.Align.bytes() != Description.Size.minimumBytes())) {
+    Output.append(", align ");
+    Output.append(std::to_string(Description.Align.bytes()));
+  }
+  if (Description.BaseAlign && *Description.BaseAlign != Description.Align) {
     Output.append(", basealign ");
     Output.append(std::to_string(Description.BaseAlign->bytes()));
   }
@@ -1337,13 +1384,74 @@ Expected<void> BodyPrinter::printInstruction(const MachineInstr &Instruction) {
   Output.append(Descriptor->Name);
 
   bool HasPrintedTail = false;
+  const bool IsInlineAsm = Descriptor->Name == "INLINEASM" || Descriptor->Name == "INLINEASM_BR";
+  std::size_t InlineAsmPayloadRemaining = 0;
   for (std::size_t Index = ExplicitDefs; Index < Instruction.operandCount(); ++Index) {
     Output.append(HasPrintedTail ? ", " : " ");
     HasPrintedTail = true;
-    if (auto Printed = printOperand(*Instruction.operandAt(Index), false); !Printed) {
-      return Printed;
+    const MachineOperand &Operand = *Instruction.operandAt(Index);
+    if (IsInlineAsm && Index == InlineAsmExtraInfoOperandIndex) {
+      auto Printed = printInlineAsmExtraInfo(Operand);
+      if (!Printed)
+        return Printed;
+      continue;
     }
+    if (IsInlineAsm && Index >= InlineAsmFirstConstraintOperandIndex &&
+        InlineAsmPayloadRemaining == 0) {
+      auto OperandCount = printInlineAsmOperandFlag(Operand);
+      if (!OperandCount)
+        return std::unexpected(OperandCount.error());
+      InlineAsmPayloadRemaining = *OperandCount;
+      continue;
+    }
+    bool PrintVirtualType = true;
+    if (Descriptor->Flags.has(InstructionFlag::Generic) &&
+        !Descriptor->Flags.has(InstructionFlag::Phi) &&
+        Index < Descriptor->Operands.size()) {
+      const std::optional<OperandTypeConstraint> &UseConstraint =
+          Descriptor->Operands[Index].TypeConstraint;
+      if (UseConstraint) {
+        for (std::size_t DefIndex = 0; DefIndex < ExplicitDefs; ++DefIndex) {
+          if (DefIndex >= Descriptor->Operands.size())
+            break;
+          const std::optional<OperandTypeConstraint> &DefConstraint =
+              Descriptor->Operands[DefIndex].TypeConstraint;
+          if (DefConstraint && DefConstraint->EqualityGroup == UseConstraint->EqualityGroup) {
+            PrintVirtualType = false;
+            break;
+          }
+        }
+      } else if (const Register *UseRegister = Operand.getIf<Register>();
+                 UseRegister != nullptr && UseRegister->isVirtual()) {
+        const auto UseInfo = Function.registerInfo().virtualRegisterInfo(*UseRegister);
+        for (std::size_t DefIndex = 0; DefIndex < ExplicitDefs && UseInfo &&
+                                       UseInfo->get().Type;
+             ++DefIndex) {
+          if (DefIndex >= Descriptor->Operands.size() ||
+              Descriptor->Operands[DefIndex].TypeConstraint)
+            continue;
+          const MachineOperand *DefOperand = Instruction.operandAt(DefIndex);
+          const Register *DefRegister =
+              DefOperand == nullptr ? nullptr : DefOperand->getIf<Register>();
+          if (DefRegister == nullptr || !DefRegister->isVirtual())
+            continue;
+          const auto DefInfo = Function.registerInfo().virtualRegisterInfo(*DefRegister);
+          if (DefInfo && DefInfo->get().Type == UseInfo->get().Type) {
+            PrintVirtualType = false;
+            break;
+          }
+        }
+      }
+    }
+    auto Printed = printOperand(Operand, false, PrintVirtualType);
+    if (!Printed)
+      return Printed;
+    if (IsInlineAsm && InlineAsmPayloadRemaining != 0)
+      --InlineAsmPayloadRemaining;
   }
+  if (InlineAsmPayloadRemaining != 0)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "inline assembly operand flag has missing payload operands");
 
   const auto BeginAttachment = [this, &HasPrintedTail](std::string_view Name) {
     Output.append(HasPrintedTail ? ", " : " ");
@@ -1490,6 +1598,26 @@ Expected<void> BodyPrinter::printBlock(const MachineBasicBlock &Block) {
   }
   Output.append(":\n");
 
+  bool HasLineAttributes = false;
+  if (!Block.successors().empty()) {
+    Output.append("  successors: ");
+    for (std::size_t Index = 0; Index < Block.successors().size(); ++Index) {
+      if (Index != 0)
+        Output.append(", ");
+      const MachineSuccessor &Successor = Block.successors()[Index];
+      if (Successor.Block == nullptr || !BlockIDs.contains(Successor.Block)) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "successor references an unlinked block");
+      }
+      appendBlockReference(*Successor.Block);
+      Output.append("(0x");
+      Output.append(hexadecimalWords(
+          std::array{static_cast<std::uint64_t>(Successor.Probability.rawValue())}, 32));
+      Output.push_back(')');
+    }
+    Output.push_back('\n');
+    HasLineAttributes = true;
+  }
   if (!Block.liveIns().empty()) {
     Output.append("  liveins: ");
     for (std::size_t Index = 0; Index < Block.liveIns().size(); ++Index) {
@@ -1504,24 +1632,11 @@ Expected<void> BodyPrinter::printBlock(const MachineBasicBlock &Block) {
       }
     }
     Output.push_back('\n');
+    HasLineAttributes = true;
   }
-  if (!Block.successors().empty()) {
-    Output.append("  successors: ");
-    for (std::size_t Index = 0; Index < Block.successors().size(); ++Index) {
-      if (Index != 0)
-        Output.append(", ");
-      const MachineSuccessor &Successor = Block.successors()[Index];
-      if (Successor.Block == nullptr || !BlockIDs.contains(Successor.Block)) {
-        return makeUnexpected(ErrorCode::VerificationError,
-                              "successor references an unlinked block");
-      }
-      appendBlockReference(*Successor.Block);
-      Output.push_back('(');
-      Output.append(std::to_string(Successor.Probability.rawValue()));
-      Output.push_back(')');
-    }
+
+  if (HasLineAttributes && Block.firstInstruction() != nullptr)
     Output.push_back('\n');
-  }
 
   bool InBundle = false;
   for (const MachineInstr *Instruction = Block.firstInstruction(); Instruction != nullptr;

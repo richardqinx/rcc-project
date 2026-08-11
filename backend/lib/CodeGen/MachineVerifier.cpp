@@ -10,6 +10,7 @@
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
+#include "rcc/CodeGen/MachineMetadata.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 
@@ -28,6 +29,42 @@
 namespace rcc {
 namespace {
 
+[[nodiscard]] std::string formatDebugInstruction(const MachineInstr &Instruction,
+                                                  const TargetDescription &Target) {
+  const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
+  std::string Result = Descriptor == nullptr ? "<unknown>" : Descriptor->Name;
+  for (std::size_t Index = 0; Index < Instruction.operandCount(); ++Index) {
+    if (Index == 0)
+      Result.push_back(' ');
+    else
+      Result.append(", ");
+    const MachineOperand &Operand = Instruction.operands()[Index];
+    if (const auto *Immediate = Operand.getIf<std::int64_t>()) {
+      Result.append(std::to_string(*Immediate));
+      continue;
+    }
+    if (const auto *RegisterValue = Operand.getIf<Register>()) {
+      if (RegisterValue->isNoRegister()) {
+        Result.append("$noreg");
+        continue;
+      }
+      if (RegisterValue->isVirtual()) {
+        Result.push_back('%');
+        Result.append(std::to_string(*RegisterValue->virtualIndex()));
+        continue;
+      }
+      const auto Physical = RegisterValue->physicalRegister();
+      const PhysicalRegisterDesc *Register =
+          Physical ? Target.registers().physicalRegister(*Physical) : nullptr;
+      Result.push_back('$');
+      Result.append(Register == nullptr ? RegisterValue->toString() : Register->Name);
+      continue;
+    }
+    Result.append("<operand>");
+  }
+  return Result;
+}
+
 class FunctionVerifier final {
 public:
   FunctionVerifier(const MachineFunction &Function, const TargetDescription &Target,
@@ -35,7 +72,7 @@ public:
       : Function(Function), Target(Target), Options(Options) {}
 
   [[nodiscard]] Expected<void> run() {
-    if (Function.name().empty() || !Function.stableID().isValid())
+    if (!Function.stableID().isValid())
       return fail("function identity is invalid");
 
     auto AttributeResult = Function.attributes().verify();
@@ -309,6 +346,14 @@ private:
     if (Instruction.sourceLocation() && !Instruction.sourceLocation()->isValid()) {
       return fail("instruction has an invalid source location");
     }
+    const Opcode OpcodeValue = Instruction.opcode();
+    const bool IsDebugValue = OpcodeValue == opcode(GenericOpcode::DBG_VALUE) ||
+                              OpcodeValue == opcode(GenericOpcode::DBG_VALUE_LIST);
+    if (IsDebugValue && Instruction.operandCount() == 4 && !Instruction.debugLocation()) {
+      return fail("Bad machine code: Missing DebugLoc for debug instruction\n"
+                  "- instruction: " +
+                  formatDebugInstruction(Instruction, Target));
+    }
     if (Instruction.debugLocation()) {
       auto DebugLocationResult = Instruction.debugLocation()->verify(Function.metadata());
       if (!DebugLocationResult)
@@ -358,10 +403,6 @@ private:
       if (const auto *Global = Operand.getIf<GlobalSymbolOperand>();
           Global != nullptr && Global->Name.empty()) {
         return fail("global symbol operand has an empty name");
-      }
-      if (const auto *External = Operand.getIf<ExternalSymbolOperand>();
-          External != nullptr && External->Name.empty()) {
-        return fail("external symbol operand has an empty name");
       }
       if (const auto *Address = Operand.getIf<BlockAddressOperand>();
           Address != nullptr && (Address->FunctionName.empty() || Address->BlockName.empty())) {
@@ -532,13 +573,6 @@ private:
       auto Call = VerifyCall(CalledGlobal.CallInstruction, "called-global record");
       if (!Call)
         return std::unexpected(Call.error());
-    }
-
-    for (const MachinePrefetchTarget &Prefetch : Records.prefetchTargets()) {
-      const std::uint64_t Key = (static_cast<std::uint64_t>(Prefetch.Block.BaseID) << 32U) |
-                                static_cast<std::uint64_t>(Prefetch.Block.CloneID);
-      if (!LinkedBlockProfileIDs.contains(Key))
-        return fail("prefetch target references an unknown bb_id");
     }
 
     if (!Records.debugValueSubstitutions().empty() &&

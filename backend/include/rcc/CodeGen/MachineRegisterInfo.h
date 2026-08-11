@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -79,6 +80,7 @@ private:
 };
 
 struct VirtualRegisterInfo final {
+  std::optional<std::string> Name;
   std::optional<LLT> Type;
   std::optional<RegisterBankID> Bank;
   std::optional<RegisterClassID> RegClass;

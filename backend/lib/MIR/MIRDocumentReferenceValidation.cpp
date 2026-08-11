@@ -27,7 +27,23 @@ Expected<void> verifyMIRDocumentReferences(const MIRDocument &Document,
   const EmbeddedIRReferenceIndex *Embedded = UseEmbeddedIR ? Document.embeddedIR() : nullptr;
   const EmbeddedIRFunction *IRFunction = nullptr;
   if (Embedded != nullptr) {
-    IRFunction = Embedded->function(Function.name());
+    if (Function.name().empty()) {
+      std::size_t AnonymousOrdinal = 0;
+      bool FoundFunction = false;
+      for (std::size_t Index = 0; Index < Document.unit().functionCount(); ++Index) {
+        const MachineFunction *Candidate = Document.unit().functionAt(Index);
+        if (Candidate == &Function) {
+          FoundFunction = true;
+          break;
+        }
+        if (Candidate != nullptr && Candidate->name().empty())
+          ++AnonymousOrdinal;
+      }
+      if (FoundFunction)
+        IRFunction = Embedded->unnamedFunction(AnonymousOrdinal);
+    } else {
+      IRFunction = Embedded->function(Function.name());
+    }
     if (IRFunction == nullptr) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "machine function has no matching embedded LLVM IR function");

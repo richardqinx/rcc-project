@@ -202,6 +202,14 @@ cloneMemOperand(const MachineMemOperand &SourceOperand, CloneState &State) {
     if (!DestinationReg)
       return std::unexpected(DestinationReg.error());
 
+    if (SourceInfo.Name) {
+      auto DestinationInfo =
+          State.Destination.registerInfo().virtualRegisterInfo(*DestinationReg);
+      if (!DestinationInfo)
+        return std::unexpected(DestinationInfo.error());
+      DestinationInfo->get().Name = SourceInfo.Name;
+    }
+
     if (SourceInfo.Bank) {
       auto SetResult =
           State.Destination.registerInfo().setRegisterBank(*DestinationReg, *SourceInfo.Bank);

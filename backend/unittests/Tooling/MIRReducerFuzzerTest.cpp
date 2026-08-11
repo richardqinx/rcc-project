@@ -36,7 +36,7 @@ namespace {
     return rcc::makeUnexpected(rcc::ErrorCode::InternalError,
                                "test MIR does not contain the expected COPY");
   }
-  Source.insert(Position, "    %3:gpr(i64) = G_CONSTANT 99\n");
+  Source.insert(Position, "    %3:gprb(i64) = G_CONSTANT 99\n");
   return Source;
 }
 

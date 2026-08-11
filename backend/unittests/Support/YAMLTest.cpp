@@ -21,6 +21,7 @@ const rcc::yaml::Node *mappingValue(const rcc::yaml::Stream &Stream, const rcc::
 
 int testMIRShape() {
   const std::string Input =
+      "...\n"
       "--- |\n"
       "  define void @f() {\n"
       "  entry:\n"

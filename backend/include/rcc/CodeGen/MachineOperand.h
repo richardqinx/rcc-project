@@ -83,6 +83,7 @@ public:
   [[nodiscard]] bool isZero() const noexcept;
   [[nodiscard]] bool isNegative() const noexcept;
   [[nodiscard]] std::string toUnsignedDecimal() const;
+  [[nodiscard]] std::string toSignedDecimal() const;
   [[nodiscard]] Expected<void> verify() const;
 
   friend bool operator==(const IntegerImmediate &Left, const IntegerImmediate &Right) = default;

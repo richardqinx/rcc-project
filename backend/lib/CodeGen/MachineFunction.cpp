@@ -57,8 +57,6 @@ private:
 
 Expected<std::unique_ptr<MachineFunction>>
 MachineFunction::create(std::string Name, MachineFunctionStableID StableID) {
-  if (Name.empty())
-    return makeUnexpected(ErrorCode::InvalidArgument, "machine function name cannot be empty");
   if (!StableID.isValid())
     return makeUnexpected(ErrorCode::InvalidArgument, "machine function StableID must be valid");
   return std::unique_ptr<MachineFunction>(new MachineFunction(std::move(Name), StableID));

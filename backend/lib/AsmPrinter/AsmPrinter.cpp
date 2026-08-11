@@ -402,7 +402,8 @@ Expected<void> AsmPrinter::emitFunction(const MachineFunction &Function) {
     if (!Type)
       return std::unexpected(Type.error());
   }
-  if (const auto Alignment = Function.attributes().alignment()) {
+  if (const auto Alignment = Function.attributes().alignment();
+      Alignment && Alignment->bytes() > 1) {
     auto Aligned = Streamer->emitAlignment(Alignment->bytes());
     if (!Aligned)
       return std::unexpected(Aligned.error());

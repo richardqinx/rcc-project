@@ -203,7 +203,7 @@ bool MIRDocumentParser::reserveJumpTables(const yaml::Node &Root, MachineFunctio
     Encoding = JumpTableEntryEncoding::Custom32;
     EntrySize = 4;
   } else {
-    return fail(KindNode->range(), "unknown jump table kind '" + std::string(KindName) + "'");
+    return fail(KindNode->range(), "unknown enumerated scalar");
   }
 
   const yaml::Node *Entries = mappingValue(*JumpTable, "entries");

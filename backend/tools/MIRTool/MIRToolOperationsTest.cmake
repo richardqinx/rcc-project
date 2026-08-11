@@ -7,6 +7,21 @@ endif()
 file(REMOVE_RECURSE "${WORK_DIRECTORY}")
 file(MAKE_DIRECTORY "${WORK_DIRECTORY}")
 
+set(StandardInputMIR "${WORK_DIRECTORY}/stdin.mir")
+execute_process(
+  COMMAND "${TOOL}" --verify - --output "${StandardInputMIR}"
+  INPUT_FILE "${INPUT}"
+  RESULT_VARIABLE StandardInputResult
+  ERROR_VARIABLE StandardInputDiagnostics
+)
+if(NOT StandardInputResult EQUAL 0)
+  message(FATAL_ERROR "standard-input MIR parsing failed: ${StandardInputDiagnostics}")
+endif()
+file(SIZE "${StandardInputMIR}" StandardInputSize)
+if(StandardInputSize EQUAL 0)
+  message(FATAL_ERROR "standard-input MIR parsing produced no canonical output")
+endif()
+
 set(CacheDirectory "${WORK_DIRECTORY}/cache")
 set(CachedAssembly "${WORK_DIRECTORY}/cached.s")
 set(ReloadedAssembly "${WORK_DIRECTORY}/reloaded.s")
@@ -148,7 +163,7 @@ endif()
 file(READ "${INPUT}" ReducerSeedText)
 string(REPLACE
   "    $x10 = COPY %2\n"
-  "    %3:gpr(i64) = G_CONSTANT 99\n    $x10 = COPY %2\n"
+  "    %3:gprb(i64) = G_CONSTANT 99\n    $x10 = COPY %2\n"
   ReducerSeedText
   "${ReducerSeedText}"
 )

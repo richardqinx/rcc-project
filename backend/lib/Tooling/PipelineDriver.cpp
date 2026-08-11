@@ -84,6 +84,8 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
                             "the default pipeline marker cannot be mixed with named passes");
     }
     for (const std::string &Name : Invocation.PassPipeline) {
+      if (Name == "none")
+        continue;
       auto Pass = riscv::createCanonicalPipelinePass(Name);
       if (!Pass)
         return std::unexpected(Pass.error());

@@ -121,31 +121,12 @@ Expected<IntegerImmediate> IntegerImmediate::parseDecimal(std::uint32_t BitWidth
       Word = static_cast<std::uint64_t>(Product);
       Carry = static_cast<std::uint64_t>(Product >> 64U);
     }
-    if (Carry != 0 || (Words.back() & ~integerHighWordMask(BitWidth)) != 0) {
-      return makeUnexpected(ErrorCode::ParseError,
-                            "integer immediate does not fit its declared bit width");
-    }
   }
 
+  // LLVM integer literals are arbitrary precision and are extended or
+  // truncated to the declared bit width before becoming a constant.
+  Words.back() &= integerHighWordMask(BitWidth);
   if (Negative) {
-    if (std::ranges::all_of(Words, [](std::uint64_t Word) { return Word == 0; })) {
-      return makeUnexpected(ErrorCode::ParseError,
-                            "negative zero is not a canonical integer immediate");
-    }
-    const std::uint32_t SignBit = BitWidth - 1U;
-    const std::size_t SignWord = SignBit / 64U;
-    const std::uint64_t SignMask = std::uint64_t{1} << (SignBit % 64U);
-    bool Fits = Words[SignWord] <= SignMask;
-    for (std::size_t Index = SignWord + 1; Index < Words.size(); ++Index)
-      Fits = Fits && Words[Index] == 0;
-    if (Words[SignWord] == SignMask) {
-      for (std::size_t Index = 0; Index < SignWord; ++Index)
-        Fits = Fits && Words[Index] == 0;
-    }
-    if (!Fits) {
-      return makeUnexpected(ErrorCode::ParseError,
-                            "negative integer immediate does not fit its declared bit width");
-    }
     for (std::uint64_t &Word : Words)
       Word = ~Word;
     std::uint64_t Carry = 1;
@@ -183,6 +164,36 @@ std::string IntegerImmediate::toUnsignedDecimal() const {
     Digits.push_back(static_cast<char>('0' + static_cast<unsigned>(Remainder)));
   }
   std::ranges::reverse(Digits);
+  return Digits;
+}
+
+std::string IntegerImmediate::toSignedDecimal() const {
+  if (!isNegative())
+    return toUnsignedDecimal();
+
+  std::vector<std::uint64_t> Magnitude = Words;
+  for (std::uint64_t &Word : Magnitude)
+    Word = ~Word;
+  std::uint64_t Carry = 1;
+  for (std::uint64_t &Word : Magnitude) {
+    const std::uint64_t Previous = Word;
+    Word += Carry;
+    Carry = Carry != 0 && Word < Previous ? 1 : 0;
+  }
+  Magnitude.back() &= integerHighWordMask(BitWidth);
+
+  std::string Digits;
+  while (!std::ranges::all_of(Magnitude, [](std::uint64_t Word) { return Word == 0; })) {
+    unsigned __int128 Remainder = 0;
+    for (auto Iterator = Magnitude.rbegin(); Iterator != Magnitude.rend(); ++Iterator) {
+      const unsigned __int128 Dividend = (Remainder << 64U) | *Iterator;
+      *Iterator = static_cast<std::uint64_t>(Dividend / 10U);
+      Remainder = Dividend % 10U;
+    }
+    Digits.push_back(static_cast<char>('0' + static_cast<unsigned>(Remainder)));
+  }
+  std::ranges::reverse(Digits);
+  Digits.insert(Digits.begin(), '-');
   return Digits;
 }
 
@@ -324,10 +335,6 @@ Expected<MachineOperand> MachineOperand::globalSymbol(std::string Name, std::int
 
 Expected<MachineOperand> MachineOperand::externalSymbol(std::string Name, std::int64_t Offset,
                                                         std::uint32_t TargetFlags) {
-  if (Name.empty()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "external symbol operand name cannot be empty");
-  }
   return MachineOperand(Kind::ExternalSymbol, ExternalSymbolOperand{std::move(Name), Offset},
                         TargetFlags);
 }

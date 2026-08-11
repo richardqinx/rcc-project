@@ -19,29 +19,34 @@ int fail(const char *Message) {
 
 int main() {
   rcc::CompilationUnit Unit;
-  auto Empty = Unit.createMachineFunction("");
-  if (Empty || Unit.functionCount() != 0)
-    return fail("CompilationUnit must reject an empty function name atomically");
+  auto FirstAnonymous = Unit.createMachineFunction("");
+  auto SecondAnonymous = Unit.createMachineFunction("");
+  if (!FirstAnonymous || !SecondAnonymous || Unit.functionCount() != 2 ||
+      (*FirstAnonymous)->stableID().value() != 1 || (*SecondAnonymous)->stableID().value() != 2 ||
+      Unit.function("") != nullptr)
+    return fail("CompilationUnit must retain anonymous functions by order and StableID");
 
   auto First = Unit.createMachineFunction("first");
-  if (!First || (*First)->stableID().value() != 1)
+  if (!First || (*First)->stableID().value() != 3)
     return fail("CompilationUnit must allocate the first stable function identity");
 
   auto Duplicate = Unit.createMachineFunction("first");
-  if (Duplicate || Unit.functionCount() != 1)
+  if (Duplicate || Unit.functionCount() != 3)
     return fail("CompilationUnit must reject duplicate function names atomically");
 
   auto Second = Unit.createMachineFunction("second");
-  if (!Second || (*Second)->stableID().value() != 2)
+  if (!Second || (*Second)->stableID().value() != 4)
     return fail("Rejected function creation must not consume a StableID");
-  if (Unit.functionCount() != 2 || Unit.functionAt(0) != *First || Unit.functionAt(1) != *Second)
+  if (Unit.functionCount() != 4 || Unit.functionAt(0) != *FirstAnonymous ||
+      Unit.functionAt(1) != *SecondAnonymous || Unit.functionAt(2) != *First ||
+      Unit.functionAt(3) != *Second)
     return fail("CompilationUnit must preserve function document order");
   if (Unit.function("first") != *First || Unit.function("missing") != nullptr)
     return fail("CompilationUnit must provide exact name lookup");
   if (Unit.function((*Second)->stableID()) != *Second ||
       Unit.function(rcc::MachineFunctionStableID::fromValue(99)) != nullptr)
     return fail("CompilationUnit must provide exact StableID lookup");
-  if (Unit.functionAt(2) != nullptr)
+  if (Unit.functionAt(4) != nullptr)
     return fail("CompilationUnit must reject an out-of-range ordered lookup");
 
   auto Zero = rcc::GlobalInitializer::zeroFill(4);
@@ -58,7 +63,7 @@ int main() {
     return fail("CompilationUnit must own and index global objects");
 
   auto ConflictingFunction = Unit.createMachineFunction("global");
-  if (ConflictingFunction || Unit.functionCount() != 2)
+  if (ConflictingFunction || Unit.functionCount() != 4)
     return fail("CompilationUnit must reject function/global symbol conflicts atomically");
 
   rcc::GlobalObjectDesc ConflictingGlobal;
@@ -88,7 +93,8 @@ int main() {
     return fail("A valid CompilationUnit must pass verification");
 
   rcc::CompilationUnit Moved = std::move(Unit);
-  if (Moved.functionCount() != 2 || Moved.function("first") != *First ||
+  if (Moved.functionCount() != 4 || Moved.functionAt(0) != *FirstAnonymous ||
+      Moved.functionAt(1) != *SecondAnonymous || Moved.function("first") != *First ||
       Moved.function("second") != *Second || Moved.globalObject("global") != *Global)
     return fail("Moving a CompilationUnit must preserve owned object addresses and indices");
   Verification = Moved.verify();

@@ -592,7 +592,7 @@ template <typename IntegerT>
       continue;
     }
 
-    if (!Argument.starts_with('-')) {
+    if (Argument == "-" || !Argument.starts_with('-')) {
       if (!Command.InputPath.empty())
         return rcc::makeUnexpected(ErrorCode::InvalidInvocation, "input path is specified twice");
       Command.InputPath = std::string(Argument);
@@ -780,7 +780,8 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
   auto Source = readInput(Command.InputPath);
   if (!Source)
     return std::unexpected(Source.error());
-  auto Input = rcc::tooling::parseAndCanonicalizeMIR(Command.InputPath, std::move(*Source), *Target,
+  const std::string SourceName = Command.InputPath == "-" ? "<stdin>" : Command.InputPath;
+  auto Input = rcc::tooling::parseAndCanonicalizeMIR(SourceName, std::move(*Source), *Target,
                                                      Command.Invocation);
   if (!Input)
     return std::unexpected(Input.error());
@@ -981,6 +982,10 @@ int main(int ArgumentCount, char *Arguments[]) {
   }
   auto Result = runCommand(*Command);
   if (!Result) {
+    if (Result.error().code() == ErrorCode::ParseError) {
+      std::cerr << Result.error().message() << '\n';
+      return 1;
+    }
     std::cerr << "rcc-backend-mir: " << rcc::getErrorCodeName(Result.error().code()) << ": "
               << Result.error().message() << '\n';
     return 1;

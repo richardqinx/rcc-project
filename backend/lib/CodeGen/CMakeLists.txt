@@ -88,6 +88,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericConstant.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/FrameIndexElimination.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InlineAsm.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlockAttributes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFIInfo.h"

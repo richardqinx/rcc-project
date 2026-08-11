@@ -218,7 +218,7 @@ public:
                                     BranchProbability Right) noexcept = default;
 
 private:
-  static constexpr std::uint32_t MaxRawValue = ~std::uint32_t{0};
+  static constexpr std::uint32_t MaxRawValue = std::uint32_t{1} << 31U;
 
   explicit constexpr BranchProbability(std::uint32_t RawValue) noexcept : RawValue(RawValue) {}
 

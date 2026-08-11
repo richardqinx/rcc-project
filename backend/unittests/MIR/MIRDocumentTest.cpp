@@ -468,6 +468,11 @@ void testDocumentTransaction(TestContext &Context) {
     std::cerr << "error: " << Printed.error().message() << '\n';
     return;
   }
+  Context.expect(Printed->find("name: documented\nalignment: 16\n") != std::string::npos &&
+                     Printed->find("functionContext: ''") != std::string::npos &&
+                     Printed->find("...\n---\nname: documented") != std::string::npos &&
+                     Printed->ends_with("...\n"),
+                 "complete MIR must use LLVM-compatible scalars, defaults, and document markers");
   auto RoundTrip = rcc::mir::parseMIRDocument(*Target, "round-trip.mir", std::string(*Printed));
   Context.expect(RoundTrip.succeeded(), "printed complete MIR must parse successfully");
   if (!RoundTrip.succeeded()) {
@@ -905,7 +910,7 @@ body: |
       rcc::mir::parseMIRDocument(*Target, "properties-invalid.mir", std::string(InvalidDocument));
   const bool Rejected = !Invalid.succeeded() && Invalid.document() == nullptr &&
                         Invalid.diagnostics().size() == 1 &&
-                        Invalid.diagnostics().front().Message.find("noVRegs") != std::string::npos;
+                        Invalid.diagnostics().front().Message.find("NoVRegs") != std::string::npos;
   Context.expect(Rejected, "failsVerification must not bypass RCC's mandatory input validation");
   if (!Rejected)
     printDiagnostics(Invalid);
@@ -936,6 +941,85 @@ body: |
     printDiagnostics(Parsed);
 }
 
+void testAnonymousFunctionsAndIRBlocks(TestContext &Context) {
+  auto Target = createTarget();
+  Context.expect(Target.has_value(), "anonymous-function target must be valid");
+  if (!Target)
+    return;
+
+  constexpr std::string_view DocumentText = R"(--- |
+  define void @0() {
+    ret void
+  }
+
+  define void @named() {
+    ret void
+  }
+
+  define void @1() {
+    ret void
+  }
+...
+---
+name: ''
+body: |
+  bb.0 (%ir-block.0):
+...
+---
+name: named
+body: |
+  bb.0 (%ir-block.0):
+...
+---
+name: ''
+body: |
+  bb.0 (%ir-block.0):
+...
+)";
+  auto Parsed = rcc::mir::parseMIRDocument(*Target, "anonymous.mir", std::string(DocumentText));
+  const rcc::MachineFunction *First =
+      Parsed.succeeded() ? Parsed.document()->unit().functionAt(0) : nullptr;
+  const rcc::MachineFunction *Named =
+      Parsed.succeeded() ? Parsed.document()->unit().functionAt(1) : nullptr;
+  const rcc::MachineFunction *Second =
+      Parsed.succeeded() ? Parsed.document()->unit().functionAt(2) : nullptr;
+  Context.expect(Parsed.succeeded() && First != nullptr && First->name().empty() &&
+                     Named != nullptr && Named->name() == "named" && Second != nullptr &&
+                     Second->name().empty(),
+                 "MIR must match empty names to embedded anonymous functions in document order");
+  if (!Parsed.succeeded()) {
+    printDiagnostics(Parsed);
+    return;
+  }
+
+  auto Printed = rcc::mir::printMIRDocument(*Parsed.document(), *Target);
+  Context.expect(Printed.has_value(), "anonymous MIR functions must remain printable");
+  if (!Printed)
+    return;
+  const std::size_t FirstAnonymous = Printed->find("name: ''");
+  const std::size_t SecondAnonymous =
+      FirstAnonymous == std::string::npos
+          ? std::string::npos
+          : Printed->find("name: ''", FirstAnonymous + std::string_view("name: ''").size());
+  Context.expect(FirstAnonymous != std::string::npos && SecondAnonymous != std::string::npos &&
+                     Printed->find("%ir-block.0") != std::string::npos,
+                 "anonymous function names and unnamed IR block slots must print canonically");
+
+  constexpr std::string_view NoIRText = R"(...
+---
+name: ''
+body: |
+  bb.0:
+...
+)";
+  auto NoIR = rcc::mir::parseMIRDocument(*Target, "anonymous-no-ir.mir", std::string(NoIRText));
+  Context.expect(NoIR.succeeded() && NoIR.document()->unit().functionAt(0) != nullptr &&
+                     NoIR.document()->unit().functionAt(0)->name().empty(),
+                 "MIR without embedded IR must accept an anonymous dummy function");
+  if (!NoIR.succeeded())
+    printDiagnostics(NoIR);
+}
+
 } // namespace
 
 int main() {
@@ -950,5 +1034,6 @@ int main() {
   testAtomicFailure(Context);
   testLLVMPropertySemantics(Context);
   testBodyDiagnosticLocation(Context);
+  testAnonymousFunctionsAndIRBlocks(Context);
   return Context.result();
 }

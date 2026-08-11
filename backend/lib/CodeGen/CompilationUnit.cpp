@@ -22,13 +22,11 @@ CompilationUnit &CompilationUnit::operator=(CompilationUnit &&) noexcept = defau
 CompilationUnit::~CompilationUnit() = default;
 
 Expected<MachineFunction *> CompilationUnit::createMachineFunction(std::string Name) {
-  if (Name.empty())
-    return makeUnexpected(ErrorCode::InvalidArgument, "machine function name cannot be empty");
-  if (FunctionNameToIndex.contains(Name)) {
+  if (!Name.empty() && FunctionNameToIndex.contains(Name)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine function name is already present in the compilation unit");
   }
-  if (GlobalNameToIndex.contains(Name)) {
+  if (!Name.empty() && GlobalNameToIndex.contains(Name)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine function name conflicts with a global object");
   }
@@ -42,7 +40,8 @@ Expected<MachineFunction *> CompilationUnit::createMachineFunction(std::string N
 
   MachineFunction *Result = Function->get();
   const std::size_t Index = Functions.size();
-  FunctionNameToIndex.emplace(std::string(Result->name()), Index);
+  if (!Result->name().empty())
+    FunctionNameToIndex.emplace(std::string(Result->name()), Index);
   Functions.push_back(std::move(*Function));
   return Result;
 }
@@ -129,23 +128,20 @@ const GlobalObjectDesc *CompilationUnit::globalObject(std::string_view Name) con
 }
 
 Expected<void> CompilationUnit::verify() const {
-  if (FunctionNameToIndex.size() != Functions.size()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "compilation unit function name index has an inconsistent size");
-  }
   if (GlobalNameToIndex.size() != GlobalObjects.size()) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "compilation unit global object name index has an inconsistent size");
   }
 
   std::unordered_set<MachineFunctionStableID> StableIDs;
+  std::size_t NamedFunctionCount = 0;
   for (std::size_t Index = 0; Index < Functions.size(); ++Index) {
     const std::unique_ptr<MachineFunction> &Function = Functions[Index];
     if (Function == nullptr) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "compilation unit contains a null machine function");
     }
-    if (Function->name().empty() || !Function->stableID().isValid()) {
+    if (!Function->stableID().isValid()) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "compilation unit contains an invalid machine function identity");
     }
@@ -154,15 +150,22 @@ Expected<void> CompilationUnit::verify() const {
                             "compilation unit contains duplicate machine function StableIDs");
     }
 
-    const auto Position = FunctionNameToIndex.find(Function->name());
-    if (Position == FunctionNameToIndex.end() || Position->second != Index) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "compilation unit function name index is inconsistent");
+    if (!Function->name().empty()) {
+      ++NamedFunctionCount;
+      const auto Position = FunctionNameToIndex.find(Function->name());
+      if (Position == FunctionNameToIndex.end() || Position->second != Index) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "compilation unit function name index is inconsistent");
+      }
+      if (GlobalNameToIndex.contains(Function->name())) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "function name conflicts with a global object symbol");
+      }
     }
-    if (GlobalNameToIndex.contains(Function->name())) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "function name conflicts with a global object symbol");
-    }
+  }
+  if (FunctionNameToIndex.size() != NamedFunctionCount) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "compilation unit function name index has an inconsistent size");
   }
 
   for (std::size_t Index = 0; Index < GlobalObjects.size(); ++Index) {

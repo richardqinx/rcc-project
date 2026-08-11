@@ -35,6 +35,10 @@ public:
   [[nodiscard]] Expected<MachineMetadataValue> parseValue();
   [[nodiscard]] Expected<MachineDebugLocation> parseLocation();
 
+  [[nodiscard]] const TextRange &diagnosticRange() const noexcept {
+    return token().range();
+  }
+
 private:
   [[nodiscard]] const MIToken &token() const noexcept {
     return Tokens[Position];

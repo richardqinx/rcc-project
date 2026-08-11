@@ -32,6 +32,7 @@ constexpr std::uint32_t ConstantOpcode = 5;
 constexpr std::uint32_t FloatingConstantOpcode = 6;
 constexpr std::uint32_t MetadataOpcode = 7;
 constexpr std::uint32_t LoadOpcode = 8;
+constexpr std::uint32_t InlineAsmOpcode = 9;
 
 class TestContext final {
 public:
@@ -144,6 +145,12 @@ registerOperand(rcc::RegisterOperandRole Role,
   Load.Flags.set(rcc::InstructionFlag::MayLoad);
   Load.RequiresMemoryOperands = true;
 
+  auto InlineAsm = descriptor(InlineAsmOpcode, "INLINEASM");
+  InlineAsm.Operands = {
+      operand(rcc::MachineOperand::Kind::ExternalSymbol),
+      operand(rcc::MachineOperand::Kind::Immediate),
+  };
+
   std::vector<rcc::InstructionDescriptor> Descriptors;
   Descriptors.push_back(std::move(Copy));
   Descriptors.push_back(std::move(AddImmediate));
@@ -153,6 +160,7 @@ registerOperand(rcc::RegisterOperandRole Role,
   Descriptors.push_back(std::move(FloatingConstant));
   Descriptors.push_back(std::move(Metadata));
   Descriptors.push_back(std::move(Load));
+  Descriptors.push_back(std::move(InlineAsm));
   auto Instructions = rcc::InstructionSet::create(std::move(Descriptors));
   if (!Instructions)
     return std::unexpected(Instructions.error());
@@ -319,6 +327,8 @@ bb.1."exit block" (landing-pad, bbsections Cold):
     std::cerr << "error: " << Printed.error().message() << '\n';
     return;
   }
+  Context.expect(Printed->find("TEST_ADDI %0,") != std::string::npos,
+                 "virtual-register uses must not repeat a definition constraint");
 
   auto RoundTripFunction = createFunction(Context, 2);
   if (!RoundTripFunction)
@@ -434,6 +444,94 @@ void testCompatibleRegisterClassAndBankAnnotations(TestContext &Context) {
                    "conflicting virtual register bank");
 }
 
+void testTypedIntegerTruncation(TestContext &Context) {
+  auto Target = createTarget();
+  auto Function = createFunction(Context, 12);
+  Context.expect(Target.has_value(), "typed-integer target description must be valid");
+  if (!Target || !Function)
+    return;
+
+  const std::string Body = R"(bb.0:
+  %0:_(s64) = TEST_CONSTANT i64 -1
+  %1:_(s16) = TEST_CONSTANT i16 -64769
+  %2:_(s4) = TEST_CONSTANT i4 -8
+  %3:_(s64) = TEST_CONSTANT i64 18446744073709551617
+)";
+  rcc::mir::MIParser Parser(*Function, *Target, "typed-integer-truncation.mir", Body);
+  const auto Parsed = Parser.parse();
+  const auto Instructions = Function->allInstructions();
+  const auto *MinusOne = Instructions.size() > 0
+                             ? Instructions[0]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
+                             : nullptr;
+  const auto *NarrowNegative =
+      Instructions.size() > 1
+          ? Instructions[1]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
+          : nullptr;
+  const auto *NarrowMinimum =
+      Instructions.size() > 2
+          ? Instructions[2]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
+          : nullptr;
+  const auto *WidePositive =
+      Instructions.size() > 3
+          ? Instructions[3]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
+          : nullptr;
+  Context.expect(Parsed.has_value() && MinusOne != nullptr &&
+                     MinusOne->Value.words()[0] == std::numeric_limits<std::uint64_t>::max() &&
+                     NarrowNegative != nullptr && NarrowNegative->Value.bitWidth() == 16 &&
+                     NarrowNegative->Value.words()[0] == 767 && NarrowMinimum != nullptr &&
+                     NarrowMinimum->Value.bitWidth() == 4 && NarrowMinimum->Value.words()[0] == 8 &&
+                     WidePositive != nullptr && WidePositive->Value.words()[0] == 1,
+                 "typed integer literals must use LLVM width truncation semantics");
+  if (!Parsed) {
+    for (const auto &Diagnostic : Parser.diagnostics())
+      std::cerr << Diagnostic.Category << ": " << Diagnostic.Message << '\n';
+    std::cerr << "error: " << Parsed.error().message() << '\n';
+  }
+}
+
+void testLLVMInlineAsmAndConstantMemorySyntax(TestContext &Context) {
+  auto Target = createTarget();
+  auto Function = createFunction(Context, 11);
+  Context.expect(Target.has_value(), "LLVM MIR syntax target description must be valid");
+  if (!Target || !Function)
+    return;
+
+  const std::string Body = R"(bb.0:
+  INLINEASM &"", sideeffect mayload inteldialect
+  %0:gpr64 = TEST_LOAD $g0 :: (load (s64) from `ptr poison`)
+)";
+  rcc::mir::MIParserContext ParserContext;
+  ParserContext.DefaultPointerSizeInBits = 64;
+  rcc::mir::MIParser Parser(*Function, *Target, "llvm-compatible.mir", Body, ParserContext);
+  auto Parsed = Parser.parse();
+  Context.expect(Parsed.has_value(), "LLVM inline-asm and constant-pointer MMO syntax must parse");
+  if (!Parsed) {
+    for (const auto &Diagnostic : Parser.diagnostics())
+      std::cerr << Diagnostic.Category << ": " << Diagnostic.Message << '\n';
+    return;
+  }
+
+  const rcc::MachineInstr *InlineAsm = Function->firstBlock()->firstInstruction();
+  const auto *ExtraInfo = InlineAsm->operandAt(1)->getIf<std::int64_t>();
+  const rcc::MachineInstr *Load = InlineAsm->next();
+  const rcc::MachineMemOperandDesc &Memory = Load->memOperands().front()->description();
+  const auto MemoryType = rcc::LLT::makeAnyScalar(64);
+  Context.expect(ExtraInfo != nullptr && *ExtraInfo == 13,
+                 "inline-asm extra-info names must aggregate into the LLVM bit field");
+  Context.expect(Memory.Base.kind() == rcc::MemoryBase::Kind::IRConstant &&
+                     Memory.Base.constantValue() != nullptr &&
+                     Memory.Base.constantValue()->Kind == rcc::GenericConstantKind::Poison &&
+                     MemoryType && Memory.MemoryType == *MemoryType,
+                 "quoted LLVM pointer constants must remain structured MMO bases");
+
+  auto Printed = rcc::mir::printMachineFunctionBody(*Function, *Target, ParserContext);
+  Context.expect(Printed &&
+                     Printed->find("INLINEASM &\"\", sideeffect mayload inteldialect") !=
+                         std::string::npos &&
+                     Printed->find("from `ptr poison`") != std::string::npos,
+                 "canonical MIR must print symbolic inline-asm flags and LLVM constant bases");
+}
+
 void expectParseError(TestContext &Context, const rcc::TargetDescription &Target, std::string Body,
                       std::string_view Message) {
   auto Function = createFunction(Context, 10);
@@ -483,6 +581,8 @@ int main() {
   testAddressSpacePointerWidthResolver(Context);
   testUnserializableLowLevelType(Context);
   testCompatibleRegisterClassAndBankAnnotations(Context);
+  testTypedIntegerTruncation(Context);
+  testLLVMInlineAsmAndConstantMemorySyntax(Context);
   testDiagnostics(Context);
   return Context.result();
 }

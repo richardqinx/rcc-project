@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEMEMOPERAND_H
 #define RCC_CODEGEN_MACHINEMEMOPERAND_H
 
+#include "rcc/CodeGen/GenericConstant.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMetadata.h"
@@ -140,6 +141,7 @@ public:
     GlobalSymbol,
     ExternalSymbol,
     IRValue,
+    IRConstant,
     Stack,
     GOT,
     ConstantPoolPseudo,
@@ -157,6 +159,7 @@ public:
   [[nodiscard]] static MemoryBase globalSymbol(std::string Name);
   [[nodiscard]] static MemoryBase externalSymbol(std::string Name);
   [[nodiscard]] static MemoryBase irValue(std::string Name);
+  [[nodiscard]] static Expected<MemoryBase> irConstant(GenericConstantData Constant);
   [[nodiscard]] static MemoryBase stack();
   [[nodiscard]] static MemoryBase got();
   [[nodiscard]] static MemoryBase constantPoolPseudo();
@@ -173,12 +176,13 @@ public:
   [[nodiscard]] std::optional<ConstantPoolIndex> constantPoolIndex() const noexcept;
   [[nodiscard]] std::optional<JumpTableIndex> jumpTableIndex() const noexcept;
   [[nodiscard]] std::optional<std::string_view> symbolName() const noexcept;
+  [[nodiscard]] const GenericConstantData *constantValue() const noexcept;
 
   friend bool operator==(const MemoryBase &Left, const MemoryBase &Right) = default;
 
 private:
-  using Storage =
-      std::variant<std::monostate, FrameIndex, ConstantPoolIndex, JumpTableIndex, std::string>;
+  using Storage = std::variant<std::monostate, FrameIndex, ConstantPoolIndex, JumpTableIndex,
+                               std::string, GenericConstantData>;
 
   MemoryBase(Kind BaseKind, Storage Value) : BaseKind(BaseKind), Value(std::move(Value)) {}
 
@@ -193,6 +197,7 @@ struct MachineMemOperandDesc final {
   AtomicOrdering FailureOrdering = AtomicOrdering::NotAtomic;
   SyncScopeID SyncScope;
   MemorySize Size;
+  std::optional<LLT> MemoryType;
   Alignment Align;
   std::optional<Alignment> BaseAlign;
   std::uint32_t AddressSpace = 0;

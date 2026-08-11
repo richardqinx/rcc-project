@@ -103,6 +103,19 @@ void testScalarConstants(TestContext &Context) {
   expectRoundTrip(Context, "i32 undef", 4);
   expectRoundTrip(Context, "i32 poison", 4);
   expectRoundTrip(Context, "i32 zeroinitializer", 4);
+
+  auto BFloat = rcc::mir::parseLLVMConstant("bfloat 0xR3E80", Options);
+  auto PrintedBFloat = BFloat ? rcc::mir::printLLVMConstant(*BFloat)
+                              : rcc::Expected<std::string>(std::unexpected(BFloat.error()));
+  Context.expect(PrintedBFloat && *PrintedBFloat == "bfloat 2.500000e-01",
+                 "LLVM-compatible floating printing must prefer an exact decimal spelling");
+
+  auto Pi = rcc::mir::parseLLVMConstant("double f0x400921FB54442D18", Options);
+  auto PrintedPi = Pi ? rcc::mir::printLLVMConstant(*Pi)
+                      : rcc::Expected<std::string>(std::unexpected(Pi.error()));
+  Context.expect(
+      PrintedPi && *PrintedPi == "double f0x400921FB54442D18",
+      "floating printing must retain exact bits when six decimal digits do not round-trip");
 }
 
 void expectIntegerWords(TestContext &Context, std::string_view Text,
@@ -110,9 +123,21 @@ void expectIntegerWords(TestContext &Context, std::string_view Text,
   auto Parsed = rcc::mir::parseLLVMConstant(Text, Options);
   Context.expect(Parsed.has_value() && Parsed->IntegerValue.has_value() &&
                      std::ranges::equal(Parsed->IntegerValue->words(), ExpectedWords),
-                 "explicit LLVM hexadecimal integer must preserve its exact bit pattern");
+                 "LLVM integer literal must preserve its exact bit pattern");
   if (!Parsed)
     std::cerr << Text << ": " << Parsed.error().message() << '\n';
+}
+
+void testDecimalIntegerTruncation(TestContext &Context) {
+  constexpr std::array<std::uint64_t, 1> NegativeOne{std::numeric_limits<std::uint64_t>::max()};
+  constexpr std::array<std::uint64_t, 1> NarrowNegative{767};
+  constexpr std::array<std::uint64_t, 1> NarrowMinimum{8};
+  constexpr std::array<std::uint64_t, 1> WidePositive{1};
+
+  expectIntegerWords(Context, "i64 -1", NegativeOne);
+  expectIntegerWords(Context, "i16 -64769", NarrowNegative);
+  expectIntegerWords(Context, "i4 -8", NarrowMinimum);
+  expectIntegerWords(Context, "i64 18446744073709551617", WidePositive);
 }
 
 void expectFloatingWords(TestContext &Context, std::string_view Text,
@@ -484,6 +509,7 @@ int main() {
   TestContext Context;
   testScalarConstants(Context);
   testExplicitHexIntegerConstants(Context);
+  testDecimalIntegerTruncation(Context);
   testSpecialFloatingLiterals(Context);
   testExactFloatingConversion(Context);
   testAggregateConstants(Context);

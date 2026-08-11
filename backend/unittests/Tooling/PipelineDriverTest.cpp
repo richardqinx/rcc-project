@@ -214,6 +214,21 @@ int main() {
   if (rcc::tooling::runRV64GCPipeline(MixedInput->Document, *Target, MixedPipeline))
     return tooling_test::fail("named passes must not be mixed with the default pipeline marker");
 
+  rcc::tooling::BackendInvocation NoPassInvocation = Invocation;
+  NoPassInvocation.PassPipeline = {"none"};
+  auto NoPassInput = rcc::tooling::parseAndCanonicalizeMIR(
+      "no-pass.mir", *Source, *Target, NoPassInvocation);
+  if (!NoPassInput)
+    return tooling_test::fail(NoPassInput.error().message());
+  const std::string NoPassExpected = NoPassInput->Text;
+  auto NoPassRun = rcc::tooling::runBackend(
+      std::move(*NoPassInput), *Target, NoPassInvocation,
+      rcc::tooling::BackendOutputKind::FinalMIR);
+  if (!NoPassRun || !NoPassRun->Pipeline.ExecutedPasses.empty() ||
+      NoPassRun->text() != NoPassExpected) {
+    return tooling_test::fail("the LLVM-compatible none pass must preserve canonical MIR");
+  }
+
   if (!SelectedMIR)
     return tooling_test::fail("selected MIR stage was not captured");
   auto LaterInput =

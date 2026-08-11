@@ -90,6 +90,7 @@ Expected<void> MachineRegisterInfo::eraseVirtualRegister(Register Reg) {
   }
 
   Info->get().IsTombstone = true;
+  Info->get().Name.reset();
   Info->get().Type.reset();
   Info->get().Bank.reset();
   Info->get().RegClass.reset();

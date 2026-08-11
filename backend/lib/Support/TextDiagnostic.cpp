@@ -65,11 +65,8 @@ std::string formatTextDiagnostic(const TextDiagnostic &Diagnostic, const TextSou
   const std::string_view SourceName =
       Diagnostic.SourceName.empty() ? Source.name() : std::string_view(Diagnostic.SourceName);
 
-  Output << SourceName << ':' << Position.Line << ':' << Position.Column << ": "
-         << getDiagnosticSeverityName(Diagnostic.Severity);
-  if (!Diagnostic.Category.empty())
-    Output << '[' << Diagnostic.Category << ']';
-  Output << ": " << Diagnostic.Message;
+  Output << getDiagnosticSeverityName(Diagnostic.Severity) << ": " << SourceName << ':'
+         << Position.Line << ':' << Position.Column << ": " << Diagnostic.Message;
 
   const std::string_view SourceLine = Source.line(Position.Line);
   if (SourceLine.empty())

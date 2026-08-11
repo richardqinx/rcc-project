@@ -18,6 +18,7 @@ struct ParsedIdentifier final {
   std::string Name;
   TextRange Range;
   std::size_t End = 0;
+  bool IsNumericSlot = false;
 };
 
 [[nodiscard]] bool isHorizontalSpace(char Character) noexcept {
@@ -96,6 +97,18 @@ const EmbeddedIRFunction *EmbeddedIRReferenceIndex::function(std::string_view Na
   return &Functions[Position->second];
 }
 
+const EmbeddedIRFunction *
+EmbeddedIRReferenceIndex::unnamedFunction(std::size_t Ordinal) const noexcept {
+  for (const EmbeddedIRFunction &Function : Functions) {
+    if (!Function.isUnnamed())
+      continue;
+    if (Ordinal == 0)
+      return &Function;
+    --Ordinal;
+  }
+  return nullptr;
+}
+
 const EmbeddedIRReference *
 EmbeddedIRReferenceIndex::globalObject(std::string_view Name) const noexcept {
   const auto Position = GlobalNameToIndex.find(Name);
@@ -151,6 +164,10 @@ public:
                "embedded LLVM IR function definition has no closing brace");
       return failureResult();
     }
+
+    validateLocalReferences();
+    if (Failed)
+      return failureResult();
 
     EmbeddedIRIndexResult Result;
     Result.Index.emplace(std::move(Index));
@@ -209,6 +226,7 @@ private:
       return std::nullopt;
 
     std::string Name;
+    bool IsNumericSlot = false;
     if (Line[Position] == '"') {
       ++Position;
       while (Position < End && Line[Position] != '"') {
@@ -237,6 +255,7 @@ private:
       }
       ++Position;
     } else if (Line[Position] >= '0' && Line[Position] <= '9') {
+      IsNumericSlot = true;
       const std::size_t NameBegin = Position;
       while (Position < End && Line[Position] >= '0' && Line[Position] <= '9')
         ++Position;
@@ -254,6 +273,7 @@ private:
         .Name = std::move(Name),
         .Range = Index.Source.range(LineOffset + Begin, LineOffset + Position),
         .End = Position,
+        .IsNumericSlot = IsNumericSlot,
     };
   }
 
@@ -464,6 +484,7 @@ private:
     Function.Name = Name.Name;
     Function.NameRange = Name.Range;
     Function.IsDefinition = IsDefinition;
+    Function.IsUnnamed = Name.IsNumericSlot;
     Index.Functions.push_back(std::move(Function));
     Index.FunctionNameToIndex.emplace(Name.Name, IndexValue);
     return IndexValue;
@@ -491,6 +512,9 @@ private:
         if (!Name || Failed)
           return;
         const std::size_t Following = skipHorizontalSpace(Line, Name->End, End);
+        recordLocalReference(*Name, Index.Functions[ActiveFunction.value()]);
+        if (Failed)
+          return;
         std::size_t Previous = IdentifierBegin;
         while (Previous > 0 && isHorizontalSpace(Line[Previous - 1]))
           --Previous;
@@ -537,6 +561,7 @@ private:
         .Name = Name.Name,
         .Range = Name.Range,
     });
+    observeNumericSlot(Name, Function);
   }
 
   void parseActiveFunctionLine(std::string_view Line, std::size_t LineOffset, std::size_t End) {
@@ -587,10 +612,21 @@ private:
       return;
     }
     EmbeddedIRFunction &Function = Index.Functions[ActiveFunction.value()];
+    const std::size_t PreviousBlockCount = Function.Blocks.size();
     parseBlockLabel(Line, LineOffset, Begin, BodyEnd, Function);
     if (Failed)
       return;
+    const std::size_t FirstContent = skipHorizontalSpace(Line, Begin, BodyEnd);
+    if (Function.Blocks.empty() && Function.Blocks.size() == PreviousBlockCount &&
+        FirstContent < BodyEnd) {
+      addImplicitEntryBlock(LineOffset + FirstContent, Function);
+      if (Failed)
+        return;
+    }
     parseLocalValueDefinition(Line, LineOffset, Begin, BodyEnd, Function);
+    if (Failed)
+      return;
+    parseLocalReferences(Line, LineOffset, Begin, BodyEnd, Function);
     if (Failed)
       return;
 
@@ -624,9 +660,45 @@ private:
     const std::size_t BlockIndex = Function.Blocks.size();
     Function.BlockNameToIndex.emplace(Name->Name, BlockIndex);
     Function.Blocks.push_back(EmbeddedIRReference{
-        .Name = std::move(Name->Name),
+        .Name = Name->Name,
         .Range = Name->Range,
     });
+    observeNumericSlot(*Name, Function);
+  }
+
+  void addImplicitEntryBlock(std::size_t Offset, EmbeddedIRFunction &Function) {
+    const std::string Name = std::to_string(Function.NextUnnamedSlot++);
+    if (Function.BlockNameToIndex.contains(Name) || Function.ValueNameToIndex.contains(Name)) {
+      diagnose(Offset, Offset, "embedded LLVM IR unnamed entry block slot is already in use");
+      return;
+    }
+    const std::size_t BlockIndex = Function.Blocks.size();
+    Function.BlockNameToIndex.emplace(Name, BlockIndex);
+    Function.Blocks.push_back(EmbeddedIRReference{
+        .Name = Name,
+        .Range = Index.Source.range(Offset, Offset),
+    });
+  }
+
+  void observeNumericSlot(const ParsedIdentifier &Name, EmbeddedIRFunction &Function) {
+    if (!Name.IsNumericSlot)
+      return;
+    std::uint64_t Slot = 0;
+    for (const char Digit : Name.Name) {
+      const std::uint64_t Value = static_cast<std::uint64_t>(Digit - '0');
+      if (Slot > (std::numeric_limits<std::uint64_t>::max() - Value) / 10U) {
+        diagnose(Name.Range.Begin.Offset, Name.Range.End.Offset,
+                 "embedded LLVM IR numeric slot is too large");
+        return;
+      }
+      Slot = Slot * 10U + Value;
+    }
+    if (Slot == std::numeric_limits<std::uint64_t>::max()) {
+      diagnose(Name.Range.Begin.Offset, Name.Range.End.Offset,
+               "embedded LLVM IR numeric slot is too large");
+      return;
+    }
+    Function.NextUnnamedSlot = std::max(Function.NextUnnamedSlot, Slot + 1U);
   }
 
   void parseLocalValueDefinition(std::string_view Line, std::size_t LineOffset, std::size_t Begin,
@@ -655,6 +727,53 @@ private:
         .Name = std::move(Name->Name),
         .Range = Name->Range,
     });
+  }
+
+  void recordLocalReference(const ParsedIdentifier &Name, EmbeddedIRFunction &Function) {
+    Function.LocalReferences.push_back(EmbeddedIRReference{
+        .Name = Name.Name,
+        .Range = Name.Range,
+    });
+  }
+
+  void parseLocalReferences(std::string_view Line, std::size_t LineOffset, std::size_t Begin,
+                            std::size_t End, EmbeddedIRFunction &Function) {
+    bool InQuote = false;
+    for (std::size_t Position = Begin; Position < End; ++Position) {
+      const char Character = Line[Position];
+      if (InQuote && Character == '\\' && Position + 2 < End &&
+          isHexDigit(Line[Position + 1]) && isHexDigit(Line[Position + 2])) {
+        Position += 2;
+        continue;
+      }
+      if (Character == '"') {
+        InQuote = !InQuote;
+        continue;
+      }
+      if (InQuote || Character != '%')
+        continue;
+      auto Name = parseIdentifier(Line, LineOffset, Position, End, '%');
+      if (!Name || Failed)
+        continue;
+      recordLocalReference(*Name, Function);
+      Position = Name->End - 1;
+    }
+  }
+
+  void validateLocalReferences() {
+    for (const EmbeddedIRFunction &Function : Index.Functions) {
+      if (!Function.IsDefinition)
+        continue;
+      for (const EmbeddedIRReference &Reference : Function.LocalReferences) {
+        if (Function.ValueNameToIndex.contains(Reference.Name) ||
+            Function.BlockNameToIndex.contains(Reference.Name) ||
+            Index.TypeNameToIndex.contains(Reference.Name))
+          continue;
+        diagnose(Reference.Range.Begin.Offset, Reference.Range.End.Offset,
+                 "use of undefined value '%" + Reference.Name + "'");
+        return;
+      }
+    }
   }
 
   void parseGlobalObject(std::string_view Line, std::size_t LineOffset, std::size_t Position,

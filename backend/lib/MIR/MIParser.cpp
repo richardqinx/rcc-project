@@ -2,6 +2,7 @@
 
 #include "rcc/MIR/MIParser.h"
 
+#include "rcc/CodeGen/InlineAsm.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
@@ -13,6 +14,7 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
+#include "rcc/MIR/LLVMConstantSyntax.h"
 #include "rcc/MIR/MIDebugSyntax.h"
 #include "rcc/MIR/MILexer.h"
 
@@ -113,60 +115,6 @@ namespace {
          Token.isKeyword("llvm_vector_register_mask");
 }
 
-[[nodiscard]] std::optional<unsigned> hexDigit(char Character) noexcept {
-  if (Character >= '0' && Character <= '9')
-    return static_cast<unsigned>(Character - '0');
-  if (Character >= 'a' && Character <= 'f')
-    return static_cast<unsigned>(Character - 'a') + 10U;
-  if (Character >= 'A' && Character <= 'F')
-    return static_cast<unsigned>(Character - 'A') + 10U;
-  return std::nullopt;
-}
-
-[[nodiscard]] bool parseHexWords(std::string_view Digits, std::uint32_t BitWidth,
-                                 std::vector<std::uint64_t> &Words) {
-  if (Digits.empty() || Digits.size() > (static_cast<std::size_t>(BitWidth) + 3U) / 4U)
-    return false;
-  Words.assign((static_cast<std::size_t>(BitWidth) + 63U) / 64U, 0);
-  std::size_t BitOffset = 0;
-  for (auto Iterator = Digits.rbegin(); Iterator != Digits.rend(); ++Iterator) {
-    const auto Digit = hexDigit(*Iterator);
-    if (!Digit)
-      return false;
-    const std::size_t WordIndex = BitOffset / 64U;
-    const unsigned Shift = static_cast<unsigned>(BitOffset % 64U);
-    Words[WordIndex] |= static_cast<std::uint64_t>(*Digit) << Shift;
-    BitOffset += 4U;
-  }
-  if (BitWidth % 64U != 0)
-    Words.back() &= (std::uint64_t{1} << (BitWidth % 64U)) - 1U;
-  return true;
-}
-
-[[nodiscard]] bool isZeroWords(std::span<const std::uint64_t> Words) noexcept {
-  return std::ranges::all_of(Words, [](std::uint64_t Word) { return Word == 0; });
-}
-
-[[nodiscard]] bool magnitudeFitsSignedNegative(std::span<const std::uint64_t> Words,
-                                               std::uint32_t BitWidth) noexcept {
-  const std::size_t SignWord = (BitWidth - 1U) / 64U;
-  const unsigned SignBit = (BitWidth - 1U) % 64U;
-  for (std::size_t Index = SignWord + 1U; Index < Words.size(); ++Index) {
-    if (Words[Index] != 0)
-      return false;
-  }
-  const std::uint64_t SignMask = std::uint64_t{1} << SignBit;
-  if ((Words[SignWord] & ~SignMask) != 0)
-    return false;
-  if ((Words[SignWord] & SignMask) == 0)
-    return true;
-  for (std::size_t Index = 0; Index < SignWord; ++Index) {
-    if (Words[Index] != 0)
-      return false;
-  }
-  return true;
-}
-
 [[nodiscard]] Expected<IntegerImmediate> parseIntegerImmediateValue(std::uint32_t BitWidth,
                                                                     std::string_view Spelling) {
   if (BitWidth == 0 || BitWidth > IntegerImmediate::MaxBitWidth)
@@ -188,17 +136,13 @@ namespace {
       Word = static_cast<std::uint64_t>(Product);
       Carry = static_cast<std::uint64_t>(Product >> 64U);
     }
-    if (Carry != 0)
-      return makeUnexpected(ErrorCode::ParseError, "typed integer does not fit its bit width");
-    if (BitWidth % 64U != 0 && (Words.back() >> (BitWidth % 64U)) != 0) {
-      return makeUnexpected(ErrorCode::ParseError, "typed integer does not fit its bit width");
-    }
   }
 
+  // LLVM parses the arbitrary-precision literal first and then truncates it to
+  // the declared integer width.  Keep exactly that modulo-2^N bit pattern.
+  if (BitWidth % 64U != 0)
+    Words.back() &= (std::uint64_t{1} << (BitWidth % 64U)) - 1U;
   if (Negative) {
-    if (isZeroWords(Words) || !magnitudeFitsSignedNegative(Words, BitWidth))
-      return makeUnexpected(ErrorCode::ParseError,
-                            "negative typed integer does not fit its bit width");
     for (std::uint64_t &Word : Words)
       Word = ~Word;
     std::uint64_t Carry = 1;
@@ -211,51 +155,6 @@ namespace {
       Words.back() &= (std::uint64_t{1} << (BitWidth % 64U)) - 1U;
   }
   return IntegerImmediate::create(BitWidth, Words);
-}
-
-[[nodiscard]] std::uint16_t floatToHalfBits(float Value) noexcept {
-  const std::uint32_t Bits = std::bit_cast<std::uint32_t>(Value);
-  const std::uint32_t Sign = (Bits >> 16U) & 0x8000U;
-  const std::uint32_t Exponent = (Bits >> 23U) & 0xFFU;
-  const std::uint32_t Fraction = Bits & 0x7FFFFFU;
-  if (Exponent == 0xFFU) {
-    const std::uint32_t Payload = Fraction == 0 ? 0 : std::max(1U, Fraction >> 13U);
-    return static_cast<std::uint16_t>(Sign | 0x7C00U | Payload);
-  }
-
-  const int HalfExponent = static_cast<int>(Exponent) - 127 + 15;
-  if (HalfExponent >= 31)
-    return static_cast<std::uint16_t>(Sign | 0x7C00U);
-  if (HalfExponent <= 0) {
-    if (HalfExponent < -10)
-      return static_cast<std::uint16_t>(Sign);
-    const std::uint32_t Mantissa = Fraction | 0x800000U;
-    const unsigned Shift = static_cast<unsigned>(14 - HalfExponent);
-    std::uint32_t Rounded = Mantissa >> Shift;
-    const std::uint32_t Remainder = Mantissa & ((std::uint32_t{1} << Shift) - 1U);
-    const std::uint32_t Halfway = std::uint32_t{1} << (Shift - 1U);
-    if (Remainder > Halfway || (Remainder == Halfway && (Rounded & 1U) != 0))
-      ++Rounded;
-    return static_cast<std::uint16_t>(Sign | Rounded);
-  }
-
-  std::uint32_t Rounded = Fraction >> 13U;
-  const std::uint32_t Remainder = Fraction & 0x1FFFU;
-  if (Remainder > 0x1000U || (Remainder == 0x1000U && (Rounded & 1U) != 0)) {
-    ++Rounded;
-    if (Rounded == 0x400U)
-      return static_cast<std::uint16_t>(Sign |
-                                        (static_cast<std::uint32_t>(HalfExponent + 1) << 10U));
-  }
-  return static_cast<std::uint16_t>(Sign | (static_cast<std::uint32_t>(HalfExponent) << 10U) |
-                                    Rounded);
-}
-
-[[nodiscard]] std::uint16_t floatToBFloatBits(float Value) noexcept {
-  std::uint32_t Bits = std::bit_cast<std::uint32_t>(Value);
-  const std::uint32_t Bias = 0x7FFFU + ((Bits >> 16U) & 1U);
-  Bits += Bias;
-  return static_cast<std::uint16_t>(Bits >> 16U);
 }
 
 [[nodiscard]] std::optional<std::uint64_t> minimumTypeSizeInBits(LLT Type) noexcept {
@@ -493,6 +392,8 @@ private:
   [[nodiscard]] bool parseRegisterOperand(bool IsDef, ParsedOperand &Result);
   [[nodiscard]] bool parseTargetFlags(std::uint32_t &Flags);
   [[nodiscard]] bool parseOperand(bool IsDef, ParsedOperand &Result);
+  [[nodiscard]] bool parseInlineAsmExtraInfoOperand(ParsedOperand &Result);
+  [[nodiscard]] bool parseInlineAsmOperandFlag(ParsedOperand &Result);
   [[nodiscard]] bool parseTypedIntegerOperand(ParsedOperand &Result);
   [[nodiscard]] bool parseFloatingImmediateOperand(ParsedOperand &Result);
   [[nodiscard]] bool parseMetadataReference(MachineMetadataReference &Result);
@@ -684,7 +585,8 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Resu
 
   std::uint64_t Value = 0;
   if (!parseUnsignedDigits(Digits, Value))
-    return fail(TypeToken, "low-level type suffix must be an unsigned decimal integer");
+    return fail(TypeToken,
+                "expected integers after 's'/'i'/'f'/'bf'/'p' type identifier");
 
   Expected<LLT> Created = makeUnexpected(ErrorCode::ParseError, "invalid low-level type");
   switch (Kind) {
@@ -739,40 +641,67 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Resu
 
 bool MIParser::Impl::parseLowLevelType(LLT &Result) {
   const MIToken Begin = token();
+  const auto HasScalarPrefix = [](std::string_view Spelling) {
+    return Spelling.starts_with('s') || Spelling.starts_with('i') ||
+           Spelling.starts_with('f') || Spelling.starts_with("bf") ||
+           Spelling.starts_with('p');
+  };
   if (at(MITokenKind::Identifier)) {
+    if (!HasScalarPrefix(token().stringValue())) {
+      return fail(Begin,
+                  "expected tN, pA, <M x tN>, <M x pA>, <vscale x M x tN>, or "
+                  "<vscale x M x pA> for GlobalISel type, where t = {'s', 'i', 'f', 'bf'}");
+    }
     if (parseScalarLowLevelType(token(), Result))
       return true;
     advance();
     return false;
   }
-  if (!consume(MITokenKind::Less))
-    return fail(Begin, "expected a scalar, pointer, or vector low-level type");
+  if (!consume(MITokenKind::Less)) {
+    return fail(Begin,
+                "expected tN, pA, <M x tN>, <M x pA>, <vscale x M x tN>, or "
+                "<vscale x M x pA> for GlobalISel type, where t = {'s', 'i', 'f', 'bf'}");
+  }
 
   bool Scalable = false;
   if (at(MITokenKind::Identifier) && token().stringValue() == "vscale") {
     Scalable = true;
     advance();
-    if (!at(MITokenKind::Identifier) || token().stringValue() != "x")
-      return fail("expected 'x' after 'vscale' in a scalable vector type");
+    if (!at(MITokenKind::Identifier) || token().stringValue() != "x") {
+      return fail(
+          "expected <vscale x M x tN>, where t = {'s', 'i', 'f', 'bf', 'p'}");
+    }
     advance();
   }
 
+  const auto VectorError = [this, &Begin, Scalable] {
+    if (Scalable) {
+      return fail(Begin,
+                  "expected <vscale x M x tN> for vector type, where t = "
+                  "{'s', 'i', 'f', 'bf', 'p'}");
+    }
+    return fail(Begin,
+                "expected <M x tN> for vector type, where t = {'s', 'i', 'f', 'bf', 'p'}");
+  };
+
   std::uint64_t ElementCount = 0;
   if (!at(MITokenKind::IntegerLiteral) || parseUnsigned(token(), ElementCount))
-    return fail("expected an unsigned vector element count");
+    return VectorError();
   advance();
   if (!at(MITokenKind::Identifier) || token().stringValue() != "x")
-    return fail("expected 'x' after the vector element count");
+    return VectorError();
   advance();
 
+  if (!at(MITokenKind::Identifier) || !HasScalarPrefix(token().stringValue()))
+    return VectorError();
   LLT ElementType;
   if (parseScalarLowLevelType(token(), ElementType))
     return true;
   if (ElementType.isToken())
     return fail("token cannot be a vector element type");
   advance();
-  if (expect(MITokenKind::Greater, "'>' after the vector low-level type"))
-    return true;
+  if (!consume(MITokenKind::Greater))
+    return VectorError();
 
   Expected<LLT> Created = Scalable ? LLT::makeScalableVector(ElementCount, ElementType)
                                    : LLT::makeFixedVector(ElementCount, ElementType);
@@ -821,6 +750,8 @@ bool MIParser::Impl::parseBlockAttributes(MachineBasicBlock *Block) {
     } else if (at(MITokenKind::IRBlock) || at(MITokenKind::NamedIRBlock)) {
       if (!Seen.insert("ir-block").second)
         return fail("duplicate IR block attribute");
+      if (Context.HasIRBlock && !Context.HasIRBlock(symbolName(token())))
+        return fail(token(), "use of undefined IR block '" + std::string(token().spelling()) + "'");
       if (Block != nullptr) {
         auto SetName = Block->attributes().setIRBlockName(symbolName(token()));
         if (!SetName)
@@ -915,7 +846,14 @@ bool MIParser::Impl::parseBlockDefinition(bool Create, std::uint32_t &ID) {
     if (Blocks.size() >= Options.MaximumBlocks)
       return fail(Label, "machine basic block count exceeds parser limit");
     if (Blocks.contains(ID))
-      return fail(Label, "redefinition of machine basic block #" + std::to_string(ID));
+      return fail(Label,
+                  "redefinition of machine basic block with id #" + std::to_string(ID));
+    if (!Label.stringValue().empty() && Context.HasIRBlock &&
+        !Context.HasIRBlock(Label.stringValue())) {
+      return fail(Label, "basic block '" + std::string(Label.stringValue()) +
+                             "' is not defined in the function '" +
+                             std::string(Function.name()) + "'");
+    }
     auto Created = Function.createBasicBlock();
     if (!Created)
       return importError(Label, Created.error());
@@ -1000,6 +938,12 @@ Register MIParser::Impl::getOrCreateVirtualRegister(const MIToken &Token) {
     static_cast<void>(importError(Token, Created.error()));
     return {};
   }
+  auto Info = Function.registerInfo().virtualRegisterInfo(*Created);
+  if (!Info) {
+    static_cast<void>(importError(Token, Info.error()));
+    return {};
+  }
+  Info->get().Name = Name;
   NamedVirtualRegisters.emplace(Name, *Created);
   return *Created;
 }
@@ -1345,96 +1289,22 @@ bool MIParser::Impl::parseFloatingImmediateOperand(ParsedOperand &Result) {
   const auto Semantics = floatSemanticsForKeyword(Begin.stringValue());
   if (!Semantics)
     return fail(Begin, "unknown floating-point immediate type");
-  const std::uint32_t BitWidth = getFloatSemanticsBitWidth(*Semantics).value_or(0);
   advance();
   if (!at(MITokenKind::FloatingPointLiteral) && !at(MITokenKind::HexLiteral))
     return fail("expected a floating-point literal");
 
   const MIToken Literal = token();
-  const std::string_view Spelling = Literal.spelling();
-  std::vector<std::uint64_t> Words;
-  if (Spelling.starts_with("f0x") || Spelling.starts_with("f0X")) {
-    if (!parseHexWords(Spelling.substr(3), BitWidth, Words))
-      return fail(Literal, "raw floating-point literal does not fit its semantics");
-  } else if (Spelling.starts_with("0x") || Spelling.starts_with("0X")) {
-    std::string_view Digits = Spelling.substr(2);
-    char Prefix = '\0';
-    if (!Digits.empty() && !hexDigit(Digits.front())) {
-      Prefix = Digits.front();
-      Digits.remove_prefix(1);
-    }
-    char ExpectedPrefix = '\0';
-    switch (*Semantics) {
-    case FloatSemantics::IEEEHalf:
-      ExpectedPrefix = 'H';
-      break;
-    case FloatSemantics::BFloat:
-      ExpectedPrefix = 'R';
-      break;
-    case FloatSemantics::X87DoubleExtended:
-      ExpectedPrefix = 'K';
-      break;
-    case FloatSemantics::IEEEQuad:
-      ExpectedPrefix = 'L';
-      break;
-    case FloatSemantics::PPCDoubleDouble:
-    case FloatSemantics::PPCDoubleDoubleLegacy:
-      ExpectedPrefix = 'M';
-      break;
-    default:
-      break;
-    }
-    if (ExpectedPrefix != '\0') {
-      if (Prefix != ExpectedPrefix || !parseHexWords(Digits, BitWidth, Words))
-        return fail(Literal, "floating-point hexadecimal prefix does not match its semantics");
-    } else if (Prefix != '\0') {
-      return fail(Literal, "unexpected floating-point hexadecimal prefix");
-    } else if (*Semantics == FloatSemantics::IEEESingle) {
-      std::uint64_t DoubleBits = 0;
-      if (!parseHexadecimal(Spelling, DoubleBits))
-        return fail(Literal, "invalid IEEE single hexadecimal literal");
-      const float Value = static_cast<float>(std::bit_cast<double>(DoubleBits));
-      Words = {std::bit_cast<std::uint32_t>(Value)};
-    } else if (*Semantics == FloatSemantics::IEEEDouble) {
-      std::uint64_t DoubleBits = 0;
-      if (!parseHexadecimal(Spelling, DoubleBits))
-        return fail(Literal, "invalid IEEE double hexadecimal literal");
-      Words = {DoubleBits};
-    } else {
-      return fail(Literal, "floating-point literal requires its semantics prefix");
-    }
-  } else {
-    const char *First = Spelling.data();
-    const char *Last = First + Spelling.size();
-    if (*Semantics == FloatSemantics::IEEEDouble) {
-      double Value = 0;
-      const auto Parsed = std::from_chars(First, Last, Value, std::chars_format::general);
-      if (Parsed.ec != std::errc{} || Parsed.ptr != Last)
-        return fail(Literal, "invalid IEEE double decimal literal");
-      Words = {std::bit_cast<std::uint64_t>(Value)};
-    } else if (*Semantics == FloatSemantics::IEEESingle || *Semantics == FloatSemantics::IEEEHalf ||
-               *Semantics == FloatSemantics::BFloat) {
-      float Value = 0;
-      const auto Parsed = std::from_chars(First, Last, Value, std::chars_format::general);
-      if (Parsed.ec != std::errc{} || Parsed.ptr != Last)
-        return fail(Literal, "invalid floating-point decimal literal");
-      if (*Semantics == FloatSemantics::IEEESingle)
-        Words = {std::bit_cast<std::uint32_t>(Value)};
-      else if (*Semantics == FloatSemantics::IEEEHalf)
-        Words = {floatToHalfBits(Value)};
-      else
-        Words = {floatToBFloatBits(Value)};
-    } else {
-      return fail(Literal, "this floating-point semantics requires an exact hexadecimal literal");
-    }
-  }
-
-  auto Bits = FloatingPointBits::create(*Semantics, Words);
-  if (!Bits)
-    return importError(Literal, Bits.error());
+  std::string ConstantText(Begin.stringValue());
+  ConstantText.push_back(' ');
+  ConstantText.append(Literal.spelling());
+  auto Constant = parseLLVMConstant(ConstantText);
+  if (!Constant)
+    return fail(Literal, std::string(Constant.error().message()));
+  if (!Constant->FloatingValue || Constant->FloatingValue->semantics() != *Semantics)
+    return fail(Literal, "floating-point literal produced the wrong semantics");
   advance();
   Result = ParsedOperand{
-      MachineOperand::floatingImmediate(*Bits),
+      MachineOperand::floatingImmediate(*Constant->FloatingValue),
       std::nullopt,
       {Begin.range().Begin, token().range().Begin},
   };
@@ -1485,10 +1355,10 @@ bool MIParser::Impl::parseMetadataOperand(ParsedOperand &Result) {
     while (!at(MITokenKind::RightParen)) {
       if (at(MITokenKind::Identifier)) {
         const auto Opcode = parseDIExpressionOpcodeName(token().stringValue());
-        if (!Opcode)
-          return fail("unknown debug expression opcode '" + std::string(token().stringValue()) +
-                      "'");
-        Elements.push_back(*Opcode);
+        const auto Encoding = parseDIExpressionAttributeEncodingName(token().stringValue());
+        if (!Opcode && !Encoding)
+          return fail(invalidDIExpressionElementMessage(token().stringValue()));
+        Elements.push_back(Opcode ? *Opcode : *Encoding);
         advance();
       } else if (at(MITokenKind::IntegerLiteral)) {
         std::int64_t Signed = 0;
@@ -1855,10 +1725,22 @@ bool MIParser::Impl::parseMemoryBase(MemoryBase &Result, std::int64_t &Offset) {
     break;
   case MITokenKind::IRValue:
   case MITokenKind::NamedIRValue:
-  case MITokenKind::QuotedIRValue:
     Result = MemoryBase::irValue(symbolName(BaseToken));
     advance();
     break;
+  case MITokenKind::QuotedIRValue: {
+    LLVMConstantSyntaxOptions ConstantOptions;
+    ConstantOptions.DefaultPointerSizeInBits = Context.DefaultPointerSizeInBits;
+    auto Constant = parseLLVMConstant(BaseToken.stringValue(), ConstantOptions);
+    if (!Constant)
+      return importError(BaseToken, Constant.error());
+    auto Base = MemoryBase::irConstant(std::move(*Constant));
+    if (!Base)
+      return importError(BaseToken, Base.error());
+    Result = std::move(*Base);
+    advance();
+    break;
+  }
   case MITokenKind::Keyword:
     if (BaseToken.isKeyword("unknown-address")) {
       Result = MemoryBase();
@@ -2021,6 +1903,7 @@ bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result) {
     if (!Size)
       return importError(Begin, Size.error());
     Description.Size = *Size;
+    Description.MemoryType = Type;
   } else {
     return fail("expected a memory size, unknown-size, or memory low-level type");
   }
@@ -2044,21 +1927,27 @@ bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result) {
     advance();
     if (parseMemoryBase(Description.Base, Description.Offset))
       return true;
+    if (const GenericConstantData *Constant = Description.Base.constantValue())
+      Description.AddressSpace = Constant->Type.AddressSpace;
   }
 
+  Alignment BaseAlignment = Description.Align;
   std::unordered_set<std::string> SeenOptions;
   while (consume(MITokenKind::Comma)) {
     const std::string Name(token().spelling());
     if (!SeenOptions.insert(Name).second)
       return fail("duplicate machine memory operand option '" + Name + "'");
     if (atKeyword("align")) {
-      if (parseAlignment(Description.Align))
+      Alignment ParsedAlignment;
+      if (parseAlignment(ParsedAlignment))
         return true;
+      if ((static_cast<std::uint64_t>(Description.Offset) & (ParsedAlignment.bytes() - 1U)) != 0) {
+        return fail("specified alignment is more aligned than offset");
+      }
+      BaseAlignment = ParsedAlignment;
     } else if (atKeyword("basealign")) {
-      Alignment BaseAlignment;
       if (parseAlignment(BaseAlignment))
         return true;
-      Description.BaseAlign = BaseAlignment;
     } else if (atKeyword("addrspace")) {
       advance();
       if (!at(MITokenKind::IntegerLiteral) || parseUnsigned32(token(), Description.AddressSpace) ||
@@ -2088,6 +1977,19 @@ bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result) {
       return fail("unknown machine memory operand option '" + Name + "'");
     }
   }
+
+  std::uint64_t EffectiveAlignment = BaseAlignment.bytes();
+  if (Description.Offset != 0) {
+    const auto OffsetBits = static_cast<std::uint64_t>(Description.Offset);
+    const std::uint64_t OffsetAlignment = std::uint64_t{1} << std::countr_zero(OffsetBits);
+    EffectiveAlignment = std::min(EffectiveAlignment, OffsetAlignment);
+  }
+  Description.Align = *Alignment::create(EffectiveAlignment);
+  if (BaseAlignment != Description.Align)
+    Description.BaseAlign = BaseAlignment;
+  else
+    Description.BaseAlign.reset();
+
   if (expect(MITokenKind::RightParen, "')' after the machine memory operand"))
     return true;
 
@@ -2527,6 +2429,78 @@ bool MIParser::Impl::parseOperand(bool IsDef, ParsedOperand &Result) {
   return false;
 }
 
+bool MIParser::Impl::parseInlineAsmExtraInfoOperand(ParsedOperand &Result) {
+  const MIToken Begin = token();
+  InlineAsmExtraInfo ExtraInfo;
+  while (at(MITokenKind::Identifier)) {
+    const auto Bits = InlineAsmExtraInfo::namedFlagBits(token().stringValue());
+    if (!Bits) {
+      return fail("unknown inline asm extra info flag '" + std::string(token().stringValue()) +
+                  "'");
+    }
+    ExtraInfo = InlineAsmExtraInfo(ExtraInfo.rawValue() | *Bits);
+    advance();
+  }
+  Result = ParsedOperand{
+      MachineOperand::immediate(static_cast<std::int64_t>(ExtraInfo.rawValue())),
+      std::nullopt,
+      {Begin.range().Begin, token().range().Begin},
+  };
+  return false;
+}
+
+bool MIParser::Impl::parseInlineAsmOperandFlag(ParsedOperand &Result) {
+  const MIToken Begin = token();
+  const std::string KindName(token().stringValue());
+  const auto Kind = InlineAsmOperandFlag::kindForName(KindName);
+  if (!Kind)
+    return fail("unknown inline asm operand kind '" + KindName + "'");
+  advance();
+
+  InlineAsmOperandFlag Flag(*Kind);
+  if (at(MITokenKind::Identifier) && token().stringValue() == "tiedto") {
+    advance();
+    if (!consume(MITokenKind::Colon))
+      return fail("expected ':' after 'tiedto'");
+    if (!at(MITokenKind::NamedRegister))
+      return fail("expected '$N' operand number after 'tiedto:'");
+    std::uint64_t OperandNumber = 0;
+    if (!parseUnsignedDecimal(token().stringValue(), OperandNumber) ||
+        OperandNumber > std::numeric_limits<std::uint32_t>::max() ||
+        !Flag.setMatchingOperand(static_cast<std::uint32_t>(OperandNumber))) {
+      return fail("invalid operand number in tiedto constraint");
+    }
+    advance();
+  } else if (consume(MITokenKind::Colon)) {
+    if (!at(MITokenKind::Identifier))
+      return fail("expected register class or memory constraint name after ':'");
+    const std::string Constraint(token().stringValue());
+    if (*Kind == InlineAsmOperandKind::Memory) {
+      const auto MemoryConstraint = InlineAsmOperandFlag::memoryConstraintForName(Constraint);
+      if (!MemoryConstraint)
+        return fail("unknown memory constraint '" + Constraint + "'");
+      if (!Flag.setMemoryConstraint(*MemoryConstraint))
+        return fail("invalid memory constraint encoding");
+    } else if (*Kind == InlineAsmOperandKind::RegisterDef ||
+               *Kind == InlineAsmOperandKind::RegisterUse ||
+               *Kind == InlineAsmOperandKind::RegisterDefEarlyClobber) {
+      const RegisterClassDesc *RegisterClass = Target.registers().registerClass(Constraint);
+      if (RegisterClass == nullptr)
+        return fail("unknown register class '" + Constraint + "'");
+      if (!Flag.setRegisterClass(RegisterClass->ID.value()))
+        return fail("register class cannot be encoded in an inline asm operand flag");
+    }
+    advance();
+  }
+
+  Result = ParsedOperand{
+      MachineOperand::immediate(static_cast<std::int64_t>(Flag.rawValue())),
+      std::nullopt,
+      {Begin.range().Begin, token().range().Begin},
+  };
+  return false;
+}
+
 bool MIParser::Impl::parseBlockLiveIns(MachineBasicBlock &Block) {
   advance();
   if (expect(MITokenKind::Colon, "':' after liveins"))
@@ -2566,7 +2540,7 @@ bool MIParser::Impl::parseBlockSuccessors(MachineBasicBlock &Block) {
     return false;
   do {
     if (!at(MITokenKind::MachineBasicBlock))
-      return fail("expected a machine basic block successor");
+      return fail("expected a machine basic block reference");
     MachineBasicBlock *Successor = blockFor(token());
     if (Successor == nullptr)
       return true;
@@ -2575,7 +2549,7 @@ bool MIParser::Impl::parseBlockSuccessors(MachineBasicBlock &Block) {
     if (consume(MITokenKind::LeftParen)) {
       std::uint32_t Weight = 0;
       if (parseUnsigned32(token(), Weight))
-        return fail("invalid successor probability weight");
+        return fail("expected unsigned integer");
       Probability = BranchProbability::fromRaw(Weight);
       advance();
       if (expect(MITokenKind::RightParen, "')' after successor weight"))
@@ -2623,6 +2597,7 @@ bool MIParser::Impl::parseInstruction(MachineBasicBlock &Block, bool InBundle,
   if (Descriptor == nullptr)
     return fail("unknown machine instruction '" + std::string(OpcodeToken.stringValue()) + "'");
   advance();
+  const bool IsInlineAsm = Descriptor->Name == "INLINEASM" || Descriptor->Name == "INLINEASM_BR";
 
   while (!token().isNewlineOrEnd() && !at(MITokenKind::DoubleColon) &&
          !at(MITokenKind::LeftBrace) && !atKeyword("debug-instr-number") &&
@@ -2633,7 +2608,16 @@ bool MIParser::Impl::parseInstruction(MachineBasicBlock &Block, bool InBundle,
     if (Operands.size() >= Options.MaximumOperandsPerInstruction)
       return fail("instruction operand count exceeds parser limit");
     ParsedOperand Operand{MachineOperand::immediate(0), std::nullopt, {}};
-    if (parseOperand(false, Operand))
+    const bool IsInlineAsmExtraInfo =
+        IsInlineAsm && Operands.size() == InlineAsmExtraInfoOperandIndex &&
+        at(MITokenKind::Identifier);
+    const bool IsInlineAsmOperandFlag =
+        IsInlineAsm && Operands.size() >= InlineAsmFirstConstraintOperandIndex &&
+        at(MITokenKind::Identifier);
+    if (IsInlineAsmExtraInfo
+            ? parseInlineAsmExtraInfoOperand(Operand)
+            : (IsInlineAsmOperandFlag ? parseInlineAsmOperandFlag(Operand)
+                                      : parseOperand(false, Operand)))
       return true;
     Operands.push_back(std::move(Operand));
     if (token().isNewlineOrEnd() || at(MITokenKind::DoubleColon) || at(MITokenKind::LeftBrace) ||
@@ -2885,6 +2869,7 @@ bool MIParser::Impl::inferSuccessors() {
       continue;
 
     bool BlocksFallthrough = true;
+    std::vector<MachineBasicBlock *> Successors;
     for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
          Instruction = Instruction->next()) {
       const InstructionDescriptor *Descriptor =
@@ -2894,17 +2879,25 @@ bool MIParser::Impl::inferSuccessors() {
       if (Descriptor->Flags.has(InstructionFlag::Branch)) {
         for (const MachineOperand &Operand : Instruction->operands()) {
           if (const BasicBlockOperand *TargetBlock = Operand.getIf<BasicBlockOperand>()) {
-            auto Added = Function.cfgUpdater().addSuccessor(*Block, *TargetBlock->Block);
-            if (!Added)
-              return importError(token(), Added.error());
+            if (std::ranges::find(Successors, TargetBlock->Block) == Successors.end())
+              Successors.push_back(TargetBlock->Block);
           }
         }
       }
       if (Descriptor->Flags.has(InstructionFlag::Barrier))
         BlocksFallthrough = false;
     }
-    if (BlocksFallthrough && Block->next() != nullptr) {
-      auto Added = Function.cfgUpdater().addSuccessor(*Block, *Block->next());
+    if (BlocksFallthrough && Block->next() != nullptr &&
+        std::ranges::find(Successors, Block->next()) == Successors.end())
+      Successors.push_back(Block->next());
+    if (Successors.empty())
+      continue;
+    const auto Probability =
+        BranchProbability::fromFraction(1U, static_cast<std::uint32_t>(Successors.size()));
+    if (!Probability)
+      return importError(token(), Probability.error());
+    for (MachineBasicBlock *Successor : Successors) {
+      auto Added = Function.cfgUpdater().addSuccessor(*Block, *Successor, *Probability);
       if (!Added)
         return importError(token(), Added.error());
     }

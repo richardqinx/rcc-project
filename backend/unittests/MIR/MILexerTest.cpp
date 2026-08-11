@@ -392,7 +392,7 @@ void testRangesAndClassifiers(TestContext &Context) {
   static_cast<void>(Invalid.next());
   const std::string Formatted =
       rcc::formatTextDiagnostic(Invalid.diagnostics().front(), Invalid.source());
-  Context.expect(Formatted.starts_with("body.mir:2:3: error[mir-lexer]: unexpected character '#'"),
+  Context.expect(Formatted.starts_with("error: body.mir:2:3: unexpected character '#'"),
                  "formatted MI diagnostics must report stable input line and column");
 
   rcc::mir::MILexer Original("move.mir", R"("owned\20value")");

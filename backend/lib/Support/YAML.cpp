@@ -120,9 +120,16 @@ public:
         return failureResult();
       }
       if (markerAt(LineIndex) == DocumentMarker::End) {
-        diagnose(Lines[LineIndex].Begin, Lines[LineIndex].ContentEnd,
-                 "document end marker has no open document");
-        return failureResult();
+        const std::size_t EndRemainder = markerRemainder(LineIndex, 3);
+        if (EndRemainder < Lines[LineIndex].ContentEnd &&
+            Parsed.Source.text()[EndRemainder] != '#') {
+          diagnose(EndRemainder, Lines[LineIndex].ContentEnd,
+                   "document end marker may only be followed by a comment");
+          return failureResult();
+        }
+        ++LineIndex;
+        skipBlankLines(LineIndex, Lines.size());
+        continue;
       }
 
       const std::size_t DocumentStartLine = LineIndex;
@@ -239,7 +246,8 @@ private:
     return Result;
   }
 
-  void diagnose(std::size_t Begin, std::size_t End, std::string Message) {
+  void diagnose(std::size_t Begin, std::size_t End, std::string Message,
+               std::string SourceName = {}) {
     if (Failed)
       return;
     Failed = true;
@@ -247,7 +255,8 @@ private:
         .Severity = DiagnosticSeverity::Error,
         .Category = "yaml",
         .Message = std::move(Message),
-        .SourceName = std::string(Parsed.Source.name()),
+        .SourceName = SourceName.empty() ? std::string(Parsed.Source.name())
+                                         : std::move(SourceName),
         .Range = Parsed.Source.range(Begin, End),
     });
   }
@@ -321,6 +330,10 @@ private:
     }
 
     const std::size_t ContentStart = Lines[LineIndex].Begin + Indent;
+    if (isUnrecognizedPlainStart(Parsed.Source.text()[ContentStart])) {
+      diagnose(ContentStart, ContentStart + 1, "Unrecognized character while tokenizing.", "YAML");
+      return {};
+    }
     if (isSequenceIndicator(ContentStart, Lines[LineIndex].ContentEnd))
       return parseBlockSequence(LineIndex, Indent, Depth, LimitLine);
     if (findBlockMappingColon(ContentStart, Lines[LineIndex].ContentEnd))
@@ -587,6 +600,10 @@ private:
       return parseFlowMapping(Cursor, End, Depth);
     if (Text[Cursor] == '\'' || Text[Cursor] == '"')
       return parseQuotedScalar(Cursor, End);
+    if (isUnrecognizedPlainStart(Text[Cursor])) {
+      diagnose(Cursor, Cursor + 1, "Unrecognized character while tokenizing.", "YAML");
+      return {};
+    }
     if (Text[Cursor] == '&' || Text[Cursor] == '*' || Text[Cursor] == '!' || Text[Cursor] == '%') {
       diagnose(Cursor, Cursor + 1, "YAML anchors, aliases, tags, and directives are not supported");
       return {};
@@ -768,6 +785,10 @@ private:
     }
 
     const std::size_t Begin = Cursor;
+    if (isUnrecognizedPlainStart(Text[Cursor])) {
+      diagnose(Cursor, Cursor + 1, "Unrecognized character while tokenizing.", "YAML");
+      return false;
+    }
     if (Text[Cursor] == '\'' || Text[Cursor] == '"') {
       ScalarStyle Style = ScalarStyle::Plain;
       return parseQuotedText(Cursor, End, Key, Style, Range);
@@ -1049,6 +1070,11 @@ private:
       return false;
     }
 
+    if (isUnrecognizedPlainStart(Text[Begin])) {
+      diagnose(Begin, Begin + 1, "Unrecognized character while tokenizing.", "YAML");
+      return false;
+    }
+
     if (Text[Begin] == '\'' || Text[Begin] == '"') {
       std::size_t Cursor = Begin;
       ScalarStyle Style = ScalarStyle::Plain;
@@ -1121,6 +1147,10 @@ private:
       return false;
     return Offset + 1 == End || isAsciiSpace(Parsed.Source.text()[Offset + 1]) ||
            Parsed.Source.text()[Offset + 1] == '#';
+  }
+
+  [[nodiscard]] static bool isUnrecognizedPlainStart(char Character) noexcept {
+    return Character == '@' || Character == '`';
   }
 
   void skipFlowSpace(std::size_t &Cursor, std::size_t End) const noexcept {

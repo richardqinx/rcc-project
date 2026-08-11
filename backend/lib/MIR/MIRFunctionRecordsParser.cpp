@@ -234,21 +234,63 @@ bool MIRDocumentParser::parseFunctionRecords(const yaml::Node &Root, MachineFunc
       std::string_view Text;
       if (TargetNode == nullptr || scalar(*TargetNode, Text, "prefetch target"))
         return true;
-      Text = trim(Text);
-      if (!Text.starts_with("bb_id"))
-        return fail(TargetNode->range(), "prefetch target must start with 'bb_id'");
-      Text = trim(Text.substr(std::string_view("bb_id").size()));
-      std::array<std::uint32_t, 3> Values{};
-      for (std::size_t Index = 0; Index < Values.size(); ++Index) {
-        const std::size_t Comma = Text.find(',');
-        const std::string_view Part = Index + 1 == Values.size() ? Text : Text.substr(0, Comma);
-        if ((Index + 1 != Values.size() && Comma == std::string_view::npos) ||
-            !parseUnsigned32(trim(Part), Values[Index])) {
-          return fail(TargetNode->range(), "prefetch target has invalid numeric fields");
-        }
-        if (Index + 1 != Values.size())
-          Text = trim(Text.substr(Comma + 1));
+
+      std::size_t ContentOffset = TargetNode->range().Begin.Offset;
+      if (TargetNode->scalarStyle() == yaml::ScalarStyle::SingleQuoted ||
+          TargetNode->scalarStyle() == yaml::ScalarStyle::DoubleQuoted) {
+        ++ContentOffset;
       }
+      const auto ErrorRange = [this, ContentOffset](std::size_t Begin,
+                                                     std::size_t End = 1U) {
+        return Result.Source.range(ContentOffset + Begin, ContentOffset + Begin + End);
+      };
+      const auto SkipSpace = [&Text](std::size_t &Cursor) {
+        while (Cursor < Text.size() && (Text[Cursor] == ' ' || Text[Cursor] == '\t'))
+          ++Cursor;
+      };
+      const auto ParseNumber = [&Text, &SkipSpace](std::size_t &Cursor,
+                                                   std::uint32_t &Value) {
+        SkipSpace(Cursor);
+        const std::size_t Begin = Cursor;
+        while (Cursor < Text.size() && Text[Cursor] >= '0' && Text[Cursor] <= '9')
+          ++Cursor;
+        return Begin != Cursor && parseUnsigned32(Text.substr(Begin, Cursor - Begin), Value);
+      };
+
+      std::size_t Cursor = 0;
+      SkipSpace(Cursor);
+      if (!Text.substr(Cursor).starts_with("bb_id") ||
+          (Cursor + std::string_view("bb_id").size() < Text.size() &&
+           Text[Cursor + std::string_view("bb_id").size()] != ' ' &&
+           Text[Cursor + std::string_view("bb_id").size()] != '\t')) {
+        return fail(ErrorRange(Cursor), "expected 'bb_id'");
+      }
+      Cursor += std::string_view("bb_id").size();
+
+      std::array<std::uint32_t, 3> Values{};
+      if (!ParseNumber(Cursor, Values[0]))
+        return fail(ErrorRange(0), "expected unsigned integer");
+
+      SkipSpace(Cursor);
+      if (Cursor < Text.size() && (Text[Cursor] == ',' || Text[Cursor] == '.')) {
+        ++Cursor;
+        if (!ParseNumber(Cursor, Values[1]))
+          return fail(ErrorRange(0), "expected unsigned integer");
+      } else if (Cursor < Text.size() && Text[Cursor] >= '0' && Text[Cursor] <= '9') {
+        if (!ParseNumber(Cursor, Values[1]))
+          return fail(ErrorRange(0), "expected unsigned integer");
+      }
+
+      SkipSpace(Cursor);
+      if (Cursor >= Text.size() || Text[Cursor] != ',')
+        return fail(ErrorRange(Cursor), "expected ','");
+      ++Cursor;
+      if (!ParseNumber(Cursor, Values[2]))
+        return fail(ErrorRange(0), "expected unsigned integer");
+      SkipSpace(Cursor);
+      if (Cursor != Text.size())
+        return fail(ErrorRange(0), "unexpected content after prefetch target");
+
       auto AddResult = Function.records().addPrefetchTarget(
           {.Block = {Values[0], Values[1]}, .CallsiteIndex = Values[2]});
       if (!AddResult)

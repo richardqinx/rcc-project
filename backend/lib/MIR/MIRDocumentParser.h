@@ -97,8 +97,8 @@ private:
                                       std::span<const PendingJumpTable> Pending);
   [[nodiscard]] bool parseBody(const yaml::Node &Root, MachineFunction &Function,
                                MIParserContext &Context);
-  [[nodiscard]] TextRange bodyDiagnosticRange(const yaml::Node &Body,
-                                              const TextRange &BodyRange) const noexcept;
+  [[nodiscard]] TextRange scalarDiagnosticRange(const yaml::Node &Scalar,
+                                                const TextRange &ScalarRange) const noexcept;
   [[nodiscard]] bool parseFunctionRecords(const yaml::Node &Root, MachineFunction &Function);
   [[nodiscard]] bool parseTargetState(const yaml::Node &Root, MachineFunction &Function);
   [[nodiscard]] bool convertTargetNode(const yaml::Node &Source, MIRTargetNode &Destination);

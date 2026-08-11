@@ -89,6 +89,11 @@ public:
                                                  const TargetDescription &) const {
     return {};
   }
+
+  [[nodiscard]] virtual Expected<void>
+  constrainSelectedInstruction(MachineInstr &, MachineFunction &, const TargetDescription &) const {
+    return {};
+  }
 };
 
 class TargetSSAInfo {

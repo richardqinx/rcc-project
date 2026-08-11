@@ -119,6 +119,21 @@ void testMemoryValueTypes(TestContext &Context) {
   Context.expect(Symbol.kind() == rcc::MemoryBase::Kind::GlobalSymbol,
                  "global memory base must preserve its kind");
   Context.expect(Symbol.symbolName() == "global", "global memory base must preserve its symbol");
+
+  rcc::GenericConstantData PoisonPointer;
+  PoisonPointer.Type = rcc::GenericConstantType::pointer();
+  PoisonPointer.Kind = rcc::GenericConstantKind::Poison;
+  auto ConstantBase = rcc::MemoryBase::irConstant(PoisonPointer);
+  Context.expect(ConstantBase && ConstantBase->kind() == rcc::MemoryBase::Kind::IRConstant &&
+                     ConstantBase->constantValue() != nullptr &&
+                     *ConstantBase->constantValue() == PoisonPointer,
+                 "IR-constant memory base must preserve a structured pointer constant");
+
+  rcc::GenericConstantData InvalidIntegerBase;
+  InvalidIntegerBase.Type = *rcc::GenericConstantType::integer(8);
+  InvalidIntegerBase.Kind = rcc::GenericConstantKind::Poison;
+  Context.expect(!rcc::MemoryBase::irConstant(std::move(InvalidIntegerBase)),
+                 "IR-constant memory base must reject a non-pointer constant");
 }
 
 void testMachineMemOperand(TestContext &Context) {
@@ -172,6 +187,26 @@ void testMachineMemOperand(TestContext &Context) {
   EmptySymbol.Base = rcc::MemoryBase::externalSymbol("");
   Context.expect(!rcc::MachineMemOperand::create(EmptySymbol),
                  "empty MMO symbol base must be rejected");
+
+  auto OffsetAlignment = makeBasicLoadDescription();
+  OffsetAlignment.Offset = 12;
+  OffsetAlignment.Align = *rcc::Alignment::create(4);
+  OffsetAlignment.BaseAlign = *rcc::Alignment::create(8);
+  auto OffsetAligned = rcc::MachineMemOperand::create(OffsetAlignment);
+  Context.expect(OffsetAligned && OffsetAligned->description().BaseAlign &&
+                     OffsetAligned->description().BaseAlign->bytes() == 8,
+                 "MMO base alignment must derive effective alignment through its offset");
+
+  OffsetAlignment.Align = *rcc::Alignment::create(8);
+  Context.expect(!rcc::MachineMemOperand::create(OffsetAlignment),
+                 "MMO alignment inconsistent with its base and offset must be rejected");
+
+  OffsetAlignment.Offset = 16;
+  OffsetAlignment.Align = *rcc::Alignment::create(8);
+  OffsetAlignment.BaseAlign = *rcc::Alignment::create(8);
+  auto RedundantBase = rcc::MachineMemOperand::create(OffsetAlignment);
+  Context.expect(RedundantBase && !RedundantBase->description().BaseAlign,
+                 "MMO base alignment equal to effective alignment must canonicalize away");
 }
 
 } // namespace

@@ -200,13 +200,20 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
   return Error(Failure.code(), std::move(Prefix));
 }
 
+[[nodiscard]] std::vector<MachineInstr *> layoutInstructions(MachineFunction &Function) {
+  std::vector<MachineInstr *> Result;
+  for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next())
+    for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
+         Instruction = Instruction->next())
+      Result.push_back(Instruction);
+  return Result;
+}
+
 [[nodiscard]] Expected<MachinePassResult>
 prepareImplementation(MachineFunction &Function, const TargetDescription &Target,
                       const TargetPseudoExpansionInfo &Info, MachineActionReplay &Actions) {
   bool Changed = false;
-  for (MachineInstr *Instruction : Function.allInstructions()) {
-    if (Instruction == nullptr || Instruction->parent() == nullptr)
-      continue;
+  for (MachineInstr *Instruction : layoutInstructions(Function)) {
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
     if (Descriptor == nullptr)
       return makeUnexpected(ErrorCode::VerificationError,
@@ -255,10 +262,7 @@ expandImplementation(MachineFunction &Function, const TargetDescription &Target,
     SizesBefore = std::move(*Snapshot);
   }
   std::vector<MachineInstr *> Worklist;
-  for (MachineInstr *Instruction : Function.allInstructions()) {
-    if (Instruction != nullptr && Instruction->parent() != nullptr)
-      Worklist.push_back(Instruction);
-  }
+  Worklist = layoutInstructions(Function);
   bool Changed = false;
   for (MachineInstr *Instruction : Worklist) {
     if (Instruction->parent() == nullptr)
@@ -325,9 +329,7 @@ expandImplementation(MachineFunction &Function, const TargetDescription &Target,
       }
     }
   }
-  for (MachineInstr *Instruction : Function.allInstructions()) {
-    if (Instruction == nullptr || Instruction->parent() == nullptr)
-      continue;
+  for (MachineInstr *Instruction : layoutInstructions(Function)) {
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
     if (Descriptor != nullptr && Descriptor->Flags.has(InstructionFlag::Pseudo) &&
         Descriptor->Owner == ownerFor(Phase)) {

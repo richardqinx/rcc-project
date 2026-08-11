@@ -408,6 +408,13 @@ bool MIRDocumentParser::parseFrameState(const yaml::Node &Root, MachineFunction 
   for (const auto &[Key, Destination] : {std::pair{"stackProtector", &State.StackProtector},
                                          std::pair{"functionContext", &State.FunctionContext}}) {
     if (const yaml::Node *Value = mappingValue(*Frame, Key)) {
+      std::string_view Reference;
+      if (scalar(*Value, Reference, "frame index"))
+        return true;
+      if (Reference.empty()) {
+        Destination->reset();
+        continue;
+      }
       FrameIndex Index;
       if (parseFrameReference(*Value, Context, Index))
         return true;
@@ -420,7 +427,10 @@ bool MIRDocumentParser::parseFrameState(const yaml::Node &Root, MachineFunction 
         Size > std::numeric_limits<std::uint32_t>::max()) {
       return fail(Value->range(), "maximum call-frame size is outside the 32-bit unsigned range");
     }
-    State.MaxCallFrameSize = Size;
+    if (Size == std::numeric_limits<std::uint32_t>::max())
+      State.MaxCallFrameSize.reset();
+    else
+      State.MaxCallFrameSize = Size;
   }
   for (const auto &[Key, Destination] :
        {std::pair{"cvBytesOfCalleeSavedRegisters", &State.CVBytesOfCalleeSavedRegisters},

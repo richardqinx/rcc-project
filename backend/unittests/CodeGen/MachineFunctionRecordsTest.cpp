@@ -301,7 +301,7 @@ void testCrossReferenceFailures(TestContext &Context) {
   }
 
   {
-    auto Function = createFunction(Context, 13, "unknown-bbid");
+    auto Function = createFunction(Context, 13, "dangling-prefetch-target");
     if (Function == nullptr)
       return;
     rcc::MachineBasicBlock *Block = appendBlock(Context, *Function);
@@ -313,8 +313,8 @@ void testCrossReferenceFailures(TestContext &Context) {
                                .CallsiteIndex = 0,
                            })
                            .has_value() &&
-                       !rcc::MachineVerifier::verify(*Function, *Target),
-                   "prefetch targets must reference a live block bb_id");
+                       rcc::MachineVerifier::verify(*Function, *Target).has_value(),
+                   "prefetch targets may reference a bb_id without a machine block");
   }
 
   {
