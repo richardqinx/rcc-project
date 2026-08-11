@@ -246,7 +246,7 @@ register_banks:
   - { id: 1, symbol: GPR, name: GPRB, maximum_size_bits: 64 }
   - { id: 2, symbol: FPR, name: FPRB, maximum_size_bits: 64 }
   - { id: 3, symbol: CSR, name: CSRB, maximum_size_bits: 32 }
-  - { id: 4, symbol: VR, name: VRB, maximum_size_bits: 64 }
+  - { id: 4, symbol: VR, name: VRB, maximum_size_bits: 512 }
 
 register_classes:
   -

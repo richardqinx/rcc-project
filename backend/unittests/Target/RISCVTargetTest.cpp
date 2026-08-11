@@ -55,8 +55,8 @@ void testRegisterFacts(TestContext &Context) {
   const rcc::PhysicalRegister V8 = registerID(rcc::riscv::PhysicalRegisterID::V8);
 
   Context.expect(
-      Registers->physicalRegisters().size() == 130 && Registers->registerUnits().size() == 98 &&
-          Registers->registerClasses().size() == 11 && Registers->registerBanks().size() == 4,
+      Registers->physicalRegisters().size() == 326 && Registers->registerUnits().size() == 98 &&
+          Registers->registerClasses().size() == 18 && Registers->registerBanks().size() == 4,
       "RISC-V must expose scalar, vector, restricted, and status physical registers");
   Context.expect(Registers->physicalRegister("x0") != nullptr &&
                      Registers->physicalRegister("zero") == nullptr &&
@@ -89,6 +89,17 @@ void testRegisterFacts(TestContext &Context) {
                      !Registers->registerClass("vr")->Allocatable &&
                      Registers->registerClassContains(Registers->registerClass("vr")->ID, V8),
                  "vector physical registers must retain LLVM MIR names and encodings");
+  const auto *V8V9 = Registers->physicalRegister("v8_v9");
+  const auto *V28V29V30 = Registers->physicalRegister("v28_v29_v30");
+  const auto *V0ThroughV7 = Registers->physicalRegister("v0_v1_v2_v3_v4_v5_v6_v7");
+  Context.expect(V8V9 != nullptr && V28V29V30 != nullptr && V0ThroughV7 != nullptr &&
+                     Registers->regsOverlap(V8V9->Reg, V8) &&
+                     !Registers->regsOverlap(V28V29V30->Reg, V8) &&
+                     Registers->regsOverlap(V0ThroughV7->Reg,
+                                            registerID(rcc::riscv::PhysicalRegisterID::V7)) &&
+                     Registers->registerClass("vrtuple2") != nullptr &&
+                     !Registers->registerClass("vrtuple2")->Allocatable,
+                 "vector tuple registers must expose canonical names and physical overlap");
   Context.expect(Registers->physicalRegister("fflags") != nullptr &&
                      Registers->physicalRegister("fflags")->Reg == FFLAGS &&
                      Registers->isReservedRegister(FFLAGS) &&

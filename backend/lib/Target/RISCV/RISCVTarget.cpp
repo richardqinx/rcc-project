@@ -5,6 +5,7 @@
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/Target/RISCV/RISCVFunctionInfo.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -13,6 +14,7 @@
 #include <memory>
 #include <ranges>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -98,6 +100,88 @@ physicalRegisters(std::initializer_list<PhysicalRegisterID> IDs) {
   return AddClassMapping(RegisterClass::FPR64C, RegisterClass::FPR32C);
 }
 
+[[nodiscard]] Expected<void> appendRISCVVectorTupleInfo(TargetRegisterInfoDesc &Description) {
+  constexpr std::uint32_t FirstVector = static_cast<std::uint32_t>(PhysicalRegisterID::V0);
+  constexpr std::uint32_t LastVector = static_cast<std::uint32_t>(PhysicalRegisterID::V31);
+  static_assert(LastVector - FirstVector == 31);
+
+  const RegisterBankID VectorBankID =
+      RegisterBankID::fromValue(static_cast<std::uint32_t>(RegisterBank::VR));
+  auto VectorBank =
+      std::ranges::find(Description.RegisterBanks, VectorBankID, &RegisterBankDesc::ID);
+  if (VectorBank == Description.RegisterBanks.end())
+    return makeUnexpected(ErrorCode::InternalError, "RISC-V vector register bank is missing");
+
+  std::uint32_t NextRegisterID = 1;
+  for (const PhysicalRegisterDesc &Register : Description.PhysicalRegisters)
+    NextRegisterID = std::max(NextRegisterID, Register.Reg.number() + 1U);
+  std::uint32_t NextClassID = 1;
+  for (const RegisterClassDesc &Class : Description.RegisterClasses)
+    NextClassID = std::max(NextClassID, Class.ID.value() + 1U);
+
+  for (std::uint32_t Length = 2; Length <= 8; ++Length) {
+    std::vector<PhysicalRegister> TupleRegisters;
+    TupleRegisters.reserve(33U - Length);
+    for (std::uint32_t Start = 0; Start + Length <= 32; ++Start) {
+      auto Tuple = PhysicalRegister::create(NextRegisterID++);
+      if (!Tuple)
+        return makeUnexpected(ErrorCode::InternalError, "RISC-V vector tuple ID is invalid");
+
+      std::string Name;
+      std::vector<RegisterUnitLane> Units;
+      Units.reserve(Length);
+      for (std::uint32_t Offset = 0; Offset < Length; ++Offset) {
+        auto Element = PhysicalRegister::create(FirstVector + Start + Offset);
+        if (!Element)
+          return makeUnexpected(ErrorCode::InternalError,
+                                "RISC-V vector tuple element ID is invalid");
+        const auto ElementDescription =
+            std::ranges::find(Description.PhysicalRegisters, *Element, &PhysicalRegisterDesc::Reg);
+        if (ElementDescription == Description.PhysicalRegisters.end() ||
+            ElementDescription->Units.size() != 1) {
+          return makeUnexpected(ErrorCode::InternalError,
+                                "RISC-V vector tuple element has invalid register units");
+        }
+        if (!Name.empty())
+          Name.push_back('_');
+        Name.append(ElementDescription->Name);
+        Units.push_back(ElementDescription->Units.front());
+      }
+
+      Description.PhysicalRegisters.push_back({
+          .Reg = *Tuple,
+          .Name = std::move(Name),
+          .Encoding = Start,
+          .Units = std::move(Units),
+          .IsConstant = false,
+          .IsArtificial = false,
+          .IsReserved = false,
+          .AlternativeNames = {},
+      });
+      TupleRegisters.push_back(*Tuple);
+    }
+
+    const RegisterClassID ClassID = RegisterClassID::fromValue(NextClassID++);
+    Description.RegisterClasses.push_back({
+        .ID = ClassID,
+        .Name = "VRTuple" + std::to_string(Length),
+        .Registers = std::move(TupleRegisters),
+        .AllocationOrder = {},
+        .SizeInBits = Length * 64U,
+        .SpillSizeInBits = Length * 64U,
+        .SpillAlignmentInBits = 64,
+        .Lanes = LaneMask::fromRaw(1),
+        .SupportedSubRegs = {},
+        .SuperClasses = {},
+        .DefaultBank = VectorBankID,
+        .Allocatable = false,
+        .CopyCost = Length,
+    });
+    VectorBank->RegisterClasses.push_back(ClassID);
+  }
+  return {};
+}
+
 [[nodiscard]] std::shared_ptr<const RegisterMask>
 makePreservedMask(std::initializer_list<PhysicalRegisterID> Preserved) {
   std::vector<std::uint64_t> Words;
@@ -123,6 +207,8 @@ Expected<TargetRegisterInfo> createRegisterInfo() {
   TargetRegisterInfoDesc Description;
   appendGeneratedRegisterInfo(Description);
   if (auto Result = appendRISCVSubRegisterInfo(Description); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = appendRISCVVectorTupleInfo(Description); !Result)
     return std::unexpected(Result.error());
   return TargetRegisterInfo::create(std::move(Description));
 }
