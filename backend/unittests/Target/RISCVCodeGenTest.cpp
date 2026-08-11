@@ -452,10 +452,21 @@ void testNarrowIntegerSelection(TestContext &Context) {
   if (Compare && Compare->firstBlock()->firstInstruction() != nullptr) {
     rcc::MachineInstr *Instruction = Compare->firstBlock()->firstInstruction();
     auto Action = rcc::riscv::legalizerInfo().classify(*Instruction, *Compare, *Target);
-    auto Selection = rcc::riscv::instructionSelector().select(*Instruction, *Compare, *Target);
-    Context.expect(Action && *Action == rcc::LegalizationAction::Legal && Selection,
-                   "signed i7 comparisons must normalize and select");
-    Context.expect(Selection && validatesSelectedFunction(*Target, *Compare),
+    auto Lowered = Action
+                       ? rcc::riscv::legalizerInfo().lower(*Instruction, *Compare, *Target, *Action)
+                       : rcc::Expected<void>(std::unexpected(Action.error()));
+    auto LegalAction = rcc::riscv::legalizerInfo().classify(*Instruction, *Compare, *Target);
+    bool Selected = Lowered && LegalAction && *LegalAction == rcc::LegalizationAction::Legal &&
+                    constrainVirtualRegisters(*Compare);
+    const auto Instructions = Compare->allInstructions();
+    for (rcc::MachineInstr *Candidate : Instructions) {
+      if (Selected && rcc::isGenericOpcode(Candidate->opcode()))
+        Selected =
+            rcc::riscv::instructionSelector().select(*Candidate, *Compare, *Target).has_value();
+    }
+    Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Selected,
+                   "signed i7 comparisons must legalize to RV64 containers and select");
+    Context.expect(Selected && validatesSelectedFunction(*Target, *Compare),
                    "selected i7 comparison must satisfy target descriptors");
   }
 
@@ -608,26 +619,52 @@ void testComparisonsAndControl(TestContext &Context) {
                                          rcc::FloatingPredicate::AlwaysFalse);
   if (Equal) {
     auto *Instruction = Equal->firstBlock()->firstInstruction();
+    const rcc::Register *NarrowResult = Instruction->operandAt(0)->getIf<rcc::Register>();
+    auto WideResult = Equal->registerInfo().createVirtualRegister(*I64);
+    rcc::MachineIRBuilder Builder(*Equal, *Target);
+    if (NarrowResult == nullptr || !WideResult || !constrainRegister(*Equal, *WideResult, *I64) ||
+        !Builder.setInsertPoint(*Equal->firstBlock()))
+      return;
+    auto Extension = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_ANYEXT));
+    if (!Extension || !Extension->addDef(*WideResult) || !Extension->addUse(*NarrowResult))
+      return;
+    auto BuiltExtension = Extension->build();
+    if (!BuiltExtension)
+      return;
+    auto Action = rcc::riscv::legalizerInfo().classify(*Instruction, *Equal, *Target);
+    auto Lowered = Action
+                       ? rcc::riscv::legalizerInfo().lower(*Instruction, *Equal, *Target, *Action)
+                       : rcc::Expected<void>(std::unexpected(Action.error()));
+    const rcc::Register *LegalResult = Instruction->operandAt(0)->getIf<rcc::Register>();
+    Context.expect(Lowered && (*BuiltExtension)->parent() == nullptr && LegalResult != nullptr &&
+                       *LegalResult == *WideResult,
+                   "RV64 integer comparison legalization must fold a single result extension");
     auto Selection = rcc::riscv::instructionSelector().select(*Instruction, *Equal, *Target);
-    Context.expect(Selection.has_value(), "integer equality must select");
-    Context.expect(Equal->allInstructions().size() == 2,
+    Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered && Selection,
+                   "integer equality must legalize its result container and select");
+    rcc::MachineInstr *FirstSelected = Equal->firstBlock()->firstInstruction();
+    rcc::MachineInstr *SecondSelected = FirstSelected == nullptr ? nullptr : FirstSelected->next();
+    Context.expect(SecondSelected != nullptr && SecondSelected->next() == nullptr,
                    "integer equality must emit XOR and zero-test instructions");
-    if (Equal->allInstructions().size() == 2) {
-      auto It = Equal->allInstructions().begin();
-      Context.expect((*It)->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
-                                            rcc::riscv::InstructionOpcode::XOR)),
+    if (SecondSelected != nullptr && SecondSelected->next() == nullptr) {
+      Context.expect(FirstSelected->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
+                                                    rcc::riscv::InstructionOpcode::XOR)),
                      "integer equality must start with XOR");
-      ++It;
-      Context.expect((*It)->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
-                                            rcc::riscv::InstructionOpcode::SLTIU)),
+      Context.expect(SecondSelected->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
+                                                     rcc::riscv::InstructionOpcode::SLTIU)),
                      "integer equality must finish with SLTIU");
     }
   }
   if (LessEqual) {
     auto *Instruction = LessEqual->firstBlock()->firstInstruction();
-    Context.expect(
-        rcc::riscv::instructionSelector().select(*Instruction, *LessEqual, *Target).has_value(),
-        "signed less-equal must select");
+    auto Action = rcc::riscv::legalizerInfo().classify(*Instruction, *LessEqual, *Target);
+    auto Lowered =
+        Action ? rcc::riscv::legalizerInfo().lower(*Instruction, *LessEqual, *Target, *Action)
+               : rcc::Expected<void>(std::unexpected(Action.error()));
+    Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered &&
+                       constrainVirtualRegisters(*LessEqual) &&
+                       rcc::riscv::instructionSelector().select(*Instruction, *LessEqual, *Target),
+                   "signed less-equal must legalize its result container and select");
     Context.expect(LessEqual->allInstructions().size() == 2,
                    "signed less-equal must emit compare and inversion");
   }
