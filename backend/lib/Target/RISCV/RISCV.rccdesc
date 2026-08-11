@@ -3505,6 +3505,21 @@ instructions:
     owner: instruction_select
     deadline: selected
   -
+    id: 1244
+    symbol: Select_GPR_Using_CC_GPR
+    name: Select_GPR_Using_CC_GPR
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [immediate] }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+    num_explicit_defs: 1
+    flags: [pseudo, produces_code, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
     id: 1216
     symbol: PseudoCC_COPY
     name: PseudoCC_COPY

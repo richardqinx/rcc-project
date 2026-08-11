@@ -149,7 +149,7 @@ void testABIAndDebugFacts(TestContext &Context) {
 
 void testInstructionFacts(TestContext &Context) {
   constexpr std::size_t TargetInstructionCount =
-      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::G_CLSW) -
+      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::Select_GPR_Using_CC_GPR) -
       static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::LUI) + 1U;
   auto Target = rcc::riscv::createTargetDescription();
   Context.expect(Target.has_value(), "RV64GC target description must be structurally valid");
