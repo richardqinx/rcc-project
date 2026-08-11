@@ -320,15 +320,15 @@ struct CallFrameRequirement final {
 
 [[nodiscard]] std::array<PhysicalRegisterID, 25> saveOrder() noexcept {
   return {
-      PhysicalRegisterID::X1,  PhysicalRegisterID::X8,  PhysicalRegisterID::X9,
-      PhysicalRegisterID::X18, PhysicalRegisterID::X19, PhysicalRegisterID::X20,
-      PhysicalRegisterID::X21, PhysicalRegisterID::X22, PhysicalRegisterID::X23,
-      PhysicalRegisterID::X24, PhysicalRegisterID::X25, PhysicalRegisterID::X26,
-      PhysicalRegisterID::X27, PhysicalRegisterID::F8,  PhysicalRegisterID::F9,
-      PhysicalRegisterID::F18, PhysicalRegisterID::F19, PhysicalRegisterID::F20,
-      PhysicalRegisterID::F21, PhysicalRegisterID::F22, PhysicalRegisterID::F23,
-      PhysicalRegisterID::F24, PhysicalRegisterID::F25, PhysicalRegisterID::F26,
-      PhysicalRegisterID::F27,
+      PhysicalRegisterID::X1,    PhysicalRegisterID::X8,    PhysicalRegisterID::X9,
+      PhysicalRegisterID::X18,   PhysicalRegisterID::X19,   PhysicalRegisterID::X20,
+      PhysicalRegisterID::X21,   PhysicalRegisterID::X22,   PhysicalRegisterID::X23,
+      PhysicalRegisterID::X24,   PhysicalRegisterID::X25,   PhysicalRegisterID::X26,
+      PhysicalRegisterID::X27,   PhysicalRegisterID::F8_D,  PhysicalRegisterID::F9_D,
+      PhysicalRegisterID::F18_D, PhysicalRegisterID::F19_D, PhysicalRegisterID::F20_D,
+      PhysicalRegisterID::F21_D, PhysicalRegisterID::F22_D, PhysicalRegisterID::F23_D,
+      PhysicalRegisterID::F24_D, PhysicalRegisterID::F25_D, PhysicalRegisterID::F26_D,
+      PhysicalRegisterID::F27_D,
   };
 }
 
@@ -993,7 +993,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
 
 [[nodiscard]] Expected<MachineInstr *>
 emitCalleeSave(MachineIRBuilder &Builder, PhysicalRegister Reg, FrameIndex Index, bool Restore) {
-  const bool IsFPR = Reg.number() >= static_cast<std::uint32_t>(PhysicalRegisterID::F0);
+  const bool IsFPR = Reg.number() >= static_cast<std::uint32_t>(PhysicalRegisterID::F0_D);
   const InstructionOpcode OpcodeValue =
       Restore ? (IsFPR ? InstructionOpcode::FLD : InstructionOpcode::LD)
               : (IsFPR ? InstructionOpcode::FSD : InstructionOpcode::SD);

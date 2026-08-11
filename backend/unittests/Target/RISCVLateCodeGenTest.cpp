@@ -1122,7 +1122,8 @@ void testPostRAPseudoExpansionAndFinalization(TestContext &Context,
     return;
   }
   auto CrossCopy = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::COPY));
-  if (!CrossCopy || !CrossCopy->addDef(physical(rcc::riscv::PhysicalRegisterID::F10), {}, {}, 16) ||
+  if (!CrossCopy ||
+      !CrossCopy->addDef(physical(rcc::riscv::PhysicalRegisterID::F10_D), {}, {}, 16) ||
       !CrossCopy->addUse(physical(rcc::riscv::PhysicalRegisterID::X10), {}, {}, 16) ||
       !CrossCopy->build()) {
     Context.expect(false, "post-RA cross-bank copy construction must succeed");

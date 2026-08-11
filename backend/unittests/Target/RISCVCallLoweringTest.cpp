@@ -226,6 +226,17 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
                      FloatAssignments[16].StackOffsetBytes == 0,
                  "LP64D floating arguments must fall back from fa0-fa7 to a0-a7 and then stack");
 
+  auto Single = callRequest({abiValue(floating(rcc::FloatSemantics::IEEESingle), 0)}, 1);
+  Single.Results = {abiValue(floating(rcc::FloatSemantics::IEEESingle), 0)};
+  auto SinglePlan = rcc::riscv::callLowering().planCall(Single);
+  Context.expect(SinglePlan && SinglePlan->argumentAssignments().size() == 1 &&
+                     SinglePlan->returnAssignments().size() == 1 &&
+                     isLocation(SinglePlan->argumentAssignments()[0],
+                                physical(rcc::riscv::PhysicalRegisterID::F10_F)) &&
+                     isLocation(SinglePlan->returnAssignments()[0],
+                                physical(rcc::riscv::PhysicalRegisterID::F10_F)),
+                 "LP64D f32 arguments and returns must use the FPR32 physical-register view");
+
   auto FloatFragment = abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0);
   FloatFragment.FragmentCount = 2;
   FloatFragment.OriginalAlignment = align(16);

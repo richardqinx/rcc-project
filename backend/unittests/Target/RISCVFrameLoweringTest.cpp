@@ -592,7 +592,7 @@ void testCalleeSavedRegisters(TestContext &Context, const rcc::TargetDescription
       !buildAddImmediate(*Fixture->Function, Target, *Fixture->Block,
                          physical(rcc::riscv::PhysicalRegisterID::X9), Zero, 2) ||
       !buildMoveToDouble(*Fixture->Function, Target, *Fixture->Block,
-                         physical(rcc::riscv::PhysicalRegisterID::F8), Zero) ||
+                         physical(rcc::riscv::PhysicalRegisterID::F8_D), Zero) ||
       !buildReturn(*Fixture->Function, Target, *Fixture->Block)) {
     return;
   }
@@ -601,7 +601,7 @@ void testCalleeSavedRegisters(TestContext &Context, const rcc::TargetDescription
   Context.expect(
       Lowered && Saved.size() == 3 && Saved[0] == physReg(rcc::riscv::PhysicalRegisterID::X1) &&
           Saved[1] == physReg(rcc::riscv::PhysicalRegisterID::X9) &&
-          Saved[2] == physReg(rcc::riscv::PhysicalRegisterID::F8) &&
+          Saved[2] == physReg(rcc::riscv::PhysicalRegisterID::F8_D) &&
           countOpcode(*Fixture->Function, rcc::riscv::InstructionOpcode::SD) == 2 &&
           countOpcode(*Fixture->Function, rcc::riscv::InstructionOpcode::FSD) == 1 &&
           countOpcode(*Fixture->Function, rcc::riscv::InstructionOpcode::LD) == 2 &&
@@ -615,7 +615,7 @@ void testCalleeSavedRegisters(TestContext &Context, const rcc::TargetDescription
       findCalleeSave(*Fixture->Function, physReg(rcc::riscv::PhysicalRegisterID::X1)) != nullptr &&
           findCalleeSave(*Fixture->Function, physReg(rcc::riscv::PhysicalRegisterID::X9)) !=
               nullptr &&
-          findCalleeSave(*Fixture->Function, physReg(rcc::riscv::PhysicalRegisterID::F8)) !=
+          findCalleeSave(*Fixture->Function, physReg(rcc::riscv::PhysicalRegisterID::F8_D)) !=
               nullptr &&
           !hasFrameIndex(*Fixture->Function),
       "callee-save records, stack objects, and eliminated operands must remain consistent");

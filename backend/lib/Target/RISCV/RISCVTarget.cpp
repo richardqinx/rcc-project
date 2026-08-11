@@ -63,6 +63,41 @@ physicalRegisters(std::initializer_list<PhysicalRegisterID> IDs) {
   };
 }
 
+[[nodiscard]] Expected<void> appendRISCVSubRegisterInfo(TargetRegisterInfoDesc &Description) {
+  constexpr SubRegIndex FPR32SubReg = SubRegIndex::fromValue(1);
+  constexpr std::uint32_t FirstDouble = static_cast<std::uint32_t>(PhysicalRegisterID::F0_D);
+  constexpr std::uint32_t LastDouble = static_cast<std::uint32_t>(PhysicalRegisterID::F31_D);
+  constexpr std::uint32_t FirstSingle = static_cast<std::uint32_t>(PhysicalRegisterID::F0_F);
+  constexpr std::uint32_t LastSingle = static_cast<std::uint32_t>(PhysicalRegisterID::F31_F);
+  static_assert(LastDouble - FirstDouble == 31);
+  static_assert(LastSingle - FirstSingle == 31);
+
+  Description.SubRegIndices.push_back({FPR32SubReg, "sub_32", LaneMask::fromRaw(1), 32, 0});
+  for (std::uint32_t Index = 0; Index != 32; ++Index) {
+    auto Double = PhysicalRegister::create(FirstDouble + Index);
+    auto Single = PhysicalRegister::create(FirstSingle + Index);
+    if (!Double || !Single)
+      return makeUnexpected(ErrorCode::InternalError, "RISC-V FPR view ID is invalid");
+    Description.PhysicalSubRegisters.push_back({*Double, FPR32SubReg, *Single});
+  }
+
+  const auto AddClassMapping = [&](RegisterClass Super, RegisterClass Sub) -> Expected<void> {
+    const RegisterClassID SuperID = RegisterClassID::fromValue(static_cast<std::uint32_t>(Super));
+    const RegisterClassID SubID = RegisterClassID::fromValue(static_cast<std::uint32_t>(Sub));
+    const auto Position =
+        std::ranges::find(Description.RegisterClasses, SuperID, &RegisterClassDesc::ID);
+    if (Position == Description.RegisterClasses.end()) {
+      return makeUnexpected(ErrorCode::InternalError, "RISC-V FPR super-register class is missing");
+    }
+    Position->SupportedSubRegs.push_back(FPR32SubReg);
+    Description.SubRegClassMappings.push_back({SuperID, FPR32SubReg, SubID});
+    return {};
+  };
+  if (auto Result = AddClassMapping(RegisterClass::FPR64, RegisterClass::FPR32); !Result)
+    return Result;
+  return AddClassMapping(RegisterClass::FPR64C, RegisterClass::FPR32C);
+}
+
 [[nodiscard]] std::shared_ptr<const RegisterMask>
 makePreservedMask(std::initializer_list<PhysicalRegisterID> Preserved) {
   std::vector<std::uint64_t> Words;
@@ -87,6 +122,8 @@ Expected<PhysicalRegister> physicalRegister(PhysicalRegisterID ID) {
 Expected<TargetRegisterInfo> createRegisterInfo() {
   TargetRegisterInfoDesc Description;
   appendGeneratedRegisterInfo(Description);
+  if (auto Result = appendRISCVSubRegisterInfo(Description); !Result)
+    return std::unexpected(Result.error());
   return TargetRegisterInfo::create(std::move(Description));
 }
 

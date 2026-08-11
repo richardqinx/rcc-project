@@ -90,7 +90,10 @@ constexpr std::array LinearFormats{
       return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                             "RISC-V MC instruction references an unknown register");
     }
-    return std::string(*Name);
+    std::string AssemblyName(*Name);
+    if (AssemblyName.ends_with("_f") || AssemblyName.ends_with("_d"))
+      AssemblyName.resize(AssemblyName.size() - 2);
+    return AssemblyName;
   }
   if (const std::int64_t *Immediate = Operand.immediateValue(); Immediate != nullptr)
     return std::to_string(*Immediate);

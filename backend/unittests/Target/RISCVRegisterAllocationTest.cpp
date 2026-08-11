@@ -264,16 +264,16 @@ void testTargetHooks(TestContext &Context, const rcc::TargetDescription &Target)
       Info.emitSpill(Builder, physical(rcc::riscv::PhysicalRegisterID::X5),
                      registerClass(rcc::riscv::RegisterClass::GPR), *Slot, rcc::LaneMask::all());
   auto F32Reload =
-      Info.emitReload(Builder, physical(rcc::riscv::PhysicalRegisterID::F10),
+      Info.emitReload(Builder, physical(rcc::riscv::PhysicalRegisterID::F10_F),
                       registerClass(rcc::riscv::RegisterClass::FPR32), *Slot, rcc::LaneMask::all());
   auto F32Spill =
-      Info.emitSpill(Builder, physical(rcc::riscv::PhysicalRegisterID::F10),
+      Info.emitSpill(Builder, physical(rcc::riscv::PhysicalRegisterID::F10_F),
                      registerClass(rcc::riscv::RegisterClass::FPR32), *Slot, rcc::LaneMask::all());
   auto F64Reload =
-      Info.emitReload(Builder, physical(rcc::riscv::PhysicalRegisterID::F11),
+      Info.emitReload(Builder, physical(rcc::riscv::PhysicalRegisterID::F11_D),
                       registerClass(rcc::riscv::RegisterClass::FPR64), *Slot, rcc::LaneMask::all());
   auto F64Spill =
-      Info.emitSpill(Builder, physical(rcc::riscv::PhysicalRegisterID::F11),
+      Info.emitSpill(Builder, physical(rcc::riscv::PhysicalRegisterID::F11_D),
                      registerClass(rcc::riscv::RegisterClass::FPR64), *Slot, rcc::LaneMask::all());
   Context.expect(GPRReload && GPRSpill && F32Reload && F32Spill && F64Reload && F64Spill &&
                      (*GPRReload)->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::LD) &&

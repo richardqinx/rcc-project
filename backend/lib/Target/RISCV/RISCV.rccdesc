@@ -109,38 +109,70 @@ registers:
   - { id: 30, symbol: X29, name: x29, encoding: 29, dwarf_register: 29, units: [{ unit: U_X29, lanes: 1 }], aliases: [t4] }
   - { id: 31, symbol: X30, name: x30, encoding: 30, dwarf_register: 30, units: [{ unit: U_X30, lanes: 1 }], aliases: [t5] }
   - { id: 32, symbol: X31, name: x31, encoding: 31, dwarf_register: 31, units: [{ unit: U_X31, lanes: 1 }], aliases: [t6] }
-  - { id: 33, symbol: F0, name: f0, encoding: 0, dwarf_register: 32, units: [{ unit: U_F0, lanes: 1 }], aliases: [ft0] }
-  - { id: 34, symbol: F1, name: f1, encoding: 1, dwarf_register: 33, units: [{ unit: U_F1, lanes: 1 }], aliases: [ft1] }
-  - { id: 35, symbol: F2, name: f2, encoding: 2, dwarf_register: 34, units: [{ unit: U_F2, lanes: 1 }], aliases: [ft2] }
-  - { id: 36, symbol: F3, name: f3, encoding: 3, dwarf_register: 35, units: [{ unit: U_F3, lanes: 1 }], aliases: [ft3] }
-  - { id: 37, symbol: F4, name: f4, encoding: 4, dwarf_register: 36, units: [{ unit: U_F4, lanes: 1 }], aliases: [ft4] }
-  - { id: 38, symbol: F5, name: f5, encoding: 5, dwarf_register: 37, units: [{ unit: U_F5, lanes: 1 }], aliases: [ft5] }
-  - { id: 39, symbol: F6, name: f6, encoding: 6, dwarf_register: 38, units: [{ unit: U_F6, lanes: 1 }], aliases: [ft6] }
-  - { id: 40, symbol: F7, name: f7, encoding: 7, dwarf_register: 39, units: [{ unit: U_F7, lanes: 1 }], aliases: [ft7] }
-  - { id: 41, symbol: F8, name: f8, encoding: 8, dwarf_register: 40, units: [{ unit: U_F8, lanes: 1 }], aliases: [fs0] }
-  - { id: 42, symbol: F9, name: f9, encoding: 9, dwarf_register: 41, units: [{ unit: U_F9, lanes: 1 }], aliases: [fs1] }
-  - { id: 43, symbol: F10, name: f10, encoding: 10, dwarf_register: 42, units: [{ unit: U_F10, lanes: 1 }], aliases: [fa0] }
-  - { id: 44, symbol: F11, name: f11, encoding: 11, dwarf_register: 43, units: [{ unit: U_F11, lanes: 1 }], aliases: [fa1] }
-  - { id: 45, symbol: F12, name: f12, encoding: 12, dwarf_register: 44, units: [{ unit: U_F12, lanes: 1 }], aliases: [fa2] }
-  - { id: 46, symbol: F13, name: f13, encoding: 13, dwarf_register: 45, units: [{ unit: U_F13, lanes: 1 }], aliases: [fa3] }
-  - { id: 47, symbol: F14, name: f14, encoding: 14, dwarf_register: 46, units: [{ unit: U_F14, lanes: 1 }], aliases: [fa4] }
-  - { id: 48, symbol: F15, name: f15, encoding: 15, dwarf_register: 47, units: [{ unit: U_F15, lanes: 1 }], aliases: [fa5] }
-  - { id: 49, symbol: F16, name: f16, encoding: 16, dwarf_register: 48, units: [{ unit: U_F16, lanes: 1 }], aliases: [fa6] }
-  - { id: 50, symbol: F17, name: f17, encoding: 17, dwarf_register: 49, units: [{ unit: U_F17, lanes: 1 }], aliases: [fa7] }
-  - { id: 51, symbol: F18, name: f18, encoding: 18, dwarf_register: 50, units: [{ unit: U_F18, lanes: 1 }], aliases: [fs2] }
-  - { id: 52, symbol: F19, name: f19, encoding: 19, dwarf_register: 51, units: [{ unit: U_F19, lanes: 1 }], aliases: [fs3] }
-  - { id: 53, symbol: F20, name: f20, encoding: 20, dwarf_register: 52, units: [{ unit: U_F20, lanes: 1 }], aliases: [fs4] }
-  - { id: 54, symbol: F21, name: f21, encoding: 21, dwarf_register: 53, units: [{ unit: U_F21, lanes: 1 }], aliases: [fs5] }
-  - { id: 55, symbol: F22, name: f22, encoding: 22, dwarf_register: 54, units: [{ unit: U_F22, lanes: 1 }], aliases: [fs6] }
-  - { id: 56, symbol: F23, name: f23, encoding: 23, dwarf_register: 55, units: [{ unit: U_F23, lanes: 1 }], aliases: [fs7] }
-  - { id: 57, symbol: F24, name: f24, encoding: 24, dwarf_register: 56, units: [{ unit: U_F24, lanes: 1 }], aliases: [fs8] }
-  - { id: 58, symbol: F25, name: f25, encoding: 25, dwarf_register: 57, units: [{ unit: U_F25, lanes: 1 }], aliases: [fs9] }
-  - { id: 59, symbol: F26, name: f26, encoding: 26, dwarf_register: 58, units: [{ unit: U_F26, lanes: 1 }], aliases: [fs10] }
-  - { id: 60, symbol: F27, name: f27, encoding: 27, dwarf_register: 59, units: [{ unit: U_F27, lanes: 1 }], aliases: [fs11] }
-  - { id: 61, symbol: F28, name: f28, encoding: 28, dwarf_register: 60, units: [{ unit: U_F28, lanes: 1 }], aliases: [ft8] }
-  - { id: 62, symbol: F29, name: f29, encoding: 29, dwarf_register: 61, units: [{ unit: U_F29, lanes: 1 }], aliases: [ft9] }
-  - { id: 63, symbol: F30, name: f30, encoding: 30, dwarf_register: 62, units: [{ unit: U_F30, lanes: 1 }], aliases: [ft10] }
-  - { id: 64, symbol: F31, name: f31, encoding: 31, dwarf_register: 63, units: [{ unit: U_F31, lanes: 1 }], aliases: [ft11] }
+  - { id: 33, symbol: F0_D, name: f0_d, encoding: 0, dwarf_register: 32, units: [{ unit: U_F0, lanes: 1 }], aliases: [ft0] }
+  - { id: 34, symbol: F1_D, name: f1_d, encoding: 1, dwarf_register: 33, units: [{ unit: U_F1, lanes: 1 }], aliases: [ft1] }
+  - { id: 35, symbol: F2_D, name: f2_d, encoding: 2, dwarf_register: 34, units: [{ unit: U_F2, lanes: 1 }], aliases: [ft2] }
+  - { id: 36, symbol: F3_D, name: f3_d, encoding: 3, dwarf_register: 35, units: [{ unit: U_F3, lanes: 1 }], aliases: [ft3] }
+  - { id: 37, symbol: F4_D, name: f4_d, encoding: 4, dwarf_register: 36, units: [{ unit: U_F4, lanes: 1 }], aliases: [ft4] }
+  - { id: 38, symbol: F5_D, name: f5_d, encoding: 5, dwarf_register: 37, units: [{ unit: U_F5, lanes: 1 }], aliases: [ft5] }
+  - { id: 39, symbol: F6_D, name: f6_d, encoding: 6, dwarf_register: 38, units: [{ unit: U_F6, lanes: 1 }], aliases: [ft6] }
+  - { id: 40, symbol: F7_D, name: f7_d, encoding: 7, dwarf_register: 39, units: [{ unit: U_F7, lanes: 1 }], aliases: [ft7] }
+  - { id: 41, symbol: F8_D, name: f8_d, encoding: 8, dwarf_register: 40, units: [{ unit: U_F8, lanes: 1 }], aliases: [fs0] }
+  - { id: 42, symbol: F9_D, name: f9_d, encoding: 9, dwarf_register: 41, units: [{ unit: U_F9, lanes: 1 }], aliases: [fs1] }
+  - { id: 43, symbol: F10_D, name: f10_d, encoding: 10, dwarf_register: 42, units: [{ unit: U_F10, lanes: 1 }], aliases: [fa0] }
+  - { id: 44, symbol: F11_D, name: f11_d, encoding: 11, dwarf_register: 43, units: [{ unit: U_F11, lanes: 1 }], aliases: [fa1] }
+  - { id: 45, symbol: F12_D, name: f12_d, encoding: 12, dwarf_register: 44, units: [{ unit: U_F12, lanes: 1 }], aliases: [fa2] }
+  - { id: 46, symbol: F13_D, name: f13_d, encoding: 13, dwarf_register: 45, units: [{ unit: U_F13, lanes: 1 }], aliases: [fa3] }
+  - { id: 47, symbol: F14_D, name: f14_d, encoding: 14, dwarf_register: 46, units: [{ unit: U_F14, lanes: 1 }], aliases: [fa4] }
+  - { id: 48, symbol: F15_D, name: f15_d, encoding: 15, dwarf_register: 47, units: [{ unit: U_F15, lanes: 1 }], aliases: [fa5] }
+  - { id: 49, symbol: F16_D, name: f16_d, encoding: 16, dwarf_register: 48, units: [{ unit: U_F16, lanes: 1 }], aliases: [fa6] }
+  - { id: 50, symbol: F17_D, name: f17_d, encoding: 17, dwarf_register: 49, units: [{ unit: U_F17, lanes: 1 }], aliases: [fa7] }
+  - { id: 51, symbol: F18_D, name: f18_d, encoding: 18, dwarf_register: 50, units: [{ unit: U_F18, lanes: 1 }], aliases: [fs2] }
+  - { id: 52, symbol: F19_D, name: f19_d, encoding: 19, dwarf_register: 51, units: [{ unit: U_F19, lanes: 1 }], aliases: [fs3] }
+  - { id: 53, symbol: F20_D, name: f20_d, encoding: 20, dwarf_register: 52, units: [{ unit: U_F20, lanes: 1 }], aliases: [fs4] }
+  - { id: 54, symbol: F21_D, name: f21_d, encoding: 21, dwarf_register: 53, units: [{ unit: U_F21, lanes: 1 }], aliases: [fs5] }
+  - { id: 55, symbol: F22_D, name: f22_d, encoding: 22, dwarf_register: 54, units: [{ unit: U_F22, lanes: 1 }], aliases: [fs6] }
+  - { id: 56, symbol: F23_D, name: f23_d, encoding: 23, dwarf_register: 55, units: [{ unit: U_F23, lanes: 1 }], aliases: [fs7] }
+  - { id: 57, symbol: F24_D, name: f24_d, encoding: 24, dwarf_register: 56, units: [{ unit: U_F24, lanes: 1 }], aliases: [fs8] }
+  - { id: 58, symbol: F25_D, name: f25_d, encoding: 25, dwarf_register: 57, units: [{ unit: U_F25, lanes: 1 }], aliases: [fs9] }
+  - { id: 59, symbol: F26_D, name: f26_d, encoding: 26, dwarf_register: 58, units: [{ unit: U_F26, lanes: 1 }], aliases: [fs10] }
+  - { id: 60, symbol: F27_D, name: f27_d, encoding: 27, dwarf_register: 59, units: [{ unit: U_F27, lanes: 1 }], aliases: [fs11] }
+  - { id: 61, symbol: F28_D, name: f28_d, encoding: 28, dwarf_register: 60, units: [{ unit: U_F28, lanes: 1 }], aliases: [ft8] }
+  - { id: 62, symbol: F29_D, name: f29_d, encoding: 29, dwarf_register: 61, units: [{ unit: U_F29, lanes: 1 }], aliases: [ft9] }
+  - { id: 63, symbol: F30_D, name: f30_d, encoding: 30, dwarf_register: 62, units: [{ unit: U_F30, lanes: 1 }], aliases: [ft10] }
+  - { id: 64, symbol: F31_D, name: f31_d, encoding: 31, dwarf_register: 63, units: [{ unit: U_F31, lanes: 1 }], aliases: [ft11] }
+  - { id: 65, symbol: F0_F, name: f0_f, encoding: 0, dwarf_register: 32, units: [{ unit: U_F0, lanes: 1 }] }
+  - { id: 66, symbol: F1_F, name: f1_f, encoding: 1, dwarf_register: 33, units: [{ unit: U_F1, lanes: 1 }] }
+  - { id: 67, symbol: F2_F, name: f2_f, encoding: 2, dwarf_register: 34, units: [{ unit: U_F2, lanes: 1 }] }
+  - { id: 68, symbol: F3_F, name: f3_f, encoding: 3, dwarf_register: 35, units: [{ unit: U_F3, lanes: 1 }] }
+  - { id: 69, symbol: F4_F, name: f4_f, encoding: 4, dwarf_register: 36, units: [{ unit: U_F4, lanes: 1 }] }
+  - { id: 70, symbol: F5_F, name: f5_f, encoding: 5, dwarf_register: 37, units: [{ unit: U_F5, lanes: 1 }] }
+  - { id: 71, symbol: F6_F, name: f6_f, encoding: 6, dwarf_register: 38, units: [{ unit: U_F6, lanes: 1 }] }
+  - { id: 72, symbol: F7_F, name: f7_f, encoding: 7, dwarf_register: 39, units: [{ unit: U_F7, lanes: 1 }] }
+  - { id: 73, symbol: F8_F, name: f8_f, encoding: 8, dwarf_register: 40, units: [{ unit: U_F8, lanes: 1 }] }
+  - { id: 74, symbol: F9_F, name: f9_f, encoding: 9, dwarf_register: 41, units: [{ unit: U_F9, lanes: 1 }] }
+  - { id: 75, symbol: F10_F, name: f10_f, encoding: 10, dwarf_register: 42, units: [{ unit: U_F10, lanes: 1 }] }
+  - { id: 76, symbol: F11_F, name: f11_f, encoding: 11, dwarf_register: 43, units: [{ unit: U_F11, lanes: 1 }] }
+  - { id: 77, symbol: F12_F, name: f12_f, encoding: 12, dwarf_register: 44, units: [{ unit: U_F12, lanes: 1 }] }
+  - { id: 78, symbol: F13_F, name: f13_f, encoding: 13, dwarf_register: 45, units: [{ unit: U_F13, lanes: 1 }] }
+  - { id: 79, symbol: F14_F, name: f14_f, encoding: 14, dwarf_register: 46, units: [{ unit: U_F14, lanes: 1 }] }
+  - { id: 80, symbol: F15_F, name: f15_f, encoding: 15, dwarf_register: 47, units: [{ unit: U_F15, lanes: 1 }] }
+  - { id: 81, symbol: F16_F, name: f16_f, encoding: 16, dwarf_register: 48, units: [{ unit: U_F16, lanes: 1 }] }
+  - { id: 82, symbol: F17_F, name: f17_f, encoding: 17, dwarf_register: 49, units: [{ unit: U_F17, lanes: 1 }] }
+  - { id: 83, symbol: F18_F, name: f18_f, encoding: 18, dwarf_register: 50, units: [{ unit: U_F18, lanes: 1 }] }
+  - { id: 84, symbol: F19_F, name: f19_f, encoding: 19, dwarf_register: 51, units: [{ unit: U_F19, lanes: 1 }] }
+  - { id: 85, symbol: F20_F, name: f20_f, encoding: 20, dwarf_register: 52, units: [{ unit: U_F20, lanes: 1 }] }
+  - { id: 86, symbol: F21_F, name: f21_f, encoding: 21, dwarf_register: 53, units: [{ unit: U_F21, lanes: 1 }] }
+  - { id: 87, symbol: F22_F, name: f22_f, encoding: 22, dwarf_register: 54, units: [{ unit: U_F22, lanes: 1 }] }
+  - { id: 88, symbol: F23_F, name: f23_f, encoding: 23, dwarf_register: 55, units: [{ unit: U_F23, lanes: 1 }] }
+  - { id: 89, symbol: F24_F, name: f24_f, encoding: 24, dwarf_register: 56, units: [{ unit: U_F24, lanes: 1 }] }
+  - { id: 90, symbol: F25_F, name: f25_f, encoding: 25, dwarf_register: 57, units: [{ unit: U_F25, lanes: 1 }] }
+  - { id: 91, symbol: F26_F, name: f26_f, encoding: 26, dwarf_register: 58, units: [{ unit: U_F26, lanes: 1 }] }
+  - { id: 92, symbol: F27_F, name: f27_f, encoding: 27, dwarf_register: 59, units: [{ unit: U_F27, lanes: 1 }] }
+  - { id: 93, symbol: F28_F, name: f28_f, encoding: 28, dwarf_register: 60, units: [{ unit: U_F28, lanes: 1 }] }
+  - { id: 94, symbol: F29_F, name: f29_f, encoding: 29, dwarf_register: 61, units: [{ unit: U_F29, lanes: 1 }] }
+  - { id: 95, symbol: F30_F, name: f30_f, encoding: 30, dwarf_register: 62, units: [{ unit: U_F30, lanes: 1 }] }
+  - { id: 96, symbol: F31_F, name: f31_f, encoding: 31, dwarf_register: 63, units: [{ unit: U_F31, lanes: 1 }] }
 
 register_banks:
   - { id: 1, symbol: GPR, name: GPRB, maximum_size_bits: 64 }
@@ -178,8 +210,8 @@ register_classes:
     spill_size_bits: 64
     spill_alignment_bits: 64
     lanes: 1
-    registers: [F0, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31]
-    allocation_order: [F10, F11, F12, F13, F14, F15, F16, F17, F0, F1, F2, F3, F4, F5, F6, F7, F28, F29, F30, F31, F8, F9, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27]
+    registers: [F0_D, F1_D, F2_D, F3_D, F4_D, F5_D, F6_D, F7_D, F8_D, F9_D, F10_D, F11_D, F12_D, F13_D, F14_D, F15_D, F16_D, F17_D, F18_D, F19_D, F20_D, F21_D, F22_D, F23_D, F24_D, F25_D, F26_D, F27_D, F28_D, F29_D, F30_D, F31_D]
+    allocation_order: [F10_D, F11_D, F12_D, F13_D, F14_D, F15_D, F16_D, F17_D, F0_D, F1_D, F2_D, F3_D, F4_D, F5_D, F6_D, F7_D, F28_D, F29_D, F30_D, F31_D, F8_D, F9_D, F18_D, F19_D, F20_D, F21_D, F22_D, F23_D, F24_D, F25_D, F26_D, F27_D]
   -
     id: 4
     symbol: FPR64C
@@ -189,8 +221,8 @@ register_classes:
     spill_size_bits: 64
     spill_alignment_bits: 64
     lanes: 1
-    registers: [F8, F9, F10, F11, F12, F13, F14, F15]
-    allocation_order: [F10, F11, F12, F13, F14, F15, F8, F9]
+    registers: [F8_D, F9_D, F10_D, F11_D, F12_D, F13_D, F14_D, F15_D]
+    allocation_order: [F10_D, F11_D, F12_D, F13_D, F14_D, F15_D, F8_D, F9_D]
   -
     id: 5
     symbol: FPR32
@@ -200,8 +232,8 @@ register_classes:
     spill_size_bits: 32
     spill_alignment_bits: 32
     lanes: 1
-    registers: [F0, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31]
-    allocation_order: [F10, F11, F12, F13, F14, F15, F16, F17, F0, F1, F2, F3, F4, F5, F6, F7, F28, F29, F30, F31, F8, F9, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27]
+    registers: [F0_F, F1_F, F2_F, F3_F, F4_F, F5_F, F6_F, F7_F, F8_F, F9_F, F10_F, F11_F, F12_F, F13_F, F14_F, F15_F, F16_F, F17_F, F18_F, F19_F, F20_F, F21_F, F22_F, F23_F, F24_F, F25_F, F26_F, F27_F, F28_F, F29_F, F30_F, F31_F]
+    allocation_order: [F10_F, F11_F, F12_F, F13_F, F14_F, F15_F, F16_F, F17_F, F0_F, F1_F, F2_F, F3_F, F4_F, F5_F, F6_F, F7_F, F28_F, F29_F, F30_F, F31_F, F8_F, F9_F, F18_F, F19_F, F20_F, F21_F, F22_F, F23_F, F24_F, F25_F, F26_F, F27_F]
   -
     id: 6
     symbol: FPR32C
@@ -211,8 +243,8 @@ register_classes:
     spill_size_bits: 32
     spill_alignment_bits: 32
     lanes: 1
-    registers: [F8, F9, F10, F11, F12, F13, F14, F15]
-    allocation_order: [F10, F11, F12, F13, F14, F15, F8, F9]
+    registers: [F8_F, F9_F, F10_F, F11_F, F12_F, F13_F, F14_F, F15_F]
+    allocation_order: [F10_F, F11_F, F12_F, F13_F, F14_F, F15_F, F8_F, F9_F]
   -
     id: 7
     symbol: GPR_NX0
@@ -242,7 +274,7 @@ register_masks:
     preserved: [X1, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27]
   -
     name: CSR_ILP32D_LP64D
-    preserved: [X1, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, F8, F9, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27]
+    preserved: [X1, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, F8_D, F9_D, F18_D, F19_D, F20_D, F21_D, F22_D, F23_D, F24_D, F25_D, F26_D, F27_D, F8_F, F9_F, F18_F, F19_F, F20_F, F21_F, F22_F, F23_F, F24_F, F25_F, F26_F, F27_F]
 
 mir_operand_flags:
   direct_mask: 31
@@ -278,9 +310,9 @@ calling_conventions:
     integer_register_class: GPR
     floating_register_class: FPR64
     integer_argument_registers: [X10, X11, X12, X13, X14, X15, X16, X17]
-    floating_argument_registers: [F10, F11, F12, F13, F14, F15, F16, F17]
+    floating_argument_registers: [F10_D, F11_D, F12_D, F13_D, F14_D, F15_D, F16_D, F17_D]
     integer_return_registers: [X10, X11]
-    floating_return_registers: [F10, F11]
+    floating_return_registers: [F10_D, F11_D]
     preserved_mask: CSR_ILP32D_LP64D
     stack_alignment_bytes: 16
     stack_argument_alignment_bytes: 16

@@ -47,10 +47,11 @@ void testRegisterFacts(TestContext &Context) {
   const rcc::PhysicalRegister X2 = registerID(rcc::riscv::PhysicalRegisterID::X2);
   const rcc::PhysicalRegister X5 = registerID(rcc::riscv::PhysicalRegisterID::X5);
   const rcc::PhysicalRegister X8 = registerID(rcc::riscv::PhysicalRegisterID::X8);
-  const rcc::PhysicalRegister F31 = registerID(rcc::riscv::PhysicalRegisterID::F31);
+  const rcc::PhysicalRegister F31D = registerID(rcc::riscv::PhysicalRegisterID::F31_D);
+  const rcc::PhysicalRegister F31F = registerID(rcc::riscv::PhysicalRegisterID::F31_F);
 
   Context.expect(
-      Registers->physicalRegisters().size() == 64 && Registers->registerUnits().size() == 64 &&
+      Registers->physicalRegisters().size() == 96 && Registers->registerUnits().size() == 64 &&
           Registers->registerClasses().size() == 8 && Registers->registerBanks().size() == 2,
       "RV64GC must expose the complete scalar, compressed, and restricted register classes");
   Context.expect(Registers->physicalRegister("x0") != nullptr &&
@@ -65,9 +66,17 @@ void testRegisterFacts(TestContext &Context) {
       Registers->isReservedRegister(X0) && Registers->isReservedRegister(X2) &&
           !Registers->isReservedRegister(X5),
       "zero, stack, global, and thread register constraints must be recorded statically");
-  Context.expect(Registers->physicalRegister(F31) != nullptr &&
-                     Registers->physicalRegister(F31)->Encoding == 31,
-                 "floating register physical IDs must remain distinct from their ISA encodings");
+  Context.expect(Registers->physicalRegister(F31D) != nullptr &&
+                     Registers->physicalRegister(F31D)->Encoding == 31 &&
+                     Registers->physicalRegister("f31_d") != nullptr &&
+                     Registers->physicalRegister("f31_d")->Reg == F31D &&
+                     Registers->physicalRegister("f31_f") != nullptr &&
+                     Registers->physicalRegister("f31_f")->Reg == F31F &&
+                     Registers->physicalRegisterMIRName(F31D) == "f31_d" &&
+                     Registers->physicalRegisterMIRName(F31F) == "f31_f" &&
+                     Registers->regsOverlap(F31D, F31F) &&
+                     Registers->subRegister(F31D, rcc::SubRegIndex::fromValue(1)) == F31F,
+                 "FPR32 and FPR64 MIR views must retain encoding, overlap, and subregister facts");
 
   const auto *GPR = Registers->registerClass("gpr");
   Context.expect(
@@ -83,16 +92,20 @@ void testRegisterFacts(TestContext &Context) {
 void testABIAndDebugFacts(TestContext &Context) {
   const rcc::PhysicalRegister X1 = registerID(rcc::riscv::PhysicalRegisterID::X1);
   const rcc::PhysicalRegister X10 = registerID(rcc::riscv::PhysicalRegisterID::X10);
-  const rcc::PhysicalRegister F8 = registerID(rcc::riscv::PhysicalRegisterID::F8);
-  const rcc::PhysicalRegister F10 = registerID(rcc::riscv::PhysicalRegisterID::F10);
-  const rcc::PhysicalRegister F31 = registerID(rcc::riscv::PhysicalRegisterID::F31);
+  const rcc::PhysicalRegister F8D = registerID(rcc::riscv::PhysicalRegisterID::F8_D);
+  const rcc::PhysicalRegister F8F = registerID(rcc::riscv::PhysicalRegisterID::F8_F);
+  const rcc::PhysicalRegister F10D = registerID(rcc::riscv::PhysicalRegisterID::F10_D);
+  const rcc::PhysicalRegister F10F = registerID(rcc::riscv::PhysicalRegisterID::F10_F);
+  const rcc::PhysicalRegister F31D = registerID(rcc::riscv::PhysicalRegisterID::F31_D);
+  const rcc::PhysicalRegister F31F = registerID(rcc::riscv::PhysicalRegisterID::F31_F);
 
   const auto LP64Mask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64);
   const auto LP64DMask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64D);
   Context.expect(
-      LP64DMask != nullptr && LP64DMask->preserves(X1) && LP64DMask->preserves(F8) &&
-          LP64DMask->clobbers(X10) && LP64DMask->clobbers(F10) && LP64Mask != nullptr &&
-          LP64Mask->preserves(X1) && LP64Mask->clobbers(F8) && LP64Mask->clobbers(X10),
+      LP64DMask != nullptr && LP64DMask->preserves(X1) && LP64DMask->preserves(F8D) &&
+          LP64DMask->preserves(F8F) && LP64DMask->clobbers(X10) && LP64DMask->clobbers(F10D) &&
+          LP64DMask->clobbers(F10F) && LP64Mask != nullptr && LP64Mask->preserves(X1) &&
+          LP64Mask->clobbers(F8D) && LP64Mask->clobbers(F8F) && LP64Mask->clobbers(X10),
       "LP64 and LP64D masks must distinguish integer and floating callee-saved registers");
 
   auto MIRText = rcc::riscv::createMIRTextInfo();
@@ -111,8 +124,9 @@ void testABIAndDebugFacts(TestContext &Context) {
                  "RV64GC MIR target flags must expose the canonical direct-call spelling");
   Context.expect(MIRText->dwarfRegister(X1) == 1,
                  "the return-address register must retain its DWARF register number");
-  Context.expect(MIRText->physicalRegister(63) == F31,
-                 "the final floating register DWARF number must map to f31");
+  Context.expect(MIRText->dwarfRegister(F31D) == 63 && MIRText->dwarfRegister(F31F) == 63 &&
+                     MIRText->physicalRegister(63) == F31D,
+                 "typed floating views must share one canonical DWARF register mapping");
 
   const auto Conventions = rcc::riscv::callingConventions();
   const auto *LP64 = rcc::riscv::callingConvention(rcc::riscv::CallingConvention::LP64);

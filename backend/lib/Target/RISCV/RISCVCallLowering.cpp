@@ -70,6 +70,26 @@ constexpr std::uint32_t AllowedDirectCallFlags =
          (*Semantics == FloatSemantics::IEEESingle || *Semantics == FloatSemantics::IEEEDouble);
 }
 
+[[nodiscard]] Expected<PhysicalRegister> floatingRegisterView(PhysicalRegister DoubleView,
+                                                              LLT Type) {
+  if (!isSupportedFloat(Type)) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "RISC-V floating-register view requires f32 or f64");
+  }
+  if (Type.scalarBitWidth() == 64)
+    return DoubleView;
+
+  constexpr std::uint32_t FirstDouble = static_cast<std::uint32_t>(PhysicalRegisterID::F0_D);
+  constexpr std::uint32_t LastDouble = static_cast<std::uint32_t>(PhysicalRegisterID::F31_D);
+  constexpr std::uint32_t FirstSingle = static_cast<std::uint32_t>(PhysicalRegisterID::F0_F);
+  const std::uint32_t Number = DoubleView.number();
+  if (Number < FirstDouble || Number > LastDouble) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "RISC-V ABI floating register is not an FPR64 view");
+  }
+  return PhysicalRegister::create(FirstSingle + Number - FirstDouble);
+}
+
 [[nodiscard]] bool requiresIntegerTransport(const ABIValue &Value) noexcept {
   return !isSupportedFloat(Value.Type) || Value.Flags.has(ABIValueFlag::ByVal) ||
          Value.Flags.has(ABIValueFlag::StructReturn) || Value.Flags.has(ABIValueFlag::Indirect);
@@ -301,14 +321,19 @@ assignArguments(std::span<const ABIValue> Values, std::size_t FixedArgumentCount
     if (CanUsePreferredAggregate) {
       for (std::size_t Fragment = 0; Fragment < GroupSize; ++Fragment) {
         const ABIValue &Value = Values[Index + Fragment];
-        Expected<CCAssignment> Assignment =
-            requiresIntegerTransport(Value)
-                ? registerAssignment(Value, Index + Fragment,
-                                     Convention.IntegerArgumentRegisters[State.GPR++], *I64, false,
-                                     false)
-                : registerAssignment(Value, Index + Fragment,
-                                     Convention.FloatingArgumentRegisters[State.FPR++], Value.Type,
-                                     false, false);
+        Expected<CCAssignment> Assignment = makeUnexpected(
+            ErrorCode::InternalError, "RISC-V ABI argument assignment was not initialized");
+        if (requiresIntegerTransport(Value)) {
+          Assignment = registerAssignment(Value, Index + Fragment,
+                                          Convention.IntegerArgumentRegisters[State.GPR++], *I64,
+                                          false, false);
+        } else {
+          auto View =
+              floatingRegisterView(Convention.FloatingArgumentRegisters[State.FPR++], Value.Type);
+          if (!View)
+            return std::unexpected(View.error());
+          Assignment = registerAssignment(Value, Index + Fragment, *View, Value.Type, false, false);
+        }
         if (!Assignment)
           return std::unexpected(Assignment.error());
         Result.Assignments.push_back(*Assignment);
@@ -413,8 +438,10 @@ assignReturns(std::span<const ABIValue> Values, bool RequireRegisters,
     Expected<CCAssignment> Assignment = makeUnexpected(
         ErrorCode::Unsupported, "RISC-V calling convention has no return register available");
     if (UseFloatingRegister) {
-      Assignment = registerAssignment(Value, Index, Convention.FloatingReturnRegisters[FPR++],
-                                      Value.Type, false, false);
+      auto View = floatingRegisterView(Convention.FloatingReturnRegisters[FPR++], Value.Type);
+      if (!View)
+        return std::unexpected(View.error());
+      Assignment = registerAssignment(Value, Index, *View, Value.Type, false, false);
     } else if (GPR < Convention.IntegerReturnRegisters.size()) {
       Assignment = registerAssignment(Value, Index, Convention.IntegerReturnRegisters[GPR++], *I64,
                                       false, isSupportedFloat(Value.Type));

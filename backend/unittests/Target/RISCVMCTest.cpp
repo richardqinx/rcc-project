@@ -102,9 +102,10 @@ symbolExpression(rcc::mc::MCContext &Context, std::string_view Name, std::uint32
                         {0xf3, 0xda, 0x58, 0x30}, "CSRRWI") &&
          expectEncoding(Emitter, instruction(AMOADD_D, {reg(X22), reg(X23), reg(X24)}),
                         {0x2f, 0x3b, 0x7c, 0x01}, "AMOADD.D") &&
-         expectEncoding(Emitter, instruction(FMADD_D, {reg(F1), reg(F2), reg(F3), reg(F4), imm(2)}),
+         expectEncoding(Emitter,
+                        instruction(FMADD_D, {reg(F1_D), reg(F2_D), reg(F3_D), reg(F4_D), imm(2)}),
                         {0xc3, 0x20, 0x31, 0x22}, "FMADD.D") &&
-         expectEncoding(Emitter, instruction(FADD_S, {reg(F5), reg(F6), reg(F7), imm(3)}),
+         expectEncoding(Emitter, instruction(FADD_S, {reg(F5_F), reg(F6_F), reg(F7_F), imm(3)}),
                         {0xd3, 0x32, 0x73, 0x00}, "FADD.S") &&
          expectEncoding(Emitter, instruction(C_ADDI4SPN, {reg(X8), imm(48)}), {0x00, 0x18},
                         "C.ADDI4SPN") &&

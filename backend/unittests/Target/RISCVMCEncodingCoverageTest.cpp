@@ -27,8 +27,22 @@ namespace {
   return static_cast<std::int64_t>(Value) - (std::int64_t{1} << Width);
 }
 
-void addRegister(rcc::mc::MCInst &Instruction, std::uint32_t Encoding, bool Floating) {
-  const std::uint32_t ID = Encoding + (Floating ? 33U : 1U);
+void addRegister(rcc::mc::MCInst &Instruction, const rcc::InstructionDescriptor &Descriptor,
+                 std::uint32_t Encoding) {
+  const std::size_t OperandIndex = Instruction.operands().size();
+  const rcc::RegisterClassID Class = Descriptor.Operands[OperandIndex].RegClass.value_or(
+      rcc::RegisterClassID::fromValue(static_cast<std::uint32_t>(rcc::riscv::RegisterClass::GPR)));
+  const auto IsClass = [Class](rcc::riscv::RegisterClass Candidate) {
+    return Class.value() == static_cast<std::uint32_t>(Candidate);
+  };
+  std::uint32_t FirstRegister = 1;
+  if (IsClass(rcc::riscv::RegisterClass::FPR32) || IsClass(rcc::riscv::RegisterClass::FPR32C)) {
+    FirstRegister = static_cast<std::uint32_t>(rcc::riscv::PhysicalRegisterID::F0_F);
+  } else if (IsClass(rcc::riscv::RegisterClass::FPR64) ||
+             IsClass(rcc::riscv::RegisterClass::FPR64C)) {
+    FirstRegister = static_cast<std::uint32_t>(rcc::riscv::PhysicalRegisterID::F0_D);
+  }
+  const std::uint32_t ID = Encoding + FirstRegister;
   Instruction.addOperand(rcc::mc::MCOperand::registerOperand(rcc::mc::MCRegister::fromValue(ID)));
 }
 
@@ -68,48 +82,48 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
   if (Category == rcc::riscv::EncodingCategory::R) {
     switch (Format) {
     case RD_RS1_RS2:
-      addRegister(Result, DestinationEncoding, false);
-      addRegister(Result, Source1Encoding, false);
-      addRegister(Result, Source2Encoding, false);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
+      addRegister(Result, Descriptor, Source2Encoding);
       return Result;
     case FRD_FRS1_FRS2_RM:
-      addRegister(Result, DestinationEncoding, true);
-      addRegister(Result, Source1Encoding, true);
-      addRegister(Result, Source2Encoding, true);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
+      addRegister(Result, Descriptor, Source2Encoding);
       addImmediate(Result, (Encoding >> 12U) & 7U);
       return Result;
     case FRD_FRS1_FRS2:
-      addRegister(Result, DestinationEncoding, true);
-      addRegister(Result, Source1Encoding, true);
-      addRegister(Result, Source2Encoding, true);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
+      addRegister(Result, Descriptor, Source2Encoding);
       return Result;
     case RD_FRS1_FRS2:
-      addRegister(Result, DestinationEncoding, false);
-      addRegister(Result, Source1Encoding, true);
-      addRegister(Result, Source2Encoding, true);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
+      addRegister(Result, Descriptor, Source2Encoding);
       return Result;
     case FRD_FRS1_RM:
-      addRegister(Result, DestinationEncoding, true);
-      addRegister(Result, Source1Encoding, true);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
       addImmediate(Result, (Encoding >> 12U) & 7U);
       return Result;
     case RD_FRS1_RM:
-      addRegister(Result, DestinationEncoding, false);
-      addRegister(Result, Source1Encoding, true);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
       addImmediate(Result, (Encoding >> 12U) & 7U);
       return Result;
     case FRD_RS1_RM:
-      addRegister(Result, DestinationEncoding, true);
-      addRegister(Result, Source1Encoding, false);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
       addImmediate(Result, (Encoding >> 12U) & 7U);
       return Result;
     case RD_FRS1:
-      addRegister(Result, DestinationEncoding, false);
-      addRegister(Result, Source1Encoding, true);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
       return Result;
     case FRD_RS1:
-      addRegister(Result, DestinationEncoding, true);
-      addRegister(Result, Source1Encoding, false);
+      addRegister(Result, Descriptor, DestinationEncoding);
+      addRegister(Result, Descriptor, Source1Encoding);
       return Result;
     default:
       return fixtureError("unsupported R-type reference fixture format");
@@ -127,8 +141,8 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
     const bool FloatingDestination = Format == FRD_OFFSET_RS1;
     if (Format != RD_RS1_IMM && Format != RD_OFFSET_RS1 && !FloatingDestination)
       return fixtureError("unsupported I-type reference fixture format");
-    addRegister(Result, DestinationEncoding, FloatingDestination);
-    addRegister(Result, Source1Encoding, false);
+    addRegister(Result, Descriptor, DestinationEncoding);
+    addRegister(Result, Descriptor, Source1Encoding);
     const bool Shift64 = Opcode == SLLI || Opcode == SRLI || Opcode == SRAI;
     const bool Shift32 = Opcode == SLLIW || Opcode == SRLIW || Opcode == SRAIW;
     if (Shift64)
@@ -143,8 +157,8 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
   if (Category == rcc::riscv::EncodingCategory::S) {
     if (Format != RS2_OFFSET_RS1 && Format != FRS2_OFFSET_RS1)
       return fixtureError("unsupported S-type reference fixture format");
-    addRegister(Result, Source2Encoding, Format == FRS2_OFFSET_RS1);
-    addRegister(Result, Source1Encoding, false);
+    addRegister(Result, Descriptor, Source2Encoding);
+    addRegister(Result, Descriptor, Source1Encoding);
     const std::uint32_t Immediate = ((Encoding >> 25U) & 0x7fU) << 5U | ((Encoding >> 7U) & 0x1fU);
     addImmediate(Result, signExtend(Immediate, 12));
     return Result;
@@ -153,8 +167,8 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
   if (Category == rcc::riscv::EncodingCategory::B) {
     if (Format != RS1_RS2_TARGET)
       return fixtureError("unsupported B-type reference fixture format");
-    addRegister(Result, Source1Encoding, false);
-    addRegister(Result, Source2Encoding, false);
+    addRegister(Result, Descriptor, Source1Encoding);
+    addRegister(Result, Descriptor, Source2Encoding);
     addImmediate(Result, decodeBranchImmediate(Encoding));
     return Result;
   }
@@ -162,7 +176,7 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
   if (Category == rcc::riscv::EncodingCategory::U) {
     if (Format != RD_IMM)
       return fixtureError("unsupported U-type reference fixture format");
-    addRegister(Result, DestinationEncoding, false);
+    addRegister(Result, Descriptor, DestinationEncoding);
     addImmediate(Result, signExtend(Encoding >> 12U, 20));
     return Result;
   }
@@ -170,7 +184,7 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
   if (Category == rcc::riscv::EncodingCategory::J) {
     if (Format != RD_TARGET)
       return fixtureError("unsupported J-type reference fixture format");
-    addRegister(Result, DestinationEncoding, false);
+    addRegister(Result, Descriptor, DestinationEncoding);
     addImmediate(Result, decodeJALImmediate(Encoding));
     return Result;
   }
@@ -180,10 +194,10 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
       return Result;
     if (Format != RD_CSR_RS1 && Format != RD_CSR_IMM)
       return fixtureError("unsupported system reference fixture format");
-    addRegister(Result, DestinationEncoding, false);
+    addRegister(Result, Descriptor, DestinationEncoding);
     addImmediate(Result, Encoding >> 20U);
     if (Format == RD_CSR_RS1)
-      addRegister(Result, Source1Encoding, false);
+      addRegister(Result, Descriptor, Source1Encoding);
     else
       addImmediate(Result, Source1Encoding);
     return Result;
@@ -192,20 +206,20 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
   if (Category == rcc::riscv::EncodingCategory::AMO) {
     if (Format != RD_PAREN_RS1 && Format != RD_RS2_PAREN_RS1)
       return fixtureError("unsupported atomic reference fixture format");
-    addRegister(Result, DestinationEncoding, false);
+    addRegister(Result, Descriptor, DestinationEncoding);
     if (Format == RD_RS2_PAREN_RS1)
-      addRegister(Result, Source2Encoding, false);
-    addRegister(Result, Source1Encoding, false);
+      addRegister(Result, Descriptor, Source2Encoding);
+    addRegister(Result, Descriptor, Source1Encoding);
     return Result;
   }
 
   if (Category == rcc::riscv::EncodingCategory::R4) {
     if (Format != FRD_FRS1_FRS2_FRS3_RM)
       return fixtureError("unsupported R4 reference fixture format");
-    addRegister(Result, DestinationEncoding, true);
-    addRegister(Result, Source1Encoding, true);
-    addRegister(Result, Source2Encoding, true);
-    addRegister(Result, (Encoding >> 27U) & 0x1fU, true);
+    addRegister(Result, Descriptor, DestinationEncoding);
+    addRegister(Result, Descriptor, Source1Encoding);
+    addRegister(Result, Descriptor, Source2Encoding);
+    addRegister(Result, Descriptor, (Encoding >> 27U) & 0x1fU);
     addImmediate(Result, (Encoding >> 12U) & 7U);
     return Result;
   }
@@ -229,7 +243,8 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
 }
 
 [[nodiscard]] rcc::Expected<rcc::mc::MCInst>
-createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
+createCompressedFixture(const rcc::InstructionDescriptor &Descriptor,
+                        const rcc::riscv::AssemblyInstructionInfo &Assembly) {
   using enum rcc::riscv::InstructionOpcode;
   const auto Opcode =
       static_cast<rcc::riscv::InstructionOpcode>(Assembly.InstructionOpcode.value());
@@ -237,7 +252,7 @@ createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
   rcc::mc::MCInst Result(rcc::mc::MCOpcode::fromValue(Assembly.InstructionOpcode.value()));
 
   if (Opcode == C_ADDI4SPN) {
-    addRegister(Result, ((Encoding >> 2U) & 7U) + 8U, false);
+    addRegister(Result, Descriptor, ((Encoding >> 2U) & 7U) + 8U);
     const std::uint32_t Immediate = ((Encoding >> 11U) & 3U) << 4U |
                                     ((Encoding >> 7U) & 0xfU) << 6U |
                                     ((Encoding >> 6U) & 1U) << 2U | ((Encoding >> 5U) & 1U) << 3U;
@@ -250,8 +265,8 @@ createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
   const bool DoubleStore = Opcode == C_FSD || Opcode == C_SD;
   const bool WordStore = Opcode == C_SW;
   if (DoubleLoad || WordLoad || DoubleStore || WordStore) {
-    addRegister(Result, ((Encoding >> 2U) & 7U) + 8U, Opcode == C_FLD || Opcode == C_FSD);
-    addRegister(Result, ((Encoding >> 7U) & 7U) + 8U, false);
+    addRegister(Result, Descriptor, ((Encoding >> 2U) & 7U) + 8U);
+    addRegister(Result, Descriptor, ((Encoding >> 7U) & 7U) + 8U);
     const bool Double = DoubleLoad || DoubleStore;
     std::uint32_t Immediate = ((Encoding >> 10U) & 7U) << 3U;
     if (Double) {
@@ -266,7 +281,7 @@ createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
   const bool CI = Opcode == C_ADDI || Opcode == C_ADDIW || Opcode == C_LI || Opcode == C_LUI ||
                   Opcode == C_SLLI;
   if (CI) {
-    addRegister(Result, (Encoding >> 7U) & 0x1fU, false);
+    addRegister(Result, Descriptor, (Encoding >> 7U) & 0x1fU);
     const std::uint32_t Immediate = ((Encoding >> 12U) & 1U) << 5U | ((Encoding >> 2U) & 0x1fU);
     addImmediate(Result, Opcode == C_SLLI ? Immediate : signExtend(Immediate, 6));
     return Result;
@@ -282,7 +297,7 @@ createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
 
   const bool CompactShift = Opcode == C_SRLI || Opcode == C_SRAI;
   if (CompactShift || Opcode == C_ANDI) {
-    addRegister(Result, ((Encoding >> 7U) & 7U) + 8U, false);
+    addRegister(Result, Descriptor, ((Encoding >> 7U) & 7U) + 8U);
     const std::uint32_t Immediate = ((Encoding >> 12U) & 1U) << 5U | ((Encoding >> 2U) & 0x1fU);
     addImmediate(Result, CompactShift ? Immediate : signExtend(Immediate, 6));
     return Result;
@@ -291,8 +306,8 @@ createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
   const bool CompactALU = Opcode == C_SUB || Opcode == C_XOR || Opcode == C_OR || Opcode == C_AND ||
                           Opcode == C_SUBW || Opcode == C_ADDW;
   if (CompactALU) {
-    addRegister(Result, ((Encoding >> 7U) & 7U) + 8U, false);
-    addRegister(Result, ((Encoding >> 2U) & 7U) + 8U, false);
+    addRegister(Result, Descriptor, ((Encoding >> 7U) & 7U) + 8U);
+    addRegister(Result, Descriptor, ((Encoding >> 2U) & 7U) + 8U);
     return Result;
   }
 
@@ -302,14 +317,14 @@ createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
   }
 
   if (Opcode == C_BEQZ || Opcode == C_BNEZ) {
-    addRegister(Result, ((Encoding >> 7U) & 7U) + 8U, false);
+    addRegister(Result, Descriptor, ((Encoding >> 7U) & 7U) + 8U);
     addImmediate(Result, decodeRVCBranchImmediate(Encoding));
     return Result;
   }
 
   const bool DoubleStackLoad = Opcode == C_FLDSP || Opcode == C_LDSP;
   if (DoubleStackLoad || Opcode == C_LWSP) {
-    addRegister(Result, (Encoding >> 7U) & 0x1fU, Opcode == C_FLDSP);
+    addRegister(Result, Descriptor, (Encoding >> 7U) & 0x1fU);
     const std::uint32_t Immediate =
         DoubleStackLoad ? ((Encoding >> 12U) & 1U) << 5U | ((Encoding >> 5U) & 3U) << 3U |
                               ((Encoding >> 2U) & 7U) << 6U
@@ -322,9 +337,9 @@ createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
   const bool CRSingle = Opcode == C_JR || Opcode == C_JALR;
   const bool CRDouble = Opcode == C_MV || Opcode == C_ADD;
   if (CRSingle || CRDouble) {
-    addRegister(Result, (Encoding >> 7U) & 0x1fU, false);
+    addRegister(Result, Descriptor, (Encoding >> 7U) & 0x1fU);
     if (CRDouble)
-      addRegister(Result, (Encoding >> 2U) & 0x1fU, false);
+      addRegister(Result, Descriptor, (Encoding >> 2U) & 0x1fU);
     return Result;
   }
 
@@ -333,7 +348,7 @@ createCompressedFixture(const rcc::riscv::AssemblyInstructionInfo &Assembly) {
 
   const bool DoubleStackStore = Opcode == C_FSDSP || Opcode == C_SDSP;
   if (DoubleStackStore || Opcode == C_SWSP) {
-    addRegister(Result, (Encoding >> 2U) & 0x1fU, Opcode == C_FSDSP);
+    addRegister(Result, Descriptor, (Encoding >> 2U) & 0x1fU);
     const std::uint32_t Immediate =
         DoubleStackStore ? ((Encoding >> 10U) & 7U) << 3U | ((Encoding >> 7U) & 7U) << 6U
                          : ((Encoding >> 9U) & 0xfU) << 2U | ((Encoding >> 7U) & 3U) << 6U;
@@ -350,7 +365,7 @@ createReferenceFixture(const rcc::InstructionDescriptor &Descriptor,
   const auto Category =
       static_cast<rcc::riscv::EncodingCategory>(Descriptor.EncodingCategory.value());
   if (Category == rcc::riscv::EncodingCategory::C)
-    return createCompressedFixture(Assembly);
+    return createCompressedFixture(Descriptor, Assembly);
   return createStandardFixture(Descriptor, Assembly);
 }
 

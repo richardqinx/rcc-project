@@ -1840,14 +1840,12 @@ private:
     std::unordered_set<std::uint32_t> IDs;
     std::unordered_set<std::string> Symbols;
     std::unordered_set<std::string> Names;
-    std::unordered_set<std::uint32_t> DwarfRegisters;
     for (const SourceRegister &Register : Input.Registers) {
       if (Register.ID == 0 || !isIdentifier(Register.Symbol) || Register.Name.empty() ||
           !IDs.insert(Register.ID).second || !Symbols.insert(Register.Symbol).second ||
-          !Names.insert(lowerASCII(Register.Name)).second ||
-          !DwarfRegisters.insert(Register.DwarfRegister).second || Register.Units.empty()) {
-        fail(Register.Range, "registers require nonzero unique IDs, symbols, canonical names, "
-                             "DWARF numbers, and units");
+          !Names.insert(lowerASCII(Register.Name)).second || Register.Units.empty()) {
+        fail(Register.Range,
+             "registers require nonzero unique IDs, symbols, canonical names, and units");
         return false;
       }
       RegisterBySymbol.emplace(Register.Symbol, Register.ID);
@@ -2900,9 +2898,11 @@ void emitImmediatePredicate(std::ostream &Output, const NormalizedImmediatePredi
     Output << "})},\n";
   }
   Output << "  };\n  Description.CFIRegisters = {\n";
+  std::unordered_set<std::uint32_t> CanonicalDwarfRegisters;
   for (const NormalizedRegister &Register : Model.Registers) {
+    const bool IsCanonical = CanonicalDwarfRegisters.insert(Register.DwarfRegister).second;
     Output << "      {physical(PhysicalRegisterID::" << Register.Symbol << "), "
-           << Register.DwarfRegister << ", true},\n";
+           << Register.DwarfRegister << ", " << (IsCanonical ? "true" : "false") << "},\n";
   }
   Output << "  };\n}\n\n";
 

@@ -81,10 +81,14 @@ createStackMemoryOperand(MachineIRBuilder &Builder, FrameIndex StackSlot, Memory
       PhysicalRegisterID::X25, PhysicalRegisterID::X26, PhysicalRegisterID::X27,
   };
   const std::array FPRs{
-      PhysicalRegisterID::F8,  PhysicalRegisterID::F9,  PhysicalRegisterID::F18,
-      PhysicalRegisterID::F19, PhysicalRegisterID::F20, PhysicalRegisterID::F21,
-      PhysicalRegisterID::F22, PhysicalRegisterID::F23, PhysicalRegisterID::F24,
-      PhysicalRegisterID::F25, PhysicalRegisterID::F26, PhysicalRegisterID::F27,
+      PhysicalRegisterID::F8_D,  PhysicalRegisterID::F9_D,  PhysicalRegisterID::F18_D,
+      PhysicalRegisterID::F19_D, PhysicalRegisterID::F20_D, PhysicalRegisterID::F21_D,
+      PhysicalRegisterID::F22_D, PhysicalRegisterID::F23_D, PhysicalRegisterID::F24_D,
+      PhysicalRegisterID::F25_D, PhysicalRegisterID::F26_D, PhysicalRegisterID::F27_D,
+      PhysicalRegisterID::F8_F,  PhysicalRegisterID::F9_F,  PhysicalRegisterID::F18_F,
+      PhysicalRegisterID::F19_F, PhysicalRegisterID::F20_F, PhysicalRegisterID::F21_F,
+      PhysicalRegisterID::F22_F, PhysicalRegisterID::F23_F, PhysicalRegisterID::F24_F,
+      PhysicalRegisterID::F25_F, PhysicalRegisterID::F26_F, PhysicalRegisterID::F27_F,
   };
   const auto Matches = [Number](PhysicalRegisterID ID) {
     return Number == static_cast<std::uint32_t>(ID);
@@ -96,9 +100,12 @@ createStackMemoryOperand(MachineIRBuilder &Builder, FrameIndex StackSlot, Memory
   const std::uint32_t Number = Reg.number();
   const std::uint32_t X8 = static_cast<std::uint32_t>(PhysicalRegisterID::X8);
   const std::uint32_t X15 = static_cast<std::uint32_t>(PhysicalRegisterID::X15);
-  const std::uint32_t F8 = static_cast<std::uint32_t>(PhysicalRegisterID::F8);
-  const std::uint32_t F15 = static_cast<std::uint32_t>(PhysicalRegisterID::F15);
-  return (Number >= X8 && Number <= X15) || (Number >= F8 && Number <= F15);
+  const std::uint32_t F8D = static_cast<std::uint32_t>(PhysicalRegisterID::F8_D);
+  const std::uint32_t F15D = static_cast<std::uint32_t>(PhysicalRegisterID::F15_D);
+  const std::uint32_t F8F = static_cast<std::uint32_t>(PhysicalRegisterID::F8_F);
+  const std::uint32_t F15F = static_cast<std::uint32_t>(PhysicalRegisterID::F15_F);
+  return (Number >= X8 && Number <= X15) || (Number >= F8D && Number <= F15D) ||
+         (Number >= F8F && Number <= F15F);
 }
 
 class RISCVRegisterAllocationInfo final : public TargetRegisterAllocationInfo {
