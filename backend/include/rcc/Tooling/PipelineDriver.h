@@ -44,6 +44,7 @@ struct PipelineControls final {
   bool CaptureStageSnapshots = false;
   bool VerifyEach = true;
   bool DetectUnreportedChanges = true;
+  bool SimplifyMIR = false;
 };
 
 struct PipelineSnapshot final {

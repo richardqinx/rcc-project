@@ -10,7 +10,7 @@ file(MAKE_DIRECTORY "${OutputDirectory}")
 set(RepeatedOutput "${OUTPUT}.repeat")
 
 execute_process(
-  COMMAND "${TOOL}" --input "${INPUT}" --emit "${OUTPUT_KIND}" --output "${OUTPUT}"
+  COMMAND "${TOOL}" --input "${INPUT}" --emit "${OUTPUT_KIND}" -o "${OUTPUT}"
   RESULT_VARIABLE FirstResult
   ERROR_VARIABLE FirstDiagnostics
 )
@@ -18,7 +18,7 @@ if(NOT FirstResult EQUAL 0)
   message(FATAL_ERROR "${OUTPUT_KIND} production failed: ${FirstDiagnostics}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --input "${INPUT}" --emit "${OUTPUT_KIND}" --output "${RepeatedOutput}"
+  COMMAND "${TOOL}" --input "${INPUT}" --emit "${OUTPUT_KIND}" -o "${RepeatedOutput}"
   RESULT_VARIABLE SecondResult
   ERROR_VARIABLE SecondDiagnostics
 )

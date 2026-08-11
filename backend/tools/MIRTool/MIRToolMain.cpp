@@ -81,15 +81,17 @@ void printUsage(std::ostream &Output) {
             "  --fuzz <layer,...|all>         Run deterministic layered fuzzing\n"
             "  --list-passes                  List the canonical pipeline suffix\n"
             "pipeline/output:\n"
-            "  --run-pass <name>              Run one named pass\n"
-            "  --passes <name,...>            Run an explicit pass sequence\n"
-            "  --stop-before <pass[#N]>       Stop before a pass occurrence\n"
-            "  --stop-after <pass[#N]>        Stop after a pass occurrence\n"
-            "  --print-before <pass[#N],...>  Print snapshots before passes\n"
-            "  --print-after <pass[#N],...>   Print snapshots after passes\n"
+            "  -run-pass <name>               Run one named pass\n"
+            "  -passes <name,...>             Run an explicit pass sequence\n"
+            "  -stop-before <pass[#N]>        Stop before a pass occurrence\n"
+            "  -stop-after <pass[#N]>         Stop after a pass occurrence\n"
+            "  -print-before <pass[#N],...>   Print snapshots before passes\n"
+            "  -print-after <pass[#N],...>    Print snapshots after passes\n"
+            "  -simplify-mir                  Omit default-valued MIR fields\n"
+            "  -verify-machineinstrs          Verify each machine pass result\n"
             "  --stage-snapshots              Print every stage boundary\n"
             "  --emit <stage|assembly|object> Select the output artifact\n"
-            "  -o, --output <file|->          Select the output path\n"
+            "  -o <file|->                    Select the output path\n"
             "reproduction/cache/fuzz:\n"
             "  --crash-reproducer <path>      Save input and manifest before execution\n"
             "  --cache-dir <path>             Select the content-addressed cache root\n"
@@ -102,10 +104,11 @@ void printUsage(std::ostream &Output) {
             "  --enable-action <name>         Enable an Action ID component\n"
             "  --print-actions                Print stable Action decisions\n"
             "  -O0|-O1|-O2|-O3|-Os|-Oz        Optimization level identity\n"
-            "  --relocation-model <static|pic>\n"
-            "  --code-model <small|medium|large>\n"
+            "  -relocation-model <static|pic>\n"
+            "  -code-model <small|medium|large>\n"
             "  --layout <native-object|compiler-final-layout|external-relaxation>\n"
-            "  --cpu/--tune-cpu/--features/--abi/--data-layout <value>\n"
+            "  -mtriple/-mcpu/-mtune/-mattr/-target-abi <value>\n"
+            "  --data-layout <value>          Override the MIR data layout\n"
             "  --target-option <name=value>   Explicit target option\n"
             "  --assembler-option <name=value>\n"
             "  --assembler-flavor/--assembler-version <value>\n";
@@ -158,6 +161,24 @@ template <typename IntegerT>
     Begin = Comma + 1U;
   }
   return Result;
+}
+
+void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::string> &Features) {
+  for (std::string &Override : Overrides) {
+    if (!Override.empty() && Override.front() != '+' && Override.front() != '-')
+      Override.insert(Override.begin(), '+');
+    const std::string_view Name = std::string_view(Override).substr(1);
+    std::erase_if(Features, [Name](const std::string &Feature) {
+      return Feature.size() > 1 && std::string_view(Feature).substr(1) == Name;
+    });
+    Features.push_back(std::move(Override));
+  }
+}
+
+[[nodiscard]] std::string normalizeRV64Triple(std::string_view Triple) {
+  if (Triple == "riscv64" || Triple == "riscv64-linux-gnu")
+    return "riscv64-unknown-linux-gnu";
+  return std::string(Triple);
 }
 
 [[nodiscard]] Expected<rcc::tooling::BackendOption> parseBackendOption(std::string_view Text,
@@ -238,6 +259,14 @@ template <typename IntegerT>
       Command.Controls.CaptureStageSnapshots = true;
       continue;
     }
+    if (Argument == "-simplify-mir") {
+      Command.Controls.SimplifyMIR = true;
+      continue;
+    }
+    if (Argument == "-verify-machineinstrs") {
+      Command.Controls.VerifyEach = true;
+      continue;
+    }
     if (Argument == "--no-verify-each") {
       Command.Controls.VerifyEach = false;
       continue;
@@ -268,11 +297,7 @@ template <typename IntegerT>
       Command.InputPath = std::string(**Input);
       continue;
     }
-    auto Output = takeOption(Argument, "--output", Index, ArgumentCount, Arguments);
-    if (!Output)
-      return std::unexpected(Output.error());
-    if (!*Output && Argument == "-o")
-      Output = takeOption(Argument, "-o", Index, ArgumentCount, Arguments);
+    auto Output = takeOption(Argument, "-o", Index, ArgumentCount, Arguments);
     if (!Output)
       return std::unexpected(Output.error());
     if (*Output) {
@@ -291,24 +316,24 @@ template <typename IntegerT>
       Command.OutputWasSpecified = true;
       continue;
     }
-    auto RunPass = takeOption(Argument, "--run-pass", Index, ArgumentCount, Arguments);
+    auto RunPass = takeOption(Argument, "-run-pass", Index, ArgumentCount, Arguments);
     if (!RunPass)
       return std::unexpected(RunPass.error());
     if (*RunPass) {
       if (ExplicitPipeline)
         return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
-                                   "--run-pass and --passes cannot be combined");
+                                   "-run-pass and -passes cannot be combined");
       Command.Invocation.PassPipeline = {std::string(**RunPass)};
       ExplicitPipeline = true;
       continue;
     }
-    auto Passes = takeOption(Argument, "--passes", Index, ArgumentCount, Arguments);
+    auto Passes = takeOption(Argument, "-passes", Index, ArgumentCount, Arguments);
     if (!Passes)
       return std::unexpected(Passes.error());
     if (*Passes) {
       if (ExplicitPipeline)
         return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
-                                   "--run-pass and --passes cannot be combined");
+                                   "-run-pass and -passes cannot be combined");
       auto Names = splitList(**Passes, "pass pipeline");
       if (!Names)
         return std::unexpected(Names.error());
@@ -327,12 +352,12 @@ template <typename IntegerT>
       Destination = std::string(**Value);
       return true;
     };
-    auto StopBefore = ParseSelector("--stop-before", Command.Controls.StopBefore);
+    auto StopBefore = ParseSelector("-stop-before", Command.Controls.StopBefore);
     if (!StopBefore)
       return std::unexpected(StopBefore.error());
     if (*StopBefore)
       continue;
-    auto StopAfter = ParseSelector("--stop-after", Command.Controls.StopAfter);
+    auto StopAfter = ParseSelector("-stop-after", Command.Controls.StopAfter);
     if (!StopAfter)
       return std::unexpected(StopAfter.error());
     if (*StopAfter)
@@ -352,12 +377,12 @@ template <typename IntegerT>
                          std::make_move_iterator(Selectors->end()));
       return true;
     };
-    auto PrintBefore = ParseSelectorList("--print-before", Command.Controls.PrintBefore);
+    auto PrintBefore = ParseSelectorList("-print-before", Command.Controls.PrintBefore);
     if (!PrintBefore)
       return std::unexpected(PrintBefore.error());
     if (*PrintBefore)
       continue;
-    auto PrintAfter = ParseSelectorList("--print-after", Command.Controls.PrintAfter);
+    auto PrintAfter = ParseSelectorList("-print-after", Command.Controls.PrintAfter);
     if (!PrintAfter)
       return std::unexpected(PrintAfter.error());
     if (*PrintAfter)
@@ -490,17 +515,24 @@ template <typename IntegerT>
       Destination = std::string(**Value);
       return true;
     };
-    auto CPU = ParseString("--cpu", Command.Invocation.CPU);
+    auto Triple = takeOption(Argument, "-mtriple", Index, ArgumentCount, Arguments);
+    if (!Triple)
+      return std::unexpected(Triple.error());
+    if (*Triple) {
+      Command.Invocation.Triple = normalizeRV64Triple(**Triple);
+      continue;
+    }
+    auto CPU = ParseString("-mcpu", Command.Invocation.CPU);
     if (!CPU)
       return std::unexpected(CPU.error());
     if (*CPU)
       continue;
-    auto TuneCPU = ParseString("--tune-cpu", Command.Invocation.TuneCPU);
+    auto TuneCPU = ParseString("-mtune", Command.Invocation.TuneCPU);
     if (!TuneCPU)
       return std::unexpected(TuneCPU.error());
     if (*TuneCPU)
       continue;
-    auto ABI = ParseString("--abi", Command.Invocation.ABI);
+    auto ABI = ParseString("-target-abi", Command.Invocation.ABI);
     if (!ABI)
       return std::unexpected(ABI.error());
     if (*ABI)
@@ -520,17 +552,17 @@ template <typename IntegerT>
       return std::unexpected(AssemblerVersion.error());
     if (*AssemblerVersion)
       continue;
-    auto Features = takeOption(Argument, "--features", Index, ArgumentCount, Arguments);
+    auto Features = takeOption(Argument, "-mattr", Index, ArgumentCount, Arguments);
     if (!Features)
       return std::unexpected(Features.error());
     if (*Features) {
       auto Values = splitList(**Features, "target feature list");
       if (!Values)
         return std::unexpected(Values.error());
-      Command.Invocation.Features = std::move(*Values);
+      applyFeatureOverrides(std::move(*Values), Command.Invocation.Features);
       continue;
     }
-    auto Relocation = takeOption(Argument, "--relocation-model", Index, ArgumentCount, Arguments);
+    auto Relocation = takeOption(Argument, "-relocation-model", Index, ArgumentCount, Arguments);
     if (!Relocation)
       return std::unexpected(Relocation.error());
     if (*Relocation) {
@@ -540,7 +572,7 @@ template <typename IntegerT>
       Command.Invocation.Relocation = *Value;
       continue;
     }
-    auto Code = takeOption(Argument, "--code-model", Index, ArgumentCount, Arguments);
+    auto Code = takeOption(Argument, "-code-model", Index, ArgumentCount, Arguments);
     if (!Code)
       return std::unexpected(Code.error());
     if (*Code) {

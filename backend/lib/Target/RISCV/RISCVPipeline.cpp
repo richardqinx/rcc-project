@@ -2,6 +2,7 @@
 
 #include "rcc/Target/RISCV/RISCVPipeline.h"
 
+#include "rcc/CodeGen/MachineCombiner.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
 #include "rcc/CodeGen/MachinePipelinePasses.h"
@@ -27,7 +28,11 @@ template <typename PassT, typename... ArgumentT>
 
 [[nodiscard]] Expected<void> addInitialPipeline(MachinePassManager &Pipeline,
                                                 RISCVSubtargetFeatures Features) {
-  auto Added = addPass<LegalizerPass>(Pipeline, createLegalizerInfo(Features));
+  auto Added = addPass<MachineCombinerPass>(Pipeline, machineCombinerInfo(),
+                                            MachineCombinerStage::PreLegalizer);
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = addPass<LegalizerPass>(Pipeline, createLegalizerInfo(Features));
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<RegisterBankSelectPass>(Pipeline, registerBankInfo());
@@ -76,7 +81,11 @@ Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineF
 Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineFunction &Function,
                                     RISCVSubtargetFeatures Features) {
   if (!Function.properties().has(MachineFunctionProperty::Legalized)) {
-    auto Added = addPass<LegalizerPass>(Pipeline, createLegalizerInfo(Features));
+    auto Added = addPass<MachineCombinerPass>(Pipeline, machineCombinerInfo(),
+                                              MachineCombinerStage::PreLegalizer);
+    if (!Added)
+      return std::unexpected(Added.error());
+    Added = addPass<LegalizerPass>(Pipeline, createLegalizerInfo(Features));
     if (!Added)
       return std::unexpected(Added.error());
   }

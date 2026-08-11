@@ -9,7 +9,7 @@ file(MAKE_DIRECTORY "${WORK_DIRECTORY}")
 
 set(StandardInputMIR "${WORK_DIRECTORY}/stdin.mir")
 execute_process(
-  COMMAND "${TOOL}" --verify - --output "${StandardInputMIR}"
+  COMMAND "${TOOL}" --verify - -o "${StandardInputMIR}"
   INPUT_FILE "${INPUT}"
   RESULT_VARIABLE StandardInputResult
   ERROR_VARIABLE StandardInputDiagnostics
@@ -28,7 +28,7 @@ set(ReloadedAssembly "${WORK_DIRECTORY}/reloaded.s")
 execute_process(
   COMMAND
     "${TOOL}" --input "${INPUT}" --emit assembly --cache-dir "${CacheDirectory}"
-    --cache-policy write --output "${CachedAssembly}"
+    --cache-policy write -o "${CachedAssembly}"
   RESULT_VARIABLE CacheWriteResult
   ERROR_VARIABLE CacheWriteDiagnostics
 )
@@ -38,7 +38,7 @@ endif()
 execute_process(
   COMMAND
     "${TOOL}" --input "${INPUT}" --emit assembly --cache-dir "${CacheDirectory}"
-    --cache-policy read --output "${ReloadedAssembly}"
+    --cache-policy read -o "${ReloadedAssembly}"
   RESULT_VARIABLE CacheReadResult
   ERROR_VARIABLE CacheReadDiagnostics
 )
@@ -56,7 +56,7 @@ endif()
 execute_process(
   COMMAND
     "${TOOL}" --input "${INPUT}" --emit assembly --cache-dir
-    "${WORK_DIRECTORY}/empty-cache" --cache-policy read --output "${WORK_DIRECTORY}/miss.s"
+    "${WORK_DIRECTORY}/empty-cache" --cache-policy read -o "${WORK_DIRECTORY}/miss.s"
   RESULT_VARIABLE CacheMissResult
   ERROR_VARIABLE CacheMissDiagnostics
 )
@@ -74,7 +74,7 @@ file(WRITE "${CachedArtifact}" "corrupt")
 execute_process(
   COMMAND
     "${TOOL}" --input "${INPUT}" --emit assembly --cache-dir "${CacheDirectory}"
-    --cache-policy read --output "${WORK_DIRECTORY}/corrupt.s"
+    --cache-policy read -o "${WORK_DIRECTORY}/corrupt.s"
   RESULT_VARIABLE CorruptCacheResult
   ERROR_VARIABLE CorruptCacheDiagnostics
 )
@@ -88,7 +88,7 @@ set(ReplayedAssembly "${WORK_DIRECTORY}/success-replayed.s")
 execute_process(
   COMMAND
     "${TOOL}" --input "${INPUT}" --emit assembly --crash-reproducer "${SuccessReproducer}"
-    --output "${SuccessAssembly}"
+    -o "${SuccessAssembly}"
   RESULT_VARIABLE ReproducerWriteResult
   ERROR_VARIABLE ReproducerWriteDiagnostics
 )
@@ -96,7 +96,7 @@ if(NOT ReproducerWriteResult EQUAL 0)
   message(FATAL_ERROR "successful reproducer publication failed: ${ReproducerWriteDiagnostics}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --reproduce "${SuccessReproducer}" --output "${ReplayedAssembly}"
+  COMMAND "${TOOL}" --reproduce "${SuccessReproducer}" -o "${ReplayedAssembly}"
   RESULT_VARIABLE ReproducerReplayResult
   ERROR_VARIABLE ReproducerReplayDiagnostics
 )
@@ -113,7 +113,7 @@ endif()
 
 set(RegBankInput "${WORK_DIRECTORY}/regbank.mir")
 execute_process(
-  COMMAND "${TOOL}" --input "${INPUT}" --emit regbank-mir --output "${RegBankInput}"
+  COMMAND "${TOOL}" --input "${INPUT}" --emit regbank-mir -o "${RegBankInput}"
   RESULT_VARIABLE RegBankResult
   ERROR_VARIABLE RegBankDiagnostics
 )
@@ -124,8 +124,8 @@ endif()
 set(FailureReproducer "${WORK_DIRECTORY}/failure-reproducer")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${RegBankInput}" --run-pass InstructionSelect --emit selected-mir
-    --fuel 0 --crash-reproducer "${FailureReproducer}" --output "${WORK_DIRECTORY}/failure.mir"
+    "${TOOL}" --input "${RegBankInput}" -run-pass instruction-select --emit selected-mir
+    --fuel 0 --crash-reproducer "${FailureReproducer}" -o "${WORK_DIRECTORY}/failure.mir"
   RESULT_VARIABLE FailureResult
   ERROR_VARIABLE FailureDiagnostics
 )
@@ -134,12 +134,12 @@ if(FailureResult EQUAL 0 OR
   message(FATAL_ERROR "zero Action fuel did not produce the expected failure")
 endif()
 file(READ "${FailureReproducer}/manifest.yaml" FailureManifest)
-if(NOT FailureManifest MATCHES "InstructionSelect" OR
+if(NOT FailureManifest MATCHES "instruction-select" OR
    NOT FailureManifest MATCHES "required selection action was rejected")
   message(FATAL_ERROR "failure reproducer did not record structured pass diagnostics")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --reproduce "${FailureReproducer}" --output "${WORK_DIRECTORY}/replay.mir"
+  COMMAND "${TOOL}" --reproduce "${FailureReproducer}" -o "${WORK_DIRECTORY}/replay.mir"
   RESULT_VARIABLE FailureReplayResult
   ERROR_VARIABLE FailureReplayDiagnostics
 )
@@ -151,12 +151,12 @@ endif()
 set(ActionOutput "${WORK_DIRECTORY}/selected.mir")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${RegBankInput}" --run-pass InstructionSelect --emit selected-mir
-    --print-actions --output "${ActionOutput}"
+    "${TOOL}" --input "${RegBankInput}" -run-pass instruction-select --emit selected-mir
+    --print-actions -o "${ActionOutput}"
   RESULT_VARIABLE ActionResult
   ERROR_VARIABLE ActionDiagnostics
 )
-if(NOT ActionResult EQUAL 0 OR NOT ActionDiagnostics MATCHES "accepted InstructionSelect")
+if(NOT ActionResult EQUAL 0 OR NOT ActionDiagnostics MATCHES "accepted instruction-select")
   message(FATAL_ERROR "successful Action execution did not report stable decisions")
 endif()
 
@@ -172,7 +172,7 @@ set(CanonicalReducerSeed "${WORK_DIRECTORY}/reducer-seed.canonical.mir")
 set(ReducedMIR "${WORK_DIRECTORY}/reduced.mir")
 file(WRITE "${ReducerSeed}" "${ReducerSeedText}")
 execute_process(
-  COMMAND "${TOOL}" --verify --input "${ReducerSeed}" --output "${CanonicalReducerSeed}"
+  COMMAND "${TOOL}" --verify --input "${ReducerSeed}" -o "${CanonicalReducerSeed}"
   RESULT_VARIABLE ReducerSeedResult
   ERROR_VARIABLE ReducerSeedDiagnostics
 )
@@ -180,7 +180,7 @@ if(NOT ReducerSeedResult EQUAL 0)
   message(FATAL_ERROR "reducer seed failed canonicalization: ${ReducerSeedDiagnostics}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --reduce validity --input "${ReducerSeed}" --output "${ReducedMIR}"
+  COMMAND "${TOOL}" --reduce validity --input "${ReducerSeed}" -o "${ReducedMIR}"
   RESULT_VARIABLE ValidityReducerResult
   ERROR_VARIABLE ValidityReducerDiagnostics
 )
@@ -204,8 +204,8 @@ endif()
 set(FailureReducedMIR "${WORK_DIRECTORY}/failure-reduced.mir")
 execute_process(
   COMMAND
-    "${TOOL}" --reduce failure --input "${RegBankInput}" --run-pass InstructionSelect
-    --emit selected-mir --fuel 0 --output "${FailureReducedMIR}"
+    "${TOOL}" --reduce failure --input "${RegBankInput}" -run-pass instruction-select
+    --emit selected-mir --fuel 0 -o "${FailureReducedMIR}"
   RESULT_VARIABLE FailureReducerResult
   ERROR_VARIABLE FailureReducerDiagnostics
 )
@@ -214,8 +214,8 @@ if(NOT FailureReducerResult EQUAL 0)
 endif()
 execute_process(
   COMMAND
-    "${TOOL}" --input "${FailureReducedMIR}" --run-pass InstructionSelect --emit selected-mir
-    --fuel 0 --output "${WORK_DIRECTORY}/failure-reduced-output.mir"
+    "${TOOL}" --input "${FailureReducedMIR}" -run-pass instruction-select --emit selected-mir
+    --fuel 0 -o "${WORK_DIRECTORY}/failure-reduced-output.mir"
   RESULT_VARIABLE ReducedFailureResult
   ERROR_VARIABLE ReducedFailureDiagnostics
 )
@@ -228,7 +228,7 @@ set(FirstFuzz "${WORK_DIRECTORY}/fuzz-1.txt")
 set(SecondFuzz "${WORK_DIRECTORY}/fuzz-2.txt")
 execute_process(
   COMMAND
-    "${TOOL}" --fuzz all --fuzz-iterations 2 --seed 123 --input "${INPUT}" --output
+    "${TOOL}" --fuzz all --fuzz-iterations 2 --seed 123 --input "${INPUT}" -o
     "${FirstFuzz}"
   RESULT_VARIABLE FirstFuzzResult
   ERROR_VARIABLE FirstFuzzDiagnostics
@@ -238,7 +238,7 @@ if(NOT FirstFuzzResult EQUAL 0)
 endif()
 execute_process(
   COMMAND
-    "${TOOL}" --fuzz all --fuzz-iterations 2 --seed 123 --input "${INPUT}" --output
+    "${TOOL}" --fuzz all --fuzz-iterations 2 --seed 123 --input "${INPUT}" -o
     "${SecondFuzz}"
   RESULT_VARIABLE SecondFuzzResult
   ERROR_VARIABLE SecondFuzzDiagnostics

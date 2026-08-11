@@ -103,7 +103,7 @@ int main() {
 
   rcc::tooling::BackendInvocation AtomicOnlyInvocation = Invocation;
   AtomicOnlyInvocation.Features = {"+a", "+zacas", "+zabha"};
-  AtomicOnlyInvocation.PassPipeline = {"Legalizer"};
+  AtomicOnlyInvocation.PassPipeline = {"legalizer"};
   auto CanonicalAtomicOnly = AtomicOnlyInvocation.canonicalizeAndVerify();
   if (!CanonicalAtomicOnly)
     return tooling_test::fail(CanonicalAtomicOnly.error().message());
@@ -194,8 +194,8 @@ int main() {
   if (!PrintInput)
     return tooling_test::fail(PrintInput.error().message());
   rcc::tooling::PipelineControls PrintControls;
-  PrintControls.PrintBefore = {"Legalizer"};
-  PrintControls.PrintAfter = {"Legalizer#1"};
+  PrintControls.PrintBefore = {"legalizer"};
+  PrintControls.PrintAfter = {"legalizer#1"};
   auto PrintPoints =
       rcc::tooling::runRV64GCPipeline(PrintInput->Document, *Target, Invocation, PrintControls);
   if (!PrintPoints || PrintPoints->Snapshots.size() != 2 ||
@@ -209,22 +209,24 @@ int main() {
   if (!StopInput)
     return tooling_test::fail(StopInput.error().message());
   rcc::tooling::PipelineControls StopControls;
-  StopControls.StopAfter = "Legalizer#1";
+  StopControls.StopAfter = "legalizer#1";
   auto Stopped =
       rcc::tooling::runRV64GCPipeline(StopInput->Document, *Target, Invocation, StopControls);
   const rcc::MachineFunction *StoppedFunction = StopInput->Document.unit().functionAt(0);
   if (!Stopped || StoppedFunction == nullptr ||
       rcc::tooling::stageForFunction(*StoppedFunction) !=
           rcc::tooling::BackendStage::LegalizedMIR ||
-      Stopped->ExecutedPasses.size() != 1) {
+      Stopped->ExecutedPasses.size() != 2 ||
+      Stopped->ExecutedPasses[0].Pass != "riscv-prelegalizer-combiner" ||
+      Stopped->ExecutedPasses[1].Pass != "legalizer") {
     return tooling_test::fail("stop-after must stop at the selected pass occurrence");
   }
-  StopControls.StopAfter = "Legalizer#0";
+  StopControls.StopAfter = "legalizer#0";
   if (rcc::tooling::runRV64GCPipeline(StopInput->Document, *Target, Invocation, StopControls))
     return tooling_test::fail("pipeline controls must reject occurrence zero");
 
   rcc::tooling::BackendInvocation MixedPipeline = Invocation;
-  MixedPipeline.PassPipeline = {"default", "Legalizer"};
+  MixedPipeline.PassPipeline = {"default", "legalizer"};
   auto MixedInput =
       rcc::tooling::parseAndCanonicalizeMIR("mixed-pipeline.mir", *Source, *Target, MixedPipeline);
   if (!MixedInput)
@@ -263,7 +265,7 @@ int main() {
   if (!RegBankRun)
     return tooling_test::fail(RegBankRun.error().message());
   rcc::tooling::BackendInvocation InstructionSelectInvocation = Invocation;
-  InstructionSelectInvocation.PassPipeline = {"InstructionSelect"};
+  InstructionSelectInvocation.PassPipeline = {"instruction-select"};
   InstructionSelectInvocation.ActionFuel = 0;
   auto RejectedInput = rcc::tooling::parseAndCanonicalizeMIR(
       "action-rejected.mir", std::string(RegBankRun->text()), *Target, InstructionSelectInvocation);

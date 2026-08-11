@@ -125,7 +125,7 @@ int main() {
   if (!keyDiffers(Base, Changed, Input, *Fingerprint))
     return tooling_test::fail("cache key must include the optimization level");
   Changed = Base;
-  Changed.PassPipeline = {"Legalizer"};
+  Changed.PassPipeline = {"legalizer"};
   if (!keyDiffers(Base, Changed, Input, *Fingerprint))
     return tooling_test::fail("cache key must include the pass pipeline");
   Changed = Base;

@@ -49,9 +49,10 @@ namespace {
 
 [[nodiscard]] Expected<std::vector<std::uint8_t>> printMIR(const mir::MIRDocument &Document,
                                                            const TargetDescription &Target,
-                                                           const BackendInvocation &Invocation) {
+                                                           const BackendInvocation &Invocation,
+                                                           bool Simplify) {
   mir::MIRDocumentPrinterOptions Options;
-  Options.Mode = mir::MIPrintMode::Complete;
+  Options.Mode = Simplify ? mir::MIPrintMode::Readable : mir::MIPrintMode::Complete;
   Options.EmitEmbeddedIR = true;
   Options.DataLayout = Invocation.DataLayout;
   auto Printed = mir::printMIRDocument(Document, Target, std::move(Options));
@@ -103,6 +104,8 @@ Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescriptio
     Controls.StopAtStage = RequiredStage;
   }
 
+  const bool SimplifyMIR = Controls.SimplifyMIR;
+
   MachinePassInstrumentation LocalInstrumentation;
   MachinePassInstrumentation *ActiveInstrumentation =
       Instrumentation == nullptr ? &LocalInstrumentation : Instrumentation;
@@ -113,7 +116,7 @@ Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescriptio
 
   std::vector<std::uint8_t> Bytes;
   if (isMIR(Output)) {
-    auto Printed = printMIR(Input.Document, Target, Invocation);
+    auto Printed = printMIR(Input.Document, Target, Invocation, SimplifyMIR);
     if (!Printed)
       return std::unexpected(Printed.error());
     Bytes = std::move(*Printed);

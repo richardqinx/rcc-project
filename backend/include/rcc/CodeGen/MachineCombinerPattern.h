@@ -16,6 +16,7 @@
 namespace rcc {
 
 enum class MachineCombinerStage : std::uint8_t {
+  PreLegalizer,
   SelectedSSA,
   PreRegisterAllocation,
   PostRegisterAllocation,

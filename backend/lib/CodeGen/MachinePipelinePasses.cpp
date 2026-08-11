@@ -24,7 +24,7 @@ namespace {
 
 [[nodiscard]] const MachinePassContract &legalizerContract() {
   static const MachinePassContract Contract{
-      .Name = "Legalizer",
+      .Name = "legalizer",
       // LLVM's GlobalISel legalizer operates on SSA form and does not require
       // the optional register-liveness tracking property.
       .Requires = {MachineFunctionProperty::IsSSA},
@@ -38,7 +38,7 @@ namespace {
 
 [[nodiscard]] const MachinePassContract &bankSelectContract() {
   static const MachinePassContract Contract{
-      .Name = "RegisterBankSelect",
+      .Name = "regbankselect",
       .Requires = {MachineFunctionProperty::Legalized},
       .Sets = {MachineFunctionProperty::RegBankSelected},
       .Clears = {},
@@ -50,7 +50,7 @@ namespace {
 
 [[nodiscard]] const MachinePassContract &instructionSelectContract() {
   static const MachinePassContract Contract{
-      .Name = "InstructionSelect",
+      .Name = "instruction-select",
       .Requires = {MachineFunctionProperty::Legalized, MachineFunctionProperty::RegBankSelected},
       .Sets = {MachineFunctionProperty::Selected},
       .Clears = {},
@@ -281,8 +281,7 @@ registerConfigurationFingerprint(const MachineRegisterInfo &RegInfo) noexcept {
 
 [[nodiscard]] Expected<void> clearTrackedLivenessFlags(MachineFunction &Function,
                                                        MachinePassResult &Result) {
-  if (!Result.Changed ||
-      !Function.properties().has(MachineFunctionProperty::TracksLiveness))
+  if (!Result.Changed || !Function.properties().has(MachineFunctionProperty::TracksLiveness))
     return {};
   bool Changed = false;
   for (MachineInstr *Instruction : layoutInstructions(Function)) {
@@ -291,8 +290,7 @@ registerConfigurationFingerprint(const MachineRegisterInfo &RegInfo) noexcept {
       if (!Operand.isRegister())
         continue;
       RegisterOperandFlags Flags = Operand.registerFlags();
-      if (!Flags.has(RegisterOperandFlag::Kill) &&
-          !Flags.has(RegisterOperandFlag::Dead))
+      if (!Flags.has(RegisterOperandFlag::Kill) && !Flags.has(RegisterOperandFlag::Dead))
         continue;
       Flags.clear(RegisterOperandFlag::Kill);
       Flags.clear(RegisterOperandFlag::Dead);
@@ -413,9 +411,9 @@ Expected<MachinePassResult> LegalizerPass::runImplementation(MachineFunction &Fu
     if (!InstructionWasErased) {
       const OpcodeState After = stateOf(*Instruction);
       if (After == Before)
-        return std::unexpected(passFailure(
-            "target legalizer made no observable progress for '" + Descriptor->Name + "'",
-            ErrorCode::InternalError));
+        return std::unexpected(passFailure("target legalizer made no observable progress for '" +
+                                               Descriptor->Name + "'",
+                                           ErrorCode::InternalError));
     }
     Result.Changed = true;
     Result.Changes.add(MachinePassChange::Instructions);

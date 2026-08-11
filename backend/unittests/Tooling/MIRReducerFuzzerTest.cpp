@@ -90,7 +90,7 @@ int main() {
   }
 
   rcc::tooling::BackendInvocation PassInvocation = Invocation;
-  PassInvocation.PassPipeline = {"Legalizer", "RegisterBankSelect", "InstructionSelect"};
+  PassInvocation.PassPipeline = {"legalizer", "regbankselect", "instruction-select"};
   rcc::tooling::MIRReducerOptions PassOptions;
   PassOptions.Mode = rcc::tooling::ReductionMode::PreserveFailure;
   PassOptions.MaximumAttempts = 32;
@@ -114,7 +114,7 @@ int main() {
   if (!RegBank)
     return tooling_test::fail(RegBank.error().message());
   rcc::tooling::BackendInvocation FailureInvocation = Invocation;
-  FailureInvocation.PassPipeline = {"InstructionSelect"};
+  FailureInvocation.PassPipeline = {"instruction-select"};
   FailureInvocation.ActionFuel = 0;
   const auto PreservesActionFailure = [&](std::string_view MIR,
                                           const rcc::tooling::BackendInvocation &Candidate) {

@@ -25,6 +25,20 @@ namespace rcc {
 namespace {
 
 [[nodiscard]] const MachinePassContract &combinerContract(MachineCombinerStage Stage) {
+  static const MachinePassContract PreLegalizer = [] {
+    MachinePassContract Value{
+        .Name = "riscv-prelegalizer-combiner",
+        .Requires = {MachineFunctionProperty::IsSSA},
+        .Sets = {},
+        .Clears = {},
+        .RequiredAnalyses = {},
+        .VerificationStage = PipelineStage::MachineIRInput,
+    };
+    Value.ThreadSafety = PassThreadSafety::ThreadSafe;
+    Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands,
+                             MachinePassChange::Registers};
+    return Value;
+  }();
   static const MachinePassContract SelectedSSA = [] {
     MachinePassContract Value{
         .Name = "machine-combiner-selected-ssa",
@@ -85,6 +99,8 @@ namespace {
     return Value;
   }();
   switch (Stage) {
+  case MachineCombinerStage::PreLegalizer:
+    return PreLegalizer;
   case MachineCombinerStage::SelectedSSA:
     return SelectedSSA;
   case MachineCombinerStage::PreRegisterAllocation:
@@ -94,7 +110,7 @@ namespace {
   case MachineCombinerStage::PostFrame:
     return PostFrame;
   }
-  return SelectedSSA;
+  return PreLegalizer;
 }
 
 [[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {

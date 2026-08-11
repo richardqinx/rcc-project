@@ -55,11 +55,11 @@ struct FunctionRunResult final {
 }
 
 [[nodiscard]] std::optional<BackendStage> stageAfterPass(std::string_view Pass) noexcept {
-  if (Pass == "Legalizer")
+  if (Pass == "legalizer")
     return BackendStage::LegalizedMIR;
-  if (Pass == "RegisterBankSelect")
+  if (Pass == "regbankselect")
     return BackendStage::RegisterBankMIR;
-  if (Pass == "InstructionSelect")
+  if (Pass == "instruction-select")
     return BackendStage::SelectedMIR;
   if (Pass == "TwoAddressRewrite")
     return BackendStage::PostSSAMIR;
