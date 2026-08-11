@@ -348,7 +348,7 @@ bool MIRDocumentParser::parseRegisters(const yaml::Node &Root, MachineFunction &
           return true;
         if (!trim(Text).empty()) {
           Register Virtual;
-          if (virtualRegister(Text, VirtualNode->range(), Context, Virtual))
+          if (virtualRegister(Text, VirtualNode->range(), Function, Context, Virtual))
             return true;
           Initial = Virtual;
         }

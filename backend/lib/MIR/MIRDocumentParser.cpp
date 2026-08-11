@@ -172,15 +172,22 @@ bool MIRDocumentParser::physicalRegister(const yaml::Node &Node, PhysicalRegiste
 }
 
 bool MIRDocumentParser::virtualRegister(std::string_view Text, const TextRange &Range,
-                                        const MIParserContext &Context, Register &Reg) {
+                                        MachineFunction &Function, MIParserContext &Context,
+                                        Register &Reg) {
   const auto ID = parsePrefixedID(Text, "%");
   if (!ID)
     return fail(Range, "virtual register must use the '%N' MIR spelling");
-  const auto Found =
+  auto Found =
       std::ranges::find_if(Context.VirtualRegisters,
                            [ID](const MIVirtualRegisterSlot &Slot) { return Slot.TextID == *ID; });
-  if (Found == Context.VirtualRegisters.end())
-    return fail(Range, "reference to undefined virtual register '%" + std::to_string(*ID) + "'");
+  if (Found == Context.VirtualRegisters.end()) {
+    auto Created = Function.registerInfo().createVirtualRegister();
+    if (!Created)
+      return importError(Range, Created.error());
+    Context.VirtualRegisters.push_back({*ID, *Created});
+    Reg = *Created;
+    return false;
+  }
   Reg = Found->Reg;
   return false;
 }

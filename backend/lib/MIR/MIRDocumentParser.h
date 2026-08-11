@@ -70,7 +70,8 @@ private:
   [[nodiscard]] bool physicalRegister(std::string_view Text, const TextRange &Range,
                                       PhysicalRegister &Reg);
   [[nodiscard]] bool virtualRegister(std::string_view Text, const TextRange &Range,
-                                     const MIParserContext &Context, Register &Reg);
+                                     MachineFunction &Function, MIParserContext &Context,
+                                     Register &Reg);
   [[nodiscard]] Expected<MachineMetadataReference>
   resolveMetadataReference(const MachineFunction &Function, std::uint32_t Slot) const;
   [[nodiscard]] bool parseVariableDebugInfo(const yaml::Node &Entry, MachineFunction &Function,

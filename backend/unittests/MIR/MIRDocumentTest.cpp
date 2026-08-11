@@ -949,6 +949,48 @@ body: |
     printDiagnostics(Invalid);
 }
 
+void testLiveInCreatesVirtualRegister(TestContext &Context) {
+  auto Target = createTarget();
+  Context.expect(Target.has_value(), "live-in virtual-register target must be valid");
+  if (!Target)
+    return;
+
+  constexpr std::string_view DocumentText = R"(---
+name: live_in_vreg
+liveins:
+  - { reg: '$g0', virtual-reg: '%0' }
+body: |
+  bb.0:
+    %0:gpr64 = TEST_COPY $g0
+)";
+  auto Parsed = rcc::mir::parseMIRDocument(*Target, "live-in-vreg.mir", std::string(DocumentText));
+  const rcc::MachineFunction *Function =
+      Parsed.succeeded() ? Parsed.document()->unit().function("live_in_vreg") : nullptr;
+  const auto Registers = Function != nullptr ? Function->registerInfo().virtualRegisters()
+                                             : std::span<const rcc::VirtualRegisterInfo>{};
+  const auto LiveIns = Function != nullptr ? Function->registerInfo().liveIns()
+                                           : std::span<const rcc::PhysicalRegisterLiveIn>{};
+  Context.expect(Parsed.succeeded() && Function != nullptr && Registers.size() == 1 &&
+                     Registers.front().RegClass.has_value() && LiveIns.size() == 1 &&
+                     LiveIns.front().InitialVirtualRegister.has_value(),
+                 "a live-in must create a virtual register before the body constrains it");
+  if (!Parsed.succeeded()) {
+    printDiagnostics(Parsed);
+    return;
+  }
+
+  auto Printed = rcc::mir::printMIRDocument(*Parsed.document(), *Target);
+  Context.expect(Printed.has_value(),
+                 "an implicitly created live-in virtual register must be printable");
+  if (!Printed)
+    return;
+  auto RoundTrip = rcc::mir::parseMIRDocument(*Target, "live-in-vreg-round-trip.mir", *Printed);
+  Context.expect(RoundTrip.succeeded(),
+                 "an implicitly created live-in virtual register must round-trip");
+  if (!RoundTrip.succeeded())
+    printDiagnostics(RoundTrip);
+}
+
 void testBodyDiagnosticLocation(TestContext &Context) {
   auto Target = createTarget();
   Context.expect(Target.has_value(), "body-diagnostic target must be valid");
@@ -1067,6 +1109,7 @@ int main() {
   testFixedWidthDocumentFields(Context);
   testAtomicFailure(Context);
   testLLVMPropertySemantics(Context);
+  testLiveInCreatesVirtualRegister(Context);
   testBodyDiagnosticLocation(Context);
   testAnonymousFunctionsAndIRBlocks(Context);
   return Context.result();
