@@ -52,11 +52,12 @@ void testRegisterFacts(TestContext &Context) {
   const rcc::PhysicalRegister F31F = registerID(rcc::riscv::PhysicalRegisterID::F31_F);
   const rcc::PhysicalRegister FFLAGS = registerID(rcc::riscv::PhysicalRegisterID::FFLAGS);
   const rcc::PhysicalRegister FRM = registerID(rcc::riscv::PhysicalRegisterID::FRM);
+  const rcc::PhysicalRegister V8 = registerID(rcc::riscv::PhysicalRegisterID::V8);
 
   Context.expect(
-      Registers->physicalRegisters().size() == 98 && Registers->registerUnits().size() == 66 &&
-          Registers->registerClasses().size() == 10 && Registers->registerBanks().size() == 3,
-      "RV64GC must expose scalar, compressed, restricted, and status register classes");
+      Registers->physicalRegisters().size() == 130 && Registers->registerUnits().size() == 98 &&
+          Registers->registerClasses().size() == 11 && Registers->registerBanks().size() == 4,
+      "RISC-V must expose scalar, vector, restricted, and status physical registers");
   Context.expect(Registers->physicalRegister("x0") != nullptr &&
                      Registers->physicalRegister("zero") == nullptr &&
                      Registers->physicalRegisterByAlternativeName("ZERO") != nullptr &&
@@ -80,6 +81,14 @@ void testRegisterFacts(TestContext &Context) {
                      Registers->regsOverlap(F31D, F31F) &&
                      Registers->subRegister(F31D, rcc::SubRegIndex::fromValue(1)) == F31F,
                  "FPR32 and FPR64 MIR views must retain encoding, overlap, and subregister facts");
+  Context.expect(Registers->physicalRegister("v8") != nullptr &&
+                     Registers->physicalRegister("v8")->Reg == V8 &&
+                     Registers->physicalRegister("v8")->Encoding == 8 &&
+                     Registers->physicalRegisterMIRName(V8) == "v8" &&
+                     Registers->registerClass("vr") != nullptr &&
+                     !Registers->registerClass("vr")->Allocatable &&
+                     Registers->registerClassContains(Registers->registerClass("vr")->ID, V8),
+                 "vector physical registers must retain LLVM MIR names and encodings");
   Context.expect(Registers->physicalRegister("fflags") != nullptr &&
                      Registers->physicalRegister("fflags")->Reg == FFLAGS &&
                      Registers->isReservedRegister(FFLAGS) &&

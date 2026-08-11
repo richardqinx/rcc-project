@@ -77,6 +77,38 @@ register_units:
   - { id: 64, symbol: U_F31, name: f31.unit }
   - { id: 65, symbol: U_FFLAGS, name: fflags.unit }
   - { id: 66, symbol: U_FRM, name: frm.unit }
+  - { id: 67, symbol: U_V0, name: v0.unit }
+  - { id: 68, symbol: U_V1, name: v1.unit }
+  - { id: 69, symbol: U_V2, name: v2.unit }
+  - { id: 70, symbol: U_V3, name: v3.unit }
+  - { id: 71, symbol: U_V4, name: v4.unit }
+  - { id: 72, symbol: U_V5, name: v5.unit }
+  - { id: 73, symbol: U_V6, name: v6.unit }
+  - { id: 74, symbol: U_V7, name: v7.unit }
+  - { id: 75, symbol: U_V8, name: v8.unit }
+  - { id: 76, symbol: U_V9, name: v9.unit }
+  - { id: 77, symbol: U_V10, name: v10.unit }
+  - { id: 78, symbol: U_V11, name: v11.unit }
+  - { id: 79, symbol: U_V12, name: v12.unit }
+  - { id: 80, symbol: U_V13, name: v13.unit }
+  - { id: 81, symbol: U_V14, name: v14.unit }
+  - { id: 82, symbol: U_V15, name: v15.unit }
+  - { id: 83, symbol: U_V16, name: v16.unit }
+  - { id: 84, symbol: U_V17, name: v17.unit }
+  - { id: 85, symbol: U_V18, name: v18.unit }
+  - { id: 86, symbol: U_V19, name: v19.unit }
+  - { id: 87, symbol: U_V20, name: v20.unit }
+  - { id: 88, symbol: U_V21, name: v21.unit }
+  - { id: 89, symbol: U_V22, name: v22.unit }
+  - { id: 90, symbol: U_V23, name: v23.unit }
+  - { id: 91, symbol: U_V24, name: v24.unit }
+  - { id: 92, symbol: U_V25, name: v25.unit }
+  - { id: 93, symbol: U_V26, name: v26.unit }
+  - { id: 94, symbol: U_V27, name: v27.unit }
+  - { id: 95, symbol: U_V28, name: v28.unit }
+  - { id: 96, symbol: U_V29, name: v29.unit }
+  - { id: 97, symbol: U_V30, name: v30.unit }
+  - { id: 98, symbol: U_V31, name: v31.unit }
 
 registers:
   - { id: 1, symbol: X0, name: x0, encoding: 0, dwarf_register: 0, units: [{ unit: U_X0, lanes: 1 }], constant: true, reserved: true, aliases: [zero] }
@@ -177,11 +209,44 @@ registers:
   - { id: 96, symbol: F31_F, name: f31_f, encoding: 31, dwarf_register: 63, units: [{ unit: U_F31, lanes: 1 }] }
   - { id: 97, symbol: FFLAGS, name: fflags, encoding: 0, dwarf_register: 65, units: [{ unit: U_FFLAGS, lanes: 1 }], artificial: true, reserved: true }
   - { id: 98, symbol: FRM, name: frm, encoding: 0, dwarf_register: 66, units: [{ unit: U_FRM, lanes: 1 }], artificial: true, reserved: true }
+  - { id: 99, symbol: V0, name: v0, encoding: 0, dwarf_register: 96, units: [{ unit: U_V0, lanes: 1 }] }
+  - { id: 100, symbol: V1, name: v1, encoding: 1, dwarf_register: 97, units: [{ unit: U_V1, lanes: 1 }] }
+  - { id: 101, symbol: V2, name: v2, encoding: 2, dwarf_register: 98, units: [{ unit: U_V2, lanes: 1 }] }
+  - { id: 102, symbol: V3, name: v3, encoding: 3, dwarf_register: 99, units: [{ unit: U_V3, lanes: 1 }] }
+  - { id: 103, symbol: V4, name: v4, encoding: 4, dwarf_register: 100, units: [{ unit: U_V4, lanes: 1 }] }
+  - { id: 104, symbol: V5, name: v5, encoding: 5, dwarf_register: 101, units: [{ unit: U_V5, lanes: 1 }] }
+  - { id: 105, symbol: V6, name: v6, encoding: 6, dwarf_register: 102, units: [{ unit: U_V6, lanes: 1 }] }
+  - { id: 106, symbol: V7, name: v7, encoding: 7, dwarf_register: 103, units: [{ unit: U_V7, lanes: 1 }] }
+  - { id: 107, symbol: V8, name: v8, encoding: 8, dwarf_register: 104, units: [{ unit: U_V8, lanes: 1 }] }
+  - { id: 108, symbol: V9, name: v9, encoding: 9, dwarf_register: 105, units: [{ unit: U_V9, lanes: 1 }] }
+  - { id: 109, symbol: V10, name: v10, encoding: 10, dwarf_register: 106, units: [{ unit: U_V10, lanes: 1 }] }
+  - { id: 110, symbol: V11, name: v11, encoding: 11, dwarf_register: 107, units: [{ unit: U_V11, lanes: 1 }] }
+  - { id: 111, symbol: V12, name: v12, encoding: 12, dwarf_register: 108, units: [{ unit: U_V12, lanes: 1 }] }
+  - { id: 112, symbol: V13, name: v13, encoding: 13, dwarf_register: 109, units: [{ unit: U_V13, lanes: 1 }] }
+  - { id: 113, symbol: V14, name: v14, encoding: 14, dwarf_register: 110, units: [{ unit: U_V14, lanes: 1 }] }
+  - { id: 114, symbol: V15, name: v15, encoding: 15, dwarf_register: 111, units: [{ unit: U_V15, lanes: 1 }] }
+  - { id: 115, symbol: V16, name: v16, encoding: 16, dwarf_register: 112, units: [{ unit: U_V16, lanes: 1 }] }
+  - { id: 116, symbol: V17, name: v17, encoding: 17, dwarf_register: 113, units: [{ unit: U_V17, lanes: 1 }] }
+  - { id: 117, symbol: V18, name: v18, encoding: 18, dwarf_register: 114, units: [{ unit: U_V18, lanes: 1 }] }
+  - { id: 118, symbol: V19, name: v19, encoding: 19, dwarf_register: 115, units: [{ unit: U_V19, lanes: 1 }] }
+  - { id: 119, symbol: V20, name: v20, encoding: 20, dwarf_register: 116, units: [{ unit: U_V20, lanes: 1 }] }
+  - { id: 120, symbol: V21, name: v21, encoding: 21, dwarf_register: 117, units: [{ unit: U_V21, lanes: 1 }] }
+  - { id: 121, symbol: V22, name: v22, encoding: 22, dwarf_register: 118, units: [{ unit: U_V22, lanes: 1 }] }
+  - { id: 122, symbol: V23, name: v23, encoding: 23, dwarf_register: 119, units: [{ unit: U_V23, lanes: 1 }] }
+  - { id: 123, symbol: V24, name: v24, encoding: 24, dwarf_register: 120, units: [{ unit: U_V24, lanes: 1 }] }
+  - { id: 124, symbol: V25, name: v25, encoding: 25, dwarf_register: 121, units: [{ unit: U_V25, lanes: 1 }] }
+  - { id: 125, symbol: V26, name: v26, encoding: 26, dwarf_register: 122, units: [{ unit: U_V26, lanes: 1 }] }
+  - { id: 126, symbol: V27, name: v27, encoding: 27, dwarf_register: 123, units: [{ unit: U_V27, lanes: 1 }] }
+  - { id: 127, symbol: V28, name: v28, encoding: 28, dwarf_register: 124, units: [{ unit: U_V28, lanes: 1 }] }
+  - { id: 128, symbol: V29, name: v29, encoding: 29, dwarf_register: 125, units: [{ unit: U_V29, lanes: 1 }] }
+  - { id: 129, symbol: V30, name: v30, encoding: 30, dwarf_register: 126, units: [{ unit: U_V30, lanes: 1 }] }
+  - { id: 130, symbol: V31, name: v31, encoding: 31, dwarf_register: 127, units: [{ unit: U_V31, lanes: 1 }] }
 
 register_banks:
   - { id: 1, symbol: GPR, name: GPRB, maximum_size_bits: 64 }
   - { id: 2, symbol: FPR, name: FPRB, maximum_size_bits: 64 }
   - { id: 3, symbol: CSR, name: CSRB, maximum_size_bits: 32 }
+  - { id: 4, symbol: VR, name: VRB, maximum_size_bits: 64 }
 
 register_classes:
   -
@@ -294,6 +359,18 @@ register_classes:
     spill_alignment_bits: 32
     lanes: 1
     registers: [FRM]
+    allocation_order: []
+    allocatable: false
+  -
+    id: 11
+    symbol: VR
+    name: VR
+    bank: VR
+    size_bits: 64
+    spill_size_bits: 64
+    spill_alignment_bits: 64
+    lanes: 1
+    registers: [V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, V17, V18, V19, V20, V21, V22, V23, V24, V25, V26, V27, V28, V29, V30, V31]
     allocation_order: []
     allocatable: false
 
