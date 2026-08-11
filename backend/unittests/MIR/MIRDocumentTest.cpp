@@ -331,6 +331,7 @@ registers:
   - { id: 8, class: gpr64, preferred-register: '' }
 liveins:
   - { reg: '$g0', virtual-reg: '%7' }
+  - { reg: '$g1', virtual-reg: '' }
 calleeSavedRegisters: [ '$g1' ]
 frameInfo:
   isFrameAddressTaken: true
@@ -374,7 +375,7 @@ machineMetadataNodes:
   - '!10 = distinct !{!0, !"machine", null}'
 body: |
   bb.0.entry (%ir-block.entry):
-    liveins: $g0
+    liveins: $g0, $g1
     %7:gpr64 = TEST_LOAD $g0 :: (load syncscope("agent") acquire 8 from %ir.slot, align 8)
     TEST_GLOBAL @ordinary
     TEST_BRANCH %bb.0.entry
@@ -429,7 +430,7 @@ void testDocumentTransaction(TestContext &Context) {
     return;
 
   Context.expect(Function->registerInfo().virtualRegisters().size() == 2 &&
-                     Function->registerInfo().liveIns().size() == 1 &&
+                     Function->registerInfo().liveIns().size() == 2 &&
                      Function->records().hasCalleeSavedRegisters(),
                  "register tables must publish into the common MachineIR model");
   Context.expect(Function->frameInfo().liveObjectCount() == 3 &&

@@ -344,12 +344,14 @@ bool MIRDocumentParser::parseRegisters(const yaml::Node &Root, MachineFunction &
       std::optional<Register> Initial;
       if (const yaml::Node *VirtualNode = mappingValue(*Element, "virtual-reg")) {
         std::string_view Text;
-        Register Virtual;
-        if (scalar(*VirtualNode, Text, "virtual register") ||
-            virtualRegister(Text, VirtualNode->range(), Context, Virtual)) {
+        if (scalar(*VirtualNode, Text, "virtual register"))
           return true;
+        if (!trim(Text).empty()) {
+          Register Virtual;
+          if (virtualRegister(Text, VirtualNode->range(), Context, Virtual))
+            return true;
+          Initial = Virtual;
         }
-        Initial = Virtual;
       }
       auto AddResult = Function.registerInfo().addLiveIn(Reg, Initial);
       if (!AddResult)
