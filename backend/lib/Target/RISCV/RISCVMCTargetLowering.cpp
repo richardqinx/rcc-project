@@ -45,9 +45,11 @@ constexpr std::uint32_t PCRelativeHighTargetFlag = 2;
 constexpr std::uint32_t PCRelativeLowTargetFlag = 4;
 constexpr std::uint32_t CopyF32TargetFlag = 8;
 constexpr std::uint32_t CopyF64TargetFlag = 16;
-constexpr std::uint32_t KnownTargetFlags = CallTargetFlag | PCRelativeHighTargetFlag |
-                                           PCRelativeLowTargetFlag | CopyF32TargetFlag |
-                                           CopyF64TargetFlag;
+constexpr std::uint32_t AbsoluteHighTargetFlag = 32;
+constexpr std::uint32_t AbsoluteLowTargetFlag = 64;
+constexpr std::uint32_t KnownTargetFlags =
+    CallTargetFlag | PCRelativeHighTargetFlag | PCRelativeLowTargetFlag | CopyF32TargetFlag |
+    CopyF64TargetFlag | AbsoluteHighTargetFlag | AbsoluteLowTargetFlag;
 
 struct TypeLayout final {
   std::uint64_t Size = 0;
@@ -218,6 +220,12 @@ struct TypeLayout final {
     break;
   case PCRelativeLowTargetFlag:
     Kind = RISCVMCExprKind::PCRelativeLow;
+    break;
+  case AbsoluteHighTargetFlag:
+    Kind = RISCVMCExprKind::AbsoluteHigh;
+    break;
+  case AbsoluteLowTargetFlag:
+    Kind = RISCVMCExprKind::AbsoluteLow;
     break;
   default:
     return makeUnexpected(ErrorCode::AssemblyLoweringFailed,

@@ -274,6 +274,10 @@ Expected<std::string> RISCVInstPrinter::printTargetExpression(std::uint32_t Kind
     return "%pcrel_hi(" + std::string(Operand) + ")";
   case RISCVMCExprKind::PCRelativeLow:
     return "%pcrel_lo(" + std::string(Operand) + ")";
+  case RISCVMCExprKind::AbsoluteHigh:
+    return "%hi(" + std::string(Operand) + ")";
+  case RISCVMCExprKind::AbsoluteLow:
+    return "%lo(" + std::string(Operand) + ")";
   }
   return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                         "RISC-V MC expression has an unknown target kind");

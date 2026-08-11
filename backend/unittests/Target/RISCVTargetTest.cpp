@@ -119,9 +119,11 @@ void testABIAndDebugFacts(TestContext &Context) {
                      TextLP64DMask != nullptr && LP64DMask != nullptr &&
                      *TextLP64DMask == *LP64DMask,
                  "RV64GC must expose named LP64 and LP64D call-preserved masks");
-  Context.expect(MIRText->directOperandFlagMask() == 31 &&
-                     MIRText->directOperandFlag("riscv-call") == 1,
-                 "RV64GC MIR target flags must expose the canonical direct-call spelling");
+  Context.expect(MIRText->directOperandFlagMask() == 127 &&
+                     MIRText->directOperandFlag("riscv-call") == 1 &&
+                     MIRText->directOperandFlag("riscv-hi") == 32 &&
+                     MIRText->directOperandFlag("riscv-lo") == 64,
+                 "RV64GC MIR target flags must expose canonical call and address spellings");
   Context.expect(MIRText->dwarfRegister(X1) == 1,
                  "the return-address register must retain its DWARF register number");
   Context.expect(MIRText->dwarfRegister(F31D) == 63 && MIRText->dwarfRegister(F31F) == 63 &&

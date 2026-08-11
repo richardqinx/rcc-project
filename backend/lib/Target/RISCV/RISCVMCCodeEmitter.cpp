@@ -182,6 +182,8 @@ namespace {
     return std::unexpected(Kind.error());
   if (*Kind == 0)
     return fixupKind(RISCVFixupKind::High20);
+  if (*Kind == static_cast<std::uint32_t>(RISCVMCExprKind::AbsoluteHigh))
+    return fixupKind(RISCVFixupKind::High20);
   if (*Kind == static_cast<std::uint32_t>(RISCVMCExprKind::PCRelativeHigh))
     return fixupKind(RISCVFixupKind::PCRelativeHigh20);
   if (*Kind == static_cast<std::uint32_t>(RISCVMCExprKind::CallPLT))
@@ -195,6 +197,8 @@ namespace {
   if (!Kind)
     return std::unexpected(Kind.error());
   if (*Kind == 0)
+    return fixupKind(Store ? RISCVFixupKind::Low12S : RISCVFixupKind::Low12I);
+  if (*Kind == static_cast<std::uint32_t>(RISCVMCExprKind::AbsoluteLow))
     return fixupKind(Store ? RISCVFixupKind::Low12S : RISCVFixupKind::Low12I);
   if (*Kind == static_cast<std::uint32_t>(RISCVMCExprKind::PCRelativeLow)) {
     return fixupKind(Store ? RISCVFixupKind::PCRelativeLow12S : RISCVFixupKind::PCRelativeLow12I);

@@ -170,6 +170,45 @@ symbolExpression(rcc::mc::MCContext &Context, std::string_view Name, std::uint32
     return false;
   }
 
+  auto AbsoluteHighExpression = symbolExpression(
+      Context, "absolute", static_cast<std::uint32_t>(rcc::riscv::RISCVMCExprKind::AbsoluteHigh));
+  if (!AbsoluteHighExpression)
+    return false;
+  auto AbsoluteHigh =
+      instruction(LUI, {reg(X6), rcc::mc::MCOperand::expression(*AbsoluteHighExpression)});
+  auto AbsoluteHighEncoding = Emitter.encodeInstruction(AbsoluteHigh);
+  if (!AbsoluteHighEncoding || AbsoluteHighEncoding->Fixups.size() != 1 ||
+      AbsoluteHighEncoding->Fixups[0].Kind !=
+          rcc::riscv::fixupKind(rcc::riscv::RISCVFixupKind::High20)) {
+    return false;
+  }
+  auto AbsoluteHighValue = rcc::mc::evaluateAsRelocatable(**AbsoluteHighExpression);
+  auto AbsoluteHighRelocation =
+      AbsoluteHighValue
+          ? Backend.relocationType(AbsoluteHighEncoding->Fixups[0], *AbsoluteHighValue)
+          : rcc::Expected<std::uint32_t>{std::unexpected(AbsoluteHighValue.error())};
+  if (!AbsoluteHighRelocation || *AbsoluteHighRelocation != 26)
+    return false;
+
+  auto AbsoluteLowExpression = symbolExpression(
+      Context, "absolute", static_cast<std::uint32_t>(rcc::riscv::RISCVMCExprKind::AbsoluteLow));
+  if (!AbsoluteLowExpression)
+    return false;
+  auto AbsoluteLow =
+      instruction(ADDI, {reg(X6), reg(X6), rcc::mc::MCOperand::expression(*AbsoluteLowExpression)});
+  auto AbsoluteLowEncoding = Emitter.encodeInstruction(AbsoluteLow);
+  if (!AbsoluteLowEncoding || AbsoluteLowEncoding->Fixups.size() != 1 ||
+      AbsoluteLowEncoding->Fixups[0].Kind !=
+          rcc::riscv::fixupKind(rcc::riscv::RISCVFixupKind::Low12I)) {
+    return false;
+  }
+  auto AbsoluteLowValue = rcc::mc::evaluateAsRelocatable(**AbsoluteLowExpression);
+  auto AbsoluteLowRelocation =
+      AbsoluteLowValue ? Backend.relocationType(AbsoluteLowEncoding->Fixups[0], *AbsoluteLowValue)
+                       : rcc::Expected<std::uint32_t>{std::unexpected(AbsoluteLowValue.error())};
+  if (!AbsoluteLowRelocation || *AbsoluteLowRelocation != 27)
+    return false;
+
   auto BranchExpression = symbolExpression(Context, "block");
   if (!BranchExpression)
     return false;
@@ -251,6 +290,13 @@ int main() {
     return fail(Target.error().message());
   rcc::riscv::RISCVMCCodeEmitter Emitter(*Target);
   rcc::riscv::RISCVAsmBackend Backend;
+  rcc::riscv::RISCVInstPrinter Printer(*Target);
+  auto PrintedHigh = Printer.printTargetExpression(
+      static_cast<std::uint32_t>(rcc::riscv::RISCVMCExprKind::AbsoluteHigh), "symbol");
+  auto PrintedLow = Printer.printTargetExpression(
+      static_cast<std::uint32_t>(rcc::riscv::RISCVMCExprKind::AbsoluteLow), "symbol");
+  if (!PrintedHigh || *PrintedHigh != "%hi(symbol)" || !PrintedLow || *PrintedLow != "%lo(symbol)")
+    return fail("RISC-V absolute address modifiers do not print canonically");
   if (!testEncodings(Emitter))
     return fail("RISC-V MC encodings differ from the RV64GC reference encodings");
   if (!testFixups(Emitter, Backend))

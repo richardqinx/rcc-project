@@ -261,16 +261,30 @@ Expected<std::uint32_t> RISCVAsmBackend::relocationType(const mc::MCFixup &Fixup
       return std::unexpected(Kind.error());
     return Relocation(RISCVRelocation::CallPLT);
   }
+  if (isTargetKind(Fixup.Kind, RISCVFixupKind::High20)) {
+    if (Value.TargetKind != 0) {
+      auto Kind = requireRelocationTargetKind(
+          Value, static_cast<std::uint32_t>(RISCVMCExprKind::AbsoluteHigh), "R_RISCV_HI20");
+      if (!Kind)
+        return std::unexpected(Kind.error());
+    }
+    return Relocation(RISCVRelocation::High20);
+  }
+  if (isTargetKind(Fixup.Kind, RISCVFixupKind::Low12I) ||
+      isTargetKind(Fixup.Kind, RISCVFixupKind::Low12S)) {
+    if (Value.TargetKind != 0) {
+      auto Kind = requireRelocationTargetKind(
+          Value, static_cast<std::uint32_t>(RISCVMCExprKind::AbsoluteLow), "R_RISCV_LO12");
+      if (!Kind)
+        return std::unexpected(Kind.error());
+    }
+    return Relocation(isTargetKind(Fixup.Kind, RISCVFixupKind::Low12I) ? RISCVRelocation::Low12I
+                                                                       : RISCVRelocation::Low12S);
+  }
   if (Value.TargetKind != 0) {
     return makeUnexpected(ErrorCode::RelocationFailed,
                           "RISC-V relocation has an unsupported target expression");
   }
-  if (isTargetKind(Fixup.Kind, RISCVFixupKind::High20))
-    return Relocation(RISCVRelocation::High20);
-  if (isTargetKind(Fixup.Kind, RISCVFixupKind::Low12I))
-    return Relocation(RISCVRelocation::Low12I);
-  if (isTargetKind(Fixup.Kind, RISCVFixupKind::Low12S))
-    return Relocation(RISCVRelocation::Low12S);
   if (isTargetKind(Fixup.Kind, RISCVFixupKind::JAL))
     return Relocation(RISCVRelocation::JAL);
   if (isTargetKind(Fixup.Kind, RISCVFixupKind::Branch))
