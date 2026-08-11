@@ -334,6 +334,53 @@ copyRegisters(const MachineInstr &Instruction) {
   return {};
 }
 
+[[nodiscard]] Expected<bool> expandFFLAGSAccess(MachineInstr &Instruction,
+                                                MachineFunction &Function,
+                                                const TargetDescription &Target, bool IsRead) {
+  const MachineOperand *ValueOperand = Instruction.operandAt(0);
+  const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
+  if (Value == nullptr || !Value->isPhysical()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V FFLAGS pseudo retains a nonphysical value register");
+  }
+  auto Zero = physical(PhysicalRegisterID::X0);
+  if (!Zero)
+    return std::unexpected(Zero.error());
+
+  MachineIRBuilder Builder(Function, Target);
+  auto Point = Builder.setInsertPointBefore(Instruction);
+  if (!Point)
+    return std::unexpected(Point.error());
+  auto Pending = Builder.buildInstr(
+      targetOpcode(IsRead ? InstructionOpcode::CSRRS : InstructionOpcode::CSRRW));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  Expected<void> Added = IsRead ? Pending->addOperand(ValueOperand->cloneDetached())
+                                : Pending->addDef(Register::fromPhysical(*Zero));
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = Pending->addImmediate(1);
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = IsRead ? Pending->addUse(Register::fromPhysical(*Zero))
+                 : Pending->addOperand(ValueOperand->cloneDetached());
+  if (!Added)
+    return std::unexpected(Added.error());
+  auto Implicit = copyExtraImplicitOperands(Instruction, 1, *Pending, std::nullopt, std::nullopt);
+  if (!Implicit)
+    return std::unexpected(Implicit.error());
+  auto Replacement = Pending->build();
+  if (!Replacement)
+    return std::unexpected(Replacement.error());
+  auto Decoration = copyCommonDecoration(Instruction, **Replacement, true, true, true);
+  if (!Decoration)
+    return std::unexpected(Decoration.error());
+  auto Removed = removeOldInstruction(Instruction);
+  if (!Removed)
+    return std::unexpected(Removed.error());
+  return true;
+}
+
 [[nodiscard]] Expected<bool> expandCall(MachineInstr &Instruction, MachineFunction &Function,
                                         const TargetDescription &Target, bool IsTail) {
   MachineBasicBlock *Block = Instruction.parent();
@@ -534,6 +581,10 @@ public:
       return expandReturn(Instruction, Function, Target);
     if (Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoBR))
       return expandBranch(Instruction, Function, Target);
+    if (Instruction.opcode() == targetOpcode(InstructionOpcode::ReadFFLAGS))
+      return expandFFLAGSAccess(Instruction, Function, Target, true);
+    if (Instruction.opcode() == targetOpcode(InstructionOpcode::WriteFFLAGS))
+      return expandFFLAGSAccess(Instruction, Function, Target, false);
     return false;
   }
 };

@@ -49,11 +49,12 @@ void testRegisterFacts(TestContext &Context) {
   const rcc::PhysicalRegister X8 = registerID(rcc::riscv::PhysicalRegisterID::X8);
   const rcc::PhysicalRegister F31D = registerID(rcc::riscv::PhysicalRegisterID::F31_D);
   const rcc::PhysicalRegister F31F = registerID(rcc::riscv::PhysicalRegisterID::F31_F);
+  const rcc::PhysicalRegister FFLAGS = registerID(rcc::riscv::PhysicalRegisterID::FFLAGS);
 
   Context.expect(
-      Registers->physicalRegisters().size() == 96 && Registers->registerUnits().size() == 64 &&
-          Registers->registerClasses().size() == 8 && Registers->registerBanks().size() == 2,
-      "RV64GC must expose the complete scalar, compressed, and restricted register classes");
+      Registers->physicalRegisters().size() == 97 && Registers->registerUnits().size() == 65 &&
+          Registers->registerClasses().size() == 9 && Registers->registerBanks().size() == 3,
+      "RV64GC must expose scalar, compressed, restricted, and status register classes");
   Context.expect(Registers->physicalRegister("x0") != nullptr &&
                      Registers->physicalRegister("zero") == nullptr &&
                      Registers->physicalRegisterByAlternativeName("ZERO") != nullptr &&
@@ -77,6 +78,12 @@ void testRegisterFacts(TestContext &Context) {
                      Registers->regsOverlap(F31D, F31F) &&
                      Registers->subRegister(F31D, rcc::SubRegIndex::fromValue(1)) == F31F,
                  "FPR32 and FPR64 MIR views must retain encoding, overlap, and subregister facts");
+  Context.expect(Registers->physicalRegister("fflags") != nullptr &&
+                     Registers->physicalRegister("fflags")->Reg == FFLAGS &&
+                     Registers->isReservedRegister(FFLAGS) &&
+                     Registers->registerClass("fflags") != nullptr &&
+                     !Registers->registerClass("fflags")->Allocatable,
+                 "FFLAGS must be a reserved nonallocatable status register");
 
   const auto *GPR = Registers->registerClass("gpr");
   Context.expect(
@@ -149,7 +156,7 @@ void testABIAndDebugFacts(TestContext &Context) {
 
 void testInstructionFacts(TestContext &Context) {
   constexpr std::size_t TargetInstructionCount =
-      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::Select_GPR_Using_CC_GPR) -
+      static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::WriteFFLAGS) -
       static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::LUI) + 1U;
   auto Target = rcc::riscv::createTargetDescription();
   Context.expect(Target.has_value(), "RV64GC target description must be structurally valid");

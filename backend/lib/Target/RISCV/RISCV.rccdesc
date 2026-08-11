@@ -75,6 +75,7 @@ register_units:
   - { id: 62, symbol: U_F29, name: f29.unit }
   - { id: 63, symbol: U_F30, name: f30.unit }
   - { id: 64, symbol: U_F31, name: f31.unit }
+  - { id: 65, symbol: U_FFLAGS, name: fflags.unit }
 
 registers:
   - { id: 1, symbol: X0, name: x0, encoding: 0, dwarf_register: 0, units: [{ unit: U_X0, lanes: 1 }], constant: true, reserved: true, aliases: [zero] }
@@ -173,10 +174,12 @@ registers:
   - { id: 94, symbol: F29_F, name: f29_f, encoding: 29, dwarf_register: 61, units: [{ unit: U_F29, lanes: 1 }] }
   - { id: 95, symbol: F30_F, name: f30_f, encoding: 30, dwarf_register: 62, units: [{ unit: U_F30, lanes: 1 }] }
   - { id: 96, symbol: F31_F, name: f31_f, encoding: 31, dwarf_register: 63, units: [{ unit: U_F31, lanes: 1 }] }
+  - { id: 97, symbol: FFLAGS, name: fflags, encoding: 0, dwarf_register: 65, units: [{ unit: U_FFLAGS, lanes: 1 }], artificial: true, reserved: true }
 
 register_banks:
   - { id: 1, symbol: GPR, name: GPRB, maximum_size_bits: 64 }
   - { id: 2, symbol: FPR, name: FPRB, maximum_size_bits: 64 }
+  - { id: 3, symbol: CSR, name: CSRB, maximum_size_bits: 32 }
 
 register_classes:
   -
@@ -267,6 +270,18 @@ register_classes:
     lanes: 1
     registers: [X1, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, X13, X14, X15, X16, X17, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, X31]
     allocation_order: [X5, X6, X7, X28, X29, X30, X31, X10, X11, X12, X13, X14, X15, X16, X17, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X1]
+  -
+    id: 9
+    symbol: FFLAGS
+    name: FFLAGS
+    bank: CSR
+    size_bits: 32
+    spill_size_bits: 32
+    spill_alignment_bits: 32
+    lanes: 1
+    registers: [FFLAGS]
+    allocation_order: []
+    allocatable: false
 
 register_masks:
   -
@@ -1007,6 +1022,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: UIMM12, name: CSR }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
     num_explicit_defs: 1
+    allow_extra_implicit_operands: true
     flags: [has_side_effects, produces_code]
     scheduling_class: SYSTEM
     encoding_category: SYSTEM
@@ -1022,6 +1038,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: UIMM12, name: CSR }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
     num_explicit_defs: 1
+    allow_extra_implicit_operands: true
     flags: [has_side_effects, produces_code]
     scheduling_class: SYSTEM
     encoding_category: SYSTEM
@@ -3519,6 +3536,28 @@ instructions:
     flags: [pseudo, produces_code, allowed_pre_legalizer]
     owner: instruction_select
     deadline: selected
+  -
+    id: 1245
+    symbol: ReadFFLAGS
+    name: ReadFFLAGS
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR }
+    num_explicit_defs: 1
+    implicit_uses: [{ register: FFLAGS }]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, has_side_effects]
+    owner: post_ra_expansion
+    deadline: post_ra_finalized
+  -
+    id: 1246
+    symbol: WriteFFLAGS
+    name: WriteFFLAGS
+    operands:
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+    num_explicit_defs: 0
+    implicit_defs: [{ register: FFLAGS }]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, has_side_effects]
+    owner: post_ra_expansion
+    deadline: post_ra_finalized
   -
     id: 1216
     symbol: PseudoCC_COPY

@@ -130,6 +130,13 @@ void removeUnits(RegisterUnitLaneSet &Live, const std::vector<PhysicalUnitAccess
     Live.remove(Unit.Unit, Unit.Lanes);
 }
 
+[[nodiscard]] bool isReservedPhysicalRegister(Register Reg, const MachineFunction &Function,
+                                              const TargetDescription &Target) noexcept {
+  const std::optional<PhysicalRegister> Physical = Reg.physicalRegister();
+  return Physical && (Function.registerInfo().isReserved(*Physical) ||
+                      Target.registers().isReservedRegister(*Physical));
+}
+
 [[nodiscard]] OperandFlagUpdate &getFlagUpdate(std::vector<OperandFlagUpdate> &Updates,
                                                MachineOperand &Operand) {
   const auto Position = std::ranges::find_if(
@@ -175,7 +182,7 @@ buildBlockLivenessRepairPlan(MachineBasicBlock &Block, const TargetDescription &
       auto Units = physicalOperandUnits(*Operand, Target);
       if (!Units)
         return std::unexpected(Units.error());
-      if (!intersects(Live, *Units))
+      if (!isReservedPhysicalRegister(*Reg, Block.function(), Target) && !intersects(Live, *Units))
         Update.Flags.set(RegisterOperandFlag::Dead);
     }
 
@@ -217,6 +224,8 @@ buildBlockLivenessRepairPlan(MachineBasicBlock &Block, const TargetDescription &
       }
       const Register *Reg = Operand->getIf<Register>();
       if (Reg == nullptr || Reg->isNoRegister())
+        continue;
+      if (isReservedPhysicalRegister(*Reg, Block.function(), Target))
         continue;
       auto Units = physicalOperandUnits(*Operand, Target);
       if (!Units)

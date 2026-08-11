@@ -1129,6 +1129,18 @@ void testPostRAPseudoExpansionAndFinalization(TestContext &Context,
     Context.expect(false, "post-RA cross-bank copy construction must succeed");
     return;
   }
+  auto ReadFFLAGS = Builder.buildInstr(opcode(rcc::riscv::InstructionOpcode::ReadFFLAGS));
+  if (!ReadFFLAGS || !ReadFFLAGS->addDef(physical(rcc::riscv::PhysicalRegisterID::X12)) ||
+      !ReadFFLAGS->build()) {
+    Context.expect(false, "ReadFFLAGS pseudo construction must succeed");
+    return;
+  }
+  auto WriteFFLAGS = Builder.buildInstr(opcode(rcc::riscv::InstructionOpcode::WriteFFLAGS));
+  if (!WriteFFLAGS || !WriteFFLAGS->addUse(physical(rcc::riscv::PhysicalRegisterID::X12)) ||
+      !WriteFFLAGS->build()) {
+    Context.expect(false, "WriteFFLAGS pseudo construction must succeed");
+    return;
+  }
   auto Call = Builder.buildInstr(opcode(rcc::riscv::InstructionOpcode::PseudoCALL));
   auto Preserved = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64D);
   if (!Call || !Call->addExternalSymbol("callee", 0, 1) || !Call->addRegisterMask(Preserved) ||
@@ -1154,16 +1166,20 @@ void testPostRAPseudoExpansionAndFinalization(TestContext &Context,
   std::size_t CrossMoveCount = 0;
   std::size_t CallCount = 0;
   std::size_t ReturnCount = 0;
+  std::size_t CSRRSCount = 0;
+  std::size_t CSRRWCount = 0;
   for (rcc::MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
        Instruction = Instruction->next()) {
     ADDICount += Instruction->opcode() == opcode(rcc::riscv::InstructionOpcode::ADDI);
     CrossMoveCount += Instruction->opcode() == opcode(rcc::riscv::InstructionOpcode::FMV_D_X);
     CallCount += Instruction->opcode() == opcode(rcc::riscv::InstructionOpcode::JALR_CALL);
     ReturnCount += Instruction->opcode() == opcode(rcc::riscv::InstructionOpcode::JALR_RET);
+    CSRRSCount += Instruction->opcode() == opcode(rcc::riscv::InstructionOpcode::CSRRS);
+    CSRRWCount += Instruction->opcode() == opcode(rcc::riscv::InstructionOpcode::CSRRW);
   }
   Context.expect(Expanded && Expanded->Changed && ADDICount == 1 && CrossMoveCount == 1 &&
-                     CallCount == 1 && ReturnCount == 1,
-                 "post-RA expansion must lower copies, calls, and returns to real RV64GC code");
+                     CallCount == 1 && ReturnCount == 1 && CSRRSCount == 1 && CSRRWCount == 1,
+                 "post-RA expansion must lower copies, calls, returns, and FFLAGS accesses");
   if (!Expanded)
     return;
 
