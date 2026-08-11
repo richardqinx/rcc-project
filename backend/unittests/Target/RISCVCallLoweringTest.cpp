@@ -191,6 +191,7 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
   if (!IntegerPlan)
     return;
   const auto IntegerAssignments = IntegerPlan->argumentAssignments();
+  const auto LP64DMask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64D);
   bool IntegerRegistersMatch = IntegerAssignments.size() == 9;
   for (std::size_t Index = 0; IntegerRegistersMatch && Index < 8; ++Index)
     IntegerRegistersMatch = isLocation(IntegerAssignments[Index], argumentGPR(Index));
@@ -200,7 +201,9 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
                      IntegerPlan->stackArguments().SizeBytes == 16 &&
                      IntegerPlan->callFrame().SizeBytes == 16 &&
                      IntegerPlan->callee()->targetFlags() ==
-                         static_cast<std::uint32_t>(rcc::riscv::CallTargetFlag::DirectCall),
+                         static_cast<std::uint32_t>(rcc::riscv::CallTargetFlag::DirectCall) &&
+                     LP64DMask != nullptr && IntegerPlan->preservedMask() != nullptr &&
+                     *IntegerPlan->preservedMask() == *LP64DMask,
                  "LP64D integer arguments must use a0-a7 before a 16-byte stack area");
 
   auto Floats = callRequest(floatingValues(17), 17);
@@ -246,6 +249,22 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
                      GenericScalarPlan->argumentAssignments()[0].ValueType == anyScalar(64) &&
                      GenericScalarPlan->returnAssignments()[0].ValueType == anyScalar(64),
                  "LLVM generic scalar LLTs must use integer ABI transport without type loss");
+
+  auto LP64Float = callRequest({abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0)}, 1);
+  LP64Float.Convention = rcc::riscv::callingConventionID(rcc::riscv::CallingConvention::LP64);
+  LP64Float.Results = {abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0)};
+  auto LP64Plan = rcc::riscv::callLowering().planCall(LP64Float);
+  const auto LP64Mask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64);
+  Context.expect(
+      LP64Plan && LP64Plan->argumentAssignments().size() == 1 &&
+          LP64Plan->returnAssignments().size() == 1 &&
+          isLocation(LP64Plan->argumentAssignments()[0], argumentGPR(0)) &&
+          isLocation(LP64Plan->returnAssignments()[0], returnGPR(0)) &&
+          LP64Plan->argumentAssignments()[0].CustomFlags.has(rcc::CCAssignmentFlag::Bitcast) &&
+          LP64Plan->returnAssignments()[0].CustomFlags.has(rcc::CCAssignmentFlag::Bitcast) &&
+          LP64Mask != nullptr && LP64Plan->preservedMask() != nullptr &&
+          *LP64Plan->preservedMask() == *LP64Mask,
+      "LP64 must transport floating values through GPRs and use the integer preserved mask");
 
   auto Narrow = abiValue(integer(32), 0);
   auto InvalidNarrow = callRequest({Narrow}, 1);

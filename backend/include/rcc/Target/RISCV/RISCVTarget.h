@@ -61,7 +61,8 @@ struct CallingConventionInfo final {
 [[nodiscard]] Expected<TargetRegisterInfo> createRegisterInfo();
 [[nodiscard]] Expected<TargetMIRTextInfo> createMIRTextInfo();
 [[nodiscard]] Expected<TargetDescription> createTargetDescription();
-[[nodiscard]] std::shared_ptr<const RegisterMask> createCallPreservedMask();
+[[nodiscard]] std::shared_ptr<const RegisterMask>
+createCallPreservedMask(CallingConvention Convention);
 [[nodiscard]] std::span<const SchedulingClassInfo> schedulingClasses() noexcept;
 [[nodiscard]] std::span<const EncodingCategoryInfo> encodingCategories() noexcept;
 [[nodiscard]] std::span<const AssemblyFormatInfo> assemblyFormats() noexcept;

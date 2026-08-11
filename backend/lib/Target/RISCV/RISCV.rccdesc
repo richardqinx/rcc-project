@@ -238,6 +238,9 @@ register_classes:
 
 register_masks:
   -
+    name: CSR_ILP32_LP64
+    preserved: [X1, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27]
+  -
     name: CSR_ILP32D_LP64D
     preserved: [X1, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, F8, F9, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27]
 
@@ -252,6 +255,22 @@ mir_operand_flags:
   bitmask: []
 
 calling_conventions:
+  -
+    id: 2
+    symbol: LP64
+    name: lp64
+    integer_register_class: GPR
+    floating_register_class: FPR64
+    integer_argument_registers: [X10, X11, X12, X13, X14, X15, X16, X17]
+    floating_argument_registers: []
+    integer_return_registers: [X10, X11]
+    floating_return_registers: []
+    preserved_mask: CSR_ILP32_LP64
+    stack_alignment_bytes: 16
+    stack_argument_alignment_bytes: 16
+    shadow_space_bytes: 0
+    supports_varargs: true
+    supports_tail_calls: true
   -
     id: 1
     symbol: LP64D

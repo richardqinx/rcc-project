@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -121,12 +122,17 @@ Expected<TargetDescription> createTargetDescription() {
                                    std::move(MIRText));
 }
 
-std::shared_ptr<const RegisterMask> createCallPreservedMask() {
+std::shared_ptr<const RegisterMask> createCallPreservedMask(CallingConvention Convention) {
+  const CallingConventionInfo *Info = callingConvention(Convention);
+  if (Info == nullptr)
+    return {};
   TargetMIRTextInfoDesc Description;
   appendGeneratedMIRTextInfo(Description);
   configureFunctionInfoMIRSchema(Description);
-  assert(!Description.RegisterMasks.empty());
-  return Description.RegisterMasks.front().Mask;
+  const auto Mask = std::ranges::find(Description.RegisterMasks, Info->PreservedMaskName,
+                                      &MIRRegisterMaskDesc::Name);
+  return Mask == Description.RegisterMasks.end() ? std::shared_ptr<const RegisterMask>{}
+                                                 : Mask->Mask;
 }
 
 std::span<const SchedulingClassInfo> schedulingClasses() noexcept {

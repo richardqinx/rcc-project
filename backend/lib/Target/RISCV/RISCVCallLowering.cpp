@@ -29,9 +29,9 @@
 namespace rcc::riscv {
 namespace {
 
-constexpr std::string_view PlanTarget = "riscv64-unknown-linux-gnu:lp64d";
+constexpr std::string_view PlanTarget = "riscv64-unknown-linux-gnu";
 constexpr std::uint64_t XLenBytes = 8;
-constexpr std::uint64_t LP64DStackAlignmentBytes = 16;
+constexpr std::uint64_t ABIStackAlignmentBytes = 16;
 constexpr std::uint32_t AllowedDirectCallFlags =
     static_cast<std::uint32_t>(CallTargetFlag::DirectCall);
 
@@ -53,7 +53,7 @@ constexpr std::uint32_t AllowedDirectCallFlags =
     return Value;
   const std::uint64_t Increment = AlignmentBytes - Remainder;
   if (Value > std::numeric_limits<std::uint64_t>::max() - Increment) {
-    return makeUnexpected(ErrorCode::Unsupported, "LP64D stack-area size overflows uint64");
+    return makeUnexpected(ErrorCode::Unsupported, "RISC-V ABI stack-area size overflows uint64");
   }
   return Value + Increment;
 }
@@ -78,24 +78,24 @@ constexpr std::uint32_t AllowedDirectCallFlags =
 [[nodiscard]] Expected<void> verifyABIValue(const ABIValue &Value, bool RequireRegister) {
   if (RequireRegister && Value.Value.isNoRegister()) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "LP64D ABI value requires a source or destination register");
+                          "RISC-V ABI value requires a source or destination register");
   }
   if (!Value.Type.isValid() || !Value.Type.isScalarValue() || Value.Type.scalarBitWidth() > 64) {
     return makeUnexpected(
         ErrorCode::Unsupported,
-        "LP64D accepts explicitly classified integer, pointer, f32, and f64 scalar fragments");
+        "RISC-V ABI accepts explicitly classified integer, pointer, f32, and f64 scalar fragments");
   }
   if (Value.Type.isFloat() && !isSupportedFloat(Value.Type)) {
     return makeUnexpected(ErrorCode::Unsupported,
-                          "RV64GC LP64D only supports f32 and f64 ABI fragments");
+                          "RISC-V LP64 ABIs only support f32 and f64 floating fragments");
   }
   if (Value.Type.isPointer() && Value.Type.scalarBitWidth() != 64) {
-    return makeUnexpected(ErrorCode::Unsupported, "RV64GC LP64D requires 64-bit machine pointers");
+    return makeUnexpected(ErrorCode::Unsupported, "RISC-V LP64 ABIs require 64-bit pointers");
   }
   if ((Value.Type.isInteger() || Value.Type.isAnyScalar()) && Value.Type.scalarBitWidth() < 64) {
     if (Value.Extension == ABIExtensionKind::None) {
       return makeUnexpected(ErrorCode::InvalidArgument,
-                            "narrow LP64D integer fragments require an explicit extension kind");
+                            "narrow RISC-V ABI integers require an explicit extension kind");
     }
   } else if (Value.Extension != ABIExtensionKind::None) {
     return makeUnexpected(ErrorCode::InvalidArgument,
@@ -104,7 +104,7 @@ constexpr std::uint32_t AllowedDirectCallFlags =
   if (Value.Extension >= ABIExtensionKind::Count || Value.FragmentCount == 0 ||
       Value.FragmentIndex >= Value.FragmentCount || Value.FragmentCount > 2) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "LP64D ABI fragment coordinates or extension are invalid");
+                          "RISC-V ABI fragment coordinates or extension are invalid");
   }
 
   const bool IsByVal = Value.Flags.has(ABIValueFlag::ByVal);
@@ -147,7 +147,7 @@ constexpr std::uint32_t AllowedDirectCallFlags =
         Index + First.FragmentCount > Values.size()) {
       return makeUnexpected(
           ErrorCode::InvalidArgument,
-          "LP64D ABI values must form contiguous, zero-based original-value groups");
+          "RISC-V ABI values must form contiguous, zero-based original-value groups");
     }
 
     std::uint64_t PreviousEnd = 0;
@@ -162,7 +162,7 @@ constexpr std::uint32_t AllowedDirectCallFlags =
           Value.ByValSizeBytes != First.ByValSizeBytes ||
           Value.ByValAlignment != First.ByValAlignment || Value.FragmentOffsetBytes < PreviousEnd) {
         return makeUnexpected(ErrorCode::InvalidArgument,
-                              "LP64D fragments of one value have inconsistent metadata");
+                              "RISC-V ABI fragments of one value have inconsistent metadata");
       }
       PreviousEnd =
           static_cast<std::uint64_t>(Value.FragmentOffsetBytes) + valueSizeBytes(Value.Type);
@@ -215,7 +215,7 @@ struct AssignmentState final {
                                                         PhysicalRegister Location, LLT LocationType,
                                                         bool IsVariadic, bool IsBitcast) {
   auto Align =
-      alignment(std::min<std::uint64_t>(Value.OriginalAlignment.bytes(), LP64DStackAlignmentBytes));
+      alignment(std::min<std::uint64_t>(Value.OriginalAlignment.bytes(), ABIStackAlignmentBytes));
   if (!Align)
     return std::unexpected(Align.error());
   return CCAssignment{
@@ -269,7 +269,7 @@ assignArguments(std::span<const ABIValue> Values, std::size_t FixedArgumentCount
   auto I64 = LLT::makeInteger(64);
   auto StackAlign = alignment(Convention.StackArgumentAlignmentBytes);
   if (!I64 || !StackAlign)
-    return makeUnexpected(ErrorCode::InternalError, "LP64D primitive type facts are invalid");
+    return makeUnexpected(ErrorCode::InternalError, "RISC-V ABI primitive type facts are invalid");
 
   ArgumentAssignmentResult Result;
   AssignmentState State;
@@ -347,13 +347,13 @@ assignArguments(std::span<const ABIValue> Values, std::size_t FixedArgumentCount
 
       if (Value.Flags.has(ABIValueFlag::InRegister)) {
         return makeUnexpected(ErrorCode::Unsupported,
-                              "LP64D inreg argument cannot be assigned to the stack");
+                              "RISC-V inreg argument cannot be assigned to the stack");
       }
       std::uint64_t RequiredAlignment = XLenBytes;
       if (FirstStackFragment && ForceEntireGroupToStack) {
         RequiredAlignment = std::min<std::uint64_t>(
             std::max<std::uint64_t>(XLenBytes, First.OriginalAlignment.bytes()),
-            LP64DStackAlignmentBytes);
+            ABIStackAlignmentBytes);
       }
       auto AlignedOffset = alignTo(State.StackOffset, RequiredAlignment);
       if (!AlignedOffset)
@@ -366,7 +366,7 @@ assignArguments(std::span<const ABIValue> Values, std::size_t FixedArgumentCount
         return std::unexpected(Assignment.error());
       Result.Assignments.push_back(*Assignment);
       if (State.StackOffset > std::numeric_limits<std::uint64_t>::max() - XLenBytes) {
-        return makeUnexpected(ErrorCode::Unsupported, "LP64D argument area overflows uint64");
+        return makeUnexpected(ErrorCode::Unsupported, "RISC-V argument area overflows uint64");
       }
       State.StackOffset += XLenBytes;
       FirstStackFragment = false;
@@ -392,7 +392,7 @@ assignReturns(std::span<const ABIValue> Values, bool RequireRegisters,
     return std::unexpected(Sequence.error());
   if (Values.size() > 2) {
     return makeUnexpected(ErrorCode::Unsupported,
-                          "LP64D direct returns are limited to two explicit fragments");
+                          "RISC-V direct returns are limited to two explicit fragments");
   }
   auto I64 = LLT::makeInteger(64);
   if (!I64)
@@ -408,12 +408,17 @@ assignReturns(std::span<const ABIValue> Values, bool RequireRegisters,
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "return fragments cannot carry argument-only ABI flags");
     }
-    Expected<CCAssignment> Assignment =
-        isSupportedFloat(Value.Type)
-            ? registerAssignment(Value, Index, Convention.FloatingReturnRegisters[FPR++],
-                                 Value.Type, false, false)
-            : registerAssignment(Value, Index, Convention.IntegerReturnRegisters[GPR++], *I64,
-                                 false, false);
+    const bool UseFloatingRegister =
+        isSupportedFloat(Value.Type) && FPR < Convention.FloatingReturnRegisters.size();
+    Expected<CCAssignment> Assignment = makeUnexpected(
+        ErrorCode::Unsupported, "RISC-V calling convention has no return register available");
+    if (UseFloatingRegister) {
+      Assignment = registerAssignment(Value, Index, Convention.FloatingReturnRegisters[FPR++],
+                                      Value.Type, false, false);
+    } else if (GPR < Convention.IntegerReturnRegisters.size()) {
+      Assignment = registerAssignment(Value, Index, Convention.IntegerReturnRegisters[GPR++], *I64,
+                                      false, isSupportedFloat(Value.Type));
+    }
     if (!Assignment)
       return std::unexpected(Assignment.error());
     Result.push_back(*Assignment);
@@ -480,14 +485,18 @@ tailCallRejection(const CallLoweringRequest &Request, const ArgumentAssignmentRe
 }
 
 [[nodiscard]] Expected<const CallingConventionInfo *>
-lp64dConvention(CallingConventionID Convention) {
-  if (Convention != callingConventionID(CallingConvention::LP64D)) {
-    return makeUnexpected(ErrorCode::Unsupported,
-                          "RISC-V backend only supports the LP64D calling convention");
-  }
-  const CallingConventionInfo *Info = callingConvention(CallingConvention::LP64D);
+riscvConvention(CallingConventionID Convention) {
+  CallingConvention TargetConvention = CallingConvention::None;
+  if (Convention == callingConventionID(CallingConvention::LP64D))
+    TargetConvention = CallingConvention::LP64D;
+  else if (Convention == callingConventionID(CallingConvention::LP64))
+    TargetConvention = CallingConvention::LP64;
+  else
+    return makeUnexpected(ErrorCode::Unsupported, "RISC-V backend only supports LP64 and LP64D");
+  const CallingConventionInfo *Info = callingConvention(TargetConvention);
   if (Info == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "LP64D target facts are unavailable");
+    return makeUnexpected(ErrorCode::InternalError,
+                          "RISC-V calling-convention target facts are unavailable");
   return Info;
 }
 
@@ -505,7 +514,7 @@ public:
 
 Expected<CallLoweringPlan>
 RISCVCallLowering::planFormalArguments(const FormalArgumentRequest &Request) const {
-  auto Convention = lp64dConvention(Request.Convention);
+  auto Convention = riscvConvention(Request.Convention);
   if (!Convention)
     return std::unexpected(Convention.error());
   auto OriginalCount = verifyValueSequence(Request.Arguments, true);
@@ -523,7 +532,7 @@ RISCVCallLowering::planFormalArguments(const FormalArgumentRequest &Request) con
       (Request.Arguments.empty() || Request.Arguments.front().OriginalValue != 0 ||
        !Request.Arguments.front().Flags.has(ABIValueFlag::StructReturn))) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "LP64D sret must be the first formal argument");
+                          "RISC-V sret must be the first formal argument");
   }
 
   auto Assignments = assignArguments(Request.Arguments, Request.FixedArgumentCount,
@@ -563,7 +572,7 @@ RISCVCallLowering::planFormalArguments(const FormalArgumentRequest &Request) con
 }
 
 Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest &Request) const {
-  auto Convention = lp64dConvention(Request.Convention);
+  auto Convention = riscvConvention(Request.Convention);
   if (!Convention)
     return std::unexpected(Convention.error());
   auto OriginalCount = verifyValueSequence(Request.Arguments, true);
@@ -579,11 +588,12 @@ Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest
   if (hasStructReturn(Request.Arguments) &&
       (Request.Arguments.empty() ||
        !Request.Arguments.front().Flags.has(ABIValueFlag::StructReturn))) {
-    return makeUnexpected(ErrorCode::InvalidArgument, "LP64D sret must be the first call argument");
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "RISC-V sret must be the first call argument");
   }
   if (hasStructReturn(Request.Arguments) && !Request.Results.empty()) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "LP64D sret calls cannot also request direct return values");
+                          "RISC-V sret calls cannot also request direct return values");
   }
 
   MachineCallTarget EffectiveCallee = Request.Callee;
@@ -636,7 +646,7 @@ Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest
   if (!Results)
     return std::unexpected(Results.error());
 
-  auto Align16 = alignment(LP64DStackAlignmentBytes);
+  auto Align16 = alignment(ABIStackAlignmentBytes);
   if (!Align16)
     return std::unexpected(Align16.error());
   std::uint64_t CallFrameCursor = Arguments->StackArea.SizeBytes;
@@ -647,12 +657,12 @@ Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest
       continue;
     const ABIValue &Value = Request.Arguments[Assignment.ValueIndex];
     const std::uint64_t CopyAlignment =
-        std::min<std::uint64_t>(Value.ByValAlignment.bytes(), LP64DStackAlignmentBytes);
+        std::min<std::uint64_t>(Value.ByValAlignment.bytes(), ABIStackAlignmentBytes);
     auto CopyOffset = alignTo(CallFrameCursor, CopyAlignment);
     if (!CopyOffset)
       return std::unexpected(CopyOffset.error());
     if (*CopyOffset > std::numeric_limits<std::uint64_t>::max() - Value.ByValSizeBytes) {
-      return makeUnexpected(ErrorCode::Unsupported, "LP64D byval area overflows uint64");
+      return makeUnexpected(ErrorCode::Unsupported, "RISC-V byval area overflows uint64");
     }
     auto CopyAlign = alignment(CopyAlignment);
     if (!CopyAlign)
@@ -661,7 +671,7 @@ Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest
         {Index, Value.Value, Value.Type, *CopyOffset, Value.ByValSizeBytes, *CopyAlign});
     CallFrameCursor = *CopyOffset + Value.ByValSizeBytes;
   }
-  auto CallFrameSize = alignTo(CallFrameCursor, LP64DStackAlignmentBytes);
+  auto CallFrameSize = alignTo(CallFrameCursor, ABIStackAlignmentBytes);
   if (!CallFrameSize)
     return std::unexpected(CallFrameSize.error());
 
@@ -700,7 +710,9 @@ Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest
     Plan.VarArgs.FixedArgumentCount = Request.FixedArgumentCount;
   }
   Plan.ByValCopies = std::move(ByValCopies);
-  Plan.PreservedMask = createCallPreservedMask();
+  Plan.PreservedMask = createCallPreservedMask((*Convention)->ID);
+  if (!Plan.PreservedMask)
+    return makeUnexpected(ErrorCode::InternalError, "RISC-V call-preserved mask is unavailable");
   Plan.Callee = std::move(EffectiveCallee);
   Plan.TailDecision = Decision;
   Plan.TailRejectionReason = std::move(RejectionReason);
@@ -709,7 +721,7 @@ Expected<CallLoweringPlan> RISCVCallLowering::planCall(const CallLoweringRequest
 
 Expected<CallLoweringPlan>
 RISCVCallLowering::planReturn(const ReturnLoweringRequest &Request) const {
-  auto Convention = lp64dConvention(Request.Convention);
+  auto Convention = riscvConvention(Request.Convention);
   if (!Convention)
     return std::unexpected(Convention.error());
   auto Values = assignReturns(Request.Values, true, **Convention);
@@ -920,7 +932,7 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
       const std::optional<PhysicalRegister> Physical = CalleeReg.physicalRegister();
       if (!Physical || !Target.registers().isKnownPhysicalRegister(*Physical)) {
         return makeUnexpected(ErrorCode::VerificationError,
-                              "indirect LP64D callee names an unknown physical register");
+                              "indirect RISC-V callee names an unknown physical register");
       }
     } else {
       auto Info = Registers.virtualRegisterInfo(CalleeReg);
@@ -929,7 +941,7 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
       const std::optional<LLT> Type = Info->get().Type;
       if (!Type || ((!Type->isPointer() && !Type->isInteger()) || Type->scalarBitWidth() != 64)) {
         return makeUnexpected(ErrorCode::VerificationError,
-                              "indirect LP64D callee requires a 64-bit pointer or integer LLT");
+                              "indirect RISC-V callee requires a 64-bit pointer or integer LLT");
       }
     }
   }
@@ -979,8 +991,10 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
 
 [[nodiscard]] Expected<void> preflightPlan(MachineIRBuilder &Builder,
                                            const CallLoweringPlan &Plan) {
-  if (Plan.target() != PlanTarget ||
-      Plan.convention() != callingConventionID(CallingConvention::LP64D)) {
+  auto Convention = riscvConvention(Plan.convention());
+  if (!Convention)
+    return std::unexpected(Convention.error());
+  if (Plan.target() != PlanTarget) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "call-lowering plan belongs to another target or ABI");
   }
@@ -1001,14 +1015,14 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
         *Assignment.StackOffsetBytes >
             static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
       return makeUnexpected(ErrorCode::Unsupported,
-                            "LP64D stack assignment offset exceeds the frame-index range");
+                            "RISC-V stack assignment offset exceeds the frame-index range");
     }
   }
   for (const ByValCopyAssignment &Copy : Plan.byValCopies()) {
     if (Copy.StackOffsetBytes >
         static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
       return makeUnexpected(ErrorCode::Unsupported,
-                            "LP64D byval offset exceeds the frame-index range");
+                            "RISC-V byval offset exceeds the frame-index range");
     }
   }
   if (Plan.kind() != CallLoweringPlanKind::Return && Builder.function().frameInfo().isFrozen()) {
@@ -1096,9 +1110,9 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
   }
 
   auto Align8 = alignment(XLenBytes);
-  auto Align16 = alignment(LP64DStackAlignmentBytes);
+  auto Align16 = alignment(ABIStackAlignmentBytes);
   if (!Align8 || !Align16)
-    return makeUnexpected(ErrorCode::InternalError, "LP64D primitive type facts are invalid");
+    return makeUnexpected(ErrorCode::InternalError, "RISC-V ABI primitive type facts are invalid");
 
   FrameIndex SaveObject;
   if (VarArgs.RegisterSaveAreaSizeBytes == 0) {

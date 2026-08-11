@@ -1219,10 +1219,15 @@ void testMultiplyLibcallWithoutM(TestContext &Context) {
     }
   }
   const rcc::MachineOperand *Callee = Call == nullptr ? nullptr : Call->operandAt(0);
+  const rcc::MachineOperand *MaskOperand = Call == nullptr ? nullptr : Call->operandAt(1);
   const auto *External = Callee == nullptr ? nullptr : Callee->getIf<rcc::ExternalSymbolOperand>();
+  const auto *CallMask =
+      MaskOperand == nullptr ? nullptr : MaskOperand->getIf<rcc::RegisterMaskOperand>();
+  const auto LP64Mask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64);
   Context.expect(Action && *Action == rcc::LegalizationAction::Libcall && Lowered &&
                      Multiply64.Instruction->parent() == nullptr && External != nullptr &&
-                     External->Name == "__muldi3" &&
+                     External->Name == "__muldi3" && CallMask != nullptr && CallMask->Mask &&
+                     LP64Mask != nullptr && *CallMask->Mask == *LP64Mask &&
                      Multiply64.Function->frameInfo().state().HasCalls,
                  "s64 G_MUL without M must lower through the LP64 __muldi3 call path");
 

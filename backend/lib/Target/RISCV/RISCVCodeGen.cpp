@@ -1470,7 +1470,8 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
 
 [[nodiscard]] Expected<void> lowerMultiplyLibcall(MachineInstr &Instruction,
                                                   MachineFunction &Function,
-                                                  const TargetDescription &Target) {
+                                                  const TargetDescription &Target,
+                                                  CallingConvention Convention) {
   const std::optional<LLT> Type = resultType(Function, Instruction);
   const MachineOperand *DestinationOperand = Instruction.operandAt(0);
   const MachineOperand *LeftOperand = Instruction.operandAt(1);
@@ -1506,7 +1507,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
   };
 
   CallLoweringRequest Request;
-  Request.Convention = callingConventionID(CallingConvention::LP64D);
+  Request.Convention = callingConventionID(Convention);
   Request.Callee = std::move(*Callee);
   Request.Arguments = {Value(*Left, 0), Value(*Right, 1)};
   Request.Results = {Value(*Destination, 0)};
@@ -3620,7 +3621,9 @@ public:
       if (Action == LegalizationAction::Custom)
         return widenNarrowMultiply(Instruction, Function, Target);
       if (Action == LegalizationAction::Libcall)
-        return lowerMultiplyLibcall(Instruction, Function, Target);
+        return lowerMultiplyLibcall(Instruction, Function, Target,
+                                    Features.has(RISCVExtension::D) ? CallingConvention::LP64D
+                                                                    : CallingConvention::LP64);
     }
     if (Action == LegalizationAction::Custom &&
         resultType(Function, Instruction)

@@ -87,19 +87,25 @@ void testABIAndDebugFacts(TestContext &Context) {
   const rcc::PhysicalRegister F10 = registerID(rcc::riscv::PhysicalRegisterID::F10);
   const rcc::PhysicalRegister F31 = registerID(rcc::riscv::PhysicalRegisterID::F31);
 
-  const auto Mask = rcc::riscv::createCallPreservedMask();
+  const auto LP64Mask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64);
+  const auto LP64DMask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64D);
   Context.expect(
-      Mask != nullptr && Mask->preserves(X1) && Mask->preserves(F8) && Mask->clobbers(X10) &&
-          Mask->clobbers(F10),
-      "LP64D preserved-mask facts must distinguish saved and caller-clobbered registers");
+      LP64DMask != nullptr && LP64DMask->preserves(X1) && LP64DMask->preserves(F8) &&
+          LP64DMask->clobbers(X10) && LP64DMask->clobbers(F10) && LP64Mask != nullptr &&
+          LP64Mask->preserves(X1) && LP64Mask->clobbers(F8) && LP64Mask->clobbers(X10),
+      "LP64 and LP64D masks must distinguish integer and floating callee-saved registers");
 
   auto MIRText = rcc::riscv::createMIRTextInfo();
   Context.expect(MIRText.has_value(), "RV64GC MIR text facts must be valid");
   if (!MIRText)
     return;
-  Context.expect(MIRText->registerMasks().size() == 1 &&
-                     MIRText->registerMasks().front().Name == "csr_ilp32d_lp64d",
-                 "RV64GC must expose its named LP64D call-preserved mask");
+  const auto TextLP64Mask = MIRText->registerMask("csr_ilp32_lp64");
+  const auto TextLP64DMask = MIRText->registerMask("csr_ilp32d_lp64d");
+  Context.expect(MIRText->registerMasks().size() == 2 && TextLP64Mask != nullptr &&
+                     LP64Mask != nullptr && *TextLP64Mask == *LP64Mask &&
+                     TextLP64DMask != nullptr && LP64DMask != nullptr &&
+                     *TextLP64DMask == *LP64DMask,
+                 "RV64GC must expose named LP64 and LP64D call-preserved masks");
   Context.expect(MIRText->directOperandFlagMask() == 31 &&
                      MIRText->directOperandFlag("riscv-call") == 1,
                  "RV64GC MIR target flags must expose the canonical direct-call spelling");
@@ -109,16 +115,20 @@ void testABIAndDebugFacts(TestContext &Context) {
                  "the final floating register DWARF number must map to f31");
 
   const auto Conventions = rcc::riscv::callingConventions();
+  const auto *LP64 = rcc::riscv::callingConvention(rcc::riscv::CallingConvention::LP64);
   const auto *LP64D = rcc::riscv::callingConvention(rcc::riscv::CallingConvention::LP64D);
   Context.expect(
-      Conventions.size() == 1 && LP64D != nullptr && LP64D->Name == "lp64d" &&
-          LP64D->IntegerArgumentRegisters.size() == 8 &&
+      Conventions.size() == 2 && LP64 != nullptr && LP64->Name == "lp64" &&
+          LP64->IntegerArgumentRegisters.size() == 8 && LP64->FloatingArgumentRegisters.empty() &&
+          LP64->IntegerReturnRegisters.size() == 2 && LP64->FloatingReturnRegisters.empty() &&
+          LP64->PreservedMaskName == "CSR_ILP32_LP64" && LP64D != nullptr &&
+          LP64D->Name == "lp64d" && LP64D->IntegerArgumentRegisters.size() == 8 &&
           LP64D->FloatingArgumentRegisters.size() == 8 &&
           LP64D->IntegerReturnRegisters.size() == 2 && LP64D->FloatingReturnRegisters.size() == 2 &&
           LP64D->StackAlignmentBytes == 16 && LP64D->StackArgumentAlignmentBytes == 16 &&
           LP64D->SupportsVarArgs && LP64D->SupportsTailCalls &&
           LP64D->PreservedMaskName == "CSR_ILP32D_LP64D",
-      "LP64D calling-convention tables must expose register, stack, and tail-call facts");
+      "LP64 and LP64D calling-convention tables must expose complete ABI facts");
 }
 
 void testInstructionFacts(TestContext &Context) {
