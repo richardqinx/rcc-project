@@ -391,6 +391,9 @@ buildBinaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
 
 [[nodiscard]] Expected<void> eraseInstruction(MachineInstr &Instruction);
 
+[[nodiscard]] Expected<void> rewriteUnary(MachineInstr &Instruction, GenericOpcode Generic,
+                                          Register Destination, Register Source);
+
 struct NarrowAnyExtBinaryPlan final {
   MachineInstr *Binary = nullptr;
   GenericOpcode Generic = GenericOpcode::Invalid;
@@ -606,6 +609,77 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
   if (!Built)
     return std::unexpected(Built.error());
   return {};
+}
+
+[[nodiscard]] Expected<void>
+lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction &Function,
+                                      const TargetDescription &Target) {
+  const MachineOperand *OldValueOperand = Instruction.operandAt(0);
+  const MachineOperand *SuccessOperand = Instruction.operandAt(1);
+  const MachineOperand *AddressOperand = Instruction.operandAt(2);
+  const MachineOperand *CompareOperand = Instruction.operandAt(3);
+  const MachineOperand *NewValueOperand = Instruction.operandAt(4);
+  const Register *OldValue =
+      OldValueOperand == nullptr ? nullptr : OldValueOperand->getIf<Register>();
+  const Register *Success = SuccessOperand == nullptr ? nullptr : SuccessOperand->getIf<Register>();
+  const Register *Address = AddressOperand == nullptr ? nullptr : AddressOperand->getIf<Register>();
+  const Register *Compare = CompareOperand == nullptr ? nullptr : CompareOperand->getIf<Register>();
+  const Register *NewValue =
+      NewValueOperand == nullptr ? nullptr : NewValueOperand->getIf<Register>();
+  const std::optional<LLT> ValueType = resultType(Function, Instruction);
+  if (OldValue == nullptr || Success == nullptr || Address == nullptr || Compare == nullptr ||
+      NewValue == nullptr || !ValueType || Instruction.memOperands().size() != 1)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V compare-exchange-with-success has invalid operands");
+
+  auto AtomicResult = Function.registerInfo().createVirtualRegister(*ValueType);
+  if (!AtomicResult)
+    return std::unexpected(AtomicResult.error());
+  MachineIRBuilder Builder(Function, Target);
+  auto Point = Builder.setInsertPointBefore(Instruction);
+  if (!Point)
+    return std::unexpected(Point.error());
+  auto Atomic = Builder.buildInstr(opcode(GenericOpcode::G_ATOMIC_CMPXCHG));
+  if (!Atomic)
+    return std::unexpected(Atomic.error());
+  if (auto Added = Atomic->addDef(*AtomicResult); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Atomic->addUse(*Address); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Atomic->addUse(*Compare); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Atomic->addUse(*NewValue); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Atomic->addMemOperand(*Instruction.memOperands().front()); !Added)
+    return std::unexpected(Added.error());
+  auto BuiltAtomic = Atomic->build();
+  if (!BuiltAtomic)
+    return std::unexpected(BuiltAtomic.error());
+
+  Point = Builder.setInsertPointBefore(Instruction);
+  if (!Point)
+    return std::unexpected(Point.error());
+  auto CompareResult = Builder.buildInstr(opcode(GenericOpcode::G_ICMP));
+  if (!CompareResult)
+    return std::unexpected(CompareResult.error());
+  if (auto Added = CompareResult->addDef(*Success); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = CompareResult->addIntegerPredicate(IntegerPredicate::Equal); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = CompareResult->addUse(*AtomicResult); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = CompareResult->addUse(*Compare); !Added)
+    return std::unexpected(Added.error());
+  auto BuiltCompare = CompareResult->build();
+  if (!BuiltCompare)
+    return std::unexpected(BuiltCompare.error());
+
+  while (!Instruction.memOperands().empty()) {
+    auto Erased = Instruction.eraseMemOperand(0);
+    if (!Erased)
+      return std::unexpected(Erased.error());
+  }
+  return rewriteUnary(Instruction, GenericOpcode::COPY, *OldValue, *AtomicResult);
 }
 
 [[nodiscard]] Expected<void> foldNarrowAnyExtBinary(MachineInstr &Extension,
@@ -3049,6 +3123,23 @@ public:
       }
       return Type->scalarBitWidth() == 64 ? LegalizationAction::Legal : LegalizationAction::Custom;
     }
+    case GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS: {
+      const std::optional<LLT> Success = operandType(Function, Instruction, 1);
+      const std::optional<LLT> Address = operandType(Function, Instruction, 2);
+      const std::optional<LLT> Compare = operandType(Function, Instruction, 3);
+      const std::optional<LLT> NewValue = operandType(Function, Instruction, 4);
+      return Type && Success && Address && Compare && NewValue && isI1Type(*Success) &&
+                     *Compare == *Type && *NewValue == *Type &&
+                     (Type->isInteger() || Type->isAnyScalar()) &&
+                     (Type->scalarBitWidth() == 8 || Type->scalarBitWidth() == 16 ||
+                      Type->scalarBitWidth() == 32 || Type->scalarBitWidth() == 64) &&
+                     Address->isPointer() && Address->addressSpace() == 0 &&
+                     Address->scalarBitWidth() == 64 &&
+                     isSupportedAtomicContainerAccess(Instruction, AtomicOperation::CompareExchange,
+                                                      (Type->scalarBitWidth() + 7U) / 8U)
+                 ? LegalizationAction::Custom
+                 : LegalizationAction::Unsupported;
+    }
     case GenericOpcode::G_FENCE: {
       const MachineOperand *OrderingOperand = Instruction.operandAt(0);
       const MachineOperand *ScopeOperand = Instruction.operandAt(1);
@@ -3212,6 +3303,9 @@ public:
     if (Action == LegalizationAction::Custom &&
         Instruction.opcode() == opcode(GenericOpcode::G_ATOMIC_CMPXCHG))
       return lowerAtomicCompareExchange(Instruction, Function, Target);
+    if (Action == LegalizationAction::Custom &&
+        Instruction.opcode() == opcode(GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS))
+      return lowerAtomicCompareExchangeWithSuccess(Instruction, Function, Target);
     if (Action == LegalizationAction::Custom &&
         (Instruction.opcode() == opcode(GenericOpcode::G_ANYEXT) ||
          Instruction.opcode() == opcode(GenericOpcode::G_SEXT) ||

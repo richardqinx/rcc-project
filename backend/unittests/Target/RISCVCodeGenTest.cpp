@@ -831,12 +831,14 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
   if (!Target || !Function)
     return;
   auto Block = (*Function)->createBasicBlock();
+  auto I1 = rcc::LLT::makeAnyScalar(1);
   auto I8 = rcc::LLT::makeAnyScalar(8);
   auto I64 = rcc::LLT::makeAnyScalar(64);
   auto Pointer = rcc::LLT::makePointer(0, 64);
   auto Size = rcc::MemorySize::fixed(1);
   auto Align = rcc::Alignment::create(1);
-  if (!Block || !(*Function)->appendBlock(**Block) || !I8 || !I64 || !Pointer || !Size || !Align)
+  if (!Block || !(*Function)->appendBlock(**Block) || !I1 || !I8 || !I64 || !Pointer || !Size ||
+      !Align)
     return;
   auto Address = (*Function)->registerInfo().createVirtualRegister(*Pointer);
   auto Compare = (*Function)->registerInfo().createVirtualRegister(*I8);
@@ -944,6 +946,40 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
                      TruncationSource != nullptr && *TruncationSource == *WideFallbackResult &&
                      Target->validateInstruction(*Truncation, (*Function)->registerInfo()),
                  "general compare-exchange widening must truncate from the new i64 result");
+
+  auto OldValue = (*Function)->registerInfo().createVirtualRegister(*I64);
+  auto Success = (*Function)->registerInfo().createVirtualRegister(*I1);
+  if (!OldValue || !Success || !Builder.setInsertPoint(**Block))
+    return;
+  auto WithSuccess =
+      Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS));
+  if (!WithSuccess || !WithSuccess->addDef(*OldValue) || !WithSuccess->addDef(*Success) ||
+      !WithSuccess->addUse(*Address) || !WithSuccess->addUse(*Compare) ||
+      !WithSuccess->addUse(*NewValue) || !WithSuccess->addMemOperand(**Memory))
+    return;
+  auto BuiltWithSuccess = WithSuccess->build();
+  if (!BuiltWithSuccess)
+    return;
+  auto WithSuccessAction =
+      rcc::riscv::legalizerInfo().classify(**BuiltWithSuccess, **Function, *Target);
+  auto WithSuccessLowered = WithSuccessAction
+                                ? rcc::riscv::legalizerInfo().lower(**BuiltWithSuccess, **Function,
+                                                                    *Target, *WithSuccessAction)
+                                : rcc::Expected<void>(std::unexpected(WithSuccessAction.error()));
+  rcc::MachineInstr *SuccessCompare = (*BuiltWithSuccess)->previous();
+  rcc::MachineInstr *LoweredAtomic =
+      SuccessCompare == nullptr ? nullptr : SuccessCompare->previous();
+  Context.expect(
+      WithSuccessAction && *WithSuccessAction == rcc::LegalizationAction::Custom &&
+          WithSuccessLowered && LoweredAtomic != nullptr && SuccessCompare != nullptr &&
+          LoweredAtomic->opcode() == rcc::opcode(rcc::GenericOpcode::G_ATOMIC_CMPXCHG) &&
+          SuccessCompare->opcode() == rcc::opcode(rcc::GenericOpcode::G_ICMP) &&
+          (*BuiltWithSuccess)->opcode() == rcc::opcode(rcc::GenericOpcode::COPY) &&
+          (*BuiltWithSuccess)->memOperands().empty() &&
+          Target->validateInstruction(*LoweredAtomic, (*Function)->registerInfo()) &&
+          Target->validateInstruction(*SuccessCompare, (*Function)->registerInfo()) &&
+          Target->validateInstruction(**BuiltWithSuccess, (*Function)->registerInfo()),
+      "compare-exchange-with-success must lower to atomic, equality test, and old-value copy");
 }
 
 void testAtomicSelection(TestContext &Context) {
