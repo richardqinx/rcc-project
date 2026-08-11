@@ -649,21 +649,12 @@ void testInstructionMemorySemantics(TestContext &Context) {
   VarArgOperands.push_back(rcc::MachineOperand::immediate(8));
   rcc::MachineInstr &VarArg =
       createInstruction(**Function, rcc::GenericOpcode::G_VAARG, std::move(VarArgOperands));
+  Context.expect(Set->validateInstruction(VarArg, (*Function)->registerInfo()).has_value(),
+                 "G_VAARG must accept LLVM's canonical form without MMOs");
   addMemOperand(**Function, VarArg, memoryDescription({rcc::MemoryAccessFlag::Load}, 8));
   addMemOperand(**Function, VarArg, memoryDescription({rcc::MemoryAccessFlag::Store}, 8));
-  Context.expect(Set->validateInstruction(VarArg, (*Function)->registerInfo()).has_value(),
-                 "G_VAARG must accept separate value-load and list-update MMOs");
-
-  std::vector<rcc::MachineOperand> CombinedVarArgOperands;
-  CombinedVarArgOperands.push_back(registerOperand(Dst64, true));
-  CombinedVarArgOperands.push_back(registerOperand(Address0, false));
-  CombinedVarArgOperands.push_back(rcc::MachineOperand::immediate(8));
-  rcc::MachineInstr &CombinedVarArg =
-      createInstruction(**Function, rcc::GenericOpcode::G_VAARG, std::move(CombinedVarArgOperands));
-  addMemOperand(**Function, CombinedVarArg,
-                memoryDescription({rcc::MemoryAccessFlag::Load, rcc::MemoryAccessFlag::Store}, 8));
-  Context.expect(!Set->validateInstruction(CombinedVarArg, (*Function)->registerInfo()),
-                 "G_VAARG must reject a combined read-write MMO in place of two accesses");
+  Context.expect(!Set->validateInstruction(VarArg, (*Function)->registerInfo()),
+                 "G_VAARG must reject MMOs before legalization");
 
   std::vector<rcc::MachineOperand> MemoryTransferOperands;
   MemoryTransferOperands.push_back(registerOperand(Address0, false));
@@ -706,6 +697,7 @@ void testSemanticFlags(TestContext &Context) {
 
   const auto *Load = Find(rcc::GenericOpcode::G_LOAD);
   const auto *Atomic = Find(rcc::GenericOpcode::G_ATOMIC_CMPXCHG);
+  const auto *VarArg = Find(rcc::GenericOpcode::G_VAARG);
   const auto *Branch = Find(rcc::GenericOpcode::G_BRINDIRECT);
   const auto *Strict = Find(rcc::GenericOpcode::G_STRICT_FMA);
   const auto *InlineAsm = Find(rcc::GenericOpcode::INLINEASM);
@@ -714,6 +706,8 @@ void testSemanticFlags(TestContext &Context) {
           Load->RequiresMemoryOperands && Atomic != nullptr &&
           Atomic->Flags.has(rcc::InstructionFlag::MayLoad) &&
           Atomic->Flags.has(rcc::InstructionFlag::MayStore) && Atomic->RequiresMemoryOperands &&
+          VarArg != nullptr && VarArg->Flags.has(rcc::InstructionFlag::MayLoad) &&
+          VarArg->Flags.has(rcc::InstructionFlag::MayStore) && !VarArg->RequiresMemoryOperands &&
           Branch != nullptr && Branch->Flags.has(rcc::InstructionFlag::Terminator) &&
           Branch->Flags.has(rcc::InstructionFlag::IndirectBranch) &&
           Branch->Flags.has(rcc::InstructionFlag::Barrier) && Strict != nullptr &&

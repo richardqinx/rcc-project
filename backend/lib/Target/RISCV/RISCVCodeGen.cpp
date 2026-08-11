@@ -2975,6 +2975,185 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
   return true;
 }
 
+struct RV64ScalarLayout final {
+  std::uint64_t StoreSize = 0;
+  std::uint64_t AllocationSize = 0;
+  std::uint64_t ABIAlignment = 0;
+};
+
+[[nodiscard]] std::optional<RV64ScalarLayout> rv64ScalarLayout(LLT Type) noexcept {
+  if (Type.isPointer()) {
+    return Type.addressSpace() == 0 && Type.scalarBitWidth() == 64
+               ? std::optional<RV64ScalarLayout>{{8, 8, 8}}
+               : std::nullopt;
+  }
+  if ((!isSupportedIntegerType(Type) && !isRVFloatType(Type)) || Type.scalarBitWidth() == 0) {
+    return std::nullopt;
+  }
+  const std::uint64_t StoreBytes = (Type.scalarBitWidth() + 7U) / 8U;
+  const std::uint64_t AllocationBytes = std::bit_ceil(StoreBytes);
+  return RV64ScalarLayout{StoreBytes, AllocationBytes, std::min<std::uint64_t>(AllocationBytes, 8)};
+}
+
+[[nodiscard]] Expected<const MachineMemOperand *>
+createMemoryAccess(MachineFunction &Function, MemoryAccessFlag Access, LLT Type,
+                   std::uint64_t SizeBytes, std::uint64_t AlignmentBytes) {
+  auto Size = MemorySize::fixed(SizeBytes);
+  auto Align = Alignment::create(AlignmentBytes);
+  if (!Size || !Align)
+    return makeUnexpected(ErrorCode::InternalError, "RISC-V memory facts are invalid");
+  MachineMemOperandDesc Description;
+  Description.Accesses = {Access};
+  Description.Size = *Size;
+  Description.MemoryType = Type;
+  Description.Align = *Align;
+  return Function.createMemOperand(std::move(Description));
+}
+
+struct VAArgPlan final {
+  Register Destination;
+  Register ListPointer;
+  LLT DestinationType;
+  LLT PointerType;
+  std::uint64_t Alignment = 0;
+  RV64ScalarLayout ValueLayout;
+};
+
+[[nodiscard]] std::optional<VAArgPlan> vaargPlan(const MachineInstr &Instruction,
+                                                 const MachineFunction &Function) {
+  if (Instruction.opcode() != opcode(GenericOpcode::G_VAARG) || Instruction.operandCount() != 3 ||
+      !Instruction.memOperands().empty()) {
+    return std::nullopt;
+  }
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *ListOperand = Instruction.operandAt(1);
+  const MachineOperand *AlignmentOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *ListPointer = ListOperand == nullptr ? nullptr : ListOperand->getIf<Register>();
+  const std::optional<LLT> DestinationType = resultType(Function, Instruction);
+  const std::optional<LLT> PointerType = operandType(Function, Instruction, 1);
+  const auto AlignmentValue = AlignmentOperand == nullptr
+                                  ? Expected<std::int64_t>(std::unexpected(
+                                        Error(ErrorCode::InvalidArgument, "missing alignment")))
+                                  : signedImmediate(*AlignmentOperand);
+  const std::optional<RV64ScalarLayout> ValueLayout =
+      DestinationType ? rv64ScalarLayout(*DestinationType) : std::nullopt;
+  if (Destination == nullptr || ListPointer == nullptr || !Destination->isVirtual() ||
+      !ListPointer->isVirtual() || !DestinationOperand->isDef() || !ListOperand->isUse() ||
+      !DestinationType || !PointerType || !PointerType->isPointer() ||
+      PointerType->addressSpace() != 0 || PointerType->scalarBitWidth() != 64 || !AlignmentValue ||
+      *AlignmentValue <= 0 || !std::has_single_bit(static_cast<std::uint64_t>(*AlignmentValue)) ||
+      !ValueLayout) {
+    return std::nullopt;
+  }
+
+  return VAArgPlan{*Destination,
+                   *ListPointer,
+                   *DestinationType,
+                   *PointerType,
+                   static_cast<std::uint64_t>(*AlignmentValue),
+                   *ValueLayout};
+}
+
+[[nodiscard]] Expected<void> lowerVAArg(MachineInstr &Instruction, MachineFunction &Function,
+                                        const TargetDescription &Target) {
+  const auto Plan = vaargPlan(Instruction, Function);
+  if (!Plan) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V va_arg legalization requires a scalar result, p0 list, and "
+                          "power-of-two alignment");
+  }
+
+  auto ListLoadMemory =
+      createMemoryAccess(Function, MemoryAccessFlag::Load, Plan->PointerType, 8, 8);
+  if (!ListLoadMemory)
+    return std::unexpected(ListLoadMemory.error());
+  auto ListStoreMemory =
+      createMemoryAccess(Function, MemoryAccessFlag::Store, Plan->PointerType, 8, 8);
+  if (!ListStoreMemory)
+    return std::unexpected(ListStoreMemory.error());
+
+  auto CurrentList = Function.registerInfo().createVirtualRegister(Plan->PointerType);
+  if (!CurrentList)
+    return std::unexpected(CurrentList.error());
+  MachineIRBuilder Builder(Function, Target);
+  if (auto Point = Builder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  auto ListLoad = Builder.buildInstr(opcode(GenericOpcode::G_LOAD));
+  if (!ListLoad)
+    return std::unexpected(ListLoad.error());
+  if (auto Added = ListLoad->addDef(*CurrentList); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = ListLoad->addUse(Plan->ListPointer); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = ListLoad->addMemOperand(**ListLoadMemory); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = ListLoad->build(); !Built)
+    return std::unexpected(Built.error());
+
+  Register ValueAddress = *CurrentList;
+  if (Plan->Alignment > 1) {
+    auto AlignmentOffset =
+        buildIntegerConstantBefore(Builder, Instruction, 64, Plan->Alignment - 1U);
+    if (!AlignmentOffset)
+      return std::unexpected(AlignmentOffset.error());
+    auto BiasedAddress = buildBinaryBefore(Builder, Instruction, GenericOpcode::G_PTR_ADD,
+                                           Plan->PointerType, ValueAddress, *AlignmentOffset);
+    if (!BiasedAddress)
+      return std::unexpected(BiasedAddress.error());
+    auto AlignmentMask =
+        buildIntegerConstantBefore(Builder, Instruction, 64, ~(Plan->Alignment - std::uint64_t{1}));
+    if (!AlignmentMask)
+      return std::unexpected(AlignmentMask.error());
+    auto AlignedAddress = buildBinaryBefore(Builder, Instruction, GenericOpcode::G_PTRMASK,
+                                            Plan->PointerType, *BiasedAddress, *AlignmentMask);
+    if (!AlignedAddress)
+      return std::unexpected(AlignedAddress.error());
+    ValueAddress = *AlignedAddress;
+  }
+
+  auto Increment =
+      buildIntegerConstantBefore(Builder, Instruction, 64, Plan->ValueLayout.AllocationSize);
+  if (!Increment)
+    return std::unexpected(Increment.error());
+  auto NextList = buildBinaryBefore(Builder, Instruction, GenericOpcode::G_PTR_ADD,
+                                    Plan->PointerType, ValueAddress, *Increment);
+  if (!NextList)
+    return std::unexpected(NextList.error());
+  auto ListStore = Builder.buildInstr(opcode(GenericOpcode::G_STORE));
+  if (!ListStore)
+    return std::unexpected(ListStore.error());
+  if (auto Added = ListStore->addUse(*NextList); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = ListStore->addUse(Plan->ListPointer); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = ListStore->addMemOperand(**ListStoreMemory); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = ListStore->build(); !Built)
+    return std::unexpected(Built.error());
+
+  if (!Function.registerInfo().useEmpty(Plan->Destination)) {
+    auto ValueLoadMemory =
+        createMemoryAccess(Function, MemoryAccessFlag::Load, Plan->DestinationType,
+                           Plan->ValueLayout.StoreSize, Plan->ValueLayout.ABIAlignment);
+    if (!ValueLoadMemory)
+      return std::unexpected(ValueLoadMemory.error());
+    auto ValueLoad = Builder.buildInstr(opcode(GenericOpcode::G_LOAD));
+    if (!ValueLoad)
+      return std::unexpected(ValueLoad.error());
+    if (auto Added = ValueLoad->addDef(Plan->Destination); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = ValueLoad->addUse(ValueAddress); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = ValueLoad->addMemOperand(**ValueLoadMemory); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = ValueLoad->build(); !Built)
+      return std::unexpected(Built.error());
+  }
+  return eraseInstruction(Instruction);
+}
+
 struct VACopyPlan final {
   Register Destination;
   Register Source;
@@ -3091,15 +3270,17 @@ public:
     case GenericOpcode::G_INTRINSIC_W_SIDE_EFFECTS:
       return vacopyPlan(Instruction, Function) ? LegalizationAction::Custom
                                                : LegalizationAction::Unsupported;
+    case GenericOpcode::G_VAARG:
+      return vaargPlan(Instruction, Function) ? LegalizationAction::Custom
+                                              : LegalizationAction::Unsupported;
     case GenericOpcode::G_BR:
       return LegalizationAction::Legal;
     case GenericOpcode::G_BRCOND: {
       const std::optional<LLT> Condition = operandType(Function, Instruction, 0);
       if (!Condition || !isScalarGPRType(*Condition))
         return LegalizationAction::Unsupported;
-      return canLowerNarrowBranchCondition(Instruction, Function)
-                 ? LegalizationAction::Custom
-                 : LegalizationAction::Legal;
+      return canLowerNarrowBranchCondition(Instruction, Function) ? LegalizationAction::Custom
+                                                                  : LegalizationAction::Legal;
     }
     case GenericOpcode::G_PHI: {
       if (!Type)
@@ -3719,6 +3900,10 @@ public:
     if (Action == LegalizationAction::Custom &&
         Instruction.opcode() == opcode(GenericOpcode::G_INTRINSIC_W_SIDE_EFFECTS)) {
       return lowerVACopy(Instruction, Function, Target);
+    }
+    if (Action == LegalizationAction::Custom &&
+        Instruction.opcode() == opcode(GenericOpcode::G_VAARG)) {
+      return lowerVAArg(Instruction, Function, Target);
     }
     if (Instruction.opcode() == opcode(GenericOpcode::G_MUL) && !Features.has(RISCVExtension::M)) {
       if (Action == LegalizationAction::Custom)

@@ -1538,6 +1538,94 @@ void testVACopyLegalization(TestContext &Context) {
       "va_copy expansion must attach complete pointer-sized load/store memory operands");
 }
 
+void testVAArgLegalization(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  Context.expect(Target.has_value(), "RV64GC target must be available for va_arg legalization");
+  if (!Target)
+    return;
+  auto Function =
+      rcc::MachineFunction::create("riscv_vaarg", rcc::MachineFunctionStableID::fromValue(103));
+  if (!Function)
+    return;
+  auto Block = (*Function)->createBasicBlock();
+  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto I64 = rcc::LLT::makeInteger(64);
+  if (!Block || !Pointer || !I64 || !(*Function)->appendBlock(**Block))
+    return;
+  auto Destination = (*Function)->registerInfo().createVirtualRegister(*I64);
+  auto ListPointer = (*Function)->registerInfo().createVirtualRegister(*Pointer);
+  auto Sink = (*Function)->registerInfo().createVirtualRegister(*I64);
+  if (!Destination || !ListPointer || !Sink)
+    return;
+
+  rcc::MachineIRBuilder Builder(**Function, *Target);
+  if (!Builder.setInsertPoint(**Block))
+    return;
+  auto Pending = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_VAARG));
+  if (!Pending || !Pending->addDef(*Destination) || !Pending->addUse(*ListPointer) ||
+      !Pending->addImmediate(4)) {
+    return;
+  }
+  auto Built = Pending->build();
+  if (!Built)
+    return;
+  auto Freeze = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_FREEZE));
+  if (!Freeze || !Freeze->addDef(*Sink) || !Freeze->addUse(*Destination) || !Freeze->build())
+    return;
+
+  Context.expect(Target->validateInstruction(**Built, (*Function)->registerInfo()).has_value(),
+                 "canonical G_VAARG without MMOs must satisfy the generic descriptor");
+  auto Action = rcc::riscv::legalizerInfo().classify(**Built, **Function, *Target);
+  Context.expect(Action && *Action == rcc::LegalizationAction::Custom,
+                 "RV64GC must custom-legalize G_VAARG");
+  if (!Action)
+    return;
+  auto Lowered = rcc::riscv::legalizerInfo().lower(**Built, **Function, *Target, *Action);
+  Context.expect(Lowered.has_value(), "RV64GC va_arg legalization must succeed");
+  if (!Lowered)
+    return;
+
+  std::vector<rcc::MachineInstr *> Instructions;
+  for (rcc::MachineInstr *Instruction = (*Function)->firstBlock()->firstInstruction();
+       Instruction != nullptr; Instruction = Instruction->next())
+    Instructions.push_back(Instruction);
+  constexpr std::array ExpectedOpcodes = {
+      rcc::GenericOpcode::G_LOAD,    rcc::GenericOpcode::G_CONSTANT,
+      rcc::GenericOpcode::G_PTR_ADD, rcc::GenericOpcode::G_CONSTANT,
+      rcc::GenericOpcode::G_PTRMASK, rcc::GenericOpcode::G_CONSTANT,
+      rcc::GenericOpcode::G_PTR_ADD, rcc::GenericOpcode::G_STORE,
+      rcc::GenericOpcode::G_LOAD,    rcc::GenericOpcode::G_FREEZE,
+  };
+  bool OpcodeSequenceMatches = Instructions.size() == ExpectedOpcodes.size();
+  for (std::size_t Index = 0; OpcodeSequenceMatches && Index < Instructions.size(); ++Index)
+    OpcodeSequenceMatches = Instructions[Index]->opcode() == rcc::opcode(ExpectedOpcodes[Index]);
+  Context.expect((*Built)->parent() == nullptr && OpcodeSequenceMatches,
+                 "va_arg must expand into aligned list access and a live result load");
+  if (!OpcodeSequenceMatches)
+    return;
+
+  const auto *Bias = Instructions[1]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>();
+  const auto *Mask = Instructions[3]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>();
+  const auto *Increment = Instructions[5]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>();
+  Context.expect(Bias != nullptr && Bias->Value.toSignedDecimal() == "3" && Mask != nullptr &&
+                     Mask->Value.toSignedDecimal() == "-4" && Increment != nullptr &&
+                     Increment->Value.toSignedDecimal() == "8",
+                 "va_arg alignment and allocation constants must follow the RV64 ABI");
+
+  const auto ListLoadMemory = Instructions[0]->memOperands();
+  const auto ListStoreMemory = Instructions[7]->memOperands();
+  const auto ValueLoadMemory = Instructions[8]->memOperands();
+  Context.expect(ListLoadMemory.size() == 1 && ListStoreMemory.size() == 1 &&
+                     ValueLoadMemory.size() == 1 && ListLoadMemory.front()->isLoad() &&
+                     !ListLoadMemory.front()->isStore() && ListStoreMemory.front()->isStore() &&
+                     !ListStoreMemory.front()->isLoad() && ValueLoadMemory.front()->isLoad() &&
+                     !ValueLoadMemory.front()->isStore() &&
+                     ListLoadMemory.front()->description().MemoryType == *Pointer &&
+                     ListStoreMemory.front()->description().MemoryType == *Pointer &&
+                     ValueLoadMemory.front()->description().MemoryType == *I64,
+                 "va_arg expansion must attach typed MMOs to every concrete memory access");
+}
+
 void testMemoryOffsetSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   Context.expect(Target.has_value(), "RV64GC target must be available for memory selection");
@@ -1622,6 +1710,7 @@ int main() {
   testAtomicSelection(Context);
   testUnsupportedTypes(Context);
   testVACopyLegalization(Context);
+  testVAArgLegalization(Context);
   testMemoryOffsetSelection(Context);
   return Context.result();
 }

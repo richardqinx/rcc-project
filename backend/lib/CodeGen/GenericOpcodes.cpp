@@ -948,27 +948,9 @@ private:
     }
     return VerifyAddress(0, *MemoryOperands.front());
   case GO::G_VAARG: {
-    if (MemoryOperands.size() != 2)
-      return semanticError("G_VAARG requires separate value-load and list-update MMOs");
-    const MachineMemOperand *ValueLoad = nullptr;
-    const MachineMemOperand *ListStore = nullptr;
-    for (const MachineMemOperand *Memory : MemoryOperands) {
-      if (Memory->isLoad() == Memory->isStore()) {
-        return semanticError("G_VAARG MMOs must each describe exactly one access direction");
-      }
-      if (Memory->isLoad())
-        ValueLoad = Memory;
-      else
-        ListStore = Memory;
-      if (auto Address = VerifyAddress(1, *Memory); !Address)
-        return Address;
-    }
-    if (ValueLoad == nullptr || ListStore == nullptr)
-      return semanticError("G_VAARG MMOs must cover both the value load and list update");
-    auto ResultType = TypeAt(0);
-    if (!ResultType)
-      return std::unexpected(ResultType.error());
-    return VerifySize(*ResultType, *ValueLoad, SizeRelation::Equal);
+    return MemoryOperands.empty()
+               ? Expected<void>{}
+               : semanticError("G_VAARG must not carry MMOs before legalization");
   }
   case GO::G_MEMCPY:
   case GO::G_MEMCPY_INLINE:
@@ -1314,7 +1296,7 @@ void configureGenericOpcodes(DescriptorRegistry &Registry) {
   Registry.configure({GO::G_VASTART}, {ScalarPointerUse0}, 0, {InstructionFlag::MayStore}, false, 0,
                      true);
   Registry.configure({GO::G_VAARG}, {AnyDef0, ScalarPointerUse1, immediate()}, 1,
-                     {InstructionFlag::MayLoad, InstructionFlag::MayStore}, false, 0, true);
+                     {InstructionFlag::MayLoad, InstructionFlag::MayStore}, false, 0, false);
   Registry.configure({GO::G_SEXT_INREG}, {IntDef0, IntUse0, immediate()}, 1);
   Registry.configure(
       {GO::G_SHL, GO::G_LSHR, GO::G_ASHR, GO::G_ROTR, GO::G_ROTL, GO::G_USHLSAT, GO::G_SSHLSAT},
