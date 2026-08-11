@@ -127,7 +127,8 @@ extendIntegerImmediate(const IntegerImmediate &Value, std::uint32_t DestinationW
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V constant extension requires virtual-register operands");
   }
-  const MachineOperand *SourceDefinition = Function.registerInfo().getUniqueVRegDef(*Source);
+  const Register SourceRegister = *Source;
+  const MachineOperand *SourceDefinition = Function.registerInfo().getUniqueVRegDef(SourceRegister);
   const MachineInstr *SourceDef = SourceDefinition == nullptr ? nullptr : SourceDefinition->parent();
   if (SourceDef == nullptr || SourceDef->opcode() != opcode(GenericOpcode::G_CONSTANT))
     return makeUnexpected(ErrorCode::Unsupported,
@@ -161,7 +162,7 @@ extendIntegerImmediate(const IntegerImmediate &Value, std::uint32_t DestinationW
   if (!Added)
     return std::unexpected(Added.error());
 
-  if (Function.registerInfo().useEmpty(*Source)) {
+  if (Function.registerInfo().useEmpty(SourceRegister)) {
     MachineInstr *Def = const_cast<MachineInstr *>(SourceDef);
     MachineBasicBlock *Parent = Def->parent();
     if (Parent == nullptr)

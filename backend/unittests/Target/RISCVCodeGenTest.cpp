@@ -982,6 +982,54 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
       "compare-exchange-with-success must lower to atomic, equality test, and old-value copy");
 }
 
+void testConstantExtensionPreservesLiveSource(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  auto Function = rcc::MachineFunction::create("riscv_live_constant_extension",
+                                               rcc::MachineFunctionStableID::fromValue(1300));
+  auto I32 = rcc::LLT::makeAnyScalar(32);
+  auto I64 = rcc::LLT::makeAnyScalar(64);
+  if (!Target || !Function || !I32 || !I64)
+    return;
+  auto Block = (*Function)->createBasicBlock();
+  if (!Block || !(*Function)->appendBlock(**Block))
+    return;
+  auto Source = (*Function)->registerInfo().createVirtualRegister(*I32);
+  auto Extended = (*Function)->registerInfo().createVirtualRegister(*I64);
+  auto PreservedUse = (*Function)->registerInfo().createVirtualRegister(*I32);
+  auto Immediate = rcc::IntegerImmediate::fromUnsigned(32, 7);
+  if (!Source || !Extended || !PreservedUse || !Immediate)
+    return;
+
+  rcc::MachineIRBuilder Builder(**Function, *Target);
+  if (!Builder.setInsertPoint(**Block))
+    return;
+  auto Constant = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_CONSTANT));
+  if (!Constant || !Constant->addDef(*Source) ||
+      !Constant->addIntegerImmediate(std::move(*Immediate)))
+    return;
+  auto BuiltConstant = Constant->build();
+  auto Extension = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_ANYEXT));
+  if (!BuiltConstant || !Extension || !Extension->addDef(*Extended) || !Extension->addUse(*Source))
+    return;
+  auto BuiltExtension = Extension->build();
+  auto Copy = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::COPY));
+  if (!BuiltExtension || !Copy || !Copy->addDef(*PreservedUse) || !Copy->addUse(*Source) ||
+      !Copy->build())
+    return;
+
+  auto Action = rcc::riscv::legalizerInfo().classify(**BuiltExtension, **Function, *Target);
+  auto Lowered =
+      Action ? rcc::riscv::legalizerInfo().lower(**BuiltExtension, **Function, *Target, *Action)
+             : rcc::Expected<void>(std::unexpected(Action.error()));
+  Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered &&
+                     (*BuiltExtension)->opcode() == rcc::opcode(rcc::GenericOpcode::G_CONSTANT) &&
+                     (*BuiltConstant)->parent() != nullptr &&
+                     (*Function)->registerInfo().getUniqueVRegDef(*Source) ==
+                         (*BuiltConstant)->operandAt(0) &&
+                     (*Function)->registerInfo().verifyDefUseChains(),
+                 "constant-extension folding must preserve a source definition with live uses");
+}
+
 void testAtomicSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   if (!Target)
@@ -1260,6 +1308,7 @@ int main() {
   testCompositeScalarSelection(Context);
   testOverflowSelection(Context);
   testAtomicCompareExchangeLegalization(Context);
+  testConstantExtensionPreservesLiveSource(Context);
   testAtomicSelection(Context);
   testUnsupportedTypes(Context);
   testMemoryOffsetSelection(Context);
