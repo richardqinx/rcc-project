@@ -698,6 +698,34 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Source);
   MachineInstr *Def =
       Definition == nullptr ? nullptr : const_cast<MachineInstr *>(Definition->parent());
+  std::optional<Register> ExistingExtension;
+  bool AmbiguousExtension = false;
+  auto &RegisterInfo = Function.registerInfo();
+  for (MachineOperand &Use : RegisterInfo.useOperands(Source)) {
+    MachineInstr *User = Use.parent();
+    if (User == nullptr || User == &Instruction || User->parent() == nullptr ||
+        (User->opcode() != opcode(GenericOpcode::G_ANYEXT) &&
+         User->opcode() != opcode(GenericOpcode::G_SEXT))) {
+      continue;
+    }
+    const MachineOperand *ExtendedOperand = User->operandAt(0);
+    const Register *Extended =
+        ExtendedOperand == nullptr ? nullptr : ExtendedOperand->getIf<Register>();
+    const std::optional<LLT> ExtendedType =
+        ExtendedOperand == nullptr ? std::nullopt : registerType(Function, *ExtendedOperand);
+    if (Extended == nullptr || !ExtendedType || *ExtendedType != WideType ||
+        (Def == nullptr || (Def->opcode() != opcode(GenericOpcode::G_CONSTANT) &&
+                            User->opcode() != opcode(GenericOpcode::G_SEXT)))) {
+      continue;
+    }
+    if (ExistingExtension) {
+      AmbiguousExtension = true;
+      break;
+    }
+    ExistingExtension = *Extended;
+  }
+  if (ExistingExtension && !AmbiguousExtension)
+    return *ExistingExtension;
   if (Def != nullptr && Def->opcode() == opcode(GenericOpcode::G_CONSTANT) &&
       singleRegisterUse(Function, Source) == &Instruction) {
     auto Widened = widenConstantToRV64(*Def, Function);

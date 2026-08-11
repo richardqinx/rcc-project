@@ -1067,6 +1067,48 @@ void testConstantExtensionPreservesLiveSource(TestContext &Context) {
                  "constant-extension folding must preserve a source definition with live uses");
 }
 
+void testIntegerCompareReusesConstantExtension(TestContext &Context) {
+  auto Target = rcc::riscv::createTargetDescription();
+  auto I32 = rcc::LLT::makeAnyScalar(32);
+  auto I64 = rcc::LLT::makeAnyScalar(64);
+  if (!Target || !I32 || !I64)
+    return;
+  auto Function =
+      createCompareFunction(Context, *Target, rcc::GenericOpcode::G_ICMP, *I32, false,
+                            rcc::IntegerPredicate::Equal, rcc::FloatingPredicate::AlwaysFalse);
+  if (!Function)
+    return;
+  rcc::MachineInstr *Compare = Function->firstBlock()->firstInstruction();
+  const rcc::Register *Right = Compare->operandAt(3)->getIf<rcc::Register>();
+  auto WideRight = Function->registerInfo().createVirtualRegister(*I64);
+  auto Immediate = rcc::IntegerImmediate::fromUnsigned(32, 0);
+  if (Right == nullptr || !WideRight || !Immediate)
+    return;
+
+  rcc::MachineIRBuilder Builder(*Function, *Target);
+  if (!Builder.setInsertPointBefore(*Compare))
+    return;
+  auto Constant = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_CONSTANT));
+  if (!Constant || !Constant->addDef(*Right) ||
+      !Constant->addIntegerImmediate(std::move(*Immediate)) || !Constant->build())
+    return;
+  auto Extension = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_ANYEXT));
+  if (!Extension || !Extension->addDef(*WideRight) || !Extension->addUse(*Right) ||
+      !Extension->build())
+    return;
+
+  auto Action = rcc::riscv::legalizerInfo().classify(*Compare, *Function, *Target);
+  auto Lowered = Action ? rcc::riscv::legalizerInfo().lower(*Compare, *Function, *Target, *Action)
+                        : rcc::Expected<void>(std::unexpected(Action.error()));
+  const rcc::Register *LegalRight = Compare->operandAt(3)->getIf<rcc::Register>();
+  Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered,
+                 "RV64 integer comparison extension-reuse fixture must legalize");
+  Context.expect(LegalRight != nullptr && *LegalRight == *WideRight,
+                 "RV64 integer comparison legalization must reuse an existing constant extension");
+  Context.expect(Function->registerInfo().verifyDefUseChains().has_value(),
+                 "integer comparison extension reuse must preserve exact def-use chains");
+}
+
 void testAtomicSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   if (!Target)
@@ -1346,6 +1388,7 @@ int main() {
   testOverflowSelection(Context);
   testAtomicCompareExchangeLegalization(Context);
   testConstantExtensionPreservesLiveSource(Context);
+  testIntegerCompareReusesConstantExtension(Context);
   testAtomicSelection(Context);
   testUnsupportedTypes(Context);
   testMemoryOffsetSelection(Context);
