@@ -1352,6 +1352,14 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
   if (!Mask)
     return std::unexpected(Mask.error());
 
+  std::unordered_set<PhysicalRegister> DynamicUses;
+  for (const CCAssignment &Assignment : Plan.argumentAssignments()) {
+    if (Assignment.LocationRegister && DynamicUses.insert(*Assignment.LocationRegister).second) {
+      auto Use = Instruction->addImplicitUse(Register::fromPhysical(*Assignment.LocationRegister));
+      if (!Use)
+        return std::unexpected(Use.error());
+    }
+  }
   std::unordered_set<PhysicalRegister> DynamicDefs;
   if (!IsTail) {
     for (const CCAssignment &Assignment : Plan.returnAssignments()) {
@@ -1361,14 +1369,6 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
         if (!Def)
           return std::unexpected(Def.error());
       }
-    }
-  }
-  std::unordered_set<PhysicalRegister> DynamicUses;
-  for (const CCAssignment &Assignment : Plan.argumentAssignments()) {
-    if (Assignment.LocationRegister && DynamicUses.insert(*Assignment.LocationRegister).second) {
-      auto Use = Instruction->addImplicitUse(Register::fromPhysical(*Assignment.LocationRegister));
-      if (!Use)
-        return std::unexpected(Use.error());
     }
   }
   auto Built = Instruction->build();

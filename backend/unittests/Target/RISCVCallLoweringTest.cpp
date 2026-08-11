@@ -551,19 +551,32 @@ void testOrdinaryAndIndirectEmission(TestContext &Context) {
       "call-frame pseudos must use LLVM amount/prepared-byte operands and implicit SP effects");
   bool HasArgumentUse = false;
   bool HasResultDef = false;
+  std::optional<std::size_t> ArgumentUseIndex;
+  std::optional<std::size_t> ResultDefIndex;
+  std::size_t OperandIndex = 0;
   for (const rcc::MachineOperand &Operand : Call->operands()) {
-    if (!Operand.isRegister() || !Operand.isImplicit())
+    if (!Operand.isRegister() || !Operand.isImplicit()) {
+      ++OperandIndex;
       continue;
-    HasArgumentUse |=
-        Operand.isUse() && Operand.registerValue() == rcc::Register::fromPhysical(argumentGPR(0));
-    HasResultDef |=
-        Operand.isDef() && Operand.registerValue() == rcc::Register::fromPhysical(returnFPR(0));
+    }
+    if (Operand.isUse() && Operand.registerValue() == rcc::Register::fromPhysical(argumentGPR(0))) {
+      HasArgumentUse = true;
+      ArgumentUseIndex = OperandIndex;
+    }
+    if (Operand.isDef() && Operand.registerValue() == rcc::Register::fromPhysical(returnFPR(0))) {
+      HasResultDef = true;
+      ResultDefIndex = OperandIndex;
+    }
+    ++OperandIndex;
   }
-  Context.expect(HasArgumentUse && HasResultDef && Function->frameInfo().state().HasCalls &&
+  Context.expect(HasArgumentUse && HasResultDef && ArgumentUseIndex && ResultDefIndex &&
+                     *ArgumentUseIndex < *ResultDefIndex &&
+                     Function->frameInfo().state().HasCalls &&
                      Function->frameInfo().maxCallFrameSize() == 0 &&
                      Function->frameInfo().stackAlignment().bytes() == 16 &&
                      verifyFunction(*Function, *Target),
-                 "ordinary call emission must record implicit ABI registers and valid frame state");
+                 "ordinary call emission must order implicit uses before defs and record frame "
+                 "state");
 
   rcc::MachineBasicBlock *IndirectBlock = nullptr;
   auto IndirectFunction = createFunction(Context, "indirect_call", 2, IndirectBlock);
