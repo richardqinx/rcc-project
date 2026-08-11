@@ -795,7 +795,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1062
     symbol: LH
@@ -811,7 +810,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1063
     symbol: LW
@@ -827,7 +825,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1064
     symbol: LBU
@@ -843,7 +840,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1065
     symbol: LHU
@@ -859,7 +855,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1066
     symbol: LWU
@@ -875,7 +870,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1067
     symbol: SB
@@ -891,7 +885,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: S
     assembly_format: RS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1068
     symbol: SH
@@ -907,7 +900,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: S
     assembly_format: RS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1069
     symbol: SW
@@ -923,7 +915,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: S
     assembly_format: RS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1070
     symbol: BLT
@@ -1357,7 +1348,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1030
     symbol: SD
@@ -1373,7 +1363,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: S
     assembly_format: RS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1031
     symbol: BEQ
@@ -1546,7 +1535,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1097
     symbol: SC_W
@@ -1562,7 +1550,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1098
     symbol: AMOSWAP_W
@@ -1578,7 +1565,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1118
     symbol: FLW
@@ -1594,7 +1580,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: FRD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1119
     symbol: FSW
@@ -1610,7 +1595,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: S
     assembly_format: FRS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1120
     symbol: FMADD_S
@@ -2072,7 +2056,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: I
     assembly_format: FRD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1149
     symbol: FSD
@@ -2088,7 +2071,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: S
     assembly_format: FRS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1150
     symbol: FMADD_D
@@ -2581,7 +2563,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: C
     assembly_format: FRD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1182
     symbol: C_LW
@@ -2597,7 +2578,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: C
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1183
     symbol: C_LD
@@ -2613,7 +2593,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: C
     assembly_format: RD_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1184
     symbol: C_FSD
@@ -2629,7 +2608,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: C
     assembly_format: FRS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1185
     symbol: C_SW
@@ -2645,7 +2623,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: C
     assembly_format: RS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1186
     symbol: C_SD
@@ -2661,7 +2638,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: C
     assembly_format: RS2_OFFSET_RS1
-    requires_memory_operands: true
   -
     id: 1187
     symbol: C_ADDI
@@ -2929,7 +2905,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: C
     assembly_format: FRD_OFFSET_SP
-    requires_memory_operands: true
   -
     id: 1206
     symbol: C_LWSP
@@ -2945,7 +2920,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: C
     assembly_format: RD_OFFSET_SP
-    requires_memory_operands: true
   -
     id: 1207
     symbol: C_LDSP
@@ -2961,7 +2935,6 @@ instructions:
     scheduling_class: LOAD
     encoding_category: C
     assembly_format: RD_OFFSET_SP
-    requires_memory_operands: true
   -
     id: 1208
     symbol: C_JR
@@ -3044,7 +3017,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: C
     assembly_format: FRS2_OFFSET_SP
-    requires_memory_operands: true
   -
     id: 1214
     symbol: C_SWSP
@@ -3060,7 +3032,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: C
     assembly_format: RS2_OFFSET_SP
-    requires_memory_operands: true
   -
     id: 1215
     symbol: C_SDSP
@@ -3076,7 +3047,6 @@ instructions:
     scheduling_class: STORE
     encoding_category: C
     assembly_format: RS2_OFFSET_SP
-    requires_memory_operands: true
   -
     id: 1179
     symbol: FCVT_D_S
@@ -3108,7 +3078,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1100
     symbol: AMOXOR_W
@@ -3124,7 +3093,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1101
     symbol: AMOAND_W
@@ -3140,7 +3108,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1102
     symbol: AMOOR_W
@@ -3156,7 +3123,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1103
     symbol: AMOMIN_W
@@ -3172,7 +3138,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1104
     symbol: AMOMAX_W
@@ -3188,7 +3153,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1105
     symbol: AMOMINU_W
@@ -3204,7 +3168,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1106
     symbol: AMOMAXU_W
@@ -3220,7 +3183,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1107
     symbol: LR_D
@@ -3235,7 +3197,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1108
     symbol: SC_D
@@ -3251,7 +3212,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1109
     symbol: AMOSWAP_D
@@ -3267,7 +3227,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1110
     symbol: AMOADD_D
@@ -3283,7 +3242,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1111
     symbol: AMOXOR_D
@@ -3299,7 +3257,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1112
     symbol: AMOAND_D
@@ -3315,7 +3272,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1113
     symbol: AMOOR_D
@@ -3331,7 +3287,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1114
     symbol: AMOMIN_D
@@ -3347,7 +3302,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1115
     symbol: AMOMAX_D
@@ -3363,7 +3317,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1116
     symbol: AMOMINU_D
@@ -3379,7 +3332,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1117
     symbol: AMOMAXU_D
@@ -3395,7 +3347,6 @@ instructions:
     scheduling_class: ATOMIC
     encoding_category: AMO
     assembly_format: RD_RS2_PAREN_RS1
-    requires_memory_operands: true
   -
     id: 1229
     symbol: G_SLLW
@@ -3631,7 +3582,6 @@ instructions:
       - { kinds: [immediate] }
     num_explicit_defs: 1
     flags: [pseudo, produces_code, allowed_pre_legalizer, may_load]
-    requires_memory_operands: true
     owner: instruction_select
     deadline: selected
   -
@@ -3645,7 +3595,6 @@ instructions:
       - { kinds: [immediate] }
     num_explicit_defs: 0
     flags: [pseudo, produces_code, allowed_pre_legalizer, may_store]
-    requires_memory_operands: true
     owner: instruction_select
     deadline: selected
   -
@@ -3660,7 +3609,6 @@ instructions:
       - { kinds: [immediate, integer_immediate] }
     num_explicit_defs: 1
     flags: [pseudo, produces_code, allowed_pre_legalizer, may_load, may_store]
-    requires_memory_operands: true
     owner: instruction_select
     deadline: selected
   -

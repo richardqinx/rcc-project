@@ -178,9 +178,11 @@ public:
     for (const InstructionOpcode OpcodeValue : {Form->Load, Form->Store}) {
       const InstructionDescriptor *Instruction =
           Target.instructionDescriptor(targetOpcode(OpcodeValue));
+      const InstructionFlag MemoryFlag =
+          OpcodeValue == Form->Load ? InstructionFlag::MayLoad : InstructionFlag::MayStore;
       if (Instruction == nullptr || Instruction->Operands.size() != 3 ||
           !Instruction->Operands[1].Kinds.contains(MachineOperand::Kind::FrameIndex) ||
-          !Instruction->RequiresMemoryOperands) {
+          !Instruction->Flags.has(MemoryFlag)) {
         return makeUnexpected(ErrorCode::InternalError,
                               "RV64GC spill instruction descriptor is incomplete");
       }

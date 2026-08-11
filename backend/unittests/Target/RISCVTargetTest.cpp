@@ -230,12 +230,12 @@ void testInstructionFacts(TestContext &Context) {
           Addi->Operands.size() == 3 &&
           Addi->Operands[1].Kinds.contains(rcc::MachineOperand::Kind::FrameIndex) &&
           Addi->Operands.back().ImmediatePredicate && Load != nullptr &&
-          Load->Flags.has(rcc::InstructionFlag::MayLoad) && Load->RequiresMemoryOperands &&
+          Load->Flags.has(rcc::InstructionFlag::MayLoad) && !Load->RequiresMemoryOperands &&
           Branch != nullptr && Branch->Flags.has(rcc::InstructionFlag::Terminator) &&
           Branch->Flags.has(rcc::InstructionFlag::Branch) && Floating != nullptr &&
           Floating->Operands.size() == 4 && Floating->Operands.back().ImmediatePredicate &&
           Floating->AllowExtraImplicitOperands && Atomic != nullptr &&
-          Atomic->Flags.has(rcc::InstructionFlag::MayLoad) && Atomic->RequiresMemoryOperands &&
+          Atomic->Flags.has(rcc::InstructionFlag::MayLoad) && !Atomic->RequiresMemoryOperands &&
           Compressed != nullptr && Compressed->ImplicitDefs.size() == 1 &&
           Compressed->ImplicitUses.size() == 1 && GenericAdd != nullptr &&
           GenericAdd->Flags.has(rcc::InstructionFlag::Generic) && PseudoCall != nullptr &&
@@ -246,6 +246,16 @@ void testInstructionFacts(TestContext &Context) {
           Assembly->Format == rcc::AssemblyFormatID::fromValue(static_cast<std::uint32_t>(
                                   rcc::riscv::AssemblyFormat::RD_RS1_IMM)),
       "generated instruction and assembly descriptors must drive the formal RV64GC target");
+  Context.expect(
+      Load != nullptr &&
+          Target->instructions()
+              .validateMemOperands(Load->InstructionOpcode,
+                                   std::span<const rcc::MachineMemOperand *const>{})
+              .has_value() &&
+          !Target->instructions().validateMemOperands(
+              rcc::opcode(rcc::GenericOpcode::G_LOAD),
+              std::span<const rcc::MachineMemOperand *const>{}),
+      "target memory operands must be optional while generic memory operands remain required");
 
   const auto Schedules = rcc::riscv::schedulingClasses();
   const auto Encodings = rcc::riscv::encodingCategories();
