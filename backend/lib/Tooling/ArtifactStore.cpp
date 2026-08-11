@@ -264,7 +264,6 @@ Expected<CanonicalMIR> parseAndCanonicalizeMIR(std::string SourceName, std::stri
   }
   mir::MIRDocumentParserOptions ParseOptions;
   ParseOptions.DataLayout = Invocation.DataLayout;
-  ParseOptions.DefaultPointerSizeInBits = 64;
   ParseOptions.VerifyMachineFunctions = true;
   mir::MIRDocumentParseResult Parsed =
       mir::parseMIRDocument(Target, std::move(SourceName), std::move(SourceText), ParseOptions);
@@ -279,7 +278,6 @@ Expected<CanonicalMIR> parseAndCanonicalizeMIR(std::string SourceName, std::stri
   PrintOptions.Mode = mir::MIPrintMode::Complete;
   PrintOptions.EmitEmbeddedIR = true;
   PrintOptions.DataLayout = Invocation.DataLayout;
-  PrintOptions.DefaultPointerSizeInBits = 64;
   auto Printed = mir::printMIRDocument(*Parsed.document(), Target, std::move(PrintOptions));
   if (!Printed)
     return std::unexpected(Printed.error());

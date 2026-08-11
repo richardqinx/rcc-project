@@ -21,7 +21,6 @@ struct LLVMNamedTypeDefinition final {
 };
 
 struct LLVMConstantSyntaxOptions final {
-  std::uint32_t DefaultPointerSizeInBits = 0;
   std::string_view DataLayout;
   std::span<const LLVMNamedTypeDefinition> NamedTypes;
   std::size_t MaximumDepth = 1024;

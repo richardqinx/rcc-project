@@ -31,8 +31,7 @@ private:
 };
 
 constexpr rcc::mir::LLVMConstantSyntaxOptions Options{
-    .DefaultPointerSizeInBits = 64,
-    .DataLayout = {},
+    .DataLayout = "e-p:64:64",
     .NamedTypes = {},
 };
 
@@ -44,6 +43,14 @@ void expectRoundTrip(TestContext &Context, std::string_view Text, std::uint64_t 
     return;
   }
   auto Size = rcc::mir::llvmConstantStorageSize(Parsed->Type, Options);
+  if (!Size || *Size != ExpectedSize) {
+    std::cerr << Text << ": expected storage size " << ExpectedSize << ", got ";
+    if (Size)
+      std::cerr << *Size;
+    else
+      std::cerr << Size.error().message();
+    std::cerr << '\n';
+  }
   Context.expect(Size.has_value() && *Size == ExpectedSize,
                  "LLVM constant storage size must match its structured type");
   auto Printed = rcc::mir::printLLVMConstant(*Parsed);
@@ -92,12 +99,12 @@ void expectLayoutRoundTrip(TestContext &Context, std::string_view Text,
 
 void testScalarConstants(TestContext &Context) {
   expectRoundTrip(Context, "i1 true", 1);
-  expectRoundTrip(Context, "i65 -1", 9);
+  expectRoundTrip(Context, "i65 -1", 12);
   expectRoundTrip(Context, "half 0xH3C00", 2);
   expectRoundTrip(Context, "bfloat 0xR3F80", 2);
   expectRoundTrip(Context, "float 1.250000e+00", 4);
   expectRoundTrip(Context, "double 0x3FF0000000000000", 8);
-  expectRoundTrip(Context, "x86_fp80 f0x4000C000000000000000", 10);
+  expectRoundTrip(Context, "x86_fp80 f0x4000C000000000000000", 16);
   expectRoundTrip(Context, "fp128 f0x3FFF0000000000000000000000000000", 16);
   expectRoundTrip(Context, "ptr null", 8);
   expectRoundTrip(Context, "i32 undef", 4);
@@ -186,7 +193,7 @@ void testExplicitHexIntegerConstants(TestContext &Context) {
   expectIntegerWords(Context, "i16 s0xFF", SignedFF);
   expectIntegerWords(Context, "i8 s0x1FF", SignedFF8);
 
-  expectRoundTrip(Context, "i65 s0x01", 9);
+  expectRoundTrip(Context, "i65 s0x01", 12);
   Context.expect(!rcc::mir::parseLLVMConstant("i32 u0x", Options) &&
                      !rcc::mir::parseLLVMConstant("i32 u0X1", Options),
                  "explicit LLVM hexadecimal integers must use the fixed spelling");
@@ -363,7 +370,6 @@ void testDataLayoutAndNamedTypes(TestContext &Context) {
           .Name = "loop", .Definition = "{ %loop }", .NumericName = false},
   };
   static constexpr rcc::mir::LLVMConstantSyntaxOptions LayoutOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-p:64:64-p1:32:16:64-i64:64:128-i128:128-v96:128:256-a:0:64",
       .NamedTypes = Definitions,
   };
@@ -385,7 +391,6 @@ void testDataLayoutAndNamedTypes(TestContext &Context) {
 
 void testAddressSpacePointerWidths(TestContext &Context) {
   constexpr rcc::mir::LLVMConstantSyntaxOptions HeterogeneousLayoutOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-p:64:64-p1:32:16:64",
       .NamedTypes = {},
   };
@@ -395,39 +400,29 @@ void testAddressSpacePointerWidths(TestContext &Context) {
                      AddressSpaceOnePointer.has_value() && *AddressSpaceOnePointer == 32,
                  "LLVM data layout must provide pointer width by address space");
 
-  constexpr rcc::mir::LLVMConstantSyntaxOptions LegacyOptions{
-      .DefaultPointerSizeInBits = 64,
-      .DataLayout = {},
-      .NamedTypes = {},
-  };
-  auto LegacyPointer = rcc::mir::llvmPointerSizeInBits(7, LegacyOptions);
-  Context.expect(LegacyPointer.has_value() && *LegacyPointer == 64,
-                 "legacy pointer-width fallback must apply without an explicit data layout");
+  auto MissingPointer = rcc::mir::llvmPointerSizeInBits(7);
+  Context.expect(!MissingPointer,
+                 "pointer width lookup must reject a missing explicit data layout");
 }
 
 void testDataLayoutBoundaryRules(TestContext &Context) {
   static constexpr rcc::mir::LLVMConstantSyntaxOptions IntegerAlignmentOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-p:64:64-i24:128:128",
       .NamedTypes = {},
   };
   static constexpr rcc::mir::LLVMConstantSyntaxOptions HistoricalAggregateOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-p:64:64-a0:64:128",
       .NamedTypes = {},
   };
   static constexpr rcc::mir::LLVMConstantSyntaxOptions ZeroAggregateOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-p:64:64-a:0:64",
       .NamedTypes = {},
   };
   static constexpr rcc::mir::LLVMConstantSyntaxOptions NonBytePointerOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-p:33:8:8:32",
       .NamedTypes = {},
   };
   static constexpr rcc::mir::LLVMConstantSyntaxOptions PointerFlagsOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-pue1(storage):33:8:8:32-po2(allones):64:64",
       .NamedTypes = {},
   };
@@ -440,7 +435,6 @@ void testDataLayoutBoundaryRules(TestContext &Context) {
   expectLayoutRoundTrip(Context, "ptr addrspace(1) null", PointerFlagsOptions, 5, 1);
 
   static constexpr rcc::mir::LLVMConstantSyntaxOptions InvalidIndexSizeOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-p:33:8:8:34",
       .NamedTypes = {},
   };
@@ -450,7 +444,6 @@ void testDataLayoutBoundaryRules(TestContext &Context) {
                  "LLVM pointer index size larger than its representation must be rejected");
 
   static constexpr rcc::mir::LLVMConstantSyntaxOptions NonLayoutOptions{
-      .DefaultPointerSizeInBits = 0,
       .DataLayout = "e-m:e-n8:16:32-S128-Fi64-P1-G2-A3-ni:1:2-ve-s-p:64:64",
       .NamedTypes = {},
   };
@@ -458,7 +451,6 @@ void testDataLayoutBoundaryRules(TestContext &Context) {
 
   const auto ExpectInvalidDataLayout = [&Context](std::string_view DataLayout) {
     const rcc::mir::LLVMConstantSyntaxOptions InvalidOptions{
-        .DefaultPointerSizeInBits = 0,
         .DataLayout = DataLayout,
         .NamedTypes = {},
     };

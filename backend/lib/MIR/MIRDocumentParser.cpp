@@ -72,18 +72,19 @@ const yaml::Node *MIRDocumentParser::mappingValue(const yaml::Node &Mapping,
 }
 
 std::string_view MIRDocumentParser::effectiveDataLayout() const noexcept {
+  if (!Options.DataLayout.empty())
+    return Options.DataLayout;
   if (ActiveDocument != nullptr) {
     if (const EmbeddedIRReferenceIndex *Embedded = ActiveDocument->embeddedIR()) {
       if (const auto DataLayout = Embedded->dataLayout())
         return *DataLayout;
     }
   }
-  return Options.DataLayout;
+  return {};
 }
 
 LLVMConstantSyntaxOptions MIRDocumentParser::pointerLayoutOptions() const noexcept {
   return {
-      .DefaultPointerSizeInBits = Options.DefaultPointerSizeInBits,
       .DataLayout = effectiveDataLayout(),
       .NamedTypes = {},
   };
@@ -243,14 +244,6 @@ MIRDocumentParseResult MIRDocumentParser::run() {
     FirstFunction = FirstContent + 1;
   }
 
-  if (const EmbeddedIRReferenceIndex *Embedded = Staging.embeddedIR()) {
-    if (const auto DataLayout = Embedded->dataLayout();
-        DataLayout && !Options.DataLayout.empty() && *DataLayout != Options.DataLayout) {
-      static_cast<void>(fail(Stream->documents()[FirstContent].Range,
-                             "explicit DataLayout does not match embedded LLVM IR data layout"));
-      return std::move(Result);
-    }
-  }
   if (!effectiveDataLayout().empty()) {
     auto PointerSize = llvmPointerSizeInBits(0, pointerLayoutOptions());
     if (!PointerSize) {
@@ -374,7 +367,6 @@ bool MIRDocumentParser::parseFunction(const yaml::Node &Root, MIRDocument &Docum
       .HasFakeUses = std::nullopt,
   };
   MIParserContext Context;
-  Context.DefaultPointerSizeInBits = Options.DefaultPointerSizeInBits;
   if (IRFunction != nullptr) {
     Context.HasIRBlock = [IRFunction](std::string_view BlockName) {
       return IRFunction->block(BlockName) != nullptr;

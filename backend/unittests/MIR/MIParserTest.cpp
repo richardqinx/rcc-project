@@ -221,7 +221,9 @@ bb.1."exit block" (landing-pad, bbsections Cold):
   rcc::mir::MIParserContext ParserContext;
   ParserContext.Metadata.push_back(
       {.TextID = 0, .Reference = rcc::MachineMetadataReference::embeddedIR(0)});
-  ParserContext.DefaultPointerSizeInBits = 64;
+  ParserContext.PointerSizeInBits = [](std::uint32_t) -> rcc::Expected<std::uint32_t> {
+    return 64;
+  };
   rcc::mir::MIParser Parser(*Function, *Target, "body.mir", Body, ParserContext);
   const auto Parsed = Parser.parse();
   const bool ParseSucceeded =
@@ -507,7 +509,9 @@ void testLLVMInlineAsmAndConstantMemorySyntax(TestContext &Context) {
   %1:gpr64 = TEST_LOAD $g0 :: (load (s64) from unknown-address + 4)
 )";
   rcc::mir::MIParserContext ParserContext;
-  ParserContext.DefaultPointerSizeInBits = 64;
+  ParserContext.PointerSizeInBits = [](std::uint32_t) -> rcc::Expected<std::uint32_t> {
+    return 64;
+  };
   rcc::mir::MIParser Parser(*Function, *Target, "llvm-compatible.mir", Body, ParserContext);
   auto Parsed = Parser.parse();
   Context.expect(Parsed.has_value(), "LLVM inline-asm and constant-pointer MMO syntax must parse");
@@ -553,7 +557,9 @@ void testLLVMCompareExchangeMemorySyntax(TestContext &Context) {
   %3:_(s8) = G_ATOMIC_CMPXCHG %0, %1, %2 :: (load store monotonic (s8))
 )";
   rcc::mir::MIParserContext ParserContext;
-  ParserContext.DefaultPointerSizeInBits = 64;
+  ParserContext.PointerSizeInBits = [](std::uint32_t) -> rcc::Expected<std::uint32_t> {
+    return 64;
+  };
   rcc::mir::MIParser Parser(*Function, *Target, "llvm-cmpxchg.mir", Body, ParserContext);
   const auto Parsed = Parser.parse();
   Context.expect(Parsed.has_value(), "LLVM one-ordering compare-exchange MMO syntax must parse");

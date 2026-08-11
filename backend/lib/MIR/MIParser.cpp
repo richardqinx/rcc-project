@@ -621,16 +621,12 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Resu
     Created = LLT::makeFloat(FloatSemantics::BFloat);
     break;
   case ScalarKind::Pointer:
-    if (Context.PointerSizeInBits) {
-      auto PointerSize = Context.PointerSizeInBits(static_cast<std::uint32_t>(Value));
-      if (!PointerSize)
-        return importError(TypeToken, PointerSize.error());
-      Created = LLT::makePointer(Value, *PointerSize);
-      break;
-    }
-    if (Context.DefaultPointerSizeInBits == 0)
+    if (!Context.PointerSizeInBits)
       return fail(TypeToken, "pointer low-level type requires an explicit pointer size");
-    Created = LLT::makePointer(Value, Context.DefaultPointerSizeInBits);
+    if (auto PointerSize = Context.PointerSizeInBits(static_cast<std::uint32_t>(Value)))
+      Created = LLT::makePointer(Value, *PointerSize);
+    else
+      return importError(TypeToken, PointerSize.error());
     break;
   }
   if (!Created)
@@ -1722,9 +1718,7 @@ bool MIParser::Impl::parseMemoryBase(MemoryBase &Result, std::int64_t &Offset) {
     advance();
     break;
   case MITokenKind::QuotedIRValue: {
-    LLVMConstantSyntaxOptions ConstantOptions;
-    ConstantOptions.DefaultPointerSizeInBits = Context.DefaultPointerSizeInBits;
-    auto Constant = parseLLVMConstant(BaseToken.stringValue(), ConstantOptions);
+    auto Constant = parseLLVMConstant(BaseToken.stringValue());
     if (!Constant)
       return importError(BaseToken, Constant.error());
     auto Base = MemoryBase::irConstant(std::move(*Constant));

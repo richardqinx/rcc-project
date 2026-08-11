@@ -54,7 +54,6 @@ namespace {
   Options.Mode = mir::MIPrintMode::Complete;
   Options.EmitEmbeddedIR = true;
   Options.DataLayout = Invocation.DataLayout;
-  Options.DefaultPointerSizeInBits = 64;
   auto Printed = mir::printMIRDocument(Document, Target, std::move(Options));
   if (!Printed)
     return std::unexpected(Printed.error());

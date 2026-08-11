@@ -211,7 +211,6 @@ namespace {
   case FloatSemantics::IEEEQuad:
     return "f128";
   case FloatSemantics::PPCDoubleDouble:
-  case FloatSemantics::PPCDoubleDoubleLegacy:
   case FloatSemantics::Float8E5M2:
   case FloatSemantics::Float8E5M2FNUZ:
   case FloatSemantics::Float8E4M3:

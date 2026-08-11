@@ -153,7 +153,6 @@ captureSnapshot(FunctionRunResult &Result, const mir::MIRDocument &Document,
   PrintOptions.Mode = mir::MIPrintMode::Complete;
   PrintOptions.EmitEmbeddedIR = true;
   PrintOptions.DataLayout = Invocation.DataLayout;
-  PrintOptions.DefaultPointerSizeInBits = 64;
   auto Printed = mir::printMIRDocument(Document, Target, std::move(PrintOptions));
   if (!Printed)
     return std::unexpected(Printed.error());

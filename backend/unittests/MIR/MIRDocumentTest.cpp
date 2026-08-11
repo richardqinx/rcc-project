@@ -489,10 +489,8 @@ void testDocumentTransaction(TestContext &Context) {
 
   auto Readable = rcc::mir::printMIRDocument(
       *Document, *Target,
-      rcc::mir::MIRDocumentPrinterOptions{.Mode = rcc::mir::MIPrintMode::Readable,
-                                          .EmitEmbeddedIR = true,
-                                          .DataLayout = {},
-                                          .DefaultPointerSizeInBits = 0});
+      rcc::mir::MIRDocumentPrinterOptions{
+          .Mode = rcc::mir::MIPrintMode::Readable, .EmitEmbeddedIR = true, .DataLayout = {}});
   Context.expect(Readable.has_value(), "readable MIR document printing must succeed");
   if (!Readable)
     return;
@@ -504,10 +502,8 @@ void testDocumentTransaction(TestContext &Context) {
 
   auto WithoutEmbeddedIR = rcc::mir::printMIRDocument(
       *Document, *Target,
-      rcc::mir::MIRDocumentPrinterOptions{.Mode = rcc::mir::MIPrintMode::Complete,
-                                          .EmitEmbeddedIR = false,
-                                          .DataLayout = {},
-                                          .DefaultPointerSizeInBits = 0});
+      rcc::mir::MIRDocumentPrinterOptions{
+          .Mode = rcc::mir::MIPrintMode::Complete, .EmitEmbeddedIR = false, .DataLayout = {}});
   Context.expect(!WithoutEmbeddedIR && WithoutEmbeddedIR.error().message().find(
                                            "requires embedded LLVM IR") != std::string_view::npos,
                  "printer must reject output that omits required embedded LLVM IR");
@@ -574,6 +570,42 @@ void testHeterogeneousPointerLayout(TestContext &Context) {
                      ConstantDescription != nullptr && ConstantDescription->Size == 4,
                  "embedded data layout must determine p1 register and generic-constant widths");
 
+  rcc::mir::MIRDocumentParserOptions OverrideOptions;
+  OverrideOptions.DataLayout = "e-p:64:64-p1:64:64";
+  OverrideOptions.MachineInstructions.VerifyAfterParse = false;
+  OverrideOptions.VerifyMachineFunctions = false;
+  auto Overridden = rcc::mir::parseMIRDocument(
+      *Target, "overridden-layout.mir", std::string(HeterogeneousPointerDocument), OverrideOptions);
+  const rcc::MachineFunction *OverriddenFunction =
+      Overridden.succeeded() ? Overridden.document()->unit().function("pointer_layout") : nullptr;
+  const rcc::MachineConstantPoolEntry *OverriddenConstant =
+      OverriddenFunction == nullptr
+          ? nullptr
+          : OverriddenFunction->constantPool().entry(rcc::ConstantPoolIndex::fromValue(0));
+  const rcc::MachineConstantPoolEntryDesc *OverriddenConstantDescription =
+      OverriddenConstant == nullptr ? nullptr : OverriddenConstant->description();
+  const auto OverriddenPointerType = rcc::LLT::makePointer(1, 64);
+  Context.expect(Overridden.succeeded() && OverriddenFunction != nullptr &&
+                     OverriddenPointerType.has_value() &&
+                     OverriddenFunction->registerInfo().virtualRegisters().size() == 1 &&
+                     OverriddenFunction->registerInfo().virtualRegisters().front().Type ==
+                         *OverriddenPointerType &&
+                     OverriddenConstantDescription != nullptr &&
+                     OverriddenConstantDescription->Size == 8,
+                 "explicit target DataLayout must override embedded LLVM IR layout");
+  if (!Overridden.succeeded())
+    printDiagnostics(Overridden);
+
+  if (Overridden.succeeded()) {
+    rcc::mir::MIRDocumentPrinterOptions OverridePrinterOptions;
+    OverridePrinterOptions.EmitEmbeddedIR = false;
+    OverridePrinterOptions.DataLayout = OverrideOptions.DataLayout;
+    auto OverriddenOutput =
+        rcc::mir::printMIRDocument(*Overridden.document(), *Target, OverridePrinterOptions);
+    Context.expect(OverriddenOutput.has_value(),
+                   "matching target DataLayout must allow omitting overridden embedded IR");
+  }
+
   rcc::mir::MIRDocumentPrinterOptions PrinterOptions;
   PrinterOptions.EmitEmbeddedIR = false;
   auto WithoutLayout = rcc::mir::printMIRDocument(*Parsed.document(), *Target, PrinterOptions);
@@ -609,8 +641,8 @@ void testHeterogeneousPointerLayout(TestContext &Context) {
 
   PrinterOptions.DataLayout = "e-p:64:64-p1:64:64";
   auto Mismatched = rcc::mir::printMIRDocument(*Parsed.document(), *Target, PrinterOptions);
-  Context.expect(!Mismatched &&
-                     Mismatched.error().message().find("exactly match") != std::string_view::npos,
+  Context.expect(!Mismatched && Mismatched.error().message().find(
+                                    "pointer virtual-register width") != std::string_view::npos,
                  "mismatched output DataLayout must be rejected when embedded IR is omitted");
 }
 

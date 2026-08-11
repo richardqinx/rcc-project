@@ -411,12 +411,12 @@ TextRange MIRDocumentParser::scalarDiagnosticRange(const yaml::Node &Scalar,
   if (!FoundContent)
     return Scalar.range();
 
-  const TextPosition Fallback = Scalar.range().Begin;
+  const TextPosition DefaultPosition = Scalar.range().Begin;
   const auto MapPosition = [this, FirstBodyLine, LastBodyLine, Indent,
-                            Fallback](TextPosition Position) {
+                            DefaultPosition](TextPosition Position) {
     const std::size_t SourceLine = FirstBodyLine + Position.Line - 1U;
     if (Position.Line == 0 || SourceLine > LastBodyLine || SourceLine > Result.Source.lineCount()) {
-      return Fallback;
+      return DefaultPosition;
     }
     const std::string_view SourceLineText = Result.Source.line(SourceLine);
     const std::size_t BodyColumn = Position.Column == 0 ? 0 : Position.Column - 1U;
@@ -440,8 +440,6 @@ bool MIRDocumentParser::parseBody(const yaml::Node &Root, MachineFunction &Funct
     BodyRange = Body->range();
   }
 
-  if (Options.DefaultPointerSizeInBits != 0)
-    Context.DefaultPointerSizeInBits = Options.DefaultPointerSizeInBits;
   if (!effectiveDataLayout().empty()) {
     const LLVMConstantSyntaxOptions PointerOptions = pointerLayoutOptions();
     Context.PointerSizeInBits = [PointerOptions](std::uint32_t AddressSpace) {

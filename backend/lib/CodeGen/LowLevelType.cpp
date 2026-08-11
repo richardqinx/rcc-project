@@ -21,7 +21,6 @@ constexpr std::array FloatSemanticsTable{
     FloatSemanticsInfo{64, "IEEE double", "f64"},
     FloatSemanticsInfo{128, "IEEE quad", "f128"},
     FloatSemanticsInfo{128, "PPC double-double", "ppcf128"},
-    FloatSemanticsInfo{128, "legacy PPC double-double", "ppcf128-legacy"},
     FloatSemanticsInfo{8, "float8 E5M2", "f8e5m2"},
     FloatSemanticsInfo{8, "float8 E5M2 FNUZ", "f8e5m2fnuz"},
     FloatSemanticsInfo{8, "float8 E4M3", "f8e4m3"},

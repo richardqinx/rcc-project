@@ -63,7 +63,6 @@ void testLowLevelTypes(TestContext &Context) {
       std::pair{rcc::FloatSemantics::IEEEDouble, std::uint32_t{64}},
       std::pair{rcc::FloatSemantics::IEEEQuad, std::uint32_t{128}},
       std::pair{rcc::FloatSemantics::PPCDoubleDouble, std::uint32_t{128}},
-      std::pair{rcc::FloatSemantics::PPCDoubleDoubleLegacy, std::uint32_t{128}},
       std::pair{rcc::FloatSemantics::Float8E5M2, std::uint32_t{8}},
       std::pair{rcc::FloatSemantics::Float8E5M2FNUZ, std::uint32_t{8}},
       std::pair{rcc::FloatSemantics::Float8E4M3, std::uint32_t{8}},

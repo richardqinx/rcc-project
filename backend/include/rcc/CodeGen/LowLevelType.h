@@ -22,7 +22,6 @@ enum class FloatSemantics : std::uint8_t {
   IEEEDouble,
   IEEEQuad,
   PPCDoubleDouble,
-  PPCDoubleDoubleLegacy,
   Float8E5M2,
   Float8E5M2FNUZ,
   Float8E4M3,

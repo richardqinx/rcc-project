@@ -387,9 +387,6 @@ MIRDocumentPrinter::verifyOmittedEmbeddedIRLayout(const MachineFunction &Functio
   const EmbeddedIRReferenceIndex *Embedded = Document.embeddedIR();
   if (Embedded == nullptr)
     return {};
-  const auto EmbeddedDataLayout = Embedded->dataLayout();
-  if (!EmbeddedDataLayout)
-    return {};
 
   bool HasLayoutDependentContent = false;
   for (const VirtualRegisterInfo &RegisterInfo : Function.registerInfo().virtualRegisters()) {
@@ -412,14 +409,14 @@ MIRDocumentPrinter::verifyOmittedEmbeddedIRLayout(const MachineFunction &Functio
   if (!HasLayoutDependentContent)
     return {};
 
-  if (Options.DataLayout != *EmbeddedDataLayout) {
+  if (Options.DataLayout.empty()) {
     return makeUnexpected(
         ErrorCode::InvalidArgument,
-        "omitting embedded LLVM IR requires printer DataLayout to exactly match its data layout");
+        "omitting embedded LLVM IR with layout-dependent MIR requires an explicit printer "
+        "DataLayout");
   }
 
   const LLVMConstantSyntaxOptions LayoutOptions{
-      .DefaultPointerSizeInBits = Options.DefaultPointerSizeInBits,
       .DataLayout = Options.DataLayout,
       .NamedTypes = {},
   };

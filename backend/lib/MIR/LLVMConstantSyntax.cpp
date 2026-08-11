@@ -307,8 +307,8 @@ private:
   return (BitWidth % 64U) == 0 || (Words.back() >> (BitWidth % 64U)) == 0;
 }
 
-[[nodiscard]] bool parseLegacyWideFloatHexWords(std::string_view Digits,
-                                                std::vector<std::uint64_t> &Words) {
+[[nodiscard]] bool parseWideFloatHexWords(std::string_view Digits,
+                                          std::vector<std::uint64_t> &Words) {
   if (Digits.empty() || Digits.size() > 32U || !std::ranges::all_of(Digits, isHexDigit))
     return false;
   Words.assign(2, 0);
@@ -466,8 +466,7 @@ makeSpecialFloatWords(FloatSemantics Semantics, const SpecialFloatLiteral &Liter
       setFloatBit(Words, 61);
     return Words;
   }
-  case FloatSemantics::PPCDoubleDouble:
-  case FloatSemantics::PPCDoubleDoubleLegacy: {
+  case FloatSemantics::PPCDoubleDouble: {
     std::vector<std::uint64_t> HighPart(1, 0);
     makeBinarySpecialFloat(HighPart, 64, 11, Literal);
     Words[0] = HighPart.front();
@@ -542,9 +541,8 @@ binaryFloatFormat(FloatSemantics Semantics) noexcept {
                              .StorageBitWidth = 80,
                              .HasExplicitIntegerBit = true};
   case FloatSemantics::PPCDoubleDouble:
-  case FloatSemantics::PPCDoubleDoubleLegacy:
-    // LLVM parses a decimal PPC double-double through its documented legacy
-    // 106-bit format and then materializes the canonical pair of doubles.
+    // Decimal PPC double-double literals use 106 bits of precision and are
+    // materialized as a canonical pair of doubles.
     return BinaryFloatFormat{.Precision = 106,
                              .MinExponent = -969,
                              .MaxExponent = 1023,
@@ -884,8 +882,7 @@ convertRationalToFloatWords(FloatSemantics Semantics, bool Negative, const BigUn
   auto Rounded = roundBinaryRational(*Format, Numerator, Denominator, BinaryScale);
   if (!Rounded)
     return std::unexpected(Rounded.error());
-  if (Semantics == FloatSemantics::PPCDoubleDouble ||
-      Semantics == FloatSemantics::PPCDoubleDoubleLegacy) {
+  if (Semantics == FloatSemantics::PPCDoubleDouble) {
     return packPPCDoubleDouble(*Rounded, Negative);
   }
   if (Format->HasExplicitIntegerBit)
@@ -1806,19 +1803,16 @@ Expected<GenericConstantData> ConstantParser::parseFloatingValue(GenericConstant
       ExpectedPrefix = 'L';
       break;
     case FloatSemantics::PPCDoubleDouble:
-    case FloatSemantics::PPCDoubleDoubleLegacy:
       ExpectedPrefix = 'M';
       break;
     default:
       break;
     }
     if (ExpectedPrefix != '\0') {
-      const bool IsLegacyWideFormat =
-          EffectiveType.Semantics == FloatSemantics::IEEEQuad ||
-          EffectiveType.Semantics == FloatSemantics::PPCDoubleDouble ||
-          EffectiveType.Semantics == FloatSemantics::PPCDoubleDoubleLegacy;
-      const bool Parsed = IsLegacyWideFormat ? parseLegacyWideFloatHexWords(Digits, Words)
-                                             : parseHexWords(Digits, BitWidth, Words);
+      const bool HasWideHexWords = EffectiveType.Semantics == FloatSemantics::IEEEQuad ||
+                                   EffectiveType.Semantics == FloatSemantics::PPCDoubleDouble;
+      const bool Parsed = HasWideHexWords ? parseWideFloatHexWords(Digits, Words)
+                                          : parseHexWords(Digits, BitWidth, Words);
       if (Prefix != ExpectedPrefix || !Parsed) {
         return fail<GenericConstantData>(
             "floating-point hexadecimal prefix does not match its type");
@@ -2378,7 +2372,6 @@ Expected<std::string> printType(const GenericConstantType &Type) {
     case FloatSemantics::IEEEQuad:
       return std::string("fp128");
     case FloatSemantics::PPCDoubleDouble:
-    case FloatSemantics::PPCDoubleDoubleLegacy:
       return std::string("ppc_fp128");
     case FloatSemantics::X87DoubleExtended:
       return std::string("x86_fp80");
@@ -2481,8 +2474,7 @@ struct PrintedBinaryFloat final {
   if (!Format)
     return std::nullopt;
 
-  if (Bits.semantics() == FloatSemantics::PPCDoubleDouble ||
-      Bits.semantics() == FloatSemantics::PPCDoubleDoubleLegacy) {
+  if (Bits.semantics() == FloatSemantics::PPCDoubleDouble) {
     if (Words.size() != 2 || Words[1] != 0)
       return std::nullopt;
     Format = binaryFloatFormat(FloatSemantics::IEEEDouble);
@@ -2942,7 +2934,6 @@ private:
                                                 std::uint64_t StoreSize) const noexcept;
 
   bool Explicit = false;
-  std::uint32_t LegacyPointerSizeInBits = 0;
   std::vector<LayoutAlignmentEntry> Alignments;
   std::vector<LayoutPointerEntry> Pointers;
   LayoutAlignment Aggregate{1, 8};
@@ -3010,7 +3001,6 @@ void DataLayoutInfo::setPointer(LayoutPointerEntry Entry) {
 
 Expected<DataLayoutInfo> DataLayoutInfo::parse(LLVMConstantSyntaxOptions Options) {
   DataLayoutInfo Result;
-  Result.LegacyPointerSizeInBits = Options.DefaultPointerSizeInBits;
   if (Options.DataLayout.empty())
     return Result;
   if (Options.DataLayout.size() > Options.MaximumTokenLength) {
@@ -3322,21 +3312,8 @@ LayoutAlignment DataLayoutInfo::vector(std::uint32_t BitWidth,
 
 Expected<LayoutPointerEntry> DataLayoutInfo::pointer(std::uint32_t AddressSpace) const {
   if (!Explicit) {
-    if (LegacyPointerSizeInBits == 0) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "pointer size is required to lay out pointer constants");
-    }
-    const std::uint64_t Bytes = (static_cast<std::uint64_t>(LegacyPointerSizeInBits) + 7U) / 8U;
-    return LayoutPointerEntry{
-        .AddressSpace = AddressSpace,
-        .SizeInBits = LegacyPointerSizeInBits,
-        .IndexSizeInBits = LegacyPointerSizeInBits,
-        .Alignment = natural(Bytes),
-        .HasExternalState = false,
-        .HasUnstableRepresentation = false,
-        .NullIsAllOnes = false,
-        .AddressSpaceName = {},
-    };
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "pointer size is required to lay out pointer constants");
   }
   auto Entry = std::ranges::find_if(Pointers, [AddressSpace](const LayoutPointerEntry &Candidate) {
     return Candidate.AddressSpace == AddressSpace;

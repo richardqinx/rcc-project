@@ -78,7 +78,6 @@ struct MIRDocumentParserOptions final {
   yaml::ParseOptions YAML;
   MIParserOptions MachineInstructions;
   std::string DataLayout;
-  std::uint32_t DefaultPointerSizeInBits = 0;
   bool VerifyMachineFunctions = true;
 };
 
@@ -130,7 +129,6 @@ struct MIRDocumentPrinterOptions final {
   MIPrintMode Mode = MIPrintMode::Complete;
   bool EmitEmbeddedIR = true;
   std::string DataLayout;
-  std::uint32_t DefaultPointerSizeInBits = 0;
 };
 
 [[nodiscard]] Expected<std::string> printMIRDocument(const MIRDocument &Document,

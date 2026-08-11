@@ -26,7 +26,6 @@ printDocument(const rcc::mir::MIRDocument &Document, const rcc::TargetDescriptio
   Options.Mode = rcc::mir::MIPrintMode::Complete;
   Options.EmitEmbeddedIR = true;
   Options.DataLayout = Invocation.DataLayout;
-  Options.DefaultPointerSizeInBits = 64;
   return rcc::mir::printMIRDocument(Document, Target, std::move(Options));
 }
 

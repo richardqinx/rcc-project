@@ -127,7 +127,6 @@ int main(int ArgumentCount, char *Arguments[]) {
   }
   rcc::mir::MIRDocumentParserOptions Options;
   Options.DataLayout = "e-m:e-p:64:64-i64:64-i128:128-n32:64-S128";
-  Options.DefaultPointerSizeInBits = 64;
   auto Parsed =
       rcc::mir::parseMIRDocument(*Target, Command.InputPath, std::move(SourceText), Options);
   if (!Parsed.succeeded()) {

@@ -129,7 +129,6 @@ bool MIRDocumentParser::parseConstants(const yaml::Node &Root, MachineFunction &
     if (scalar(*ValueNode, ValueText, "LLVM constant"))
       return true;
     const LLVMConstantSyntaxOptions ConstantOptions{
-        .DefaultPointerSizeInBits = Context.DefaultPointerSizeInBits,
         .DataLayout = DataLayout,
         .NamedTypes = NamedTypes,
     };
