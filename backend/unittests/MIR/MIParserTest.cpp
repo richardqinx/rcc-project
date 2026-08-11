@@ -504,6 +504,7 @@ void testLLVMInlineAsmAndConstantMemorySyntax(TestContext &Context) {
   const std::string Body = R"(bb.0:
   INLINEASM &"", sideeffect mayload inteldialect
   %0:gpr64 = TEST_LOAD $g0 :: (load (s64) from `ptr poison`)
+  %1:gpr64 = TEST_LOAD $g0 :: (load (s64) from unknown-address + 4)
 )";
   rcc::mir::MIParserContext ParserContext;
   ParserContext.DefaultPointerSizeInBits = 64;
@@ -533,8 +534,9 @@ void testLLVMInlineAsmAndConstantMemorySyntax(TestContext &Context) {
   Context.expect(Printed &&
                      Printed->find("INLINEASM &\"\", sideeffect mayload inteldialect") !=
                          std::string::npos &&
-                     Printed->find("from `ptr poison`") != std::string::npos,
-                 "canonical MIR must print symbolic inline-asm flags and LLVM constant bases");
+                     Printed->find("from `ptr poison`") != std::string::npos &&
+                     Printed->find("from unknown-address + 4") != std::string::npos,
+                 "canonical MIR must print symbolic inline-asm flags and explicit memory bases");
 }
 
 void testLLVMCompareExchangeMemorySyntax(TestContext &Context) {
@@ -567,6 +569,11 @@ void testLLVMCompareExchangeMemorySyntax(TestContext &Context) {
                      Memory.SuccessOrdering == rcc::AtomicOrdering::Monotonic &&
                      Memory.FailureOrdering == rcc::AtomicOrdering::NotAtomic,
                  "compare-exchange opcode must disambiguate a one-ordering LLVM MMO");
+
+  auto Printed = rcc::mir::printMachineFunctionBody(*Function, *Target, ParserContext);
+  Context.expect(Printed && Printed->find(":: (load store monotonic (s8))") != std::string::npos &&
+                     Printed->find("unknown-address") == std::string::npos,
+                 "canonical LLVM MMOs must omit an absent zero-offset pointer base");
 }
 
 void expectParseError(TestContext &Context, const rcc::TargetDescription &Target, std::string Body,

@@ -1278,9 +1278,11 @@ Expected<void> BodyPrinter::printMemoryOperand(const MachineMemOperand &Operand)
 
   const std::string_view Preposition =
       Operand.isLoad() && Operand.isStore() ? " on " : (Operand.isLoad() ? " from " : " into ");
-  Output.append(Preposition);
-  if (auto Printed = printMemoryBase(Description.Base, Description.Offset); !Printed) {
-    return Printed;
+  if (Description.Base.kind() != MemoryBase::Kind::Unknown || Description.Offset != 0) {
+    Output.append(Preposition);
+    if (auto Printed = printMemoryBase(Description.Base, Description.Offset); !Printed) {
+      return Printed;
+    }
   }
 
   if (!Description.Size.isKnown() ||
