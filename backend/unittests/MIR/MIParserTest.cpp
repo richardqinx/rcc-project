@@ -3,6 +3,7 @@
 #include "rcc/MIR/MIParser.h"
 
 #include "Target/TestTarget.h"
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -161,6 +162,13 @@ registerOperand(rcc::RegisterOperandRole Role,
   Descriptors.push_back(std::move(Metadata));
   Descriptors.push_back(std::move(Load));
   Descriptors.push_back(std::move(InlineAsm));
+  for (const rcc::InstructionDescriptor &Generic : rcc::genericInstructionDescriptors()) {
+    if (Generic.InstructionOpcode == rcc::opcode(rcc::GenericOpcode::G_ATOMIC_CMPXCHG) ||
+        Generic.InstructionOpcode ==
+            rcc::opcode(rcc::GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS)) {
+      Descriptors.push_back(Generic);
+    }
+  }
   auto Instructions = rcc::InstructionSet::create(std::move(Descriptors));
   if (!Instructions)
     return std::unexpected(Instructions.error());
@@ -464,17 +472,14 @@ void testTypedIntegerTruncation(TestContext &Context) {
                              ? Instructions[0]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
                              : nullptr;
   const auto *NarrowNegative =
-      Instructions.size() > 1
-          ? Instructions[1]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
-          : nullptr;
+      Instructions.size() > 1 ? Instructions[1]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
+                              : nullptr;
   const auto *NarrowMinimum =
-      Instructions.size() > 2
-          ? Instructions[2]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
-          : nullptr;
+      Instructions.size() > 2 ? Instructions[2]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
+                              : nullptr;
   const auto *WidePositive =
-      Instructions.size() > 3
-          ? Instructions[3]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
-          : nullptr;
+      Instructions.size() > 3 ? Instructions[3]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
+                              : nullptr;
   Context.expect(Parsed.has_value() && MinusOne != nullptr &&
                      MinusOne->Value.words()[0] == std::numeric_limits<std::uint64_t>::max() &&
                      NarrowNegative != nullptr && NarrowNegative->Value.bitWidth() == 16 &&
@@ -532,6 +537,38 @@ void testLLVMInlineAsmAndConstantMemorySyntax(TestContext &Context) {
                  "canonical MIR must print symbolic inline-asm flags and LLVM constant bases");
 }
 
+void testLLVMCompareExchangeMemorySyntax(TestContext &Context) {
+  auto Target = createTarget();
+  auto Function = createFunction(Context, 12);
+  Context.expect(Target.has_value(), "compare-exchange target description must be valid");
+  if (!Target || !Function)
+    return;
+
+  const std::string Body = R"(bb.0:
+  %0:gpr64(p0) = TEST_COPY $g0
+  %1:_(s8) = TEST_CONSTANT i8 0
+  %2:_(s8) = TEST_CONSTANT i8 1
+  %3:_(s8) = G_ATOMIC_CMPXCHG %0, %1, %2 :: (load store monotonic (s8))
+)";
+  rcc::mir::MIParserContext ParserContext;
+  ParserContext.DefaultPointerSizeInBits = 64;
+  rcc::mir::MIParser Parser(*Function, *Target, "llvm-cmpxchg.mir", Body, ParserContext);
+  const auto Parsed = Parser.parse();
+  Context.expect(Parsed.has_value(), "LLVM one-ordering compare-exchange MMO syntax must parse");
+  if (!Parsed) {
+    for (const auto &Diagnostic : Parser.diagnostics())
+      std::cerr << Diagnostic.Category << ": " << Diagnostic.Message << '\n';
+    return;
+  }
+
+  const rcc::MachineInstr *CompareExchange = Function->allInstructions().back();
+  const rcc::MachineMemOperandDesc &Memory = CompareExchange->memOperands().front()->description();
+  Context.expect(Memory.AtomicKind == rcc::AtomicOperation::CompareExchange &&
+                     Memory.SuccessOrdering == rcc::AtomicOrdering::Monotonic &&
+                     Memory.FailureOrdering == rcc::AtomicOrdering::NotAtomic,
+                 "compare-exchange opcode must disambiguate a one-ordering LLVM MMO");
+}
+
 void expectParseError(TestContext &Context, const rcc::TargetDescription &Target, std::string Body,
                       std::string_view Message) {
   auto Function = createFunction(Context, 10);
@@ -583,6 +620,7 @@ int main() {
   testCompatibleRegisterClassAndBankAnnotations(Context);
   testTypedIntegerTruncation(Context);
   testLLVMInlineAsmAndConstantMemorySyntax(Context);
+  testLLVMCompareExchangeMemorySyntax(Context);
   testDiagnostics(Context);
   return Context.result();
 }

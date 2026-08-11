@@ -2,6 +2,7 @@
 
 #include "rcc/MIR/MIParser.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InlineAsm.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -406,7 +407,7 @@ private:
   [[nodiscard]] bool parseCFIUnsigned(std::uint32_t &Result);
   [[nodiscard]] bool parseCFIOperand(ParsedOperand &Result);
   [[nodiscard]] bool parseMemoryBase(MemoryBase &Result, std::int64_t &Offset);
-  [[nodiscard]] bool parseMemoryOperand(const MachineMemOperand *&Result);
+  [[nodiscard]] bool parseMemoryOperand(const MachineMemOperand *&Result, Opcode InstructionOpcode);
   [[nodiscard]] bool parsePredicateOperand(ParsedOperand &Result, bool IsFloating);
   [[nodiscard]] bool parseShuffleMaskOperand(ParsedOperand &Result);
   [[nodiscard]] bool parseDebugInstrRefOperand(ParsedOperand &Result);
@@ -585,8 +586,7 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Resu
 
   std::uint64_t Value = 0;
   if (!parseUnsignedDigits(Digits, Value))
-    return fail(TypeToken,
-                "expected integers after 's'/'i'/'f'/'bf'/'p' type identifier");
+    return fail(TypeToken, "expected integers after 's'/'i'/'f'/'bf'/'p' type identifier");
 
   Expected<LLT> Created = makeUnexpected(ErrorCode::ParseError, "invalid low-level type");
   switch (Kind) {
@@ -642,15 +642,13 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Resu
 bool MIParser::Impl::parseLowLevelType(LLT &Result) {
   const MIToken Begin = token();
   const auto HasScalarPrefix = [](std::string_view Spelling) {
-    return Spelling.starts_with('s') || Spelling.starts_with('i') ||
-           Spelling.starts_with('f') || Spelling.starts_with("bf") ||
-           Spelling.starts_with('p');
+    return Spelling.starts_with('s') || Spelling.starts_with('i') || Spelling.starts_with('f') ||
+           Spelling.starts_with("bf") || Spelling.starts_with('p');
   };
   if (at(MITokenKind::Identifier)) {
     if (!HasScalarPrefix(token().stringValue())) {
-      return fail(Begin,
-                  "expected tN, pA, <M x tN>, <M x pA>, <vscale x M x tN>, or "
-                  "<vscale x M x pA> for GlobalISel type, where t = {'s', 'i', 'f', 'bf'}");
+      return fail(Begin, "expected tN, pA, <M x tN>, <M x pA>, <vscale x M x tN>, or "
+                         "<vscale x M x pA> for GlobalISel type, where t = {'s', 'i', 'f', 'bf'}");
     }
     if (parseScalarLowLevelType(token(), Result))
       return true;
@@ -658,9 +656,8 @@ bool MIParser::Impl::parseLowLevelType(LLT &Result) {
     return false;
   }
   if (!consume(MITokenKind::Less)) {
-    return fail(Begin,
-                "expected tN, pA, <M x tN>, <M x pA>, <vscale x M x tN>, or "
-                "<vscale x M x pA> for GlobalISel type, where t = {'s', 'i', 'f', 'bf'}");
+    return fail(Begin, "expected tN, pA, <M x tN>, <M x pA>, <vscale x M x tN>, or "
+                       "<vscale x M x pA> for GlobalISel type, where t = {'s', 'i', 'f', 'bf'}");
   }
 
   bool Scalable = false;
@@ -668,20 +665,17 @@ bool MIParser::Impl::parseLowLevelType(LLT &Result) {
     Scalable = true;
     advance();
     if (!at(MITokenKind::Identifier) || token().stringValue() != "x") {
-      return fail(
-          "expected <vscale x M x tN>, where t = {'s', 'i', 'f', 'bf', 'p'}");
+      return fail("expected <vscale x M x tN>, where t = {'s', 'i', 'f', 'bf', 'p'}");
     }
     advance();
   }
 
   const auto VectorError = [this, &Begin, Scalable] {
     if (Scalable) {
-      return fail(Begin,
-                  "expected <vscale x M x tN> for vector type, where t = "
-                  "{'s', 'i', 'f', 'bf', 'p'}");
+      return fail(Begin, "expected <vscale x M x tN> for vector type, where t = "
+                         "{'s', 'i', 'f', 'bf', 'p'}");
     }
-    return fail(Begin,
-                "expected <M x tN> for vector type, where t = {'s', 'i', 'f', 'bf', 'p'}");
+    return fail(Begin, "expected <M x tN> for vector type, where t = {'s', 'i', 'f', 'bf', 'p'}");
   };
 
   std::uint64_t ElementCount = 0;
@@ -846,13 +840,12 @@ bool MIParser::Impl::parseBlockDefinition(bool Create, std::uint32_t &ID) {
     if (Blocks.size() >= Options.MaximumBlocks)
       return fail(Label, "machine basic block count exceeds parser limit");
     if (Blocks.contains(ID))
-      return fail(Label,
-                  "redefinition of machine basic block with id #" + std::to_string(ID));
+      return fail(Label, "redefinition of machine basic block with id #" + std::to_string(ID));
     if (!Label.stringValue().empty() && Context.HasIRBlock &&
         !Context.HasIRBlock(Label.stringValue())) {
       return fail(Label, "basic block '" + std::string(Label.stringValue()) +
-                             "' is not defined in the function '" +
-                             std::string(Function.name()) + "'");
+                             "' is not defined in the function '" + std::string(Function.name()) +
+                             "'");
     }
     auto Created = Function.createBasicBlock();
     if (!Created)
@@ -1783,7 +1776,8 @@ bool MIParser::Impl::parseMemoryBase(MemoryBase &Result, std::int64_t &Offset) {
   return parseOptionalOffset(Offset);
 }
 
-bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result) {
+bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result,
+                                        Opcode InstructionOpcode) {
   const MIToken Begin = token();
   if (expect(MITokenKind::LeftParen, "'(' before a machine memory operand"))
     return true;
@@ -1870,11 +1864,16 @@ bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result) {
   }
   const bool IsLoad = Description.Accesses.has(MemoryAccessFlag::Load);
   const bool IsStore = Description.Accesses.has(MemoryAccessFlag::Store);
-  if (OrderingCount == 1)
-    Description.AtomicKind = IsLoad && IsStore
-                                 ? AtomicOperation::ReadModifyWrite
-                                 : (IsLoad ? AtomicOperation::Load : AtomicOperation::Store);
-  else if (OrderingCount == 2)
+  if (OrderingCount == 1) {
+    if (InstructionOpcode == opcode(GenericOpcode::G_ATOMIC_CMPXCHG) ||
+        InstructionOpcode == opcode(GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS)) {
+      Description.AtomicKind = AtomicOperation::CompareExchange;
+    } else {
+      Description.AtomicKind = IsLoad && IsStore
+                                   ? AtomicOperation::ReadModifyWrite
+                                   : (IsLoad ? AtomicOperation::Load : AtomicOperation::Store);
+    }
+  } else if (OrderingCount == 2)
     Description.AtomicKind = AtomicOperation::CompareExchange;
 
   std::uint64_t MinimumBytes = 0;
@@ -2608,16 +2607,15 @@ bool MIParser::Impl::parseInstruction(MachineBasicBlock &Block, bool InBundle,
     if (Operands.size() >= Options.MaximumOperandsPerInstruction)
       return fail("instruction operand count exceeds parser limit");
     ParsedOperand Operand{MachineOperand::immediate(0), std::nullopt, {}};
-    const bool IsInlineAsmExtraInfo =
-        IsInlineAsm && Operands.size() == InlineAsmExtraInfoOperandIndex &&
-        at(MITokenKind::Identifier);
-    const bool IsInlineAsmOperandFlag =
-        IsInlineAsm && Operands.size() >= InlineAsmFirstConstraintOperandIndex &&
-        at(MITokenKind::Identifier);
-    if (IsInlineAsmExtraInfo
-            ? parseInlineAsmExtraInfoOperand(Operand)
-            : (IsInlineAsmOperandFlag ? parseInlineAsmOperandFlag(Operand)
-                                      : parseOperand(false, Operand)))
+    const bool IsInlineAsmExtraInfo = IsInlineAsm &&
+                                      Operands.size() == InlineAsmExtraInfoOperandIndex &&
+                                      at(MITokenKind::Identifier);
+    const bool IsInlineAsmOperandFlag = IsInlineAsm &&
+                                        Operands.size() >= InlineAsmFirstConstraintOperandIndex &&
+                                        at(MITokenKind::Identifier);
+    if (IsInlineAsmExtraInfo ? parseInlineAsmExtraInfoOperand(Operand)
+                             : (IsInlineAsmOperandFlag ? parseInlineAsmOperandFlag(Operand)
+                                                       : parseOperand(false, Operand)))
       return true;
     Operands.push_back(std::move(Operand));
     if (token().isNewlineOrEnd() || at(MITokenKind::DoubleColon) || at(MITokenKind::LeftBrace) ||
@@ -2708,7 +2706,7 @@ bool MIParser::Impl::parseInstruction(MachineBasicBlock &Block, bool InBundle,
       if (MemOperands.size() >= Options.MaximumMemoryOperandsPerInstruction)
         return fail("machine memory operand count exceeds parser limit");
       const MachineMemOperand *MemOperand = nullptr;
-      if (parseMemoryOperand(MemOperand))
+      if (parseMemoryOperand(MemOperand, Descriptor->InstructionOpcode))
         return true;
       MemOperands.push_back(MemOperand);
       if (token().isNewlineOrEnd() || at(MITokenKind::LeftBrace))

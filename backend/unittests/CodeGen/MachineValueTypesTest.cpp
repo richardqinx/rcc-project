@@ -174,6 +174,11 @@ void testMachineMemOperand(TestContext &Context) {
   Context.expect(rcc::MachineMemOperand::create(CompareExchange).has_value(),
                  "compatible compare-exchange orderings must be accepted");
 
+  CompareExchange.FailureOrdering = rcc::AtomicOrdering::NotAtomic;
+  Context.expect(rcc::MachineMemOperand::create(CompareExchange).has_value(),
+                 "LLVM MIR compare-exchange MMO without failure ordering must be accepted");
+
+  CompareExchange.FailureOrdering = rcc::AtomicOrdering::Acquire;
   CompareExchange.SuccessOrdering = rcc::AtomicOrdering::Release;
   Context.expect(!rcc::MachineMemOperand::create(CompareExchange),
                  "failure ordering stronger than success must be rejected");

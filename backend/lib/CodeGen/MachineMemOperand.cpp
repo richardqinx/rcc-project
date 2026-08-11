@@ -37,13 +37,15 @@ namespace {
 }
 
 [[nodiscard]] bool isValidCompareExchangeFailureOrdering(AtomicOrdering Ordering) noexcept {
-  return Ordering == AtomicOrdering::Monotonic || Ordering == AtomicOrdering::Acquire ||
-         Ordering == AtomicOrdering::SequentiallyConsistent;
+  return Ordering == AtomicOrdering::NotAtomic || Ordering == AtomicOrdering::Monotonic ||
+         Ordering == AtomicOrdering::Acquire || Ordering == AtomicOrdering::SequentiallyConsistent;
 }
 
 [[nodiscard]] bool isFailureOrderingNoStrongerThanSuccess(AtomicOrdering Failure,
                                                           AtomicOrdering Success) noexcept {
   switch (Failure) {
+  case AtomicOrdering::NotAtomic:
+    return true;
   case AtomicOrdering::Monotonic:
     return isValidAtomicReadModifyWriteOrdering(Success);
   case AtomicOrdering::Acquire:
@@ -51,7 +53,6 @@ namespace {
            Success == AtomicOrdering::SequentiallyConsistent;
   case AtomicOrdering::SequentiallyConsistent:
     return Success == AtomicOrdering::SequentiallyConsistent;
-  case AtomicOrdering::NotAtomic:
   case AtomicOrdering::Unordered:
   case AtomicOrdering::Release:
   case AtomicOrdering::AcquireRelease:
