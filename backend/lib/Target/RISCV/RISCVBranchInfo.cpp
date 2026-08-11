@@ -75,15 +75,19 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
 }
 
 [[nodiscard]] bool isUnconditionalBranch(const MachineInstr &Instruction) noexcept {
-  if (Instruction.opcode() == targetOpcode(InstructionOpcode::C_J))
+  if (Instruction.opcode() == targetOpcode(InstructionOpcode::C_J) ||
+      Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoBR)) {
     return true;
+  }
   return Instruction.opcode() == targetOpcode(InstructionOpcode::JAL) &&
          isZeroRegister(Instruction.operandAt(0));
 }
 
 [[nodiscard]] std::size_t branchTargetIndex(Opcode Value) noexcept {
-  if (Value == targetOpcode(InstructionOpcode::C_J))
+  if (Value == targetOpcode(InstructionOpcode::C_J) ||
+      Value == targetOpcode(InstructionOpcode::PseudoBR)) {
     return 0;
+  }
   if (Value == targetOpcode(InstructionOpcode::C_BEQZ) ||
       Value == targetOpcode(InstructionOpcode::C_BNEZ)) {
     return 1;
@@ -96,7 +100,8 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
 [[nodiscard]] Expected<MachineBasicBlock *> directTarget(MachineInstr &Instruction) {
   if (!isConditionalBranch(Instruction.opcode()) &&
       Instruction.opcode() != targetOpcode(InstructionOpcode::JAL) &&
-      Instruction.opcode() != targetOpcode(InstructionOpcode::C_J)) {
+      Instruction.opcode() != targetOpcode(InstructionOpcode::C_J) &&
+      Instruction.opcode() != targetOpcode(InstructionOpcode::PseudoBR)) {
     return static_cast<MachineBasicBlock *>(nullptr);
   }
   MachineOperand *Operand = Instruction.operandAt(branchTargetIndex(Instruction.opcode()));
@@ -697,8 +702,10 @@ public:
       return Offset >= -2048 && Offset <= 2046;
     if (isConditionalBranch(Value))
       return Offset >= -4096 && Offset <= 4094;
-    if (Value == targetOpcode(InstructionOpcode::JAL))
+    if (Value == targetOpcode(InstructionOpcode::JAL) ||
+        Value == targetOpcode(InstructionOpcode::PseudoBR)) {
       return Offset >= -1048576 && Offset <= 1048574;
+    }
     return true;
   }
 

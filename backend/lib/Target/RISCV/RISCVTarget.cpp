@@ -3,6 +3,7 @@
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/Target/RISCV/RISCVFunctionInfo.h"
 
 #include <array>
 #include <cassert>
@@ -94,6 +95,7 @@ Expected<TargetMIRTextInfo> createMIRTextInfo() {
     return std::unexpected(Registers.error());
   TargetMIRTextInfoDesc Description;
   appendGeneratedMIRTextInfo(Description);
+  configureFunctionInfoMIRSchema(Description);
   return TargetMIRTextInfo::create(std::move(Description), *Registers);
 }
 
@@ -114,6 +116,7 @@ Expected<TargetDescription> createTargetDescription() {
 
   TargetMIRTextInfoDesc MIRText;
   appendGeneratedMIRTextInfo(MIRText);
+  configureFunctionInfoMIRSchema(MIRText);
   return TargetDescription::create(std::move(*Instructions), std::move(*Registers),
                                    std::move(MIRText));
 }
@@ -121,6 +124,7 @@ Expected<TargetDescription> createTargetDescription() {
 std::shared_ptr<const RegisterMask> createCallPreservedMask() {
   TargetMIRTextInfoDesc Description;
   appendGeneratedMIRTextInfo(Description);
+  configureFunctionInfoMIRSchema(Description);
   assert(!Description.RegisterMasks.empty());
   return Description.RegisterMasks.front().Mask;
 }

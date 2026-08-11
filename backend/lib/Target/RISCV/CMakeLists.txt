@@ -52,6 +52,8 @@ add_library(
   RISCVCallLowering.cpp
   RISCVAssemblyPrinter.cpp
   RISCVFrameLowering.cpp
+  RISCVFunctionInfo.cpp
+  RISCVImmediateMaterialization.cpp
   RISCVInstPrinter.cpp
   RISCVAsmBackend.cpp
   RISCVMCCodeEmitter.cpp
@@ -118,6 +120,9 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFunctionInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVImmediateMaterialization.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVImmediateMaterialization.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAsmBackend.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCCodeEmitter.cpp"
@@ -138,6 +143,7 @@ rcc_backend_register_format_files(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVInstPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVAsmBackend.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVFixupKinds.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVFunctionInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVMCCodeEmitter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVObjectFile.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVPipeline.h"
@@ -152,6 +158,8 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFunctionInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVImmediateMaterialization.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAsmBackend.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCCodeEmitter.cpp"

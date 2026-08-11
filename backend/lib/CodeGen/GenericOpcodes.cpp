@@ -47,6 +47,10 @@ using GO = GenericOpcode;
   return {LLT::Kind::AnyScalar, LLT::Kind::Integer};
 }
 
+[[nodiscard]] LLTKindSet scalarIntegerOrPointerKinds() {
+  return {LLT::Kind::AnyScalar, LLT::Kind::Integer, LLT::Kind::Pointer};
+}
+
 [[nodiscard]] LLTKindSet scalarValueKinds() {
   return {LLT::Kind::AnyScalar, LLT::Kind::Integer, LLT::Kind::Float, LLT::Kind::Pointer};
 }
@@ -278,10 +282,6 @@ private:
          Left.minimumElementCount() == Right.minimumElementCount();
 }
 
-[[nodiscard]] bool isI1(LLT Type) noexcept {
-  return Type.isIntegerOrIntegerVector() && Type.scalarBitWidth() == 1;
-}
-
 [[nodiscard]] Expected<void> requireSameShape(LLT Left, LLT Right, std::string_view Message) {
   if (!hasSameShape(Left, Right))
     return semanticError(Message);
@@ -290,8 +290,10 @@ private:
 
 [[nodiscard]] Expected<void> requireI1WithShape(LLT Condition, LLT Value,
                                                 bool AllowScalarCondition) {
-  if (!isI1(Condition))
-    return semanticError("generic condition or status result must use an i1 LLT");
+  const bool IsScalarInteger = Condition.isAnyScalar() || Condition.isInteger();
+  const bool IsVectorInteger = Condition.isAnyVector() || Condition.isIntegerVector();
+  if ((!IsScalarInteger && !IsVectorInteger) || Condition.scalarBitWidth() == 0)
+    return semanticError("generic condition or status result must use an integer LLT");
   if (AllowScalarCondition && !Condition.isVector())
     return {};
   return requireSameShape(Condition, Value,
@@ -388,8 +390,15 @@ private:
   }
   case GO::G_FCONSTANT: {
     const auto *Payload = Operands[1].getIf<FloatingImmediateOperand>();
-    if (Payload == nullptr || Payload->Bits.semantics() != TypeAt(0).floatSemantics())
+    if (Payload == nullptr)
+      return semanticError("G_FCONSTANT requires a floating-point immediate");
+    const LLT DestinationType = TypeAt(0);
+    const std::optional<FloatSemantics> DestinationSemantics =
+        DestinationType.floatSemantics();
+    if ((DestinationSemantics && Payload->Bits.semantics() != *DestinationSemantics) ||
+        (!DestinationSemantics && Payload->Bits.bitWidth() != DestinationType.scalarBitWidth())) {
       return semanticError("G_FCONSTANT semantics must match its destination LLT");
+    }
     return {};
   }
   case GO::G_BITCAST: {
@@ -695,8 +704,8 @@ private:
       return semanticError("generic bit-field extraction only supports scalar operands");
     return {};
   case GO::G_BRCOND:
-    if (!isI1(TypeAt(0)) || TypeAt(0).isVector())
-      return semanticError("G_BRCOND condition must be a scalar i1 virtual register");
+    if (!TypeAt(0).isScalarValue())
+      return semanticError("G_BRCOND condition must be a scalar value");
     return {};
   case GO::G_BRJT:
     if (TypeAt(0).isVector() || TypeAt(2).isVector())
@@ -1130,6 +1139,7 @@ void configureGenericOpcodes(DescriptorRegistry &Registry) {
   const LLTKindSet IntTypes = integerKinds();
   const LLTKindSet ScalarValues = scalarValueKinds();
   const LLTKindSet ScalarInts = scalarIntegerKinds();
+  const LLTKindSet ScalarIntegerOrPointers = scalarIntegerOrPointerKinds();
   const LLTKindSet FloatTypes = floatingKinds();
   const LLTKindSet ScalarFloats = scalarFloatingKinds();
   const LLTKindSet PointerTypes = pointerKinds();
@@ -1290,7 +1300,7 @@ void configureGenericOpcodes(DescriptorRegistry &Registry) {
                      {IntDef0, IntUse1}, 1);
   Registry.configure(
       {GO::G_CONSTANT},
-      {typedRegister(RegisterOperandRole::Def, ScalarInts, 0),
+      {typedRegister(RegisterOperandRole::Def, ScalarIntegerOrPointers, 0),
        operand({MachineOperand::Kind::Immediate, MachineOperand::Kind::IntegerImmediate})},
       1);
   Registry.configure({GO::G_FCONSTANT},

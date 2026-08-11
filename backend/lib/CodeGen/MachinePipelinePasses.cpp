@@ -25,7 +25,9 @@ namespace {
 [[nodiscard]] const MachinePassContract &legalizerContract() {
   static const MachinePassContract Contract{
       .Name = "Legalizer",
-      .Requires = {MachineFunctionProperty::IsSSA, MachineFunctionProperty::TracksLiveness},
+      // LLVM's GlobalISel legalizer operates on SSA form and does not require
+      // the optional register-liveness tracking property.
+      .Requires = {MachineFunctionProperty::IsSSA},
       .Sets = {MachineFunctionProperty::Legalized},
       .Clears = {},
       .RequiredAnalyses = {},
@@ -277,6 +279,34 @@ registerConfigurationFingerprint(const MachineRegisterInfo &RegInfo) noexcept {
   return {};
 }
 
+[[nodiscard]] Expected<void> clearTrackedLivenessFlags(MachineFunction &Function,
+                                                       MachinePassResult &Result) {
+  if (!Result.Changed ||
+      !Function.properties().has(MachineFunctionProperty::TracksLiveness))
+    return {};
+  bool Changed = false;
+  for (MachineInstr *Instruction : layoutInstructions(Function)) {
+    for (std::size_t Index = 0; Index < Instruction->operandCount(); ++Index) {
+      MachineOperand &Operand = *Instruction->operandAt(Index);
+      if (!Operand.isRegister())
+        continue;
+      RegisterOperandFlags Flags = Operand.registerFlags();
+      if (!Flags.has(RegisterOperandFlag::Kill) &&
+          !Flags.has(RegisterOperandFlag::Dead))
+        continue;
+      Flags.clear(RegisterOperandFlag::Kill);
+      Flags.clear(RegisterOperandFlag::Dead);
+      auto Updated = Operand.setRegisterFlags(Flags);
+      if (!Updated)
+        return std::unexpected(Updated.error());
+      Changed = true;
+    }
+  }
+  if (Changed)
+    Result.Changes.add(MachinePassChange::Operands);
+  return {};
+}
+
 } // namespace
 
 const MachinePassContract &LegalizerPass::contract() const noexcept {
@@ -377,22 +407,26 @@ Expected<MachinePassResult> LegalizerPass::runImplementation(MachineFunction &Fu
     auto Lowered = Info->lower(*Instruction, Function, Target, *Action);
     if (!Lowered)
       return std::unexpected(Lowered.error());
-    if (Instruction->parent() == nullptr)
-      return std::unexpected(passFailure("legalizer detached the instruction it was lowering"));
-    const OpcodeState After = stateOf(*Instruction);
-    if (After == Before)
-      return std::unexpected(
-          passFailure("target legalizer made no observable progress for '" + Descriptor->Name + "'",
-                      ErrorCode::InternalError));
+    const bool InstructionWasErased = Instruction->parent() == nullptr;
+    if (!InstructionWasErased) {
+      const OpcodeState After = stateOf(*Instruction);
+      if (After == Before)
+        return std::unexpected(passFailure(
+            "target legalizer made no observable progress for '" + Descriptor->Name + "'",
+            ErrorCode::InternalError));
+    }
     Result.Changed = true;
     Result.Changes.add(MachinePassChange::Instructions);
 
-    const InstructionDescriptor *LoweredDescriptor =
-        Target.instructionDescriptor(Instruction->opcode());
-    if (LoweredDescriptor == nullptr)
-      return std::unexpected(passFailure("legalizer produced an unknown instruction descriptor"));
-    if (LoweredDescriptor->Flags.has(InstructionFlag::Generic))
-      Worklist.push_back(Instruction);
+    if (!InstructionWasErased) {
+      const InstructionDescriptor *LoweredDescriptor =
+          Target.instructionDescriptor(Instruction->opcode());
+      if (LoweredDescriptor == nullptr)
+        return std::unexpected(
+            passFailure("legalizer produced an unknown instruction descriptor"));
+      if (LoweredDescriptor->Flags.has(InstructionFlag::Generic))
+        Worklist.push_back(Instruction);
+    }
     const std::vector<MachineInstr *> Current = layoutInstructions(Function);
     for (MachineInstr *Candidate : Current) {
       if (DiscoveredInstructions.insert(Candidate->stableID()).second)
@@ -420,9 +454,10 @@ Expected<MachinePassResult> LegalizerPass::runImplementation(MachineFunction &Fu
       return std::unexpected(
           prefixedError(FinalValidation.error(), "legalizer produced invalid MachineIR: "));
   }
-  auto Liveness = repairTrackedLiveness(Function, Target, Result);
+  auto Liveness = clearTrackedLivenessFlags(Function, Result);
   if (!Liveness)
-    return std::unexpected(prefixedError(Liveness.error(), "legalizer liveness repair failed: "));
+    return std::unexpected(
+        prefixedError(Liveness.error(), "legalizer liveness-flag invalidation failed: "));
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;
 }
@@ -647,6 +682,11 @@ InstructionSelectPass::runImplementation(MachineFunction &Function, const Target
     if (Selected == nullptr)
       return std::unexpected(
           passFailure("instruction selector produced an unknown instruction descriptor"));
+    auto Constraint = Info->constrainSelectedInstruction(*Instruction, Function, Target);
+    if (!Constraint) {
+      return std::unexpected(prefixedError(
+          Constraint.error(), "instruction selector could not constrain selected registers: "));
+    }
     auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!Validation)
       return std::unexpected(

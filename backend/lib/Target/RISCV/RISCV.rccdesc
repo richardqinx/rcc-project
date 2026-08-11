@@ -143,8 +143,8 @@ registers:
   - { id: 64, symbol: F31, name: f31, encoding: 31, dwarf_register: 63, units: [{ unit: U_F31, lanes: 1 }], aliases: [ft11] }
 
 register_banks:
-  - { id: 1, symbol: GPR, name: GPR, maximum_size_bits: 64 }
-  - { id: 2, symbol: FPR, name: FPR, maximum_size_bits: 64 }
+  - { id: 1, symbol: GPR, name: GPRB, maximum_size_bits: 64 }
+  - { id: 2, symbol: FPR, name: FPRB, maximum_size_bits: 64 }
 
 register_classes:
   -
@@ -3277,6 +3277,18 @@ instructions:
     assembly_format: RD_RS2_PAREN_RS1
     requires_memory_operands: true
   -
+    id: 1229
+    symbol: G_SLLW
+    name: G_SLLW
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use }
+      - { kinds: [register], role: use }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
     id: 1216
     symbol: PseudoCC_COPY
     name: PseudoCC_COPY
@@ -3386,7 +3398,6 @@ instructions:
     name: PseudoRET
     operands: []
     num_explicit_defs: 0
-    implicit_uses: [{ register: X1 }]
     allow_extra_implicit_operands: true
     flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, return, barrier]
     owner: post_ra_expansion
@@ -3443,3 +3454,13 @@ instructions:
     scheduling_class: BRANCH
     encoding_category: I
     assembly_format: RD_RS1_IMM
+  -
+    id: 1228
+    symbol: PseudoBR
+    name: PseudoBR
+    operands:
+      - { kinds: [basic_block], name: TARGET }
+    num_explicit_defs: 0
+    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, barrier]
+    owner: post_ra_expansion
+    deadline: post_ra_finalized

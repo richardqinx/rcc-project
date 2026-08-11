@@ -473,6 +473,44 @@ copyRegisters(const MachineInstr &Instruction) {
   return true;
 }
 
+[[nodiscard]] Expected<bool> expandBranch(MachineInstr &Instruction, MachineFunction &Function,
+                                          const TargetDescription &Target) {
+  const MachineOperand *TargetOperand = Instruction.operandAt(0);
+  const BasicBlockOperand *TargetBlock =
+      TargetOperand == nullptr ? nullptr : TargetOperand->getIf<BasicBlockOperand>();
+  if (TargetBlock == nullptr || TargetBlock->Block == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V PseudoBR has no basic-block target");
+  }
+
+  auto Zero = physical(PhysicalRegisterID::X0);
+  if (!Zero)
+    return std::unexpected(Zero.error());
+  MachineIRBuilder Builder(Function, Target);
+  auto Point = Builder.setInsertPointBefore(Instruction);
+  if (!Point)
+    return std::unexpected(Point.error());
+  auto Pending = Builder.buildInstr(targetOpcode(InstructionOpcode::JAL));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  auto Def = Pending->addDef(Register::fromPhysical(*Zero));
+  if (!Def)
+    return std::unexpected(Def.error());
+  auto Destination = Pending->addBasicBlock(*TargetBlock->Block);
+  if (!Destination)
+    return std::unexpected(Destination.error());
+  auto Replacement = Pending->build();
+  if (!Replacement)
+    return std::unexpected(Replacement.error());
+  auto Decoration = copyCommonDecoration(Instruction, **Replacement, true, true, true);
+  if (!Decoration)
+    return std::unexpected(Decoration.error());
+  auto Removed = removeOldInstruction(Instruction);
+  if (!Removed)
+    return std::unexpected(Removed.error());
+  return true;
+}
+
 class RISCVPseudoExpansionInfo final : public TargetPseudoExpansionInfo {
 public:
   [[nodiscard]] Expected<bool> preparePostRAPseudo(MachineInstr &Instruction,
@@ -498,6 +536,8 @@ public:
       return expandCall(Instruction, Function, Target, true);
     if (Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoRET))
       return expandReturn(Instruction, Function, Target);
+    if (Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoBR))
+      return expandBranch(Instruction, Function, Target);
     return false;
   }
 };

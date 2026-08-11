@@ -282,13 +282,14 @@ void testShapesAndTypes(TestContext &Context) {
   auto I32 = rcc::LLT::makeInteger(32);
   auto I64 = rcc::LLT::makeInteger(64);
   auto I1 = rcc::LLT::makeInteger(1);
+  auto S16 = rcc::LLT::makeAnyScalar(16);
   auto F32 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEESingle);
   auto F64 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
   auto P64 = rcc::LLT::makePointer(0, 64);
   auto V2I32 = I32 ? rcc::LLT::makeFixedVector(2, *I32) : rcc::Expected<rcc::LLT>{};
   auto V4I32 = I32 ? rcc::LLT::makeFixedVector(4, *I32) : rcc::Expected<rcc::LLT>{};
   auto V2P64 = P64 ? rcc::LLT::makeFixedVector(2, *P64) : rcc::Expected<rcc::LLT>{};
-  if (!I1 || !I32 || !I64 || !F32 || !F64 || !P64 || !V2I32 || !V4I32 || !V2P64)
+  if (!I1 || !I32 || !I64 || !S16 || !F32 || !F64 || !P64 || !V2I32 || !V4I32 || !V2P64)
     std::terminate();
   auto Dst32 = (*Function)->registerInfo().createVirtualRegister(*I32);
   auto Src32A = (*Function)->registerInfo().createVirtualRegister(*I32);
@@ -299,6 +300,7 @@ void testShapesAndTypes(TestContext &Context) {
   const rcc::Register Cond = createVirtualRegister(**Function, *I1);
   const rcc::Register Float32 = createVirtualRegister(**Function, *F32);
   const rcc::Register Float64 = createVirtualRegister(**Function, *F64);
+  const rcc::Register Scalar16 = createVirtualRegister(**Function, *S16);
   const rcc::Register Vec2A = createVirtualRegister(**Function, *V2I32);
   const rcc::Register Vec2B = createVirtualRegister(**Function, *V2I32);
   const rcc::Register Vec4 = createVirtualRegister(**Function, *V4I32);
@@ -318,6 +320,17 @@ void testShapesAndTypes(TestContext &Context) {
   Context.expect(!Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_ADD), AddOperands,
                                                 (*Function)->registerInfo()),
                  "G_ADD must reject a source from a different LLT equality group");
+
+  auto ZeroImmediate = rcc::IntegerImmediate::fromUnsigned(64, 0);
+  std::vector<rcc::MachineOperand> PointerConstant;
+  PointerConstant.push_back(registerOperand(*Address, true));
+  if (ZeroImmediate)
+    PointerConstant.push_back(rcc::MachineOperand::integerImmediate(std::move(*ZeroImmediate)));
+  Context.expect(PointerConstant.size() == 2 &&
+                     Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_CONSTANT),
+                                                   PointerConstant, (*Function)->registerInfo())
+                         .has_value(),
+                 "G_CONSTANT must accept a scalar pointer destination");
 
   auto Block0 = (*Function)->createBasicBlock();
   auto Block1 = (*Function)->createBasicBlock();
@@ -474,6 +487,17 @@ void testShapesAndTypes(TestContext &Context) {
   Context.expect(!Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_FCONSTANT),
                                                 FConstantOperands, (*Function)->registerInfo()),
                  "G_FCONSTANT must reject mismatched floating semantics");
+
+  const std::array<std::uint64_t, 1> BFloatWords{0};
+  auto BFloatBits = rcc::FloatingPointBits::create(rcc::FloatSemantics::BFloat, BFloatWords);
+  if (!BFloatBits)
+    std::terminate();
+  FConstantOperands[0] = registerOperand(Scalar16, true);
+  FConstantOperands[1] = rcc::MachineOperand::floatingImmediate(*BFloatBits);
+  Context.expect(Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_FCONSTANT),
+                                               FConstantOperands, (*Function)->registerInfo())
+                     .has_value(),
+                 "G_FCONSTANT must accept a bit-width-compatible LLVM scalar LLT");
 }
 
 void testInstructionMemorySemantics(TestContext &Context) {

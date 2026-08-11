@@ -61,6 +61,25 @@ foreach(Stage IN LISTS Stages)
   endif()
 endforeach()
 
+set(NoPassOutput "${WORK_DIRECTORY}/none.mir")
+execute_process(
+  COMMAND
+    "${TOOL}" --input "${INPUT}" --run-pass=none --emit final-mir --output "${NoPassOutput}"
+  RESULT_VARIABLE NoPassResult
+  ERROR_VARIABLE NoPassDiagnostics
+)
+if(NOT NoPassResult EQUAL 0)
+  message(FATAL_ERROR "LLVM-compatible none pass failed: ${NoPassDiagnostics}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${NoPassOutput}"
+    "${WORK_DIRECTORY}/prelegalizer-mir.mir"
+  RESULT_VARIABLE NoPassComparisonResult
+)
+if(NOT NoPassComparisonResult EQUAL 0)
+  message(FATAL_ERROR "LLVM-compatible none pass changed canonical MIR")
+endif()
+
 set(PassList "${WORK_DIRECTORY}/passes.txt")
 execute_process(
   COMMAND "${TOOL}" --list-passes --input "${INPUT}" --output "${PassList}"
