@@ -285,12 +285,17 @@ bool MIRDocumentParser::parseRegisters(const yaml::Node &Root, MachineFunction &
       }
 
       if (const yaml::Node *Preferred = mappingValue(*Element, "preferred-register")) {
+        std::string_view PreferredName;
         PhysicalRegister Reg;
-        if (physicalRegister(*Preferred, Reg))
+        if (scalar(*Preferred, PreferredName, "physical register"))
           return true;
-        auto AddResult = Function.registerInfo().addAllocationHint(*Created, Reg);
-        if (!AddResult)
-          return importError(Preferred->range(), AddResult.error());
+        if (!trim(PreferredName).empty()) {
+          if (physicalRegister(PreferredName, Preferred->range(), Reg))
+            return true;
+          auto AddResult = Function.registerInfo().addAllocationHint(*Created, Reg);
+          if (!AddResult)
+            return importError(Preferred->range(), AddResult.error());
+        }
       }
       if (const yaml::Node *Flags = mappingValue(*Element, "flags")) {
         if (requireKind(*Flags, yaml::NodeKind::Sequence, "virtual-register flags"))

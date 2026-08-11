@@ -328,6 +328,7 @@ isSSA: true
 noVRegs: false
 registers:
   - { id: 7, class: gpr64, preferred-register: '$g1', flags: [ test-vreg-one ] }
+  - { id: 8, class: gpr64, preferred-register: '' }
 liveins:
   - { reg: '$g0', virtual-reg: '%7' }
 calleeSavedRegisters: [ '$g1' ]
@@ -346,7 +347,7 @@ frameInfo:
 fixedStack:
   - { id: 3, type: spill-slot, offset: -16, size: 8, alignment: 8 }
 stack:
-  - { id: 4, name: slot, size: 8, alignment: 8, local-offset: 0,
+  - { id: 4, name: slot, size: 8, alignment: 8, callee-saved-register: '', local-offset: 0,
       debug-info-variable: '!0',
       debug-info-expression: '!DIExpression(DW_OP_LLVM_arg, 0, 18446744073709551615)',
       debug-info-location: '!DILocation(line: 4, column: 2, scope: !1, isImplicitCode: true)' }
@@ -426,7 +427,7 @@ void testDocumentTransaction(TestContext &Context) {
   if (Function == nullptr)
     return;
 
-  Context.expect(Function->registerInfo().virtualRegisters().size() == 1 &&
+  Context.expect(Function->registerInfo().virtualRegisters().size() == 2 &&
                      Function->registerInfo().liveIns().size() == 1 &&
                      Function->records().hasCalleeSavedRegisters(),
                  "register tables must publish into the common MachineIR model");

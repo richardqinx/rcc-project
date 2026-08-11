@@ -168,10 +168,15 @@ bool MIRDocumentParser::parseStackObjects(const yaml::Node &Root, MachineFunctio
           return true;
       }
       if (const yaml::Node *SavedNode = mappingValue(*Element, "callee-saved-register")) {
-        PhysicalRegister Reg;
-        if (physicalRegister(*SavedNode, Reg))
+        std::string_view SavedName;
+        if (scalar(*SavedNode, SavedName, "physical register"))
           return true;
-        Description.CalleeSavedRegister = Reg;
+        if (!trim(SavedName).empty()) {
+          PhysicalRegister Reg;
+          if (physicalRegister(SavedName, SavedNode->range(), Reg))
+            return true;
+          Description.CalleeSavedRegister = Reg;
+        }
       }
       if (const yaml::Node *RestoredNode = mappingValue(*Element, "callee-saved-restored")) {
         if (boolean(*RestoredNode, Description.CalleeSavedRestored))
