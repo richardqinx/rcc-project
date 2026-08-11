@@ -5,6 +5,7 @@
 #include "rcc/CodeGen/GenericOpcodes.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -191,6 +192,37 @@ void testInstructionFacts(TestContext &Context) {
       rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADDI)));
   const auto *FenceAssembly = rcc::riscv::assemblyInstruction(
       rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::FENCE_I)));
+
+  constexpr std::array SymbolicLowOpcodes = {
+      rcc::riscv::InstructionOpcode::LB,  rcc::riscv::InstructionOpcode::LH,
+      rcc::riscv::InstructionOpcode::LW,  rcc::riscv::InstructionOpcode::LBU,
+      rcc::riscv::InstructionOpcode::LHU, rcc::riscv::InstructionOpcode::LWU,
+      rcc::riscv::InstructionOpcode::SB,  rcc::riscv::InstructionOpcode::SH,
+      rcc::riscv::InstructionOpcode::SW,  rcc::riscv::InstructionOpcode::LD,
+      rcc::riscv::InstructionOpcode::SD,  rcc::riscv::InstructionOpcode::FLW,
+      rcc::riscv::InstructionOpcode::FSW, rcc::riscv::InstructionOpcode::FLD,
+      rcc::riscv::InstructionOpcode::FSD,
+  };
+  const rcc::OperandKindSet SymbolicLowKinds = {
+      rcc::MachineOperand::Kind::Immediate,      rcc::MachineOperand::Kind::ConstantPoolIndex,
+      rcc::MachineOperand::Kind::JumpTableIndex, rcc::MachineOperand::Kind::GlobalSymbol,
+      rcc::MachineOperand::Kind::ExternalSymbol, rcc::MachineOperand::Kind::BlockAddress,
+      rcc::MachineOperand::Kind::MCSymbol,
+  };
+  Context.expect(
+      Load != nullptr && Load->Operands.size() == 3 &&
+          std::ranges::all_of(SymbolicLowOpcodes,
+                              [&](rcc::riscv::InstructionOpcode Opcode) {
+                                const auto *Descriptor = Target->instructionDescriptor(
+                                    rcc::Opcode::fromValue(static_cast<std::uint32_t>(Opcode)));
+                                return Descriptor != nullptr && Descriptor->Operands.size() == 3 &&
+                                       Descriptor->Operands[2].Kinds == SymbolicLowKinds &&
+                                       Descriptor->Operands[2].ImmediatePredicate ==
+                                           Load->Operands[2].ImmediatePredicate &&
+                                       Descriptor->Operands[2].AllowedTargetFlags == 68;
+                              }),
+      "RV64GC loads and stores must accept SIMM12 low-part symbolic operands");
+
   Context.expect(
       Target->instructions().descriptors().size() ==
               TargetInstructionCount + rcc::genericInstructionDescriptors().size() &&

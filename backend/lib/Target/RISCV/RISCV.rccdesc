@@ -789,7 +789,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -805,7 +805,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -821,7 +821,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -837,7 +837,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -853,7 +853,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -869,7 +869,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -885,7 +885,7 @@ instructions:
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
     scheduling_class: STORE
@@ -901,7 +901,7 @@ instructions:
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
     scheduling_class: STORE
@@ -917,7 +917,7 @@ instructions:
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
     scheduling_class: STORE
@@ -1351,7 +1351,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -1367,7 +1367,7 @@ instructions:
     operands:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
     scheduling_class: STORE
@@ -1588,7 +1588,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, memory_role: value, name: FRD }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -1604,7 +1604,7 @@ instructions:
     operands:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, memory_role: value, name: FRS2 }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
     scheduling_class: STORE
@@ -2066,7 +2066,7 @@ instructions:
     operands:
       - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRD }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 1
     flags: [may_load, produces_code]
     scheduling_class: LOAD
@@ -2082,7 +2082,7 @@ instructions:
     operands:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRS2 }
       - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
-      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
     num_explicit_defs: 0
     flags: [may_store, produces_code]
     scheduling_class: STORE
