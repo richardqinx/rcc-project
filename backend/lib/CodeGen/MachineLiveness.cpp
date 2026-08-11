@@ -900,6 +900,66 @@ liveSetIntersects(const MachineOperand &Operand, const RegisterLaneSet &Virtual,
   return addOperandUse(Virtual, Physical, Operand, Function, Target);
 }
 
+[[nodiscard]] Expected<RegisterUnitLaneSet>
+requiredLocalPhysicalLiveIns(const MachineBasicBlock &Block, const MachineFunction &Function,
+                             const TargetDescription &Target) {
+  RegisterLaneSet Virtual;
+  RegisterUnitLaneSet Physical;
+  for (const MachineInstr *Instruction = Block.lastInstruction(); Instruction != nullptr;
+       Instruction = Instruction->previous()) {
+    const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
+    if (Descriptor == nullptr) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "liveness verification encountered an unknown instruction descriptor");
+    }
+    const bool IsPhi = Descriptor->Flags.has(InstructionFlag::Phi);
+    for (const MachineOperand &Operand : Instruction->operands()) {
+      const auto *MaskOperand = Operand.getIf<LiveOutRegisterMaskOperand>();
+      if (MaskOperand == nullptr)
+        continue;
+      if (!MaskOperand->Mask) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "liveness verification encountered a null live-out register mask");
+      }
+      auto Added = addRegisterMaskUses(Physical, *MaskOperand->Mask, Target);
+      if (!Added)
+        return std::unexpected(Added.error());
+    }
+
+    for (const MachineOperand &Operand : Instruction->operands()) {
+      if (Operand.isRegister() && Operand.isDef()) {
+        auto Removed = removeOperandFromLiveSet(Operand, Virtual, Physical, Function, Target);
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        continue;
+      }
+      const auto *MaskOperand = Operand.getIf<RegisterMaskOperand>();
+      if (MaskOperand == nullptr)
+        continue;
+      if (!MaskOperand->Mask) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "liveness verification encountered a null register mask");
+      }
+      RegisterUnitLaneSet Clobbers;
+      auto Added = addRegisterMaskDefs(Clobbers, *MaskOperand->Mask, Target);
+      if (!Added)
+        return std::unexpected(Added.error());
+      Physical.subtract(Clobbers);
+    }
+
+    if (IsPhi)
+      continue;
+    for (const MachineOperand &Operand : Instruction->operands()) {
+      if (!Operand.isRegister() || !Operand.isUse())
+        continue;
+      auto Added = addOperandToLiveSet(Operand, Virtual, Physical, Function, Target);
+      if (!Added)
+        return std::unexpected(Added.error());
+    }
+  }
+  return Physical;
+}
+
 [[nodiscard]] Expected<LivenessRebuildPlan>
 buildLivenessRebuildPlan(const MachineFunction &Function, const TargetDescription &Target) {
   auto Variables = computeLiveVariables(Function, Target);
@@ -1792,14 +1852,24 @@ Expected<void> verifyTrackedMachineLiveness(const MachineFunction &Function,
   auto Plan = buildLivenessRebuildPlan(Function, Target);
   if (!Plan)
     return std::unexpected(Plan.error());
-  for (const BlockLivenessPlan &BlockPlan : Plan->Blocks) {
-    auto Actual = liveInUnits(BlockPlan.OriginalLiveIns, Target);
+  for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
+       Block = Block->next()) {
+    auto Actual = liveInUnits(Block->liveIns(), Target);
     if (!Actual)
       return std::unexpected(Actual.error());
-    auto Expected = liveInUnits(BlockPlan.RebuiltLiveIns, Target);
+    auto Expected = requiredLocalPhysicalLiveIns(*Block, Function, Target);
     if (!Expected)
       return std::unexpected(Expected.error());
     if (!isSubset(*Expected, *Actual)) {
+      const auto Missing = std::ranges::find_if(Expected->entries(), [&Actual](const auto &Entry) {
+        return !Actual->contains(Entry.first, Entry.second);
+      });
+      if (Missing != Expected->entries().end()) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "TracksLiveness block " + std::to_string(Block->stableID().value()) +
+                                  " is missing required physical register unit " +
+                                  std::to_string(Missing->first.value()));
+      }
       return makeUnexpected(ErrorCode::VerificationError,
                             "TracksLiveness block is missing required physical live-ins");
     }

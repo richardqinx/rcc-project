@@ -685,6 +685,35 @@ void testLivenessRebuildAndVerifier(TestContext &Context, const rcc::TargetDescr
                  "a second liveness rebuild must repair stale derived state");
 }
 
+void testTrackedLiveThroughPhysicalRegister(TestContext &Context,
+                                            const rcc::TargetDescription &Target) {
+  auto Fixture = createFunction("tracked-live-through", 11, 2);
+  if (!Fixture) {
+    Context.expect(false, "tracked live-through fixture creation must succeed");
+    return;
+  }
+  auto &Function = *Fixture->Function;
+  auto &Predecessor = *Fixture->Blocks[0];
+  auto &Successor = *Fixture->Blocks[1];
+  const rcc::Register G0 = rcc::Register::fromPhysical(physical(rcc::test::TestRegister::G0));
+  auto Edge =
+      Function.cfgUpdater().addSuccessor(Predecessor, Successor, rcc::BranchProbability::one());
+  auto Use = buildUse(Function, Target, Successor, G0);
+  auto LiveIn = Successor.addLiveIn(physical(rcc::test::TestRegister::G0));
+  if (!Edge || !Use || !LiveIn) {
+    Context.expect(false, "tracked live-through MachineIR must be constructed");
+    return;
+  }
+
+  Function.properties().set(rcc::MachineFunctionProperty::TracksLiveness);
+  Context.expect(rcc::verifyTrackedMachineLiveness(Function, Target).has_value() &&
+                     Predecessor.liveIns().empty(),
+                 "a predecessor must not declare a physical register used only by its successor");
+  Successor.clearLiveIns();
+  Context.expect(!rcc::verifyTrackedMachineLiveness(Function, Target),
+                 "a block must declare a physical register that it reads before defining");
+}
+
 void testFailedRebuildIsAtomic(TestContext &Context, const rcc::TargetDescription &Target) {
   auto Fixture = createFunction("failed-rebuild", 9, 2);
   if (!Fixture) {
@@ -933,6 +962,7 @@ int main() {
   testLaneSubrangesAndEarlyClobber(Context, *Target);
   testPhysicalUnitsAndRegMasks(Context, *Target);
   testLivenessRebuildAndVerifier(Context, *Target);
+  testTrackedLiveThroughPhysicalRegister(Context, *Target);
   testFailedRebuildIsAtomic(Context, *Target);
   testAnalysisRegistrationAndInvalidation(Context, *Target);
   testRISCVLiveness(Context);
