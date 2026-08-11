@@ -2,6 +2,7 @@
 
 #include "rcc/Target/RISCV/RISCVCallLowering.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -486,15 +487,16 @@ void testOrdinaryAndIndirectEmission(TestContext &Context) {
   Context.expect(Instructions.size() == 5 &&
                      Instructions.front()->opcode() ==
                          opcode(rcc::riscv::InstructionOpcode::ADJCALLSTACKDOWN) &&
-                     Instructions.back()->opcode() ==
-                         opcode(rcc::riscv::InstructionOpcode::PseudoCC_COPY) &&
+                     Instructions[1]->opcode() == rcc::opcode(rcc::GenericOpcode::COPY) &&
+                     Instructions.back()->opcode() == rcc::opcode(rcc::GenericOpcode::COPY) &&
                      Call != nullptr && Call->operandCount() >= 6 &&
                      Call->operandAt(0)->kind() == rcc::MachineOperand::Kind::ExternalSymbol &&
                      Call->operandAt(0)->targetFlags() ==
                          static_cast<std::uint32_t>(rcc::riscv::CallTargetFlag::DirectCall) &&
                      Call->operandAt(1)->kind() == rcc::MachineOperand::Kind::IntegerImmediate &&
                      Call->operandAt(2)->kind() == rcc::MachineOperand::Kind::RegisterMask,
-                 "ordinary emission must materialize call-frame, copies, target, ID, and RegMask");
+                 "ordinary emission must materialize canonical full-value copies, call-frame, "
+                 "target, ID, and RegMask");
   bool HasArgumentUse = false;
   bool HasResultDef = false;
   for (const rcc::MachineOperand &Operand : Call->operands()) {

@@ -2,6 +2,7 @@
 
 #include "rcc/Target/RISCV/RISCVCallLowering.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -777,7 +778,10 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
 
 [[nodiscard]] Expected<void> emitCCCopy(MachineIRBuilder &Builder, Register Destination,
                                         Register Source, CallValueTransform Transform) {
-  auto Instruction = Builder.buildInstr(targetOpcode(InstructionOpcode::PseudoCC_COPY));
+  const Opcode CopyOpcode = Transform == CallValueTransform::Full
+                                ? opcode(GenericOpcode::COPY)
+                                : targetOpcode(InstructionOpcode::PseudoCC_COPY);
+  auto Instruction = Builder.buildInstr(CopyOpcode);
   if (!Instruction)
     return std::unexpected(Instruction.error());
   auto Def = Instruction->addDef(Destination);
@@ -786,9 +790,11 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
   auto Use = Instruction->addUse(Source);
   if (!Use)
     return std::unexpected(Use.error());
-  auto Action = Instruction->addImmediate(static_cast<std::int64_t>(Transform));
-  if (!Action)
-    return std::unexpected(Action.error());
+  if (Transform != CallValueTransform::Full) {
+    auto Action = Instruction->addImmediate(static_cast<std::int64_t>(Transform));
+    if (!Action)
+      return std::unexpected(Action.error());
+  }
   auto Built = Instruction->build();
   if (!Built)
     return std::unexpected(Built.error());
