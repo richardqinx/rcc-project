@@ -3,7 +3,7 @@
 #ifndef RCC_TOOLING_ARTIFACTSTORE_H
 #define RCC_TOOLING_ARTIFACTSTORE_H
 
-#include "rcc/MIR/MIRDocument.h"
+#include "rcc/CodeGen/MIRParser/MIRParser.h"
 #include "rcc/Support/Error.h"
 #include "rcc/Tooling/BackendManifest.h"
 

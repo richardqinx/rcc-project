@@ -3,10 +3,10 @@
 #include "rcc/Tooling/PipelineDriver.h"
 
 #include "rcc/CodeGen/CompilationUnit.h"
+#include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
 #include "rcc/CodeGen/MachineVerifier.h"
-#include "rcc/MIR/MIRDocument.h"
 #include "rcc/Target/RISCV/RISCVPipeline.h"
 
 #include <algorithm>

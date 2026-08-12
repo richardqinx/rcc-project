@@ -3,10 +3,10 @@
 #include "rcc/Tooling/ArtifactStore.h"
 
 #include "rcc/CodeGen/CompilationUnit.h"
+#include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/CodeGen/TargetDescription.h"
-#include "rcc/MIR/MIRDocument.h"
 #include "rcc/Support/SHA256.h"
 #include "rcc/Support/TextDiagnostic.h"
 #include "rcc/Tooling/BackendInvocation.h"

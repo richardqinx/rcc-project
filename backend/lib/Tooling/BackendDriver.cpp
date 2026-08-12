@@ -2,8 +2,8 @@
 
 #include "rcc/Tooling/BackendDriver.h"
 
+#include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/MIR/MIRDocument.h"
 #include "rcc/Target/RISCV/RISCVAssemblyPrinter.h"
 #include "rcc/Target/RISCV/RISCVObjectFile.h"
 

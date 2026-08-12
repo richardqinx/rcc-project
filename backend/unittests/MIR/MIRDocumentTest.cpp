@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/MIR/MIRDocument.h"
-
 #include "Target/TestTarget.h"
 #include "rcc/CodeGen/CompilationUnit.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/MIRParser/MIRParser.h"
+#include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCompilationStatus.h"
 #include "rcc/CodeGen/MachineConstantPool.h"

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "MIRDocumentParser.h"
+#include "rcc/CodeGen/MIRParser/MIRParser.h"
 
-#include "MIRDocumentReferenceValidation.h"
-#include "MIRMetadataTextParser.h"
-#include "MIRParserUtilities.h"
+#include "rcc/CodeGen/MIRYamlMapping.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
@@ -39,13 +37,6 @@
 #include <vector>
 
 namespace rcc::mir {
-
-using parser_detail::parseBool;
-using parser_detail::parsePrefixedID;
-using parser_detail::parseSigned;
-using parser_detail::parseUnsigned;
-using parser_detail::parseUnsigned32;
-using parser_detail::trim;
 
 bool MIRDocumentParser::fail(const TextRange &Range, std::string Message, std::string Category) {
   if (Result.Diagnostics.empty()) {
@@ -114,82 +105,6 @@ bool MIRDocumentParser::scalar(const yaml::Node &Node, std::string_view &Value,
   if (requireKind(Node, yaml::NodeKind::Scalar, Description))
     return true;
   Value = Node.scalar();
-  return false;
-}
-
-bool MIRDocumentParser::boolean(const yaml::Node &Node, bool &Value) {
-  std::string_view Text;
-  if (scalar(Node, Text, "boolean") || !parseBool(Text, Value))
-    return fail(Node.range(), "expected 'true' or 'false'");
-  return false;
-}
-
-bool MIRDocumentParser::unsignedValue(const yaml::Node &Node, std::uint64_t &Value,
-                                      std::string_view Description) {
-  std::string_view Text;
-  if (scalar(Node, Text, Description) || !parseUnsigned(Text, Value))
-    return fail(Node.range(), "expected " + std::string(Description));
-  return false;
-}
-
-bool MIRDocumentParser::signedValue(const yaml::Node &Node, std::int64_t &Value,
-                                    std::string_view Description) {
-  std::string_view Text;
-  if (scalar(Node, Text, Description) || !parseSigned(Text, Value))
-    return fail(Node.range(), "expected " + std::string(Description));
-  return false;
-}
-
-bool MIRDocumentParser::alignment(const yaml::Node &Node, Alignment &Value, bool AllowZero) {
-  std::uint64_t Bytes = 0;
-  if (unsignedValue(Node, Bytes, "an unsigned alignment"))
-    return true;
-  if (Bytes == 0 && AllowZero) {
-    Value = Alignment{};
-    return false;
-  }
-  auto Parsed = Alignment::create(Bytes);
-  if (!Parsed)
-    return importError(Node.range(), Parsed.error());
-  Value = *Parsed;
-  return false;
-}
-
-bool MIRDocumentParser::physicalRegister(std::string_view Text, const TextRange &Range,
-                                         PhysicalRegister &Reg) {
-  Text = trim(Text);
-  if (!Text.starts_with('$') || Text.size() == 1)
-    return fail(Range, "physical register must use the '$name' MIR spelling");
-  const PhysicalRegisterDesc *Description = Target.registers().physicalRegister(Text.substr(1));
-  if (Description == nullptr)
-    return fail(Range, "unknown physical register '" + std::string(Text) + "'");
-  Reg = Description->Reg;
-  return false;
-}
-
-bool MIRDocumentParser::physicalRegister(const yaml::Node &Node, PhysicalRegister &Reg) {
-  std::string_view Text;
-  return scalar(Node, Text, "physical register") || physicalRegister(Text, Node.range(), Reg);
-}
-
-bool MIRDocumentParser::virtualRegister(std::string_view Text, const TextRange &Range,
-                                        MachineFunction &Function, MIParserContext &Context,
-                                        Register &Reg) {
-  const auto ID = parsePrefixedID(Text, "%");
-  if (!ID)
-    return fail(Range, "virtual register must use the '%N' MIR spelling");
-  auto Found =
-      std::ranges::find_if(Context.VirtualRegisters,
-                           [ID](const MIVirtualRegisterSlot &Slot) { return Slot.TextID == *ID; });
-  if (Found == Context.VirtualRegisters.end()) {
-    auto Created = Function.registerInfo().createVirtualRegister();
-    if (!Created)
-      return importError(Range, Created.error());
-    Context.VirtualRegisters.push_back({*ID, *Created});
-    Reg = *Created;
-    return false;
-  }
-  Reg = Found->Reg;
   return false;
 }
 
@@ -393,6 +308,27 @@ bool MIRDocumentParser::parseFunction(const yaml::Node &Root, MIRDocument &Docum
   Document.FunctionInfo.push_back(DocumentInfo);
   ActiveFunction = nullptr;
   return false;
+}
+
+} // namespace rcc::mir
+
+namespace rcc::mir {
+
+MIRDocument::MIRDocument() = default;
+MIRDocument::MIRDocument(CompilationUnit Unit) : Unit(std::move(Unit)) {}
+MIRDocument::MIRDocument(MIRDocument &&) noexcept = default;
+MIRDocument &MIRDocument::operator=(MIRDocument &&) noexcept = default;
+MIRDocument::~MIRDocument() = default;
+
+MIRDocumentParseResult::MIRDocumentParseResult(MIRDocumentParseResult &&) noexcept = default;
+MIRDocumentParseResult &
+MIRDocumentParseResult::operator=(MIRDocumentParseResult &&) noexcept = default;
+MIRDocumentParseResult::~MIRDocumentParseResult() = default;
+
+MIRDocumentParseResult parseMIRDocument(const TargetDescription &Target, std::string SourceName,
+                                        std::string SourceText, MIRDocumentParserOptions Options) {
+  return MIRDocumentParser(Target, std::move(SourceName), std::move(SourceText), std::move(Options))
+      .run();
 }
 
 } // namespace rcc::mir

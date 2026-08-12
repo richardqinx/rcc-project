@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifndef RCC_MIR_MILEXER_H
-#define RCC_MIR_MILEXER_H
+#ifndef RCC_LIB_CODEGEN_MIRPARSER_MILEXER_H
+#define RCC_LIB_CODEGEN_MIRPARSER_MILEXER_H
 
 #include "rcc/Support/TextDiagnostic.h"
 
@@ -178,4 +178,4 @@ private:
 
 } // namespace rcc::mir
 
-#endif // RCC_MIR_MILEXER_H
+#endif // RCC_LIB_CODEGEN_MIRPARSER_MILEXER_H

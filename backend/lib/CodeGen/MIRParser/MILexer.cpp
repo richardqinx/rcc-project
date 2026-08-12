@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/MIR/MILexer.h"
+#include "MILexer.h"
 
 #include <algorithm>
 #include <array>

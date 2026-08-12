@@ -3,8 +3,8 @@
 #include "rcc/Tooling/PipelineDriver.h"
 
 #include "ToolingTestSupport.h"
+#include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/MIR/MIRDocument.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 #include "rcc/Tooling/BackendDriver.h"
 

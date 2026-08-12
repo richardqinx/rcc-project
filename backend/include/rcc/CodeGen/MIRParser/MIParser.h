@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifndef RCC_MIR_MIPARSER_H
-#define RCC_MIR_MIPARSER_H
+#ifndef RCC_CODEGEN_MIRPARSER_MIPARSER_H
+#define RCC_CODEGEN_MIRPARSER_MIPARSER_H
 
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMetadata.h"
@@ -104,4 +104,4 @@ private:
 } // namespace mir
 } // namespace rcc
 
-#endif // RCC_MIR_MIPARSER_H
+#endif // RCC_CODEGEN_MIRPARSER_MIPARSER_H

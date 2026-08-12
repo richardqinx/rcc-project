@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/MIR/MIParser.h"
+#include "rcc/CodeGen/MIRParser/MIParser.h"
 
 #include "Target/TestTarget.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
@@ -12,7 +13,6 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
-#include "rcc/MIR/MIPrinter.h"
 
 #include <cstdint>
 #include <iostream>

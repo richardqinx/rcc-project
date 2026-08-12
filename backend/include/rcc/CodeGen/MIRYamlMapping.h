@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// NOLINTNEXTLINE(llvm-header-guard)
-#ifndef RCC_LIB_MIR_MIRDOCUMENTPARSER_H
-#define RCC_LIB_MIR_MIRDOCUMENTPARSER_H
+#ifndef RCC_CODEGEN_MIRYAMLMAPPING_H
+#define RCC_CODEGEN_MIRYAMLMAPPING_H
 
+#include "rcc/CodeGen/MIRParser/MIRParser.h"
 #include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineMetadata.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/MIR/LLVMConstantSyntax.h"
-#include "rcc/MIR/MIRDocument.h"
+#include "rcc/Support/Error.h"
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -126,7 +127,18 @@ private:
   MachineFunction *ActiveFunction = nullptr;
 };
 
+[[nodiscard]] Expected<void> verifyMIRDocumentReferences(const MIRDocument &Document,
+                                                         const MachineFunction &Function,
+                                                         bool UseEmbeddedIR);
+
+[[nodiscard]] std::optional<std::uint64_t>
+parseDIExpressionOpcodeName(std::string_view Name) noexcept;
+[[nodiscard]] std::optional<std::uint64_t>
+parseDIExpressionAttributeEncodingName(std::string_view Name) noexcept;
+[[nodiscard]] std::string invalidDIExpressionElementMessage(std::string_view Name);
+[[nodiscard]] std::string formatDIExpression(std::span<const std::uint64_t> Elements);
+
 } // namespace mir
 } // namespace rcc
 
-#endif // RCC_LIB_MIR_MIRDOCUMENTPARSER_H
+#endif // RCC_CODEGEN_MIRYAMLMAPPING_H

@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifndef RCC_MIR_MIRDOCUMENT_H
-#define RCC_MIR_MIRDOCUMENT_H
+#ifndef RCC_CODEGEN_MIRPARSER_MIRPARSER_H
+#define RCC_CODEGEN_MIRPARSER_MIRPARSER_H
 
 #include "rcc/CodeGen/CompilationUnit.h"
+#include "rcc/CodeGen/MIRParser/MIParser.h"
 #include "rcc/CodeGen/StableID.h"
 #include "rcc/MIR/EmbeddedIR.h"
-#include "rcc/MIR/MIParser.h"
-#include "rcc/MIR/MIPrinter.h"
 #include "rcc/Support/TextDiagnostic.h"
 #include "rcc/Support/YAML.h"
 
@@ -125,17 +124,7 @@ private:
                                                       std::string SourceText,
                                                       MIRDocumentParserOptions Options = {});
 
-struct MIRDocumentPrinterOptions final {
-  MIPrintMode Mode = MIPrintMode::Complete;
-  bool EmitEmbeddedIR = true;
-  std::string DataLayout;
-};
-
-[[nodiscard]] Expected<std::string> printMIRDocument(const MIRDocument &Document,
-                                                     const TargetDescription &Target,
-                                                     MIRDocumentPrinterOptions Options = {});
-
 } // namespace mir
 } // namespace rcc
 
-#endif // RCC_MIR_MIRDOCUMENT_H
+#endif // RCC_CODEGEN_MIRPARSER_MIRPARSER_H

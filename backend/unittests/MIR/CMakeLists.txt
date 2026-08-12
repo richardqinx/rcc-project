@@ -17,6 +17,10 @@ add_test(
 
 add_executable(RCCBackendMILexerTests MILexerTest.cpp)
 rcc_backend_configure_target(RCCBackendMILexerTests)
+target_include_directories(
+  RCCBackendMILexerTests
+  PRIVATE "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser"
+)
 target_link_libraries(RCCBackendMILexerTests PRIVATE RCCBackend::MIR)
 
 add_test(NAME RCCBackend.MIR.MILexer COMMAND RCCBackendMILexerTests)

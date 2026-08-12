@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifndef RCC_MIR_MIPRINTER_H
-#define RCC_MIR_MIPRINTER_H
+#ifndef RCC_CODEGEN_MIRPRINTER_H
+#define RCC_CODEGEN_MIRPRINTER_H
 
-#include "rcc/MIR/MIParser.h"
+#include "rcc/CodeGen/MIRParser/MIRParser.h"
 #include "rcc/Support/Error.h"
 
 #include <string>
@@ -29,7 +29,17 @@ struct MIPrinterOptions final {
                                                              const MIParserContext &Context = {},
                                                              MIPrinterOptions Options = {});
 
+struct MIRDocumentPrinterOptions final {
+  MIPrintMode Mode = MIPrintMode::Complete;
+  bool EmitEmbeddedIR = true;
+  std::string DataLayout;
+};
+
+[[nodiscard]] Expected<std::string> printMIRDocument(const MIRDocument &Document,
+                                                     const TargetDescription &Target,
+                                                     MIRDocumentPrinterOptions Options = {});
+
 } // namespace mir
 } // namespace rcc
 
-#endif // RCC_MIR_MIPRINTER_H
+#endif // RCC_CODEGEN_MIRPRINTER_H
