@@ -557,7 +557,7 @@ const MachinePassContract &FastAllocatorPass::contract() const noexcept {
                      MachineFunctionProperty::TracksLiveness},
         .Sets = {MachineFunctionProperty::NoVRegs},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<LiveVariablesAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>()},
         .VerificationStage = PipelineStage::RegisterAllocated,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
@@ -568,7 +568,7 @@ const MachinePassContract &FastAllocatorPass::contract() const noexcept {
 
 Expected<MachinePassResult> FastAllocatorPass::run(MachineFunction &Function,
                                                    const TargetDescription &Target,
-                                                   MachineAnalysisManager &Analyses) {
+                                                   MachineFunctionAnalysisManager &Analyses) {
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument, "FastAllocator requires target behavior");
   auto Required = regalloc_detail::requireAllocationProperties(Function, contract());
@@ -583,7 +583,7 @@ Expected<MachinePassResult> FastAllocatorPass::run(MachineFunction &Function,
       regalloc_detail::reserveFunctionRegisters(*Trial->ClonedFunction, FunctionReserved);
   if (!TrialReserved)
     return std::unexpected(TrialReserved.error());
-  MachineAnalysisManager TrialAnalyses;
+  MachineFunctionAnalysisManager TrialAnalyses;
   auto Registered = registerStage11MachineAnalyses(TrialAnalyses);
   if (!Registered)
     return std::unexpected(Registered.error());

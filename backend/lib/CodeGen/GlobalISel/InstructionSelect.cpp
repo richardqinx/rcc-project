@@ -194,7 +194,7 @@ const MachinePassContract &InstructionSelect::contract() const noexcept {
 
 Expected<MachinePassResult> InstructionSelect::run(MachineFunction &Function,
                                                    const TargetDescription &Target,
-                                                   MachineAnalysisManager &Analyses) {
+                                                   MachineFunctionAnalysisManager &Analyses) {
   if (Info == nullptr)
     return std::unexpected(passFailure("instruction select has no target behavior interface",
                                        ErrorCode::InvalidArgument));

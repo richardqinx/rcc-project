@@ -295,7 +295,7 @@ const MachinePassContract &MachineCombinerPass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineCombinerPass::run(MachineFunction &Function,
                                                      const TargetDescription &Target,
-                                                     MachineAnalysisManager &Analyses) {
+                                                     MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "machine combiner input does not satisfy its stage contract");

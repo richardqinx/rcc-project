@@ -49,7 +49,7 @@ const MachinePassContract &PrologueEpilogueInsertionPass::contract() const noexc
 
 Expected<MachinePassResult> PrologueEpilogueInsertionPass::run(MachineFunction &Function,
                                                                const TargetDescription &Target,
-                                                               MachineAnalysisManager &) {
+                                                               MachineFunctionAnalysisManager &) {
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "PrologueEpilogueInsertion requires target frame lowering");

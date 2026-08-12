@@ -74,7 +74,7 @@ void testLaneSubrangesAndEarlyClobber(TestContext &Context, const rcc::TargetDes
     return;
   }
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage11MachineAnalyses(Analyses);
   auto Intervals = Registered
                        ? Analyses.getResult<rcc::LiveIntervalsAnalysis>(*Fixture->Function, Target)

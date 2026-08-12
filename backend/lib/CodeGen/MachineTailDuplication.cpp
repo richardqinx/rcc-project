@@ -248,7 +248,7 @@ const MachinePassContract &MachineTailDuplicationPass::contract() const noexcept
 
 Expected<MachinePassResult> MachineTailDuplicationPass::run(MachineFunction &Function,
                                                             const TargetDescription &Target,
-                                                            MachineAnalysisManager &) {
+                                                            MachineFunctionAnalysisManager &) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "tail duplication requires finalized allocated tracked-liveness MIR");

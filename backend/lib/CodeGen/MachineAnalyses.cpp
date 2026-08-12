@@ -263,7 +263,7 @@ const MachineBasicBlock *MachineDominatorTreeAnalysis::Result::nearestCommonDomi
 
 Expected<MachineDominatorTreeAnalysis::Result>
 MachineDominatorTreeAnalysis::run(MachineFunction &Function, const TargetDescription &,
-                                  MachineAnalysisManager &) {
+                                  MachineFunctionAnalysisManager &) {
   Result ResultValue;
   auto Built = ResultValue.build(Function);
   if (!Built)
@@ -287,9 +287,9 @@ bool MachineLoopAnalysis::Result::isIrreducible(const MachineBasicBlock &Block) 
   return IrreducibleBlocks.contains(&Block);
 }
 
-Expected<MachineLoopAnalysis::Result> MachineLoopAnalysis::run(MachineFunction &Function,
-                                                               const TargetDescription &Target,
-                                                               MachineAnalysisManager &Analyses) {
+Expected<MachineLoopAnalysis::Result>
+MachineLoopAnalysis::run(MachineFunction &Function, const TargetDescription &Target,
+                         MachineFunctionAnalysisManager &Analyses) {
   auto Dominators = Analyses.getResult<MachineDominatorTreeAnalysis>(Function, Target);
   if (!Dominators)
     return std::unexpected(Dominators.error());
@@ -496,7 +496,7 @@ std::span<const MachineSuccessor> MachineBranchProbabilityAnalysis::Result::succ
 
 Expected<MachineBranchProbabilityAnalysis::Result>
 MachineBranchProbabilityAnalysis::run(MachineFunction &Function, const TargetDescription &,
-                                      MachineAnalysisManager &) {
+                                      MachineFunctionAnalysisManager &) {
   Result ResultValue;
   const std::vector<MachineBasicBlock *> Blocks = linkedBlocks(Function);
   const auto Order = blockOrder(Blocks);
@@ -522,7 +522,7 @@ MachineBlockFrequencyAnalysis::Result::frequency(const MachineBasicBlock &Block)
 
 Expected<MachineBlockFrequencyAnalysis::Result>
 MachineBlockFrequencyAnalysis::run(MachineFunction &Function, const TargetDescription &Target,
-                                   MachineAnalysisManager &Analyses) {
+                                   MachineFunctionAnalysisManager &Analyses) {
   auto Dominators = Analyses.getResult<MachineDominatorTreeAnalysis>(Function, Target);
   auto Loops = Analyses.getResult<MachineLoopAnalysis>(Function, Target);
   auto Probabilities = Analyses.getResult<MachineBranchProbabilityAnalysis>(Function, Target);
@@ -628,8 +628,9 @@ MachineAliasAnalysis::Result::alias(const MachineMemOperand &Left,
   return Distance >= LowerSize ? MachineAliasResult::NoAlias : MachineAliasResult::PartialAlias;
 }
 
-Expected<MachineAliasAnalysis::Result>
-MachineAliasAnalysis::run(MachineFunction &, const TargetDescription &, MachineAnalysisManager &) {
+Expected<MachineAliasAnalysis::Result> MachineAliasAnalysis::run(MachineFunction &,
+                                                                 const TargetDescription &,
+                                                                 MachineFunctionAnalysisManager &) {
   return Result{};
 }
 
@@ -659,7 +660,7 @@ std::span<const MachineMemoryDependency> MachineMemoryDependenceAnalysis::Result
 
 Expected<MachineMemoryDependenceAnalysis::Result>
 MachineMemoryDependenceAnalysis::run(MachineFunction &Function, const TargetDescription &Target,
-                                     MachineAnalysisManager &Analyses) {
+                                     MachineFunctionAnalysisManager &Analyses) {
   auto Alias = Analyses.getResult<MachineAliasAnalysis>(Function, Target);
   if (!Alias)
     return std::unexpected(Alias.error());
@@ -766,14 +767,14 @@ MachineMemoryDependenceAnalysis::run(MachineFunction &Function, const TargetDesc
   return ResultValue;
 }
 
-Expected<void> registerStage8MachineAnalyses(MachineAnalysisManager &Analyses) {
+Expected<void> registerStage8MachineAnalyses(MachineFunctionAnalysisManager &Analyses) {
   const std::array IDs{
-      MachineAnalysisManager::id<MachineDominatorTreeAnalysis>(),
-      MachineAnalysisManager::id<MachineLoopAnalysis>(),
-      MachineAnalysisManager::id<MachineBranchProbabilityAnalysis>(),
-      MachineAnalysisManager::id<MachineBlockFrequencyAnalysis>(),
-      MachineAnalysisManager::id<MachineAliasAnalysis>(),
-      MachineAnalysisManager::id<MachineMemoryDependenceAnalysis>(),
+      MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
+      MachineFunctionAnalysisManager::id<MachineLoopAnalysis>(),
+      MachineFunctionAnalysisManager::id<MachineBranchProbabilityAnalysis>(),
+      MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>(),
+      MachineFunctionAnalysisManager::id<MachineAliasAnalysis>(),
+      MachineFunctionAnalysisManager::id<MachineMemoryDependenceAnalysis>(),
   };
   const std::size_t Registered = static_cast<std::size_t>(
       std::ranges::count_if(IDs, [&Analyses](AnalysisID ID) { return Analyses.isRegistered(ID); }));
@@ -787,7 +788,7 @@ Expected<void> registerStage8MachineAnalyses(MachineAnalysisManager &Analyses) {
   auto Candidate = Analyses.forkEmpty();
   if (!Candidate)
     return std::unexpected(Candidate.error());
-  MachineAnalysisManager &Staging = **Candidate;
+  MachineFunctionAnalysisManager &Staging = **Candidate;
 
   auto Dominators = Staging.registerAnalysis<MachineDominatorTreeAnalysis>({
       .Name = "MachineDominatorTree",
@@ -799,7 +800,7 @@ Expected<void> registerStage8MachineAnalyses(MachineAnalysisManager &Analyses) {
     return std::unexpected(Dominators.error());
   auto Loops = Staging.registerAnalysis<MachineLoopAnalysis>({
       .Name = "MachineLoopInfo",
-      .Dependencies = {MachineAnalysisManager::id<MachineDominatorTreeAnalysis>()},
+      .Dependencies = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>()},
       .InvalidatedBy = {MachinePassChange::CFG, MachinePassChange::BlockLayout},
       .ThreadSafety = PassThreadSafety::ThreadSafe,
   });
@@ -815,9 +816,9 @@ Expected<void> registerStage8MachineAnalyses(MachineAnalysisManager &Analyses) {
     return std::unexpected(Probabilities.error());
   auto Frequencies = Staging.registerAnalysis<MachineBlockFrequencyAnalysis>({
       .Name = "MachineBlockFrequency",
-      .Dependencies = {MachineAnalysisManager::id<MachineDominatorTreeAnalysis>(),
-                       MachineAnalysisManager::id<MachineLoopAnalysis>(),
-                       MachineAnalysisManager::id<MachineBranchProbabilityAnalysis>()},
+      .Dependencies = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
+                       MachineFunctionAnalysisManager::id<MachineLoopAnalysis>(),
+                       MachineFunctionAnalysisManager::id<MachineBranchProbabilityAnalysis>()},
       .InvalidatedBy = {MachinePassChange::CFG, MachinePassChange::BlockLayout},
       .ThreadSafety = PassThreadSafety::ThreadSafe,
   });
@@ -835,7 +836,7 @@ Expected<void> registerStage8MachineAnalyses(MachineAnalysisManager &Analyses) {
     return std::unexpected(Alias.error());
   auto MemoryDependence = Staging.registerAnalysis<MachineMemoryDependenceAnalysis>({
       .Name = "MachineMemoryDependence",
-      .Dependencies = {MachineAnalysisManager::id<MachineAliasAnalysis>()},
+      .Dependencies = {MachineFunctionAnalysisManager::id<MachineAliasAnalysis>()},
       .InvalidatedBy = {MachinePassChange::Instructions, MachinePassChange::Operands,
                         MachinePassChange::CFG, MachinePassChange::BlockLayout,
                         MachinePassChange::Frame, MachinePassChange::ConstantPool,
@@ -844,8 +845,7 @@ Expected<void> registerStage8MachineAnalyses(MachineAnalysisManager &Analyses) {
   });
   if (!MemoryDependence)
     return std::unexpected(MemoryDependence.error());
-  Analyses.Registry = std::move(Staging.Registry);
-  return {};
+  return Analyses.replaceRegistrations(std::move(Staging));
 }
 
 } // namespace rcc

@@ -5,7 +5,7 @@
 
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/StableID.h"
 #include "rcc/Support/Error.h"
 
@@ -62,8 +62,9 @@ public:
     return "MachineDominatorTree";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
 struct MachineLoop final {
@@ -107,8 +108,9 @@ public:
     return "MachineLoopInfo";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
 class MachineBranchProbabilityAnalysis final {
@@ -130,8 +132,9 @@ public:
     return "MachineBranchProbability";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
 class MachineBlockFrequencyAnalysis final {
@@ -152,8 +155,9 @@ public:
     return "MachineBlockFrequency";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
 enum class MachineAliasResult : std::uint8_t {
@@ -175,8 +179,9 @@ public:
     return "MachineAliasAnalysis";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
 enum class MachineMemoryDependencyKind : std::uint8_t {
@@ -233,11 +238,13 @@ public:
     return "MachineMemoryDependence";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
-[[nodiscard]] Expected<void> registerStage8MachineAnalyses(MachineAnalysisManager &Analyses);
+[[nodiscard]] Expected<void>
+registerStage8MachineAnalyses(MachineFunctionAnalysisManager &Analyses);
 
 } // namespace rcc
 

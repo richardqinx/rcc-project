@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_POSTRASCHEDULER_H
 #define RCC_CODEGEN_POSTRASCHEDULER_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/MachineScheduler.h"
 
 namespace rcc {
@@ -19,7 +19,7 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 
 private:
   const TargetSchedulingModel *Model;

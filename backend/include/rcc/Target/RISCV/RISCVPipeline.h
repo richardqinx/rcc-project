@@ -3,7 +3,7 @@
 #ifndef RCC_TARGET_RISCV_RISCVPIPELINE_H
 #define RCC_TARGET_RISCV_RISCVPIPELINE_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/Support/Error.h"
 #include "rcc/Target/RISCV/RISCVSubtarget.h"
 
@@ -19,7 +19,7 @@ class TargetDescription;
 
 namespace riscv {
 
-[[nodiscard]] Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline,
+[[nodiscard]] Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
                                                   const MachineFunction &Function,
                                                   const RISCVSubtarget &Subtarget);
 [[nodiscard]] Expected<std::unique_ptr<MachineFunctionPass>>

@@ -25,7 +25,7 @@ void testSlotIndexes(TestContext &Context, const rcc::TargetDescription &Target)
     return;
   }
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage11MachineAnalyses(Analyses);
   auto Indexes =
       Registered

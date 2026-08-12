@@ -301,7 +301,7 @@ const MachinePassContract &MachineBranchOptimizationPass::contract() const noexc
 
 Expected<MachinePassResult> MachineBranchOptimizationPass::run(MachineFunction &Function,
                                                                const TargetDescription &Target,
-                                                               MachineAnalysisManager &) {
+                                                               MachineFunctionAnalysisManager &) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "branch optimization requires selected PHI-free MachineIR");

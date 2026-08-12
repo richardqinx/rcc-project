@@ -48,7 +48,7 @@ set(
   MachineMetadata.cpp
   MachineOperand.cpp
   MachineOptimizationPipeline.cpp
-  MachinePass.cpp
+  MachinePassManager.cpp
   MachinePseudoExpansion.cpp
   MachineRegisterInfo.cpp
   MachineScheduler.cpp
@@ -136,7 +136,10 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMetadata.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOptimizationPipeline.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePass.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/IR/PassManager.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/IR/PassInstrumentation.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionAnalysisManager.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePassManager.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePseudoExpansion.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PrologueEpilogueInsertion.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterPressure.h"
@@ -262,7 +265,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationPipeline.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassManager.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineScheduler.cpp"
@@ -350,7 +353,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationPipeline.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassManager.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePseudoExpansion.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineScheduler.cpp"

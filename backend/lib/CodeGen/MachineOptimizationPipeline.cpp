@@ -32,13 +32,13 @@ namespace rcc {
 namespace {
 
 template <typename Pass, typename... Arguments>
-[[nodiscard]] Expected<void> addPass(MachinePassManager &Pipeline, Arguments &&...Values) {
+[[nodiscard]] Expected<void> addPass(MachineFunctionPassManager &Pipeline, Arguments &&...Values) {
   return Pipeline.addPass(std::make_unique<Pass>(std::forward<Arguments>(Values)...));
 }
 
 } // namespace
 
-Expected<void> registerMachineOptimizationAnalyses(MachineAnalysisManager &Analyses) {
+Expected<void> registerMachineOptimizationAnalyses(MachineFunctionAnalysisManager &Analyses) {
   auto Registered = registerStage8MachineAnalyses(Analyses);
   if (!Registered)
     return std::unexpected(Registered.error());
@@ -46,7 +46,7 @@ Expected<void> registerMachineOptimizationAnalyses(MachineAnalysisManager &Analy
 }
 
 Expected<void>
-addSelectedSSAOptimizationPipeline(MachinePassManager &Pipeline,
+addSelectedSSAOptimizationPipeline(MachineFunctionPassManager &Pipeline,
                                    const MachineOptimizationPipelineTargetInfo &TargetInfo) {
   auto Added = addPass<MachineCombinerPass>(Pipeline, TargetInfo.Combiner,
                                             MachineCombinerStage::SelectedSSA);
@@ -68,7 +68,7 @@ addSelectedSSAOptimizationPipeline(MachinePassManager &Pipeline,
 }
 
 Expected<void> addPreRegisterAllocationOptimizationPipeline(
-    MachinePassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo) {
+    MachineFunctionPassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo) {
   auto Added = addPass<MachineBranchOptimizationPass>(Pipeline, TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
@@ -87,7 +87,7 @@ Expected<void> addPreRegisterAllocationOptimizationPipeline(
 }
 
 Expected<void>
-addPostRegisterAllocationPipeline(MachinePassManager &Pipeline,
+addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
                                   const MachineOptimizationPipelineTargetInfo &TargetInfo) {
   auto Added = addPass<MachineStackSlotColoringPass>(Pipeline);
   if (!Added)

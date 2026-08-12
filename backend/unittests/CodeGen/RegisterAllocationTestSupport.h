@@ -436,7 +436,7 @@ public:
                                                  const TargetRegisterAllocationInfo &Info,
                                                  AllocatorKind Kind,
                                                  RegisterAllocationOptions Options = {}) {
-  MachineAnalysisManager Analyses;
+  MachineFunctionAnalysisManager Analyses;
   auto Registered = registerStage11MachineAnalyses(Analyses);
   if (!Registered)
     return std::unexpected(Registered.error());
@@ -452,7 +452,7 @@ public:
     Pass = std::make_unique<PBQPAllocatorPass>(Info, Options);
     break;
   }
-  MachinePassManager Pipeline;
+  MachineFunctionPassManager Pipeline;
   auto Added = Pipeline.addPass(std::move(Pass));
   if (!Added)
     return std::unexpected(Added.error());

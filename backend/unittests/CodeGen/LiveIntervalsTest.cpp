@@ -64,7 +64,7 @@ void testCFGAndValueNumbers(TestContext &Context, const rcc::TargetDescription &
     return;
   }
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage11MachineAnalyses(Analyses);
   auto Variables = Registered ? Analyses.getResult<rcc::LiveVariablesAnalysis>(Function, Target)
                               : rcc::Expected<rcc::LiveVariablesAnalysis::Result *>{
@@ -133,7 +133,7 @@ void testPhysicalUnitsAndRegMasks(TestContext &Context, const rcc::TargetDescrip
     Context.expect(false, "physical-alias instructions must be built");
     return;
   }
-  rcc::MachineAnalysisManager AliasAnalyses;
+  rcc::MachineFunctionAnalysisManager AliasAnalyses;
   auto AliasRegistered = rcc::registerStage11MachineAnalyses(AliasAnalyses);
   auto AliasIntervals =
       AliasRegistered
@@ -167,7 +167,7 @@ void testPhysicalUnitsAndRegMasks(TestContext &Context, const rcc::TargetDescrip
     Context.expect(false, "RegMask instructions must be built");
     return;
   }
-  rcc::MachineAnalysisManager MaskAnalyses;
+  rcc::MachineFunctionAnalysisManager MaskAnalyses;
   auto MaskRegistered = rcc::registerStage11MachineAnalyses(MaskAnalyses);
   auto MaskIntervals =
       MaskRegistered
@@ -237,7 +237,7 @@ void testRISCVLiveness(TestContext &Context) {
     Context.expect(false, "RV64GC ADDI instructions must be built");
     return;
   }
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage11MachineAnalyses(Analyses);
   auto Intervals = Registered
                        ? Analyses.getResult<rcc::LiveIntervalsAnalysis>(*Fixture->Function, *Target)

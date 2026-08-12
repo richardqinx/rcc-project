@@ -27,7 +27,9 @@ set(
   MachineMetadataTest.cpp
   MachineOperandTest.cpp
   MachineOptimizationTest.cpp
-  MachinePassTest.cpp
+  PassManagerTest.cpp
+  PassInstrumentationTest.cpp
+  MachinePassManagerTest.cpp
   MachineSchedulingTest.cpp
   PBQPTest.cpp
   RegisterAllocationTest.cpp
@@ -343,14 +345,35 @@ add_test(
   COMMAND RCCBackendCodeGenMachineOperandTests
 )
 
-add_executable(RCCBackendCodeGenMachinePassTests MachinePassTest.cpp)
-rcc_backend_configure_target(RCCBackendCodeGenMachinePassTests)
+add_executable(RCCBackendCodeGenPassManagerTests PassManagerTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenPassManagerTests)
 target_link_libraries(
-  RCCBackendCodeGenMachinePassTests
+  RCCBackendCodeGenPassManagerTests
   PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
 )
+add_test(NAME RCCBackend.CodeGen.PassManager COMMAND RCCBackendCodeGenPassManagerTests)
 
-add_test(NAME RCCBackend.CodeGen.MachinePass COMMAND RCCBackendCodeGenMachinePassTests)
+add_executable(RCCBackendCodeGenPassInstrumentationTests PassInstrumentationTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenPassInstrumentationTests)
+target_link_libraries(
+  RCCBackendCodeGenPassInstrumentationTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(
+  NAME RCCBackend.CodeGen.PassInstrumentation
+  COMMAND RCCBackendCodeGenPassInstrumentationTests
+)
+
+add_executable(RCCBackendCodeGenMachinePassManagerTests MachinePassManagerTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenMachinePassManagerTests)
+target_link_libraries(
+  RCCBackendCodeGenMachinePassManagerTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(
+  NAME RCCBackend.CodeGen.MachinePassManager
+  COMMAND RCCBackendCodeGenMachinePassManagerTests
+)
 
 add_subdirectory(GlobalISel)
 
@@ -495,7 +518,9 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PassManagerTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PassInstrumentationTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassManagerTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulingTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"
@@ -544,7 +569,9 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PassManagerTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PassInstrumentationTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassManagerTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulingTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"

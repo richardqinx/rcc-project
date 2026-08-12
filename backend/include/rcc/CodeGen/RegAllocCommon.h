@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_REGALLOCCOMMON_H
 #define RCC_CODEGEN_REGALLOCCOMMON_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 
 #include <memory>
 

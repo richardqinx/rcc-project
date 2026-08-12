@@ -143,12 +143,12 @@ Expected<void> SlotIndexesAnalysis::Result::renumber(MachineFunction &Function) 
 
 bool SlotIndexesAnalysis::Result::invalidate(const MachineFunction &,
                                              const PreservedAnalyses &Preserved) const noexcept {
-  return !Preserved.preserves(MachineAnalysisManager::id<SlotIndexesAnalysis>());
+  return !Preserved.preserves(MachineFunctionAnalysisManager::id<SlotIndexesAnalysis>());
 }
 
 Expected<SlotIndexesAnalysis::Result> SlotIndexesAnalysis::run(MachineFunction &Function,
                                                                const TargetDescription &,
-                                                               MachineAnalysisManager &) {
+                                                               MachineFunctionAnalysisManager &) {
   Result ResultValue;
   auto Numbered = ResultValue.renumber(Function);
   if (!Numbered)

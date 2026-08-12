@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 
 #include "rcc/CodeGen/CompilationUnit.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -141,6 +141,56 @@ void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
 
 } // namespace
 
+void AnalysisManagerInstrumentation<MachineFunction, MachinePassInstrumentation>::beforeAnalysis(
+    MachinePassInstrumentation *Instrumentation, std::string_view Name,
+    const MachineFunction &Function) {
+  Instrumentation->beforeAnalysis(Name, Function);
+}
+
+void AnalysisManagerInstrumentation<MachineFunction, MachinePassInstrumentation>::afterAnalysis(
+    MachinePassInstrumentation *Instrumentation, std::string_view Name,
+    const MachineFunction &Function, bool CacheHit, std::uint64_t Nanoseconds) {
+  Instrumentation->afterAnalysis(Name, Function, CacheHit, Nanoseconds);
+}
+
+void AnalysisManagerInstrumentation<MachineFunction, MachinePassInstrumentation>::analysisFailure(
+    MachinePassInstrumentation *Instrumentation, std::string_view Name,
+    const MachineFunction &Function, const Error &Failure, std::uint64_t Nanoseconds) {
+  Instrumentation->analysisFailure(Name, Function, Failure, Nanoseconds);
+}
+
+Expected<bool>
+AnalysisManagerInstrumentation<MachineFunction, MachinePassInstrumentation>::requestAction(
+    MachinePassInstrumentation *Instrumentation, std::string_view Pass, std::string_view Rule,
+    const MachineFunction &Function, MachineInstrStableID Instruction, std::uint64_t Cost) {
+  return Instrumentation->requestAction(Pass, Rule, Function, Instruction, Cost);
+}
+
+Expected<bool>
+AnalysisManagerInstrumentation<MachineFunction, MachinePassInstrumentation>::requestAction(
+    MachinePassInstrumentation *Instrumentation, std::string_view Pass, std::string_view Rule,
+    const MachineFunction &Function, std::nullptr_t, std::uint64_t Cost) {
+  return Instrumentation->requestAction(Pass, Rule, Function, nullptr, Cost);
+}
+
+void AnalysisManagerInstrumentation<CompilationUnit, MachinePassInstrumentation>::beforeAnalysis(
+    MachinePassInstrumentation *Instrumentation, std::string_view Name,
+    const CompilationUnit &Unit) {
+  Instrumentation->beforeAnalysis(Name, Unit);
+}
+
+void AnalysisManagerInstrumentation<CompilationUnit, MachinePassInstrumentation>::afterAnalysis(
+    MachinePassInstrumentation *Instrumentation, std::string_view Name, const CompilationUnit &Unit,
+    bool CacheHit, std::uint64_t Nanoseconds) {
+  Instrumentation->afterAnalysis(Name, Unit, CacheHit, Nanoseconds);
+}
+
+void AnalysisManagerInstrumentation<CompilationUnit, MachinePassInstrumentation>::analysisFailure(
+    MachinePassInstrumentation *Instrumentation, std::string_view Name, const CompilationUnit &Unit,
+    const Error &Failure, std::uint64_t Nanoseconds) {
+  Instrumentation->analysisFailure(Name, Unit, Failure, Nanoseconds);
+}
+
 std::string MachineActionID::toString() const {
   std::string Result;
   Result.reserve(Pass.size() + Rule.size() + 48U);
@@ -160,7 +210,7 @@ Expected<bool> MachineActionReplay::request(std::string_view Rule, const Machine
     const auto Position = RecordingInstructionIDs.find(Instruction);
     const MachineInstrStableID CanonicalInstruction =
         Position == RecordingInstructionIDs.end() ? Instruction : Position->second;
-    auto Accepted = Analyses->requestAction(Rule, Function, CanonicalInstruction, Cost);
+    auto Accepted = Request(Rule, Function, CanonicalInstruction, Cost);
     if (!Accepted)
       return std::unexpected(Accepted.error());
     Decisions.push_back({
@@ -212,452 +262,6 @@ Expected<void> MachineActionReplay::finishReplay() const {
                           "machine action replay did not consume every recorded decision");
   }
   return {};
-}
-
-Expected<void>
-MachineAnalysisManager::registerAnalysisImpl(MachineAnalysisRegistration Registration,
-                                             ErasedRunner Runner, ErasedInvalidator Invalidator) {
-  if (Registration.ID == nullptr || Registration.Name.empty() || !Runner || !Invalidator) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "machine analysis registration is incomplete");
-  }
-  if (hasDuplicateAnalysisIDs(Registration.Dependencies)) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "machine analysis dependencies must be non-null and unique");
-  }
-  if (std::ranges::find(Registration.Dependencies, Registration.ID) !=
-      Registration.Dependencies.end()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "machine analysis cannot directly depend on itself");
-  }
-  if (Registry.contains(Registration.ID))
-    return makeUnexpected(ErrorCode::InvalidArgument, "machine analysis ID is already registered");
-  if (std::ranges::any_of(Registry, [&Registration](const auto &Entry) {
-        return Entry.second.Info.Name == Registration.Name;
-      })) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "machine analysis name is already registered");
-  }
-  const AnalysisID RegistrationID = Registration.ID;
-  Registry.emplace(RegistrationID, RegisteredAnalysis{std::move(Registration), std::move(Runner),
-                                                      std::move(Invalidator)});
-  return {};
-}
-
-bool MachineAnalysisManager::isRegistered(AnalysisID ID) const noexcept {
-  return ID != nullptr && Registry.contains(ID);
-}
-
-bool MachineAnalysisManager::hasCached(const MachineFunction &Function,
-                                       AnalysisID ID) const noexcept {
-  const auto FunctionPosition = Cache.find(const_cast<MachineFunction *>(&Function));
-  if (FunctionPosition == Cache.end())
-    return false;
-  const auto AnalysisPosition = FunctionPosition->second.find(ID);
-  return AnalysisPosition != FunctionPosition->second.end() && AnalysisPosition->second.Value;
-}
-
-std::size_t
-MachineAnalysisManager::cachedResultCount(const MachineFunction &Function) const noexcept {
-  const auto Position = Cache.find(const_cast<MachineFunction *>(&Function));
-  return Position == Cache.end() ? 0 : Position->second.size();
-}
-
-Expected<void>
-MachineAnalysisManager::materializeDependencies(const RegisteredAnalysis &Registration,
-                                                MachineFunction &Function,
-                                                const TargetDescription &Target) {
-  for (const AnalysisID Dependency : Registration.Info.Dependencies) {
-    if (!Registry.contains(Dependency)) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "machine analysis depends on an unregistered analysis");
-    }
-    auto Result = getResultImpl(Dependency, Function, Target);
-    if (!Result)
-      return std::unexpected(Result.error());
-  }
-  return {};
-}
-
-Expected<void *> MachineAnalysisManager::getResultImpl(AnalysisID ID, MachineFunction &Function,
-                                                       const TargetDescription &Target) {
-  if (ID == nullptr)
-    return makeUnexpected(ErrorCode::InvalidArgument, "machine analysis ID cannot be null");
-
-  auto &FunctionCache = Cache[&Function];
-  if (const auto Cached = FunctionCache.find(ID);
-      Cached != FunctionCache.end() && Cached->second.Value) {
-    const auto Registration = Registry.find(ID);
-    const std::string_view Name = Registration == Registry.end()
-                                      ? std::string_view{"unknown-machine-analysis"}
-                                      : std::string_view{Registration->second.Info.Name};
-    if (Instrumentation != nullptr)
-      Instrumentation->afterAnalysis(Name, Function, true, 0);
-    return Cached->second.Value.get();
-  }
-
-  const auto RegistrationPosition = Registry.find(ID);
-  if (RegistrationPosition == Registry.end())
-    return makeUnexpected(ErrorCode::InvalidArgument, "machine analysis ID is not registered");
-  const RegisteredAnalysis &Registration = RegistrationPosition->second;
-
-  auto &Stack = ActiveComputations[&Function];
-  if (std::ranges::find(Stack, ID) != Stack.end()) {
-    Error Failure(ErrorCode::InvalidArgument,
-                  "machine analysis dependency cycle reaches '" + Registration.Info.Name + "'");
-    if (Instrumentation != nullptr)
-      Instrumentation->analysisFailure(Registration.Info.Name, Function, Failure, 0);
-    return std::unexpected(std::move(Failure));
-  }
-
-  if (Instrumentation != nullptr)
-    Instrumentation->beforeAnalysis(Registration.Info.Name, Function);
-  const Clock::time_point Start = Clock::now();
-  Stack.push_back(ID);
-  auto Dependencies = materializeDependencies(Registration, Function, Target);
-  if (!Dependencies) {
-    Stack.pop_back();
-    if (Stack.empty())
-      ActiveComputations.erase(&Function);
-    Error Failure = prefixedError(Dependencies.error(),
-                                  "machine analysis '" + Registration.Info.Name + "' failed: ");
-    if (Instrumentation != nullptr) {
-      Instrumentation->analysisFailure(Registration.Info.Name, Function, Failure,
-                                       elapsedNanoseconds(Start));
-    }
-    return std::unexpected(std::move(Failure));
-  }
-
-  auto Computed = Registration.Runner(Function, Target, *this);
-  Stack.pop_back();
-  if (Stack.empty())
-    ActiveComputations.erase(&Function);
-  const std::uint64_t Duration = elapsedNanoseconds(Start);
-  if (!Computed) {
-    Error Failure = prefixedError(Computed.error(),
-                                  "machine analysis '" + Registration.Info.Name + "' failed: ");
-    if (Instrumentation != nullptr)
-      Instrumentation->analysisFailure(Registration.Info.Name, Function, Failure, Duration);
-    return std::unexpected(std::move(Failure));
-  }
-  if (!*Computed) {
-    Error Failure(ErrorCode::InternalError,
-                  "machine analysis '" + Registration.Info.Name + "' returned a null result");
-    if (Instrumentation != nullptr)
-      Instrumentation->analysisFailure(Registration.Info.Name, Function, Failure, Duration);
-    return std::unexpected(std::move(Failure));
-  }
-
-  void *Result = Computed->get();
-  FunctionCache.emplace(ID, CacheEntry{std::move(*Computed), ID});
-  if (Instrumentation != nullptr)
-    Instrumentation->afterAnalysis(Registration.Info.Name, Function, false, Duration);
-  return Result;
-}
-
-void MachineAnalysisManager::invalidate(MachineFunction &Function,
-                                        const PreservedAnalyses &Preserved,
-                                        MachinePassChanges Changes) noexcept {
-  const auto FunctionPosition = Cache.find(&Function);
-  if (FunctionPosition == Cache.end() || Preserved.preservesAll() || Changes.empty())
-    return;
-
-  std::set<AnalysisID> Invalid;
-  for (auto &[ID, Entry] : FunctionPosition->second) {
-    if (Preserved.preserves(ID))
-      continue;
-    const auto Registration = Registry.find(ID);
-    if (Registration == Registry.end() ||
-        Registration->second.Info.InvalidatedBy.intersects(Changes)) {
-      const bool ShouldInvalidate =
-          Registration == Registry.end() || !Entry.Value || !Registration->second.Invalidator ||
-          Registration->second.Invalidator(Entry.Value.get(), Function, Preserved);
-      if (ShouldInvalidate)
-        Invalid.insert(ID);
-    }
-  }
-
-  bool Added = true;
-  while (Added) {
-    Added = false;
-    for (const auto &[ID, Entry] : FunctionPosition->second) {
-      (void)Entry;
-      if (Invalid.contains(ID) || Preserved.preserves(ID))
-        continue;
-      const auto Registration = Registry.find(ID);
-      if (Registration != Registry.end() &&
-          std::ranges::any_of(
-              Registration->second.Info.Dependencies,
-              [&Invalid](AnalysisID Dependency) { return Invalid.contains(Dependency); })) {
-        Added = Invalid.insert(ID).second || Added;
-      }
-    }
-  }
-
-  for (const AnalysisID ID : Invalid)
-    FunctionPosition->second.erase(ID);
-  if (FunctionPosition->second.empty())
-    Cache.erase(FunctionPosition);
-}
-
-void MachineAnalysisManager::clear(MachineFunction &Function) noexcept {
-  Cache.erase(&Function);
-  ActiveComputations.erase(&Function);
-}
-
-void MachineAnalysisManager::clearAll() noexcept {
-  Cache.clear();
-  ActiveComputations.clear();
-}
-
-Expected<std::unique_ptr<MachineAnalysisManager>> MachineAnalysisManager::forkEmpty() const {
-  if (!ActiveComputations.empty()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "cannot fork a machine analysis manager during analysis computation");
-  }
-  auto Result = std::make_unique<MachineAnalysisManager>();
-  Result->Registry = Registry;
-  return Result;
-}
-
-Expected<void> MachineAnalysisManager::validateParallelRequirements(
-    std::span<const AnalysisID> RequiredAnalyses) const {
-  std::vector<AnalysisID> Worklist(RequiredAnalyses.begin(), RequiredAnalyses.end());
-  std::unordered_set<AnalysisID> Visited;
-  for (std::size_t Index = 0; Index < Worklist.size(); ++Index) {
-    const AnalysisID ID = Worklist[Index];
-    if (ID == nullptr || !Visited.insert(ID).second)
-      continue;
-    const auto Position = Registry.find(ID);
-    if (Position == Registry.end()) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "parallel machine pass requires an unregistered analysis");
-    }
-    if (Position->second.Info.ThreadSafety != PassThreadSafety::ThreadSafe) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "parallel machine pipeline requires analysis '" +
-                                Position->second.Info.Name + "' to be marked thread-safe");
-    }
-    Worklist.insert(Worklist.end(), Position->second.Info.Dependencies.begin(),
-                    Position->second.Info.Dependencies.end());
-  }
-  return {};
-}
-
-Expected<bool> MachineAnalysisManager::requestAction(std::string_view Action,
-                                                     const MachineFunction &Function,
-                                                     std::uint64_t Cost) {
-  return requestAction(Action, Function, MachineInstrStableID{}, Cost);
-}
-
-Expected<bool> MachineAnalysisManager::requestAction(std::string_view Rule,
-                                                     const MachineFunction &Function,
-                                                     MachineInstrStableID Instruction,
-                                                     std::uint64_t Cost) {
-  if (Rule.empty() || Cost == 0)
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "machine action requires a name and nonzero cost");
-  if (Instrumentation == nullptr)
-    return true;
-  MachineActionID ID{
-      .Pass = ActivePass.empty() ? "unscoped" : ActivePass,
-      .Rule = std::string(Rule),
-      .Function = Function.stableID(),
-      .Instruction = Instruction,
-  };
-  return Instrumentation->requestAction(ID, Function, Cost);
-}
-
-Expected<void> CompilationUnitAnalysisManager::registerAnalysisImpl(
-    CompilationUnitAnalysisRegistration Registration, ErasedRunner Runner,
-    ErasedInvalidator Invalidator) {
-  if (Registration.ID == nullptr || Registration.Name.empty() || !Runner || !Invalidator) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "compilation-unit analysis registration is incomplete");
-  }
-  if (hasDuplicateAnalysisIDs(Registration.Dependencies)) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "compilation-unit analysis dependencies must be non-null and unique");
-  }
-  if (std::ranges::find(Registration.Dependencies, Registration.ID) !=
-      Registration.Dependencies.end()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "compilation-unit analysis cannot directly depend on itself");
-  }
-  if (Registry.contains(Registration.ID)) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "compilation-unit analysis ID is already registered");
-  }
-  if (std::ranges::any_of(Registry, [&Registration](const auto &Entry) {
-        return Entry.second.Info.Name == Registration.Name;
-      })) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "compilation-unit analysis name is already registered");
-  }
-  const AnalysisID RegistrationID = Registration.ID;
-  Registry.emplace(RegistrationID, RegisteredAnalysis{std::move(Registration), std::move(Runner),
-                                                      std::move(Invalidator)});
-  return {};
-}
-
-bool CompilationUnitAnalysisManager::isRegistered(AnalysisID ID) const noexcept {
-  return ID != nullptr && Registry.contains(ID);
-}
-
-bool CompilationUnitAnalysisManager::hasCached(const CompilationUnit &Unit,
-                                               AnalysisID ID) const noexcept {
-  const auto UnitPosition = Cache.find(const_cast<CompilationUnit *>(&Unit));
-  if (UnitPosition == Cache.end())
-    return false;
-  const auto AnalysisPosition = UnitPosition->second.find(ID);
-  return AnalysisPosition != UnitPosition->second.end() && AnalysisPosition->second.Value;
-}
-
-Expected<void>
-CompilationUnitAnalysisManager::materializeDependencies(const RegisteredAnalysis &Registration,
-                                                        CompilationUnit &Unit,
-                                                        const TargetDescription &Target) {
-  for (const AnalysisID Dependency : Registration.Info.Dependencies) {
-    if (!Registry.contains(Dependency)) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "compilation-unit analysis depends on an unregistered analysis");
-    }
-    auto Result = getResultImpl(Dependency, Unit, Target);
-    if (!Result)
-      return std::unexpected(Result.error());
-  }
-  return {};
-}
-
-Expected<void *> CompilationUnitAnalysisManager::getResultImpl(AnalysisID ID, CompilationUnit &Unit,
-                                                               const TargetDescription &Target) {
-  if (ID == nullptr)
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "compilation-unit analysis ID cannot be null");
-  auto &UnitCache = Cache[&Unit];
-  if (const auto Cached = UnitCache.find(ID); Cached != UnitCache.end() && Cached->second.Value) {
-    const auto Registration = Registry.find(ID);
-    const std::string_view Name = Registration == Registry.end()
-                                      ? std::string_view{"unknown-compilation-unit-analysis"}
-                                      : std::string_view{Registration->second.Info.Name};
-    if (Instrumentation != nullptr)
-      Instrumentation->afterUnitAnalysis(Name, Unit, true, 0);
-    return Cached->second.Value.get();
-  }
-
-  const auto RegistrationPosition = Registry.find(ID);
-  if (RegistrationPosition == Registry.end()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "compilation-unit analysis ID is not registered");
-  }
-  const RegisteredAnalysis &Registration = RegistrationPosition->second;
-  auto &Stack = ActiveComputations[&Unit];
-  if (std::ranges::find(Stack, ID) != Stack.end()) {
-    Error Failure(ErrorCode::InvalidArgument,
-                  "compilation-unit analysis dependency cycle reaches '" + Registration.Info.Name +
-                      "'");
-    if (Instrumentation != nullptr)
-      Instrumentation->unitAnalysisFailure(Registration.Info.Name, Unit, Failure, 0);
-    return std::unexpected(std::move(Failure));
-  }
-
-  if (Instrumentation != nullptr)
-    Instrumentation->beforeUnitAnalysis(Registration.Info.Name, Unit);
-  const Clock::time_point Start = Clock::now();
-  Stack.push_back(ID);
-  auto Dependencies = materializeDependencies(Registration, Unit, Target);
-  if (!Dependencies) {
-    Stack.pop_back();
-    if (Stack.empty())
-      ActiveComputations.erase(&Unit);
-    Error Failure = prefixedError(Dependencies.error(), "compilation-unit analysis '" +
-                                                            Registration.Info.Name + "' failed: ");
-    if (Instrumentation != nullptr) {
-      Instrumentation->unitAnalysisFailure(Registration.Info.Name, Unit, Failure,
-                                           elapsedNanoseconds(Start));
-    }
-    return std::unexpected(std::move(Failure));
-  }
-
-  auto Computed = Registration.Runner(Unit, Target, *this);
-  Stack.pop_back();
-  if (Stack.empty())
-    ActiveComputations.erase(&Unit);
-  const std::uint64_t Duration = elapsedNanoseconds(Start);
-  if (!Computed) {
-    Error Failure = prefixedError(Computed.error(), "compilation-unit analysis '" +
-                                                        Registration.Info.Name + "' failed: ");
-    if (Instrumentation != nullptr)
-      Instrumentation->unitAnalysisFailure(Registration.Info.Name, Unit, Failure, Duration);
-    return std::unexpected(std::move(Failure));
-  }
-  if (!*Computed) {
-    Error Failure(ErrorCode::InternalError, "compilation-unit analysis '" + Registration.Info.Name +
-                                                "' returned a null result");
-    if (Instrumentation != nullptr)
-      Instrumentation->unitAnalysisFailure(Registration.Info.Name, Unit, Failure, Duration);
-    return std::unexpected(std::move(Failure));
-  }
-
-  void *Result = Computed->get();
-  UnitCache.emplace(ID, CacheEntry{std::move(*Computed), ID});
-  if (Instrumentation != nullptr)
-    Instrumentation->afterUnitAnalysis(Registration.Info.Name, Unit, false, Duration);
-  return Result;
-}
-
-void CompilationUnitAnalysisManager::invalidate(CompilationUnit &Unit,
-                                                const PreservedAnalyses &Preserved,
-                                                MachinePassChanges Changes) noexcept {
-  const auto UnitPosition = Cache.find(&Unit);
-  if (UnitPosition == Cache.end() || Preserved.preservesAll() || Changes.empty())
-    return;
-
-  std::set<AnalysisID> Invalid;
-  for (auto &[ID, Entry] : UnitPosition->second) {
-    if (Preserved.preserves(ID))
-      continue;
-    const auto Registration = Registry.find(ID);
-    if (Registration == Registry.end() ||
-        Registration->second.Info.InvalidatedBy.intersects(Changes)) {
-      const bool ShouldInvalidate =
-          Registration == Registry.end() || !Entry.Value || !Registration->second.Invalidator ||
-          Registration->second.Invalidator(Entry.Value.get(), Unit, Preserved);
-      if (ShouldInvalidate)
-        Invalid.insert(ID);
-    }
-  }
-
-  bool Added = true;
-  while (Added) {
-    Added = false;
-    for (const auto &[ID, Entry] : UnitPosition->second) {
-      (void)Entry;
-      if (Invalid.contains(ID) || Preserved.preserves(ID))
-        continue;
-      const auto Registration = Registry.find(ID);
-      if (Registration != Registry.end() &&
-          std::ranges::any_of(
-              Registration->second.Info.Dependencies,
-              [&Invalid](AnalysisID Dependency) { return Invalid.contains(Dependency); })) {
-        Added = Invalid.insert(ID).second || Added;
-      }
-    }
-  }
-  for (const AnalysisID InvalidID : Invalid)
-    UnitPosition->second.erase(InvalidID);
-  if (UnitPosition->second.empty())
-    Cache.erase(UnitPosition);
-}
-
-void CompilationUnitAnalysisManager::clear(CompilationUnit &Unit) noexcept {
-  Cache.erase(&Unit);
-  ActiveComputations.erase(&Unit);
-}
-
-void CompilationUnitAnalysisManager::clearAll() noexcept {
-  Cache.clear();
-  ActiveComputations.clear();
 }
 
 void MachinePassInstrumentation::addBeforeCallback(BeforeCallback Callback) {
@@ -966,9 +570,17 @@ void MachinePassInstrumentation::change(std::string_view Name, const MachineFunc
     Callback(Name, Function, Changes, FingerprintChanged);
 }
 
-Expected<bool> MachinePassInstrumentation::requestAction(const MachineActionID &Action,
+Expected<bool> MachinePassInstrumentation::requestAction(std::string_view Pass,
+                                                         std::string_view Rule,
                                                          const MachineFunction &Function,
+                                                         MachineInstrStableID Instruction,
                                                          std::uint64_t Cost) {
+  MachineActionID Action{
+      .Pass = std::string(Pass),
+      .Rule = std::string(Rule),
+      .Function = Function.stableID(),
+      .Instruction = Instruction,
+  };
   if (Action.Pass.empty() || Action.Rule.empty() || Action.Function != Function.stableID() ||
       Cost == 0) {
     return makeUnexpected(ErrorCode::InvalidArgument, "machine action identity is invalid");
@@ -998,6 +610,13 @@ Expected<bool> MachinePassInstrumentation::requestAction(const MachineActionID &
   Consumed += Cost;
   ActionEvents.push_back({Action, Cost, true});
   return true;
+}
+
+Expected<bool> MachinePassInstrumentation::requestAction(std::string_view Pass,
+                                                         std::string_view Rule,
+                                                         const MachineFunction &Function,
+                                                         std::nullptr_t, std::uint64_t Cost) {
+  return requestAction(Pass, Rule, Function, MachineInstrStableID{}, Cost);
 }
 
 void MachinePassInstrumentation::beforeUnit(std::string_view Name,
@@ -1043,8 +662,8 @@ void MachinePassInstrumentation::unitFailure(std::string_view Name, const Compil
     Callback(Name, Unit, ErrorValue);
 }
 
-void MachinePassInstrumentation::beforeUnitAnalysis(std::string_view Name,
-                                                    const CompilationUnit &Unit) const {
+void MachinePassInstrumentation::beforeAnalysis(std::string_view Name,
+                                                const CompilationUnit &Unit) const {
   std::vector<BeforeUnitAnalysisCallback> Callbacks;
   {
     std::scoped_lock Lock(Mutex);
@@ -1054,9 +673,8 @@ void MachinePassInstrumentation::beforeUnitAnalysis(std::string_view Name,
     Callback(Name, Unit);
 }
 
-void MachinePassInstrumentation::afterUnitAnalysis(std::string_view Name,
-                                                   const CompilationUnit &Unit, bool CacheHit,
-                                                   std::uint64_t Nanoseconds) const {
+void MachinePassInstrumentation::afterAnalysis(std::string_view Name, const CompilationUnit &Unit,
+                                               bool CacheHit, std::uint64_t Nanoseconds) const {
   std::vector<AfterUnitAnalysisCallback> Callbacks;
   {
     std::scoped_lock Lock(Mutex);
@@ -1070,10 +688,9 @@ void MachinePassInstrumentation::afterUnitAnalysis(std::string_view Name,
     Callback(Name, Unit, CacheHit, Nanoseconds);
 }
 
-void MachinePassInstrumentation::unitAnalysisFailure(std::string_view Name,
-                                                     const CompilationUnit &Unit,
-                                                     const Error &ErrorValue,
-                                                     std::uint64_t Nanoseconds) const {
+void MachinePassInstrumentation::analysisFailure(std::string_view Name, const CompilationUnit &Unit,
+                                                 const Error &ErrorValue,
+                                                 std::uint64_t Nanoseconds) const {
   std::vector<UnitAnalysisFailureCallback> Callbacks;
   {
     std::scoped_lock Lock(Mutex);
@@ -1128,14 +745,10 @@ std::vector<MachineActionEvent> MachinePassInstrumentation::actionEvents() const
   return Result;
 }
 
-void MachinePassInstrumentation::clearStatistics() {
-  std::scoped_lock Lock(Mutex);
-  Statistics.clear();
-  ConsumedFuel.clear();
-  ActionEvents.clear();
-}
-
-Expected<void> MachinePassManager::validateContract(const MachinePassContract &Contract) const {
+Expected<void>
+PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOptions>::validate(
+    const MachineFunctionPass &Pass) {
+  const MachinePassContract &Contract = Pass.contract();
   if (Contract.Name.empty())
     return makeUnexpected(ErrorCode::InvalidArgument, "machine pass must have a non-empty name");
   if (Contract.Sets.intersects(Contract.Clears)) {
@@ -1149,20 +762,11 @@ Expected<void> MachinePassManager::validateContract(const MachinePassContract &C
   return validateParameters(Contract.Parameters);
 }
 
-Expected<void> MachinePassManager::addPass(std::unique_ptr<MachineFunctionPass> Pass) {
-  if (!Pass)
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "machine pass manager cannot add a null pass");
-  auto Validation = validateContract(Pass->contract());
-  if (!Validation)
-    return std::unexpected(Validation.error());
-  Passes.push_back(std::move(Pass));
-  return {};
-}
-
-Expected<void> MachinePassManager::run(MachineFunction &Function, const TargetDescription &Target,
-                                       MachineAnalysisManager &Analyses,
-                                       MachinePassInstrumentation *Instrumentation) const {
+Expected<void>
+PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOptions>::run(
+    const PassList &Passes, const MachinePassManagerOptions &Options, MachineFunction &Function,
+    const TargetDescription &Target, MachineFunctionAnalysisManager &Analyses,
+    MachinePassInstrumentation *Instrumentation) {
   Analyses.setInstrumentation(Instrumentation);
   for (const std::unique_ptr<MachineFunctionPass> &Pass : Passes) {
     const MachinePassContract &Contract = Pass->contract();
@@ -1192,7 +796,7 @@ Expected<void> MachinePassManager::run(MachineFunction &Function, const TargetDe
     }
 
     for (const AnalysisID Required : Contract.RequiredAnalyses) {
-      auto Result = Analyses.getResultImpl(Required, Function, Target);
+      auto Result = Analyses.getResultByID(Required, Function, Target);
       if (!Result) {
         Error Failure =
             prefixedError(Result.error(), "pass '" + std::string(Name) +
@@ -1209,9 +813,9 @@ Expected<void> MachinePassManager::run(MachineFunction &Function, const TargetDe
     if (Instrumentation != nullptr)
       Instrumentation->before(Name, Function);
     const Clock::time_point Start = Clock::now();
-    Analyses.ActivePass = std::string(Name);
+    Analyses.setActivePass(std::string(Name));
     auto PassResult = Pass->run(Function, Target, Analyses);
-    Analyses.ActivePass.clear();
+    Analyses.setActivePass({});
     const std::uint64_t Duration = elapsedNanoseconds(Start);
     if (!PassResult) {
       Error Failure =
@@ -1296,11 +900,11 @@ Expected<void> MachinePassManager::run(MachineFunction &Function, const TargetDe
   return {};
 }
 
-Expected<void> MachinePassManager::runFunctions(CompilationUnit &Unit,
-                                                const TargetDescription &Target,
-                                                const MachineAnalysisManager &AnalysisPrototype,
-                                                std::size_t ThreadCount,
-                                                MachinePassInstrumentation *Instrumentation) const {
+Expected<void>
+PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOptions>::runFunctions(
+    const PassList &Passes, const MachinePassManagerOptions &Options, CompilationUnit &Unit,
+    const TargetDescription &Target, const MachineFunctionAnalysisManager &AnalysisPrototype,
+    std::size_t ThreadCount, MachinePassInstrumentation *Instrumentation) {
   if (ThreadCount == 0)
     return makeUnexpected(ErrorCode::InvalidArgument, "machine pass thread count must be nonzero");
   auto UnitVerification = verifyCompilationUnit(Unit, Target);
@@ -1322,7 +926,7 @@ Expected<void> MachinePassManager::runFunctions(CompilationUnit &Unit,
         return std::unexpected(AnalysisSafety.error());
     }
   }
-  std::vector<std::unique_ptr<MachineAnalysisManager>> Managers;
+  std::vector<std::unique_ptr<MachineFunctionAnalysisManager>> Managers;
   Managers.reserve(FunctionCount);
   for (std::size_t Index = 0; Index < FunctionCount; ++Index) {
     auto Manager = AnalysisPrototype.forkEmpty();
@@ -1347,7 +951,8 @@ Expected<void> MachinePassManager::runFunctions(CompilationUnit &Unit,
       }
       if (Instrumentation != nullptr)
         Instrumentation->beginBuffering(EventBuffers[Index], Target);
-      auto Result = run(*Function, Target, *Managers[Index], Instrumentation);
+      auto Result = PassManagerCallbacks::run(Passes, Options, *Function, Target, *Managers[Index],
+                                              Instrumentation);
       if (Instrumentation != nullptr)
         Instrumentation->endBuffering();
       if (!Result)
@@ -1374,12 +979,10 @@ Expected<void> MachinePassManager::runFunctions(CompilationUnit &Unit,
   return {};
 }
 
-Expected<void> CompilationUnitPassManager::addPass(std::unique_ptr<CompilationUnitPass> Pass) {
-  if (!Pass) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "compilation-unit pass manager cannot add a null pass");
-  }
-  const CompilationUnitPassContract &Contract = Pass->contract();
+Expected<void>
+PassManagerCallbacks<CompilationUnit, CompilationUnitPass,
+                     CompilationUnitPassManagerOptions>::validate(const CompilationUnitPass &Pass) {
+  const CompilationUnitPassContract &Contract = Pass.contract();
   if (Contract.Name.empty()) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "compilation-unit pass must have a non-empty name");
@@ -1391,15 +994,14 @@ Expected<void> CompilationUnitPassManager::addPass(std::unique_ptr<CompilationUn
   auto Parameters = validateParameters(Contract.Parameters);
   if (!Parameters)
     return std::unexpected(Parameters.error());
-  Passes.push_back(std::move(Pass));
   return {};
 }
 
-Expected<void> CompilationUnitPassManager::run(CompilationUnit &Unit,
-                                               const TargetDescription &Target,
-                                               CompilationUnitAnalysisManager &UnitAnalyses,
-                                               MachineAnalysisManager &FunctionAnalyses,
-                                               MachinePassInstrumentation *Instrumentation) const {
+Expected<void>
+PassManagerCallbacks<CompilationUnit, CompilationUnitPass, CompilationUnitPassManagerOptions>::run(
+    const PassList &Passes, const CompilationUnitPassManagerOptions &Options, CompilationUnit &Unit,
+    const TargetDescription &Target, CompilationUnitAnalysisManager &UnitAnalyses,
+    MachineFunctionAnalysisManager &FunctionAnalyses, MachinePassInstrumentation *Instrumentation) {
   UnitAnalyses.setInstrumentation(Instrumentation);
   FunctionAnalyses.setInstrumentation(Instrumentation);
   for (const std::unique_ptr<CompilationUnitPass> &Pass : Passes) {
@@ -1421,7 +1023,7 @@ Expected<void> CompilationUnitPassManager::run(CompilationUnit &Unit,
     }
 
     for (const AnalysisID Required : Contract.RequiredAnalyses) {
-      auto Result = UnitAnalyses.getResultImpl(Required, Unit, Target);
+      auto Result = UnitAnalyses.getResultByID(Required, Unit, Target);
       if (!Result) {
         Error Failure =
             prefixedError(Result.error(), "compilation-unit pass '" + std::string(Name) +

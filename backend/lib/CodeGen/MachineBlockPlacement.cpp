@@ -37,10 +37,10 @@ enum class PlacementClass : std::uint8_t {
         .Clears = {},
         .RequiredAnalyses =
             {
-                MachineAnalysisManager::id<MachineDominatorTreeAnalysis>(),
-                MachineAnalysisManager::id<MachineBranchProbabilityAnalysis>(),
-                MachineAnalysisManager::id<MachineBlockFrequencyAnalysis>(),
-                MachineAnalysisManager::id<MachineLoopAnalysis>(),
+                MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
+                MachineFunctionAnalysisManager::id<MachineBranchProbabilityAnalysis>(),
+                MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>(),
+                MachineFunctionAnalysisManager::id<MachineLoopAnalysis>(),
             },
         .VerificationStage = PipelineStage::Selected,
     };
@@ -101,9 +101,9 @@ const MachinePassContract &MachineBlockPlacementPass::contract() const noexcept 
   return placementContract();
 }
 
-Expected<MachinePassResult> MachineBlockPlacementPass::run(MachineFunction &Function,
-                                                           const TargetDescription &Target,
-                                                           MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+MachineBlockPlacementPass::run(MachineFunction &Function, const TargetDescription &Target,
+                               MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "machine block placement requires selected PHI-free MachineIR");
@@ -113,7 +113,7 @@ Expected<MachinePassResult> MachineBlockPlacementPass::run(MachineFunction &Func
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
     return std::unexpected(prefixedError(Trial.error(), "block placement setup failed: "));
-  MachineAnalysisManager TrialAnalyses;
+  MachineFunctionAnalysisManager TrialAnalyses;
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses, Actions);
   if (!TrialResult)
@@ -131,8 +131,8 @@ Expected<MachinePassResult> MachineBlockPlacementPass::run(MachineFunction &Func
 }
 
 Expected<MachinePassResult> MachineBlockPlacementPass::runImplementation(
-    MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses,
-    MachineActionReplay &Actions) const {
+    MachineFunction &Function, const TargetDescription &Target,
+    MachineFunctionAnalysisManager &Analyses, MachineActionReplay &Actions) const {
   auto Probabilities = Analyses.getResult<MachineBranchProbabilityAnalysis>(Function, Target);
   if (!Probabilities)
     return std::unexpected(Probabilities.error());

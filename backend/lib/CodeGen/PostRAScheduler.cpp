@@ -37,10 +37,11 @@ namespace {
                      MachineFunctionProperty::TracksLiveness},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<LiveVariablesAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>()},
         .VerificationStage = PipelineStage::RegisterAllocated,
     };
-    Value.RequiredAnalyses.push_back(MachineAnalysisManager::id<MachineBlockFrequencyAnalysis>());
+    Value.RequiredAnalyses.push_back(
+        MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>());
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
     Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands};
     return Value;
@@ -61,7 +62,7 @@ const MachinePassContract &PostRASchedulerPass::contract() const noexcept {
 
 Expected<MachinePassResult> PostRASchedulerPass::run(MachineFunction &Function,
                                                      const TargetDescription &Target,
-                                                     MachineAnalysisManager &Analyses) {
+                                                     MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "post-RA scheduler requires allocated tracked-liveness MachineIR");
@@ -73,7 +74,7 @@ Expected<MachinePassResult> PostRASchedulerPass::run(MachineFunction &Function,
     return std::unexpected(
         prefixedError(Trial.error(), "post-RA scheduler transaction setup failed: "));
   }
-  MachineAnalysisManager TrialAnalyses;
+  MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialLiveness =
       TrialAnalyses.getResult<LiveVariablesAnalysis>(*Trial->ClonedFunction, Target);
   if (!TrialLiveness)

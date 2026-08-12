@@ -26,7 +26,7 @@ namespace {
                      MachineFunctionProperty::NoVRegs, MachineFunctionProperty::TracksLiveness},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<LiveVariablesAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>()},
         .VerificationStage = PipelineStage::RegisterAllocated,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
@@ -120,7 +120,7 @@ const MachinePassContract &MachineFallthroughPass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineFallthroughPass::run(MachineFunction &Function,
                                                         const TargetDescription &Target,
-                                                        MachineAnalysisManager &Analyses) {
+                                                        MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "fallthrough normalization requires allocated tracked-liveness MIR");
@@ -130,7 +130,7 @@ Expected<MachinePassResult> MachineFallthroughPass::run(MachineFunction &Functio
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
     return std::unexpected(prefixedError(Trial.error(), "fallthrough setup failed: "));
-  MachineAnalysisManager TrialAnalyses;
+  MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialLiveness =
       TrialAnalyses.getResult<LiveVariablesAnalysis>(*Trial->ClonedFunction, Target);
   if (!TrialLiveness)

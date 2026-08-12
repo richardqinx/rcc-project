@@ -3,7 +3,7 @@
 #ifndef RCC_TOOLING_BACKENDDRIVER_H
 #define RCC_TOOLING_BACKENDDRIVER_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/Support/Error.h"
 #include "rcc/Tooling/ArtifactStore.h"
 #include "rcc/Tooling/PipelineDriver.h"

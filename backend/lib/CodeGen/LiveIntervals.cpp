@@ -307,12 +307,12 @@ Expected<void> LiveIntervalsAnalysis::Result::shrinkToUses(Register Reg,
 
 bool LiveIntervalsAnalysis::Result::invalidate(const MachineFunction &,
                                                const PreservedAnalyses &Preserved) const noexcept {
-  return !Preserved.preserves(MachineAnalysisManager::id<LiveIntervalsAnalysis>());
+  return !Preserved.preserves(MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>());
 }
 
 Expected<LiveIntervalsAnalysis::Result>
 LiveIntervalsAnalysis::run(MachineFunction &Function, const TargetDescription &Target,
-                           MachineAnalysisManager &Analyses) {
+                           MachineFunctionAnalysisManager &Analyses) {
   auto Indexes = Analyses.getResult<SlotIndexesAnalysis>(Function, Target);
   if (!Indexes)
     return std::unexpected(Indexes.error());

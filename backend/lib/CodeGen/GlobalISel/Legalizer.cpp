@@ -175,7 +175,7 @@ const MachinePassContract &Legalizer::contract() const noexcept {
 
 Expected<MachinePassResult> Legalizer::run(MachineFunction &Function,
                                            const TargetDescription &Target,
-                                           MachineAnalysisManager &Analyses) {
+                                           MachineFunctionAnalysisManager &Analyses) {
   if (Info == nullptr)
     return std::unexpected(
         passFailure("legalizer has no target behavior interface", ErrorCode::InvalidArgument));

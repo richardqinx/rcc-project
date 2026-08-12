@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEPSEUDOEXPANSION_H
 #define RCC_CODEGEN_MACHINEPSEUDOEXPANSION_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/TargetPseudoExpansion.h"
 
 namespace rcc {
@@ -18,7 +18,7 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 
 private:
   const TargetPseudoExpansionInfo *Info;
@@ -32,7 +32,7 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 
 private:
   const TargetPseudoExpansionInfo *Info;
@@ -45,7 +45,7 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 
 private:
   const TargetPseudoExpansionInfo *Info;
@@ -60,7 +60,7 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 
 private:
   const TargetPseudoExpansionInfo *Info;

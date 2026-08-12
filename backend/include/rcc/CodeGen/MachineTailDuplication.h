@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINETAILDUPLICATION_H
 #define RCC_CODEGEN_MACHINETAILDUPLICATION_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 
 #include <cstddef>
 
@@ -25,7 +25,7 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 
 private:
   [[nodiscard]] Expected<MachinePassResult>

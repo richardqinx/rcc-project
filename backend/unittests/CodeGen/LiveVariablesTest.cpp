@@ -36,9 +36,9 @@ void testLivenessRebuildAndVerifier(TestContext &Context, const rcc::TargetDescr
   Context.expect(StaleLiveIn.has_value(), "stale live-in setup must succeed");
   setRebuildProperties(Function);
 
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   auto Added = Pipeline.addPass(std::make_unique<rcc::RebuildMachineLivenessPass>());
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Added ? Pipeline.run(Function, Target, Analyses)
                    : rcc::Expected<void>{std::unexpected(Added.error())};
   if (!Run)
@@ -169,8 +169,9 @@ class DummyAnalysis final {
 public:
   struct Result final {};
 
-  [[nodiscard]] static rcc::Expected<Result>
-  run(rcc::MachineFunction &, const rcc::TargetDescription &, rcc::MachineAnalysisManager &) {
+  [[nodiscard]] static rcc::Expected<Result> run(rcc::MachineFunction &,
+                                                 const rcc::TargetDescription &,
+                                                 rcc::MachineFunctionAnalysisManager &) {
     return Result{};
   }
 };
@@ -192,7 +193,7 @@ void testAnalysisRegistrationAndInvalidation(TestContext &Context,
     return;
   }
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto FirstRegistration = rcc::registerStage11MachineAnalyses(Analyses);
   auto SecondRegistration = rcc::registerStage11MachineAnalyses(Analyses);
   auto Intervals = FirstRegistration
@@ -211,7 +212,7 @@ void testAnalysisRegistrationAndInvalidation(TestContext &Context,
   Context.expect(
       Analyses.cachedResultCount(*Fixture->Function) == 1 &&
           Analyses.hasCached(*Fixture->Function,
-                             rcc::MachineAnalysisManager::id<rcc::SlotIndexesAnalysis>()),
+                             rcc::MachineFunctionAnalysisManager::id<rcc::SlotIndexesAnalysis>()),
       "operand changes must retain SlotIndexes while invalidating liveness dependents");
   auto Recomputed = Analyses.getResult<rcc::LiveIntervalsAnalysis>(*Fixture->Function, Target);
   Context.expect(Recomputed && Analyses.cachedResultCount(*Fixture->Function) == 3,
@@ -221,18 +222,21 @@ void testAnalysisRegistrationAndInvalidation(TestContext &Context,
   Context.expect(
       Analyses.cachedResultCount(*Fixture->Function) == 1 &&
           Analyses.hasCached(*Fixture->Function,
-                             rcc::MachineAnalysisManager::id<rcc::LiveVariablesAnalysis>()),
+                             rcc::MachineFunctionAnalysisManager::id<rcc::LiveVariablesAnalysis>()),
       "layout changes must invalidate SlotIndexes and LiveIntervals only");
 
-  rcc::MachineAnalysisManager Atomic;
+  rcc::MachineFunctionAnalysisManager Atomic;
   rcc::MachineAnalysisRegistration DummyRegistration;
   DummyRegistration.Name = "SlotIndexes";
   auto Dummy = Atomic.registerAnalysis<DummyAnalysis>(std::move(DummyRegistration));
   auto Rejected = rcc::registerStage11MachineAnalyses(Atomic);
   Context.expect(
-      Dummy && !Rejected && Atomic.isRegistered(rcc::MachineAnalysisManager::id<DummyAnalysis>()) &&
-          !Atomic.isRegistered(rcc::MachineAnalysisManager::id<rcc::SlotIndexesAnalysis>()) &&
-          !Atomic.isRegistered(rcc::MachineAnalysisManager::id<rcc::LiveVariablesAnalysis>()),
+      Dummy && !Rejected &&
+          Atomic.isRegistered(rcc::MachineFunctionAnalysisManager::id<DummyAnalysis>()) &&
+          !Atomic.isRegistered(
+              rcc::MachineFunctionAnalysisManager::id<rcc::SlotIndexesAnalysis>()) &&
+          !Atomic.isRegistered(
+              rcc::MachineFunctionAnalysisManager::id<rcc::LiveVariablesAnalysis>()),
       "failed standard-analysis registration must leave the manager unchanged");
 }
 

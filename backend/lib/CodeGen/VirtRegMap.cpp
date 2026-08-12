@@ -169,7 +169,7 @@ Expected<bool> rewriteVirtualRegisters(MachineFunction &Function, const TargetDe
   if (!MappingVerification)
     return std::unexpected(MappingVerification.error());
 
-  MachineAnalysisManager ValidationAnalyses;
+  MachineFunctionAnalysisManager ValidationAnalyses;
   auto Registered = registerStage11MachineAnalyses(ValidationAnalyses);
   if (!Registered)
     return std::unexpected(Registered.error());
@@ -282,7 +282,7 @@ const MachinePassContract &VirtualRegisterRewritePass::contract() const noexcept
 
 Expected<MachinePassResult> VirtualRegisterRewritePass::run(MachineFunction &Function,
                                                             const TargetDescription &Target,
-                                                            MachineAnalysisManager &) {
+                                                            MachineFunctionAnalysisManager &) {
   if (Mapping == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "VirtualRegisterRewrite requires a VirtRegMap");

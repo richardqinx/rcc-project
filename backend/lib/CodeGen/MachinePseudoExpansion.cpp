@@ -355,7 +355,8 @@ expandImplementation(MachineFunction &Function, const TargetDescription &Target,
 
 [[nodiscard]] Expected<MachinePassResult>
 runPreparationTransaction(MachineFunction &Function, const TargetDescription &Target,
-                          const TargetPseudoExpansionInfo &Info, MachineAnalysisManager &Analyses) {
+                          const TargetPseudoExpansionInfo &Info,
+                          MachineFunctionAnalysisManager &Analyses) {
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
@@ -380,7 +381,8 @@ runPreparationTransaction(MachineFunction &Function, const TargetDescription &Ta
 [[nodiscard]] Expected<MachinePassResult>
 runExpansionTransaction(MachineFunction &Function, const TargetDescription &Target,
                         const TargetPseudoExpansionInfo &Info, MachinePseudoExpansionPhase Phase,
-                        const TargetInstrInfo *BranchInfo, MachineAnalysisManager &Analyses) {
+                        const TargetInstrInfo *BranchInfo,
+                        MachineFunctionAnalysisManager &Analyses) {
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
@@ -409,9 +411,9 @@ const MachinePassContract &PreparePostRAPseudosPass::contract() const noexcept {
   return preparationContract();
 }
 
-Expected<MachinePassResult> PreparePostRAPseudosPass::run(MachineFunction &Function,
-                                                          const TargetDescription &Target,
-                                                          MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+PreparePostRAPseudosPass::run(MachineFunction &Function, const TargetDescription &Target,
+                              MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "post-RA pseudo preparation requires selected MachineIR");
@@ -422,9 +424,9 @@ const MachinePassContract &PrePEITargetPseudoExpansionPass::contract() const noe
   return phaseContract(MachinePseudoExpansionPhase::PrePEI);
 }
 
-Expected<MachinePassResult> PrePEITargetPseudoExpansionPass::run(MachineFunction &Function,
-                                                                 const TargetDescription &Target,
-                                                                 MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+PrePEITargetPseudoExpansionPass::run(MachineFunction &Function, const TargetDescription &Target,
+                                     MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "pre-PEI pseudo expansion requires allocated tracked-liveness MIR");
@@ -438,7 +440,7 @@ const MachinePassContract &ExpandPostRAPseudosPass::contract() const noexcept {
 
 Expected<MachinePassResult> ExpandPostRAPseudosPass::run(MachineFunction &Function,
                                                          const TargetDescription &Target,
-                                                         MachineAnalysisManager &Analyses) {
+                                                         MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "post-RA pseudo expansion requires finalized frame and liveness");
@@ -450,9 +452,9 @@ const MachinePassContract &TargetLatePseudoExpansionPass::contract() const noexc
   return phaseContract(MachinePseudoExpansionPhase::TargetLate);
 }
 
-Expected<MachinePassResult> TargetLatePseudoExpansionPass::run(MachineFunction &Function,
-                                                               const TargetDescription &Target,
-                                                               MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+TargetLatePseudoExpansionPass::run(MachineFunction &Function, const TargetDescription &Target,
+                                   MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "target-late pseudo expansion requires finalized allocated MIR");

@@ -18,7 +18,7 @@
 #include "rcc/CodeGen/MachineMemoryFolding.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/MachinePseudoExpansion.h"
 #include "rcc/CodeGen/MachineShrinkWrapping.h"
 #include "rcc/CodeGen/MachineStackSlotColoring.h"
@@ -376,7 +376,7 @@ void testBlockPlacement(TestContext &Context, const rcc::TargetDescription &Targ
                      CFG.addSuccessor(*Entry, *Hot, *HotProbability).has_value(),
                  "placement CFG construction must succeed");
   setSelectedProperties(*Function);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineBlockPlacementPass Pass;
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
@@ -410,7 +410,7 @@ void testFallthroughNormalization(TestContext &Context, const rcc::TargetDescrip
   setPostRAProperties(*Function);
   auto Liveness = rcc::rebuildMachineLiveness(*Function, Target);
   Context.expect(Liveness.has_value(), "fallthrough fixture liveness must be rebuilt");
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineFallthroughPass Pass(rcc::riscv::instrInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
@@ -445,7 +445,7 @@ void testFallthroughMaterialization(TestContext &Context, const rcc::TargetDescr
   setPostRAProperties(*Function);
   Context.expect(rcc::rebuildMachineLiveness(*Function, Target).has_value(),
                  "materialized fallthrough liveness must be rebuilt");
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineFallthroughPass Pass(rcc::riscv::instrInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
@@ -486,7 +486,7 @@ void testBranchOptimization(TestContext &Context, const rcc::TargetDescription &
     return;
   }
   setSelectedProperties(*Function);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineBranchOptimizationPass Pass(rcc::riscv::instrInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
@@ -522,7 +522,7 @@ void testBranchOptimization(TestContext &Context, const rcc::TargetDescription &
     return;
   }
   setSelectedProperties(*ConstantFunction);
-  rcc::MachineAnalysisManager ConstantAnalyses;
+  rcc::MachineFunctionAnalysisManager ConstantAnalyses;
   auto ConstantResult = Pass.run(*ConstantFunction, Target, ConstantAnalyses);
   if (!ConstantResult)
     std::cerr << "constant branch folding failure: " << ConstantResult.error().message() << '\n';
@@ -566,7 +566,7 @@ void testTailDuplication(TestContext &Context, const rcc::TargetDescription &Tar
     return;
   }
   setRelaxationProperties(Context, *Function, Target);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineTailDuplicationPass Pass(rcc::riscv::instrInfo());
   Tail->attributes().set(rcc::MachineBasicBlockAttribute::MachineBlockAddressTaken);
   auto Protected = Pass.run(*Function, Target, Analyses);
@@ -617,7 +617,7 @@ void testTailMerge(TestContext &Context, const rcc::TargetDescription &Target) {
     return;
   }
   setRelaxationProperties(Context, *Function, Target);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineTailMergePass Pass(rcc::riscv::instrInfo());
   Second->attributes().set(rcc::MachineBasicBlockAttribute::MachineBlockAddressTaken);
   auto Protected = Pass.run(*Function, Target, Analyses);
@@ -662,7 +662,7 @@ void testCopyPropagation(TestContext &Context, const rcc::TargetDescription &Tar
   if (Add == nullptr)
     return;
   setSelectedProperties(*Function);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineCopyPropagationPass PreRA(rcc::riscv::instrInfo(),
                                         rcc::MachineCopyPropagationStage::PreRegisterAllocation);
   auto PreResult = PreRA.run(*Function, Target, Analyses);
@@ -702,7 +702,7 @@ void testCopyPropagation(TestContext &Context, const rcc::TargetDescription &Tar
   setPostRAProperties(*PostFunction);
   Context.expect(rcc::rebuildMachineLiveness(*PostFunction, Target).has_value(),
                  "post-RA COPY propagation liveness must be rebuilt");
-  rcc::MachineAnalysisManager PostAnalyses;
+  rcc::MachineFunctionAnalysisManager PostAnalyses;
   rcc::MachineCopyPropagationPass PostRA(rcc::riscv::instrInfo(),
                                          rcc::MachineCopyPropagationStage::PostRegisterAllocation);
   auto PostResult = PostRA.run(*PostFunction, Target, PostAnalyses);
@@ -752,7 +752,7 @@ void testStackSlotColoring(TestContext &Context, const rcc::TargetDescription &T
   setPostRAProperties(*Function);
   Context.expect(rcc::rebuildMachineLiveness(*Function, Target).has_value(),
                  "stack-slot coloring liveness must be rebuilt");
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineStackSlotColoringPass Pass;
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
@@ -836,7 +836,7 @@ void testRISCVMemoryFoldingBoundary(TestContext &Context, const rcc::TargetDescr
     return;
   setSelectedProperties(*Function);
   Function->properties().set(rcc::MachineFunctionProperty::IsSSA);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineMemoryFoldingPass Pass(rcc::riscv::memoryFoldingInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
@@ -894,7 +894,7 @@ void testShrinkWrappedFrameRegion(TestContext &Context, const rcc::TargetDescrip
   setPostRAProperties(*Function);
   Context.expect(rcc::rebuildMachineLiveness(*Function, Target).has_value(),
                  "shrink-wrapping fixture liveness must be rebuilt");
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineShrinkWrappingPass Shrink{rcc::riscv::frameLowering()};
   auto Shrunk = Shrink.run(*Function, Target, Analyses);
   Context.expect(Shrunk && Shrunk->Changed &&
@@ -906,7 +906,7 @@ void testShrinkWrappedFrameRegion(TestContext &Context, const rcc::TargetDescrip
   if (!Shrunk)
     return;
 
-  rcc::MachinePassManager FramePipeline;
+  rcc::MachineFunctionPassManager FramePipeline;
   Context.expect(FramePipeline
                      .addPass(std::make_unique<rcc::PrologueEpilogueInsertionPass>(
                          rcc::riscv::frameLowering()))
@@ -975,7 +975,7 @@ void testCompressedAndConditionalRelaxation(TestContext &Context,
   if (Conditional == nullptr)
     return;
   setRelaxationProperties(Context, *Function, Target);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineBranchRelaxationPass Pass(rcc::riscv::instrInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
@@ -1108,7 +1108,7 @@ void testPseudoPreparation(TestContext &Context, const rcc::TargetDescription &T
   if (!Copy)
     return;
   setSelectedProperties(*Function);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::PreparePostRAPseudosPass Pass(rcc::riscv::pseudoExpansionInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   Context.expect(Result && Result->Changed && (*Copy)->operandAt(0)->targetFlags() == 16 &&
@@ -1170,7 +1170,7 @@ void testPostRAPseudoExpansionAndFinalization(TestContext &Context,
 
   setRelaxationProperties(Context, *Function, Target);
   Function->properties().clear(rcc::MachineFunctionProperty::NoExecutablePseudos);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::ExpandPostRAPseudosPass Expansion(rcc::riscv::pseudoExpansionInfo());
   auto Expanded = Expansion.run(*Function, Target, Analyses);
   if (!Expanded)
@@ -1196,7 +1196,7 @@ void testPostRAPseudoExpansionAndFinalization(TestContext &Context,
   if (!Expanded)
     return;
 
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   Context.expect(Pipeline.addPass(std::make_unique<rcc::FinalizeEmissionPseudosPass>()) &&
                      Pipeline.addPass(std::make_unique<rcc::FinalEncodabilityVerifierPass>(
                          rcc::riscv::instrInfo())),
@@ -1213,8 +1213,8 @@ void testCanonicalOptimizationPipelines(TestContext &Context,
                                         const rcc::TargetDescription &Target) {
   const rcc::MachineOptimizationPipelineTargetInfo TargetInfo =
       rcc::riscv::optimizationPipelineInfo();
-  rcc::MachinePassManager SelectedPipeline;
-  rcc::MachinePassManager PreRAPipeline;
+  rcc::MachineFunctionPassManager SelectedPipeline;
+  rcc::MachineFunctionPassManager PreRAPipeline;
   Context.expect(rcc::addSelectedSSAOptimizationPipeline(SelectedPipeline, TargetInfo) &&
                      SelectedPipeline.size() == 6,
                  "canonical selected-SSA optimization pipeline must register completely");
@@ -1259,13 +1259,13 @@ void testCanonicalOptimizationPipelines(TestContext &Context,
     return;
   }
 
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   auto Added = rcc::addPostRegisterAllocationPipeline(Pipeline, TargetInfo);
   Context.expect(Added && Pipeline.size() == 20,
                  "canonical post-RA pipeline must register every required pass");
   if (!Added)
     return;
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerMachineOptimizationAnalyses(Analyses);
   Context.expect(Registered.has_value(),
                  "canonical optimization analyses must register completely");
@@ -1325,7 +1325,7 @@ void testTargetLateExpansionRejectsSizeGrowth(TestContext &Context) {
   GrowingLatePseudoInfo ExpansionInfo;
   FixedSizeInstrInfo InstrInfo;
   rcc::TargetLatePseudoExpansionPass Pass(ExpansionInfo, InstrInfo);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Result = Pass.run(*Function, *Target, Analyses);
   Context.expect(!Result && Result.error().code() == rcc::ErrorCode::PseudoExpansionFailed &&
                      (*Pseudo)->parent() == Block && Block->firstInstruction() == *Pseudo &&
@@ -1373,7 +1373,7 @@ void testTargetLateExpansionRejectsCompensatedGrowth(TestContext &Context) {
   GrowingLatePseudoInfo ExpansionInfo;
   FixedSizeInstrInfo InstrInfo;
   rcc::TargetLatePseudoExpansionPass Pass(ExpansionInfo, InstrInfo);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Result = Pass.run(*Function, *Target, Analyses);
   Context.expect(
       !Result && Result.error().code() == rcc::ErrorCode::PseudoExpansionFailed &&
@@ -1403,7 +1403,7 @@ void testFinalEncodabilityRejectsInvalidInstruction(TestContext &Context,
     return;
   }
   setRelaxationProperties(Context, *ImmediateFunction, Target);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::FinalEncodabilityVerifierPass Verifier(rcc::riscv::instrInfo());
   auto ImmediateResult = Verifier.run(*ImmediateFunction, Target, Analyses);
   Context.expect(!ImmediateResult &&

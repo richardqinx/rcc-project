@@ -11,7 +11,7 @@
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/RegAllocCommon.h"
 #include "rcc/CodeGen/RegAllocFast.h"
@@ -168,7 +168,7 @@ enum class AllocatorKind : std::uint8_t {
                                                const rcc::TargetDescription &Target,
                                                AllocatorKind Kind,
                                                rcc::RegisterAllocationOptions Options = {}) {
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage11MachineAnalyses(Analyses);
   if (!Registered)
     return std::unexpected(Registered.error());
@@ -184,7 +184,7 @@ enum class AllocatorKind : std::uint8_t {
     Pass = std::make_unique<rcc::PBQPAllocatorPass>(rcc::riscv::registerAllocationInfo(), Options);
     break;
   }
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   auto Added = Pipeline.addPass(std::move(Pass));
   if (!Added)
     return std::unexpected(Added.error());

@@ -115,7 +115,7 @@ const MachinePassContract &MachineDCEPass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineDCEPass::run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &) {
+                                                MachineFunctionAnalysisManager &) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "machine DCE requires a selected machine function");

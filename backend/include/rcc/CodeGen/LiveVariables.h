@@ -4,7 +4,7 @@
 #define RCC_CODEGEN_LIVEVARIABLES_H
 
 #include "rcc/CodeGen/LiveRegUnits.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/Register.h"
 #include "rcc/Support/Error.h"
 
@@ -82,8 +82,9 @@ public:
     return "LiveVariables";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
 class RebuildMachineLivenessPass final : public MachineFunctionPass {
@@ -91,14 +92,15 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 };
 
 [[nodiscard]] Expected<void> verifyTrackedMachineLiveness(const MachineFunction &Function,
                                                           const TargetDescription &Target);
 [[nodiscard]] Expected<bool> rebuildMachineLiveness(MachineFunction &Function,
                                                     const TargetDescription &Target);
-[[nodiscard]] Expected<void> registerStage11MachineAnalyses(MachineAnalysisManager &Analyses);
+[[nodiscard]] Expected<void>
+registerStage11MachineAnalyses(MachineFunctionAnalysisManager &Analyses);
 
 } // namespace rcc
 

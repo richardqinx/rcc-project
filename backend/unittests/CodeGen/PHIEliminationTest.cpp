@@ -4,7 +4,7 @@
 
 #include "SSAExitTestSupport.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 
 #include <array>
@@ -62,11 +62,11 @@ buildPhi(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
 [[nodiscard]] rcc::Expected<void> runPHIElimination(rcc::MachineFunction &Function,
                                                     const rcc::TargetDescription &Target,
                                                     const rcc::TargetInstrInfo &Info) {
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   auto Added = Pipeline.addPass(std::make_unique<rcc::PHIEliminationPass>(Info));
   if (!Added)
     return std::unexpected(Added.error());
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   return Pipeline.run(Function, Target, Analyses);
 }
 
@@ -391,7 +391,7 @@ void testUndefAndFailureAtomicity(TestContext &Context, const rcc::TargetDescrip
   const std::size_t RegistersBefore = Atomic.Function->registerInfo().virtualRegisters().size();
   const std::uint64_t PropertiesBefore = Atomic.Function->properties().rawValue();
   TestInstrInfo RejectingInfo(true);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::PHIEliminationPass FailingPass(RejectingInfo);
   auto Failed = FailingPass.run(*Atomic.Function, Target, Analyses);
   Context.expect(!Failed && Failed.error().code() == rcc::ErrorCode::Unsupported,

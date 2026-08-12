@@ -27,11 +27,12 @@ namespace rcc::riscv {
 namespace {
 
 template <typename PassT, typename... ArgumentT>
-[[nodiscard]] Expected<void> addPass(MachinePassManager &Pipeline, ArgumentT &&...Arguments) {
+[[nodiscard]] Expected<void> addPass(MachineFunctionPassManager &Pipeline,
+                                     ArgumentT &&...Arguments) {
   return Pipeline.addPass(std::make_unique<PassT>(std::forward<ArgumentT>(Arguments)...));
 }
 
-[[nodiscard]] Expected<void> addInitialPipeline(MachinePassManager &Pipeline,
+[[nodiscard]] Expected<void> addInitialPipeline(MachineFunctionPassManager &Pipeline,
                                                 const RISCVSubtarget &Subtarget) {
   auto Added = addPass<MachineCombinerPass>(Pipeline, machineCombinerInfo(),
                                             MachineCombinerStage::PreLegalizer);
@@ -46,7 +47,7 @@ template <typename PassT, typename... ArgumentT>
   return addPass<InstructionSelect>(Pipeline, Subtarget.getInstructionSelector());
 }
 
-[[nodiscard]] Expected<void> addSSAExitPipeline(MachinePassManager &Pipeline) {
+[[nodiscard]] Expected<void> addSSAExitPipeline(MachineFunctionPassManager &Pipeline) {
   auto Added = addSelectedSSAOptimizationPipeline(Pipeline, optimizationPipelineInfo());
   if (!Added)
     return std::unexpected(Added.error());
@@ -56,14 +57,14 @@ template <typename PassT, typename... ArgumentT>
   return addPass<TwoAddressInstructionPass>(Pipeline, instrInfo());
 }
 
-[[nodiscard]] Expected<void> addRegisterAllocationPipeline(MachinePassManager &Pipeline) {
+[[nodiscard]] Expected<void> addRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline) {
   auto Added = addPreRegisterAllocationOptimizationPipeline(Pipeline, optimizationPipelineInfo());
   if (!Added)
     return std::unexpected(Added.error());
   return addPass<PBQPAllocatorPass>(Pipeline, registerAllocationInfo());
 }
 
-[[nodiscard]] Expected<void> addCompleteRegistry(MachinePassManager &Pipeline,
+[[nodiscard]] Expected<void> addCompleteRegistry(MachineFunctionPassManager &Pipeline,
                                                  const RISCVSubtarget &Subtarget) {
   auto Added = addInitialPipeline(Pipeline, Subtarget);
   if (!Added)
@@ -79,7 +80,8 @@ template <typename PassT, typename... ArgumentT>
 
 } // namespace
 
-Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineFunction &Function,
+Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
+                                    const MachineFunction &Function,
                                     const RISCVSubtarget &Subtarget) {
   if (!Function.properties().has(MachineFunctionProperty::Legalized)) {
     auto Added = addPass<MachineCombinerPass>(Pipeline, machineCombinerInfo(),
@@ -132,11 +134,11 @@ Expected<std::unique_ptr<MachineFunctionPass>>
 createCanonicalPipelinePass(std::string_view Name, const RISCVSubtarget &Subtarget) {
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidArgument, "pipeline pass name cannot be empty");
-  MachinePassManager Registry;
+  MachineFunctionPassManager Registry;
   auto Added = addCompleteRegistry(Registry, Subtarget);
   if (!Added)
     return std::unexpected(Added.error());
-  MachinePassManager::PassList Passes = std::move(Registry).takePasses();
+  MachineFunctionPassManager::PassList Passes = std::move(Registry).takePasses();
   auto Position = std::ranges::find_if(Passes, [Name](const auto &Pass) {
     return Pass != nullptr && Pass->contract().Name == Name;
   });
@@ -149,11 +151,11 @@ createCanonicalPipelinePass(std::string_view Name, const RISCVSubtarget &Subtarg
 
 Expected<std::vector<std::string>> canonicalPipelinePassNames(const MachineFunction &Function,
                                                               const RISCVSubtarget &Subtarget) {
-  MachinePassManager Pipeline;
+  MachineFunctionPassManager Pipeline;
   auto Added = addCanonicalPipeline(Pipeline, Function, Subtarget);
   if (!Added)
     return std::unexpected(Added.error());
-  MachinePassManager::PassList Passes = std::move(Pipeline).takePasses();
+  MachineFunctionPassManager::PassList Passes = std::move(Pipeline).takePasses();
   std::vector<std::string> Result;
   Result.reserve(Passes.size());
   for (const std::unique_ptr<MachineFunctionPass> &Pass : Passes) {

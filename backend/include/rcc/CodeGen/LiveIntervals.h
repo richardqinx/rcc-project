@@ -4,7 +4,7 @@
 #define RCC_CODEGEN_LIVEINTERVALS_H
 
 #include "rcc/CodeGen/LiveInterval.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/RegisterMask.h"
 
 #include <cstdint>
@@ -64,8 +64,9 @@ public:
     return "LiveIntervals";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
 } // namespace rcc

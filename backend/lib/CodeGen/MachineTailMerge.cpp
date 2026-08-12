@@ -298,7 +298,7 @@ const MachinePassContract &MachineTailMergePass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineTailMergePass::run(MachineFunction &Function,
                                                       const TargetDescription &Target,
-                                                      MachineAnalysisManager &) {
+                                                      MachineFunctionAnalysisManager &) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "tail merge requires finalized allocated tracked-liveness MIR");

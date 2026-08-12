@@ -14,7 +14,7 @@
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/RegAllocCommon.h"
 #include "rcc/CodeGen/RegAllocFast.h"
@@ -496,7 +496,7 @@ enum class AllocatorKind : std::uint8_t {
                                                const rcc::TargetRegisterAllocationInfo &Info,
                                                AllocatorKind Kind,
                                                rcc::RegisterAllocationOptions Options = {}) {
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage11MachineAnalyses(Analyses);
   if (!Registered)
     return std::unexpected(Registered.error());
@@ -512,7 +512,7 @@ enum class AllocatorKind : std::uint8_t {
     Pass = std::make_unique<rcc::PBQPAllocatorPass>(Info, Options);
     break;
   }
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   auto Added = Pipeline.addPass(std::move(Pass));
   if (!Added)
     return std::unexpected(Added.error());
@@ -603,7 +603,7 @@ void testLiveRegMatrix(TestContext &Context, const rcc::TargetDescription &Targe
   }
   if (!rcc::rebuildMachineLiveness(*LaneFixture->Function, Target))
     return;
-  rcc::MachineAnalysisManager LaneAnalyses;
+  rcc::MachineFunctionAnalysisManager LaneAnalyses;
   if (!rcc::registerStage11MachineAnalyses(LaneAnalyses))
     return;
   auto LaneIntervals =
@@ -632,7 +632,7 @@ void testLiveRegMatrix(TestContext &Context, const rcc::TargetDescription &Targe
   }
   if (!rcc::rebuildMachineLiveness(*FixedFixture->Function, Target))
     return;
-  rcc::MachineAnalysisManager FixedAnalyses;
+  rcc::MachineFunctionAnalysisManager FixedAnalyses;
   if (!rcc::registerStage11MachineAnalyses(FixedAnalyses))
     return;
   auto FixedIntervals =
@@ -664,7 +664,7 @@ void testLiveRegMatrix(TestContext &Context, const rcc::TargetDescription &Targe
       !rcc::rebuildMachineLiveness(*FixedLaneFixture->Function, Target)) {
     return;
   }
-  rcc::MachineAnalysisManager FixedLaneAnalyses;
+  rcc::MachineFunctionAnalysisManager FixedLaneAnalyses;
   if (!rcc::registerStage11MachineAnalyses(FixedLaneAnalyses))
     return;
   auto FixedLaneIntervals =
@@ -694,7 +694,7 @@ void testSharedUnitLaneMatrix(TestContext &Context, const rcc::TargetDescription
       !rcc::rebuildMachineLiveness(*Fixture->Function, Target)) {
     return;
   }
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   if (!rcc::registerStage11MachineAnalyses(Analyses))
     return;
   auto Intervals = Analyses.getResult<rcc::LiveIntervalsAnalysis>(*Fixture->Function, Target);

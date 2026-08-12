@@ -459,9 +459,9 @@ const MachinePassContract &TwoAddressInstructionPass::contract() const noexcept 
   return Contract;
 }
 
-Expected<MachinePassResult> TwoAddressInstructionPass::run(MachineFunction &Function,
-                                                           const TargetDescription &Target,
-                                                           MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+TwoAddressInstructionPass::run(MachineFunction &Function, const TargetDescription &Target,
+                               MachineFunctionAnalysisManager &Analyses) {
   auto Required = requireProperties(Function, contract());
   if (!Required)
     return std::unexpected(Required.error());

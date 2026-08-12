@@ -3,7 +3,7 @@
 #include "rcc/CodeGen/TwoAddressInstructionPass.h"
 
 #include "SSAExitTestSupport.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 
 #include <array>
@@ -130,11 +130,11 @@ void testTwoAddressAndSubregisterPseudos(TestContext &Context, const rcc::Target
   if (!InitialLiveness)
     return;
   Function.properties().set(rcc::MachineFunctionProperty::NoPHIs);
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   Context.expect(
       Pipeline.addPass(std::make_unique<rcc::TwoAddressInstructionPass>(Info)).has_value(),
       "two-address pass must be registered");
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Pipeline.run(Function, Target, Analyses);
   Context.expect(Run.has_value(), "two-address rewrite must succeed");
   if (!Run)
@@ -238,7 +238,7 @@ void testTwoAddressAndSubregisterPseudos(TestContext &Context, const rcc::Target
   const std::uint64_t AtomicPropertiesBefore = AtomicFixture.Function->properties().rawValue();
 
   TestInstrInfo RejectingInfo(true);
-  rcc::MachineAnalysisManager AtomicAnalyses;
+  rcc::MachineFunctionAnalysisManager AtomicAnalyses;
   rcc::TwoAddressInstructionPass FailingPass(RejectingInfo);
   auto Failed = FailingPass.run(*AtomicFixture.Function, Target, AtomicAnalyses);
   Context.expect(!Failed && Failed.error().code() == rcc::ErrorCode::Unsupported,

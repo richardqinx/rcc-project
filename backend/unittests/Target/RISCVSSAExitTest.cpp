@@ -10,7 +10,7 @@
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/CodeGen/PHIElimination.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
@@ -352,12 +352,12 @@ void testRV64GCCriticalEdge(TestContext &Context, const rcc::TargetDescription &
   if (!InitialLiveness)
     return;
 
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   Context.expect(
       Pipeline.addPass(std::make_unique<rcc::PHIEliminationPass>(rcc::riscv::instrInfo()))
           .has_value(),
       "RV64GC PHI-elimination pass must be registered");
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Pipeline.run(**Function, Target, Analyses);
   Context.expect(Run.has_value(), "RV64GC critical-edge PHI elimination must succeed");
   if (!Run)

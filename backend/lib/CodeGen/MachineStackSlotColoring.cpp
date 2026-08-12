@@ -228,7 +228,7 @@ const MachinePassContract &MachineStackSlotColoringPass::contract() const noexce
 
 Expected<MachinePassResult> MachineStackSlotColoringPass::run(MachineFunction &Function,
                                                               const TargetDescription &Target,
-                                                              MachineAnalysisManager &) {
+                                                              MachineFunctionAnalysisManager &) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "stack-slot coloring requires allocated PHI-free MachineIR");

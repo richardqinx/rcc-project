@@ -386,7 +386,7 @@ void testTargetSchedulingHooks(TestContext &Context, const rcc::TargetDescriptio
     Context.expect(false, "target scheduling preference model must be created");
     return;
   }
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineSchedulerPass PreferencePass(
       *PreferenceModel, {.MaximumRegionSize = 8, .EnableBidirectionalScheduling = false});
   auto Preferred = PreferencePass.run(*Fixture.Function, Target, Analyses);
@@ -408,7 +408,7 @@ void testTargetSchedulingHooks(TestContext &Context, const rcc::TargetDescriptio
   rcc::MachineInstr *BoundaryFirst =
       buildADDI(Context, BoundaryBuilder, makeGPR(Context, *BoundaryFixture.Function), X0, 1);
   (void)buildADDI(Context, BoundaryBuilder, makeGPR(Context, *BoundaryFixture.Function), X0, 2);
-  rcc::MachineAnalysisManager BoundaryAnalyses;
+  rcc::MachineFunctionAnalysisManager BoundaryAnalyses;
   rcc::MachineSchedulerPass BoundaryPass(
       *BoundaryModel, {.MaximumRegionSize = 8, .EnableBidirectionalScheduling = false});
   auto BoundaryResult = BoundaryPass.run(*BoundaryFixture.Function, Target, BoundaryAnalyses);
@@ -455,7 +455,7 @@ void testPreRAScheduler(TestContext &Context, const rcc::TargetDescription &Targ
   buildSchedulingChain(Context, Fixture, Target, false, Short, Long);
   Context.expect(Fixture.Block->firstInstruction() == Short,
                  "pre-RA fixture must begin in intentionally suboptimal order");
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineSchedulerPass Pass(rcc::riscv::schedulingModel(),
                                  {.MaximumRegionSize = 64, .EnableBidirectionalScheduling = false});
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);
@@ -482,7 +482,7 @@ void testPostRASchedulerAndLivenessRepair(TestContext &Context,
   if (!Rebuilt)
     return;
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::PostRASchedulerPass Pass(rcc::riscv::schedulingModel(),
                                 {.MaximumRegionSize = 64, .EnableBidirectionalScheduling = false});
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);

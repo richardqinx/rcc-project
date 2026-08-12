@@ -37,10 +37,11 @@ namespace {
                      MachineFunctionProperty::TiedOpsRewritten},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<LiveVariablesAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>()},
         .VerificationStage = PipelineStage::TiedOpsRewritten,
     };
-    Value.RequiredAnalyses.push_back(MachineAnalysisManager::id<MachineBlockFrequencyAnalysis>());
+    Value.RequiredAnalyses.push_back(
+        MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>());
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
     Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands};
     return Value;
@@ -395,7 +396,7 @@ const MachinePassContract &MachineSchedulerPass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineSchedulerPass::run(MachineFunction &Function,
                                                       const TargetDescription &Target,
-                                                      MachineAnalysisManager &Analyses) {
+                                                      MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "pre-RA machine scheduler requires selected, SSA-exited MachineIR");
@@ -407,7 +408,7 @@ Expected<MachinePassResult> MachineSchedulerPass::run(MachineFunction &Function,
     return std::unexpected(
         prefixedError(Trial.error(), "machine scheduler transaction setup failed: "));
   }
-  MachineAnalysisManager TrialAnalyses;
+  MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialLiveness =
       TrialAnalyses.getResult<LiveVariablesAnalysis>(*Trial->ClonedFunction, Target);
   if (!TrialLiveness)

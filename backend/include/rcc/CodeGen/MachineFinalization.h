@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEFINALIZATION_H
 #define RCC_CODEGEN_MACHINEFINALIZATION_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 
 namespace rcc {
 
@@ -14,7 +14,7 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 };
 
 class FinalEncodabilityVerifierPass final : public MachineFunctionPass {
@@ -25,7 +25,7 @@ public:
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) override;
+                                                MachineFunctionAnalysisManager &Analyses) override;
 
 private:
   const TargetInstrInfo *BranchInfo;

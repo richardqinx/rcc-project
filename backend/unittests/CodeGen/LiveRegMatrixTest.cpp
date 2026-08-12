@@ -26,7 +26,7 @@ void testLaneAndAssignment(TestContext &Context, const TargetDescription &Target
       !buildUse(*Fixture->Function, Target, *Fixture->Block, *Low, TestSubReg::Low32))
     return;
 
-  MachineAnalysisManager Analyses;
+  MachineFunctionAnalysisManager Analyses;
   if (!registerStage11MachineAnalyses(Analyses))
     return;
   auto Intervals = Analyses.getResult<LiveIntervalsAnalysis>(*Fixture->Function, Target);
@@ -55,7 +55,7 @@ void testFixedAndMaskInterference(TestContext &Context, const TargetDescription 
       !buildUse(*Fixture->Function, Target, *Fixture->Block, *Value))
     return;
 
-  MachineAnalysisManager Analyses;
+  MachineFunctionAnalysisManager Analyses;
   if (!registerStage11MachineAnalyses(Analyses))
     return;
   auto Intervals = Analyses.getResult<LiveIntervalsAnalysis>(*Fixture->Function, Target);

@@ -290,9 +290,9 @@ const MachinePassContract &MachineCopyPropagationPass::contract() const noexcept
   return copyPropagationContract(Stage);
 }
 
-Expected<MachinePassResult> MachineCopyPropagationPass::run(MachineFunction &Function,
-                                                            const TargetDescription &Target,
-                                                            MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+MachineCopyPropagationPass::run(MachineFunction &Function, const TargetDescription &Target,
+                                MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "machine COPY propagation has unmet stage properties");

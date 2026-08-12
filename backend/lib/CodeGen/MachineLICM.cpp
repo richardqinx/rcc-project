@@ -33,9 +33,9 @@ namespace {
         .Requires = {MachineFunctionProperty::IsSSA, MachineFunctionProperty::Selected},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<MachineDominatorTreeAnalysis>(),
-                             MachineAnalysisManager::id<MachineLoopAnalysis>(),
-                             MachineAnalysisManager::id<MachineBlockFrequencyAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
+                             MachineFunctionAnalysisManager::id<MachineLoopAnalysis>(),
+                             MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>()},
         .VerificationStage = PipelineStage::Selected,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
@@ -50,9 +50,9 @@ namespace {
                      MachineFunctionProperty::TracksLiveness},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<MachineDominatorTreeAnalysis>(),
-                             MachineAnalysisManager::id<MachineLoopAnalysis>(),
-                             MachineAnalysisManager::id<MachineBlockFrequencyAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
+                             MachineFunctionAnalysisManager::id<MachineLoopAnalysis>(),
+                             MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>()},
         .VerificationStage = PipelineStage::RegisterAllocated,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
@@ -332,7 +332,7 @@ const MachinePassContract &MachineLICMPass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineLICMPass::run(MachineFunction &Function,
                                                  const TargetDescription &Target,
-                                                 MachineAnalysisManager &Analyses) {
+                                                 MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(
         ErrorCode::VerificationError,
@@ -346,7 +346,7 @@ Expected<MachinePassResult> MachineLICMPass::run(MachineFunction &Function,
   if (!Trial) {
     return std::unexpected(prefixedError(Trial.error(), "machine LICM transaction setup failed: "));
   }
-  MachineAnalysisManager TrialAnalyses;
+  MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
@@ -359,9 +359,9 @@ Expected<MachinePassResult> MachineLICMPass::run(MachineFunction &Function,
   return Result;
 }
 
-Expected<MachinePassResult> MachineLICMPass::runImplementation(MachineFunction &Function,
-                                                               const TargetDescription &Target,
-                                                               MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+MachineLICMPass::runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                                   MachineFunctionAnalysisManager &Analyses) {
   auto Loops = Analyses.getResult<MachineLoopAnalysis>(Function, Target);
   if (!Loops)
     return std::unexpected(Loops.error());

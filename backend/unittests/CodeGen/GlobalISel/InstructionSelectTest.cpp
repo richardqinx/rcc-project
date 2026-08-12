@@ -120,7 +120,7 @@ void testPipeline(TestContext &Context) {
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::IsSSA,
                                     rcc::MachineFunctionProperty::TracksLiveness};
   const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   Context.expect(
       Pipeline.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo())).has_value(),
       "legalizer must be accepted by the pass manager");
@@ -131,7 +131,7 @@ void testPipeline(TestContext &Context) {
       Pipeline.addPass(std::make_unique<rcc::InstructionSelect>(Subtarget.getInstructionSelector()))
           .has_value(),
       "instruction selector must be accepted by the pass manager");
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Pipeline.run(*Fixture.Function, *Target, Analyses);
   Context.expect(Run.has_value(), "RV64GC generic pipeline must complete");
   Context.expect(Fixture.Function->properties().has(rcc::MachineFunctionProperty::Selected),
@@ -167,7 +167,7 @@ void testInstructionSelectionTransaction(TestContext &Context) {
                                     rcc::MachineFunctionProperty::RegBankSelected};
   MutatingFailingSelector Selector;
   rcc::InstructionSelect Pass(Selector);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Pass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(!Run && Run.error().code() == rcc::ErrorCode::Unsupported,
                  "a renderer failure must be reported before publication");
@@ -203,7 +203,7 @@ void testInstructionSelectionOrder(TestContext &Context) {
   const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
   RecordingSelector Selector(*Subtarget.getInstructionSelector());
   rcc::InstructionSelect Pass(Selector);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Pass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(Run.has_value(), "recorded instruction selection must complete");
   std::ranges::reverse(LayoutIDs);
@@ -233,7 +233,7 @@ void testInstructionSelectionWorklist(TestContext &Context) {
                                     rcc::MachineFunctionProperty::RegBankSelected};
   TwoStepSelector Selector;
   rcc::InstructionSelect Pass(Selector);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Pass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(Run.has_value(), "a progressing multi-step selection must complete");
   Context.expect(Selector.selections() == 4,
@@ -326,7 +326,7 @@ void testExtendedRV64GCPipeline(TestContext &Context) {
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::IsSSA,
                                     rcc::MachineFunctionProperty::TracksLiveness};
   const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   if (!Pipeline.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo())) ||
       !Pipeline.addPass(std::make_unique<rcc::RegBankSelect>(Subtarget.getRegBankInfo())) ||
       !Pipeline.addPass(
@@ -334,7 +334,7 @@ void testExtendedRV64GCPipeline(TestContext &Context) {
     Context.expect(false, "extended RV64GC pipeline construction must succeed");
     return;
   }
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Pipeline.run(*Fixture.Function, *Target, Analyses);
   Context.expect(Run.has_value(), "extended RV64GC pipeline must complete");
   Context.expect(Run && Fixture.Function->properties().has(rcc::MachineFunctionProperty::Selected),

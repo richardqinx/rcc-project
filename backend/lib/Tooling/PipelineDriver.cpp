@@ -79,10 +79,10 @@ struct FunctionRunResult final {
   return std::nullopt;
 }
 
-[[nodiscard]] Expected<MachinePassManager::PassList>
+[[nodiscard]] Expected<MachineFunctionPassManager::PassList>
 createPasses(const MachineFunction &Function, const BackendInvocation &Invocation,
              const riscv::RISCVSubtarget &Subtarget, MachinePassManagerOptions Options) {
-  MachinePassManager Pipeline(Options);
+  MachineFunctionPassManager Pipeline(Options);
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
     auto Added = riscv::addCanonicalPipeline(Pipeline, Function, Subtarget);
     if (!Added)
@@ -212,7 +212,7 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
   auto Passes = createPasses(Function, Invocation, Subtarget, ManagerOptions);
   if (!Passes)
     return std::unexpected(Passes.error());
-  MachineAnalysisManager Analyses;
+  MachineFunctionAnalysisManager Analyses;
   auto Registered = registerMachineOptimizationAnalyses(Analyses);
   if (!Registered)
     return std::unexpected(Registered.error());
@@ -257,7 +257,7 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
         return std::unexpected(Captured.error());
     }
 
-    MachinePassManager SinglePass(ManagerOptions);
+    MachineFunctionPassManager SinglePass(ManagerOptions);
     auto Added = SinglePass.addPass(std::move(Pass));
     if (!Added)
       return std::unexpected(Added.error());

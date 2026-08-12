@@ -24,7 +24,7 @@ void testPostRALivenessRepair(TestContext &Context, const rcc::TargetDescription
     return;
   }
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage11MachineAnalyses(Analyses);
   auto Liveness = Registered
                       ? Analyses.getResult<rcc::LiveVariablesAnalysis>(*Fixture->Function, Target)

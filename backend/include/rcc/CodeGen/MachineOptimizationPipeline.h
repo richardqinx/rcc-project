@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEOPTIMIZATIONPIPELINE_H
 #define RCC_CODEGEN_MACHINEOPTIMIZATIONPIPELINE_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 
 namespace rcc {
 
@@ -23,17 +23,18 @@ struct MachineOptimizationPipelineTargetInfo final {
   const TargetSchedulingModel &SchedulingModel;
 };
 
-[[nodiscard]] Expected<void> registerMachineOptimizationAnalyses(MachineAnalysisManager &Analyses);
+[[nodiscard]] Expected<void>
+registerMachineOptimizationAnalyses(MachineFunctionAnalysisManager &Analyses);
 
 [[nodiscard]] Expected<void>
-addSelectedSSAOptimizationPipeline(MachinePassManager &Pipeline,
+addSelectedSSAOptimizationPipeline(MachineFunctionPassManager &Pipeline,
                                    const MachineOptimizationPipelineTargetInfo &TargetInfo);
 
 [[nodiscard]] Expected<void> addPreRegisterAllocationOptimizationPipeline(
-    MachinePassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo);
+    MachineFunctionPassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo);
 
 [[nodiscard]] Expected<void>
-addPostRegisterAllocationPipeline(MachinePassManager &Pipeline,
+addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
                                   const MachineOptimizationPipelineTargetInfo &TargetInfo);
 
 } // namespace rcc

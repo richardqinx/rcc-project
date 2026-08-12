@@ -27,8 +27,9 @@ public:
 
 protected:
   RegAllocBase(MachineFunction &Function, const TargetDescription &Target,
-               const TargetRegisterAllocationInfo &TargetInfo, MachineAnalysisManager &Analyses,
-               RegisterAllocationOptions Options, MachineActionReplay *Actions = nullptr) noexcept
+               const TargetRegisterAllocationInfo &TargetInfo,
+               MachineFunctionAnalysisManager &Analyses, RegisterAllocationOptions Options,
+               MachineActionReplay *Actions = nullptr) noexcept
       : Function(Function), Target(Target), TargetInfo(TargetInfo), Analyses(Analyses),
         Options(Options), Actions(Actions) {}
 
@@ -38,7 +39,7 @@ protected:
   MachineFunction &Function;
   const TargetDescription &Target;
   const TargetRegisterAllocationInfo &TargetInfo;
-  MachineAnalysisManager &Analyses;
+  MachineFunctionAnalysisManager &Analyses;
   RegisterAllocationOptions Options;
   MachineActionReplay *Actions = nullptr;
 };

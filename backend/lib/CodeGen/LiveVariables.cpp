@@ -884,12 +884,12 @@ bool LiveVariablesAnalysis::Result::isUnitLiveOut(const MachineBasicBlock &Block
 
 bool LiveVariablesAnalysis::Result::invalidate(const MachineFunction &,
                                                const PreservedAnalyses &Preserved) const noexcept {
-  return !Preserved.preserves(MachineAnalysisManager::id<LiveVariablesAnalysis>());
+  return !Preserved.preserves(MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>());
 }
 
-Expected<LiveVariablesAnalysis::Result> LiveVariablesAnalysis::run(MachineFunction &Function,
-                                                                   const TargetDescription &Target,
-                                                                   MachineAnalysisManager &) {
+Expected<LiveVariablesAnalysis::Result>
+LiveVariablesAnalysis::run(MachineFunction &Function, const TargetDescription &Target,
+                           MachineFunctionAnalysisManager &) {
   return computeLiveVariables(Function, Target);
 }
 const MachinePassContract &RebuildMachineLivenessPass::contract() const noexcept {
@@ -911,7 +911,7 @@ const MachinePassContract &RebuildMachineLivenessPass::contract() const noexcept
 
 Expected<MachinePassResult> RebuildMachineLivenessPass::run(MachineFunction &Function,
                                                             const TargetDescription &Target,
-                                                            MachineAnalysisManager &) {
+                                                            MachineFunctionAnalysisManager &) {
   const MachineFunctionProperties Missing = contract().Requires.missingFrom(Function.properties());
   if (!Missing.empty()) {
     return makeUnexpected(ErrorCode::VerificationError,
@@ -976,11 +976,11 @@ Expected<void> verifyTrackedMachineLiveness(const MachineFunction &Function,
   return {};
 }
 
-Expected<void> registerStage11MachineAnalyses(MachineAnalysisManager &Analyses) {
+Expected<void> registerStage11MachineAnalyses(MachineFunctionAnalysisManager &Analyses) {
   const std::array IDs{
-      MachineAnalysisManager::id<SlotIndexesAnalysis>(),
-      MachineAnalysisManager::id<LiveVariablesAnalysis>(),
-      MachineAnalysisManager::id<LiveIntervalsAnalysis>(),
+      MachineFunctionAnalysisManager::id<SlotIndexesAnalysis>(),
+      MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>(),
+      MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>(),
   };
   const std::size_t Registered = static_cast<std::size_t>(
       std::ranges::count_if(IDs, [&Analyses](AnalysisID ID) { return Analyses.isRegistered(ID); }));
@@ -994,7 +994,7 @@ Expected<void> registerStage11MachineAnalyses(MachineAnalysisManager &Analyses) 
   auto Candidate = Analyses.forkEmpty();
   if (!Candidate)
     return std::unexpected(Candidate.error());
-  MachineAnalysisManager &Staging = **Candidate;
+  MachineFunctionAnalysisManager &Staging = **Candidate;
   auto Slots = Staging.registerAnalysis<SlotIndexesAnalysis>({
       .Name = "SlotIndexes",
       .Dependencies = {},
@@ -1015,8 +1015,8 @@ Expected<void> registerStage11MachineAnalyses(MachineAnalysisManager &Analyses) 
     return std::unexpected(Variables.error());
   auto Intervals = Staging.registerAnalysis<LiveIntervalsAnalysis>({
       .Name = "LiveIntervals",
-      .Dependencies = {MachineAnalysisManager::id<SlotIndexesAnalysis>(),
-                       MachineAnalysisManager::id<LiveVariablesAnalysis>()},
+      .Dependencies = {MachineFunctionAnalysisManager::id<SlotIndexesAnalysis>(),
+                       MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>()},
       .InvalidatedBy = {MachinePassChange::Instructions, MachinePassChange::Operands,
                         MachinePassChange::Registers, MachinePassChange::CFG,
                         MachinePassChange::BlockLayout, MachinePassChange::TargetState},
@@ -1024,8 +1024,7 @@ Expected<void> registerStage11MachineAnalyses(MachineAnalysisManager &Analyses) 
   });
   if (!Intervals)
     return std::unexpected(Intervals.error());
-  Analyses.Registry = std::move(Staging.Registry);
-  return {};
+  return Analyses.replaceRegistrations(std::move(Staging));
 }
 
 } // namespace rcc

@@ -32,8 +32,8 @@ namespace {
                      MachineFunctionProperty::TracksLiveness},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<MachineDominatorTreeAnalysis>(),
-                             MachineAnalysisManager::id<MachineLoopAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
+                             MachineFunctionAnalysisManager::id<MachineLoopAnalysis>()},
         .VerificationStage = PipelineStage::RegisterAllocated,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
@@ -66,9 +66,9 @@ const MachinePassContract &MachineShrinkWrappingPass::contract() const noexcept 
   return shrinkWrappingContract();
 }
 
-Expected<MachinePassResult> MachineShrinkWrappingPass::run(MachineFunction &Function,
-                                                           const TargetDescription &Target,
-                                                           MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+MachineShrinkWrappingPass::run(MachineFunction &Function, const TargetDescription &Target,
+                               MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "shrink wrapping requires allocated tracked-liveness MachineIR");

@@ -107,9 +107,9 @@ const MachinePassContract &MachineBranchRelaxationPass::contract() const noexcep
   return relaxationContract();
 }
 
-Expected<MachinePassResult> MachineBranchRelaxationPass::run(MachineFunction &Function,
-                                                             const TargetDescription &Target,
-                                                             MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+MachineBranchRelaxationPass::run(MachineFunction &Function, const TargetDescription &Target,
+                                 MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "branch relaxation requires finalized frame and tracked liveness");

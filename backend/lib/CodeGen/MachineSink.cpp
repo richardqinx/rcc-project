@@ -34,8 +34,8 @@ namespace {
         .Requires = {MachineFunctionProperty::IsSSA, MachineFunctionProperty::Selected},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<MachineDominatorTreeAnalysis>(),
-                             MachineAnalysisManager::id<MachineBlockFrequencyAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
+                             MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>()},
         .VerificationStage = PipelineStage::Selected,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
@@ -50,8 +50,8 @@ namespace {
                      MachineFunctionProperty::TracksLiveness},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<MachineDominatorTreeAnalysis>(),
-                             MachineAnalysisManager::id<MachineBlockFrequencyAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
+                             MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>()},
         .VerificationStage = PipelineStage::RegisterAllocated,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
@@ -354,7 +354,7 @@ const MachinePassContract &MachineSinkPass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineSinkPass::run(MachineFunction &Function,
                                                  const TargetDescription &Target,
-                                                 MachineAnalysisManager &Analyses) {
+                                                 MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(
         ErrorCode::VerificationError,
@@ -368,7 +368,7 @@ Expected<MachinePassResult> MachineSinkPass::run(MachineFunction &Function,
   if (!Trial) {
     return std::unexpected(prefixedError(Trial.error(), "machine sink transaction setup failed: "));
   }
-  MachineAnalysisManager TrialAnalyses;
+  MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
@@ -381,9 +381,9 @@ Expected<MachinePassResult> MachineSinkPass::run(MachineFunction &Function,
   return Result;
 }
 
-Expected<MachinePassResult> MachineSinkPass::runImplementation(MachineFunction &Function,
-                                                               const TargetDescription &Target,
-                                                               MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+MachineSinkPass::runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                                   MachineFunctionAnalysisManager &Analyses) {
   auto Dominators = Analyses.getResult<MachineDominatorTreeAnalysis>(Function, Target);
   if (!Dominators)
     return std::unexpected(Dominators.error());

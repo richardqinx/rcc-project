@@ -490,7 +490,7 @@ const MachinePassContract &PHIEliminationPass::contract() const noexcept {
 
 Expected<MachinePassResult> PHIEliminationPass::run(MachineFunction &Function,
                                                     const TargetDescription &Target,
-                                                    MachineAnalysisManager &Analyses) {
+                                                    MachineFunctionAnalysisManager &Analyses) {
   auto Required = requireProperties(Function, contract());
   if (!Required)
     return std::unexpected(Required.error());

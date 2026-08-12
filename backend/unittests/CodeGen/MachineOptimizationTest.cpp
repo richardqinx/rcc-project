@@ -321,7 +321,7 @@ void testDCEFixedPointAndDebugUses(TestContext &Context, const rcc::TargetDescri
   }
   const std::size_t Before = Fixture.Entry->instructionCount();
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineDCEPass Pass;
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);
   if (!Result)
@@ -369,7 +369,7 @@ void testMachineCombinerIdentityRules(TestContext &Context, const rcc::TargetDes
     return;
   (void)buildStore(Context, Builder, Consumer, X2, *Memory);
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineCombinerPass Pass(rcc::riscv::machineCombinerInfo(),
                                 rcc::MachineCombinerStage::SelectedSSA);
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);
@@ -404,7 +404,7 @@ void testPostRAMachineCombinerIdentity(TestContext &Context, const rcc::TargetDe
                                                rcc::Register::fromPhysical(X10), 0);
   if (FrameIdentity != nullptr)
     FrameIdentity->setFlags({rcc::MachineInstrFlag::FrameDestroy});
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineCombinerPass Pass(rcc::riscv::machineCombinerInfo(),
                                 rcc::MachineCombinerStage::PostRegisterAllocation);
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);
@@ -450,7 +450,7 @@ void testCSERegisterAndMemoryRules(TestContext &Context, const rcc::TargetDescri
   rcc::MachineInstr *InvariantTwo =
       buildLoad(Context, Builder, InvariantLoadTwo, Seed, *InvariantMemory);
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineCSEPass Pass;
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);
   if (!Result)
@@ -490,7 +490,7 @@ void testCSEBudgetPreservesLegalMIR(TestContext &Context, const rcc::TargetDescr
   (void)buildADDI(Context, Builder, First, Seed, 2);
   rcc::MachineInstr *SecondInstruction = buildADDI(Context, Builder, Second, Seed, 2);
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineCSEPass Pass({.MaximumComparisons = 0});
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);
   if (!Result)
@@ -545,7 +545,7 @@ void testLICMHoistsOnlyInvariantInstructions(TestContext &Context,
   rcc::MachineInstr *Load =
       Memory == nullptr ? nullptr : buildLoad(Context, Builder, MutableLoad, Seed, *Memory);
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineLICMPass Pass;
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);
   if (!Result)
@@ -597,7 +597,7 @@ void testMachineSinkUsesColdUniqueSuccessor(TestContext &Context,
   const rcc::Register Consumer = makeGPR(Context, *Fixture.Function);
   rcc::MachineInstr *Use = buildADD(Context, Builder, Consumer, SunkValue, Seed);
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineSinkPass Pass;
   auto Result = Pass.run(*Fixture.Function, Target, Analyses);
   if (!Result)
@@ -664,7 +664,7 @@ void testPostRACodeMotion(TestContext &Context, const rcc::TargetDescription &Ta
   setPostRAProperties(*LICMFixture.Function);
   Context.expect(rcc::rebuildMachineLiveness(*LICMFixture.Function, Target).has_value(),
                  "post-RA LICM fixture liveness must be built");
-  rcc::MachineAnalysisManager LICMAnalyses;
+  rcc::MachineFunctionAnalysisManager LICMAnalyses;
   rcc::MachineLICMPass PostRALICM(rcc::MachineCodeMotionStage::PostRegisterAllocation);
   auto LICMResult = PostRALICM.run(*LICMFixture.Function, Target, LICMAnalyses);
   Context.expect(LICMResult && LICMResult->Changed && Hoisted->parent() == LICMFixture.Entry &&
@@ -703,7 +703,7 @@ void testPostRACodeMotion(TestContext &Context, const rcc::TargetDescription &Ta
   setPostRAProperties(*SinkFixture.Function);
   Context.expect(rcc::rebuildMachineLiveness(*SinkFixture.Function, Target).has_value(),
                  "post-RA sink fixture liveness must be built");
-  rcc::MachineAnalysisManager SinkAnalyses;
+  rcc::MachineFunctionAnalysisManager SinkAnalyses;
   rcc::MachineSinkPass PostRASink(rcc::MachineCodeMotionStage::PostRegisterAllocation);
   auto SinkResult = PostRASink.run(*SinkFixture.Function, Target, SinkAnalyses);
   Context.expect(SinkResult && SinkResult->Changed && Sunk->parent() == *Cold &&
@@ -742,7 +742,7 @@ void testMemoryFoldingContract(TestContext &Context, const rcc::TargetDescriptio
   if (!Folded.Function || Folded.Entry == nullptr)
     return;
   TestMemoryFoldingInfo GoodInfo;
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   rcc::MachineMemoryFoldingPass Pass(GoodInfo);
   auto Result = Pass.run(*Folded.Function, Target, Analyses);
   if (!Result)

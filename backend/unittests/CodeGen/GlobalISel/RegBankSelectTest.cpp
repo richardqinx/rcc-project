@@ -33,7 +33,7 @@ void testBankConflict(TestContext &Context) {
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::Legalized};
   const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
   rcc::RegBankSelect Pass(Subtarget.getRegBankInfo());
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Result = Pass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(!Result && Result.error().code() == rcc::ErrorCode::VerificationError,
                  "bank selection must reject a conflicting pre-existing bank");
@@ -66,7 +66,7 @@ void testBankClassOnlyChange(TestContext &Context) {
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::Legalized};
   const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
   rcc::RegBankSelect Pass(Subtarget.getRegBankInfo());
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Result = Pass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(Result.has_value() && Result->Changed &&
                      Result->Changes.has(rcc::MachinePassChange::Registers),

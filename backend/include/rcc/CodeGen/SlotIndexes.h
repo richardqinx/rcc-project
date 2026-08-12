@@ -4,7 +4,7 @@
 #define RCC_CODEGEN_SLOTINDEXES_H
 
 #include "rcc/CodeGen/MachineIRTypes.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/StableID.h"
 #include "rcc/Support/Error.h"
 
@@ -115,8 +115,9 @@ public:
     return "SlotIndexes";
   }
 
-  [[nodiscard]] static Expected<Result>
-  run(MachineFunction &Function, const TargetDescription &Target, MachineAnalysisManager &Analyses);
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
 };
 
 } // namespace rcc

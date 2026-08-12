@@ -33,7 +33,7 @@ namespace {
         .Requires = {MachineFunctionProperty::IsSSA, MachineFunctionProperty::Selected},
         .Sets = {},
         .Clears = {},
-        .RequiredAnalyses = {MachineAnalysisManager::id<MachineDominatorTreeAnalysis>()},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>()},
         .VerificationStage = PipelineStage::Selected,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
@@ -314,7 +314,7 @@ const MachinePassContract &MachineCSEPass::contract() const noexcept {
 
 Expected<MachinePassResult> MachineCSEPass::run(MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                MachineAnalysisManager &Analyses) {
+                                                MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "machine CSE requires selected SSA MachineIR");
@@ -325,7 +325,7 @@ Expected<MachinePassResult> MachineCSEPass::run(MachineFunction &Function,
   if (!Trial) {
     return std::unexpected(prefixedError(Trial.error(), "machine CSE transaction setup failed: "));
   }
-  MachineAnalysisManager TrialAnalyses;
+  MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
@@ -338,9 +338,9 @@ Expected<MachinePassResult> MachineCSEPass::run(MachineFunction &Function,
   return Result;
 }
 
-Expected<MachinePassResult> MachineCSEPass::runImplementation(MachineFunction &Function,
-                                                              const TargetDescription &Target,
-                                                              MachineAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+MachineCSEPass::runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                                  MachineFunctionAnalysisManager &Analyses) {
   auto Dominators = Analyses.getResult<MachineDominatorTreeAnalysis>(Function, Target);
   if (!Dominators)
     return std::unexpected(Dominators.error());

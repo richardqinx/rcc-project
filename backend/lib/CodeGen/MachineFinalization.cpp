@@ -91,7 +91,7 @@ const MachinePassContract &FinalizeEmissionPseudosPass::contract() const noexcep
 
 Expected<MachinePassResult> FinalizeEmissionPseudosPass::run(MachineFunction &Function,
                                                              const TargetDescription &Target,
-                                                             MachineAnalysisManager &) {
+                                                             MachineFunctionAnalysisManager &) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::VerificationError,
                           "emission-pseudo finalization requires finalized allocated MIR");
@@ -124,7 +124,7 @@ const MachinePassContract &FinalEncodabilityVerifierPass::contract() const noexc
 
 Expected<MachinePassResult> FinalEncodabilityVerifierPass::run(MachineFunction &Function,
                                                                const TargetDescription &Target,
-                                                               MachineAnalysisManager &) {
+                                                               MachineFunctionAnalysisManager &) {
   if (!Function.properties().containsAll(contract().Requires))
     return makeUnexpected(ErrorCode::FinalEncodabilityFailed,
                           "final encodability requires NoExecutablePseudos and finalized MIR");

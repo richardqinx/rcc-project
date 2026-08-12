@@ -86,7 +86,7 @@ void testCFGAnalyses(TestContext &Context, const rcc::TargetDescription &Target)
                      Updater.addSuccessor(**Body, **Header, rcc::BranchProbability::one()),
                  "reducible loop CFG construction must succeed");
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   Context.expect(rcc::registerStage8MachineAnalyses(Analyses).has_value(),
                  "standard Stage 8 analyses must register atomically");
   auto Dominators = Analyses.getResult<rcc::MachineDominatorTreeAnalysis>(**Function, Target);
@@ -129,7 +129,7 @@ void testCFGAnalyses(TestContext &Context, const rcc::TargetDescription &Target)
   Context.expect(
       Analyses.cachedResultCount(**Function) == 1 &&
           Analyses.hasCached(**Function,
-                             rcc::MachineAnalysisManager::id<rcc::MachineAliasAnalysis>()),
+                             rcc::MachineFunctionAnalysisManager::id<rcc::MachineAliasAnalysis>()),
       "CFG changes must invalidate CFG dependents and memory dependence but preserve aliasing");
 
   auto RefreshedDominators =
@@ -167,7 +167,7 @@ void testIrreducibleCFG(TestContext &Context, const rcc::TargetDescription &Targ
                      Updater.addSuccessor(**Right, **Exit, *Half),
                  "irreducible CFG construction must succeed");
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage8MachineAnalyses(Analyses);
   auto Loops =
       Registered
@@ -317,7 +317,7 @@ void testMemoryDependence(TestContext &Context, const rcc::TargetDescription &Ta
       !VolatileStoreInstruction || !VolatileLoadInstruction || !OtherBlockLoadInstruction)
     return;
 
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Registered = rcc::registerStage8MachineAnalyses(Analyses);
   auto Dependencies =
       Registered ? Analyses.getResult<rcc::MachineMemoryDependenceAnalysis>(**Function, Target)
@@ -352,14 +352,15 @@ void testMemoryDependence(TestContext &Context, const rcc::TargetDescription &Ta
 class ConflictingAnalysis final {
 public:
   struct Result final {};
-  [[nodiscard]] static rcc::Expected<Result>
-  run(rcc::MachineFunction &, const rcc::TargetDescription &, rcc::MachineAnalysisManager &) {
+  [[nodiscard]] static rcc::Expected<Result> run(rcc::MachineFunction &,
+                                                 const rcc::TargetDescription &,
+                                                 rcc::MachineFunctionAnalysisManager &) {
     return Result{};
   }
 };
 
 void testAtomicStandardRegistration(TestContext &Context) {
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   Context.expect(Analyses
                      .registerAnalysis<ConflictingAnalysis>({
                          .Name = "MachineLoopInfo",
@@ -367,10 +368,11 @@ void testAtomicStandardRegistration(TestContext &Context) {
                      })
                      .has_value(),
                  "analysis-name conflict setup must succeed");
-  Context.expect(!rcc::registerStage8MachineAnalyses(Analyses) &&
-                     !Analyses.isRegistered(
-                         rcc::MachineAnalysisManager::id<rcc::MachineDominatorTreeAnalysis>()),
-                 "failed standard-analysis registration must not publish a partial set");
+  Context.expect(
+      !rcc::registerStage8MachineAnalyses(Analyses) &&
+          !Analyses.isRegistered(
+              rcc::MachineFunctionAnalysisManager::id<rcc::MachineDominatorTreeAnalysis>()),
+      "failed standard-analysis registration must not publish a partial set");
 }
 
 void testCFGUpdaterPHIs(TestContext &Context, const rcc::TargetDescription &Target) {

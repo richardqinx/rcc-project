@@ -3,7 +3,7 @@
 #ifndef RCC_TOOLING_PIPELINEDRIVER_H
 #define RCC_TOOLING_PIPELINEDRIVER_H
 
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/MIR/MIRDocument.h"
 #include "rcc/Tooling/BackendInvocation.h"
 

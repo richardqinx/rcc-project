@@ -12,7 +12,7 @@
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/CodeGen/MachinePass.h"
+#include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/PrologueEpilogueInsertion.h"
 #include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -216,12 +216,12 @@ void setFramePassProperties(rcc::MachineFunction &Function) {
 runFrameLoweringWith(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
                      const rcc::TargetFrameLowering &FrameLowering) {
   setFramePassProperties(Function);
-  rcc::MachinePassManager Pipeline;
+  rcc::MachineFunctionPassManager Pipeline;
   auto Added =
       Pipeline.addPass(std::make_unique<rcc::PrologueEpilogueInsertionPass>(FrameLowering));
   if (!Added)
     return std::unexpected(Added.error());
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   return Pipeline.run(Function, Target, Analyses);
 }
 

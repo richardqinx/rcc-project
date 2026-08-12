@@ -73,7 +73,7 @@ void testNullAndMissingContracts(TestContext &Context) {
     return;
 
   rcc::Legalizer NullPass(nullptr);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto NullResult = NullPass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(!NullResult && NullResult.error().code() == rcc::ErrorCode::InvalidArgument,
                  "a null legalizer interface must be rejected");
@@ -117,12 +117,12 @@ void testUnsupportedRollback(TestContext &Context) {
   Unsupported.Function->properties() = {rcc::MachineFunctionProperty::IsSSA,
                                         rcc::MachineFunctionProperty::TracksLiveness};
   const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
-  rcc::MachinePassManager OnlyLegalizer;
+  rcc::MachineFunctionPassManager OnlyLegalizer;
   Context.expect(
       OnlyLegalizer.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo()))
           .has_value(),
       "standalone legalizer must be accepted");
-  rcc::MachineAnalysisManager UnsupportedAnalyses;
+  rcc::MachineFunctionAnalysisManager UnsupportedAnalyses;
   auto Failure = OnlyLegalizer.run(*Unsupported.Function, *Target, UnsupportedAnalyses);
   Context.expect(!Failure && Failure.error().code() == rcc::ErrorCode::Unsupported,
                  "unsupported generic instructions must produce a target diagnostic");
@@ -152,7 +152,7 @@ void testLegalizerCycleDiagnostic(TestContext &Context) {
                                     rcc::MachineFunctionProperty::TracksLiveness};
   TogglingLegalizer Legalizer;
   rcc::Legalizer StablePass(Legalizer);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto ResultRun = StablePass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(!ResultRun && ResultRun.error().code() == rcc::ErrorCode::InternalError,
                  "repeated legalization states must report InternalError");
@@ -188,7 +188,7 @@ void testLegalizerRevisitsInvalidatedInstructions(TestContext &Context) {
                                     rcc::MachineFunctionProperty::TracksLiveness};
   BackwardInvalidatingLegalizer Legalizer;
   rcc::Legalizer Pass(Legalizer);
-  rcc::MachineAnalysisManager Analyses;
+  rcc::MachineFunctionAnalysisManager Analyses;
   auto Run = Pass.run(*Fixture.Function, *Target, Analyses);
   const rcc::Opcode LegalOpcode =
       rcc::Opcode::fromValue(static_cast<std::uint32_t>(rcc::riscv::InstructionOpcode::ADD));
