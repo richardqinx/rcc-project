@@ -81,10 +81,10 @@ struct FunctionRunResult final {
 
 [[nodiscard]] Expected<MachinePassManager::PassList>
 createPasses(const MachineFunction &Function, const BackendInvocation &Invocation,
-             riscv::RISCVSubtargetFeatures Features, MachinePassManagerOptions Options) {
+             const riscv::RISCVSubtarget &Subtarget, MachinePassManagerOptions Options) {
   MachinePassManager Pipeline(Options);
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
-    auto Added = riscv::addCanonicalPipeline(Pipeline, Function, Features);
+    auto Added = riscv::addCanonicalPipeline(Pipeline, Function, Subtarget);
     if (!Added)
       return std::unexpected(Added.error());
   } else {
@@ -93,7 +93,7 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
                             "the default pipeline marker cannot be mixed with named passes");
     }
     for (const std::string &Name : Invocation.PassPipeline) {
-      auto Pass = riscv::createCanonicalPipelinePass(Name, Features);
+      auto Pass = riscv::createCanonicalPipelinePass(Name, Subtarget);
       if (!Pass)
         return std::unexpected(Pass.error());
       auto Added = Pipeline.addPass(std::move(*Pass));
@@ -104,7 +104,8 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
   return std::move(Pipeline).takePasses();
 }
 
-[[nodiscard]] Expected<void> validateSelector(std::string_view Selector, bool AllowAll) {
+[[nodiscard]] Expected<void> validateSelector(std::string_view Selector, bool AllowAll,
+                                              const riscv::RISCVSubtarget &Subtarget) {
   if (Selector == "all" && AllowAll)
     return {};
   const std::size_t Comma = Selector.find(',');
@@ -112,7 +113,7 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
       Comma == std::string_view::npos ? Selector : Selector.substr(0, Comma);
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidInvocation, "empty pipeline pass selector");
-  auto Pass = riscv::createCanonicalPipelinePass(Name);
+  auto Pass = riscv::createCanonicalPipelinePass(Name, Subtarget);
   if (!Pass)
     return std::unexpected(Pass.error());
   if (Comma != std::string_view::npos) {
@@ -129,7 +130,9 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
   return {};
 }
 
-[[nodiscard]] Expected<void> validateControls(const PipelineControls &Controls) {
+[[nodiscard]] Expected<void> validateControls(const PipelineControls &Controls,
+                                              riscv::RISCVSubtargetFeatures Features) {
+  const riscv::RISCVSubtarget Subtarget(Features);
   if (Controls.StartBefore && Controls.StartAfter) {
     return makeUnexpected(ErrorCode::InvalidInvocation,
                           "-start-before and -start-after cannot be combined");
@@ -139,32 +142,32 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
                           "-stop-before and -stop-after cannot be combined");
   }
   if (Controls.StartBefore) {
-    auto Result = validateSelector(*Controls.StartBefore, false);
+    auto Result = validateSelector(*Controls.StartBefore, false, Subtarget);
     if (!Result)
       return Result;
   }
   if (Controls.StartAfter) {
-    auto Result = validateSelector(*Controls.StartAfter, false);
+    auto Result = validateSelector(*Controls.StartAfter, false, Subtarget);
     if (!Result)
       return Result;
   }
   if (Controls.StopBefore) {
-    auto Result = validateSelector(*Controls.StopBefore, false);
+    auto Result = validateSelector(*Controls.StopBefore, false, Subtarget);
     if (!Result)
       return Result;
   }
   if (Controls.StopAfter) {
-    auto Result = validateSelector(*Controls.StopAfter, false);
+    auto Result = validateSelector(*Controls.StopAfter, false, Subtarget);
     if (!Result)
       return Result;
   }
   for (const std::string &Selector : Controls.PrintBefore) {
-    auto Result = validateSelector(Selector, true);
+    auto Result = validateSelector(Selector, true, Subtarget);
     if (!Result)
       return Result;
   }
   for (const std::string &Selector : Controls.PrintAfter) {
-    auto Result = validateSelector(Selector, true);
+    auto Result = validateSelector(Selector, true, Subtarget);
     if (!Result)
       return Result;
   }
@@ -200,12 +203,13 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
             riscv::RISCVSubtargetFeatures Features, bool AllowSnapshots,
             MachinePassInstrumentation *Instrumentation) {
   FunctionRunResult Result;
+  const riscv::RISCVSubtarget Subtarget(Features);
   MachinePassManagerOptions ManagerOptions{
       .VerifyBefore = true,
       .VerifyEach = Controls.VerifyEach,
       .DetectUnreportedChanges = Controls.DetectUnreportedChanges,
   };
-  auto Passes = createPasses(Function, Invocation, Features, ManagerOptions);
+  auto Passes = createPasses(Function, Invocation, Subtarget, ManagerOptions);
   if (!Passes)
     return std::unexpected(Passes.error());
   MachineAnalysisManager Analyses;
@@ -408,7 +412,7 @@ Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
   auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
   if (!Features)
     return std::unexpected(Features.error());
-  auto ControlVerification = validateControls(Controls);
+  auto ControlVerification = validateControls(Controls, *Features);
   if (!ControlVerification)
     return std::unexpected(ControlVerification.error());
   auto UnitVerification = Document.unit().verify();

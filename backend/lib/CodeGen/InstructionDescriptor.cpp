@@ -396,10 +396,9 @@ Expected<void> InstructionSet::validateExplicitOperands(const InstructionDescrip
     const OperandDescriptor &OperandDesc = descriptorForOperand(Descriptor, *Shape, Index);
     const auto Validation = validateOperand(OperandDesc, Operand, RegInfo);
     if (!Validation) {
-      return makeUnexpected(
-          Validation.error().code(),
-          "operand " + std::to_string(Index) + " of '" + Descriptor.Name + "': " +
-              std::string(Validation.error().message()));
+      return makeUnexpected(Validation.error().code(),
+                            "operand " + std::to_string(Index) + " of '" + Descriptor.Name +
+                                "': " + std::string(Validation.error().message()));
     }
     if (Operand.isRegister()) {
       if (isDefRole(OperandDesc.RegisterRole)) {

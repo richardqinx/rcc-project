@@ -741,8 +741,8 @@ private:
     bool InQuote = false;
     for (std::size_t Position = Begin; Position < End; ++Position) {
       const char Character = Line[Position];
-      if (InQuote && Character == '\\' && Position + 2 < End &&
-          isHexDigit(Line[Position + 1]) && isHexDigit(Line[Position + 2])) {
+      if (InQuote && Character == '\\' && Position + 2 < End && isHexDigit(Line[Position + 1]) &&
+          isHexDigit(Line[Position + 2])) {
         Position += 2;
         continue;
       }

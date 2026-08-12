@@ -187,8 +187,7 @@ bool MIRDocumentParser::parseMetadata(const yaml::Node &Root, MachineFunction &F
 
     MILexer Lexer("machine-metadata", std::string(Text));
     MIToken Token = Lexer.next();
-    const auto LexerFailed = [this, &Lexer, DefinitionNode, &TranslateRange,
-                              &Token]() -> bool {
+    const auto LexerFailed = [this, &Lexer, DefinitionNode, &TranslateRange, &Token]() -> bool {
       if (!Token.is(MITokenKind::Error))
         return false;
       const auto Diagnostics = Lexer.diagnostics();
@@ -203,7 +202,7 @@ bool MIRDocumentParser::parseMetadata(const yaml::Node &Root, MachineFunction &F
       return LexerFailed();
     };
     const auto FailAtToken = [this, DefinitionNode, &TranslateRange](const MIToken &At,
-                                                                    std::string Message) {
+                                                                     std::string Message) {
       return fail(TranslateRange(*DefinitionNode, At.range()), std::move(Message));
     };
 
@@ -214,8 +213,7 @@ bool MIRDocumentParser::parseMetadata(const yaml::Node &Root, MachineFunction &F
     if (Advance())
       return true;
     std::uint32_t Slot = 0;
-    if (!Token.is(MITokenKind::IntegerLiteral) ||
-        !parseUnsigned32(Token.integerValue(), Slot)) {
+    if (!Token.is(MITokenKind::IntegerLiteral) || !parseUnsigned32(Token.integerValue(), Slot)) {
       return FailAtToken(Token, "expected metadata id after '!'");
     }
     if (Advance())

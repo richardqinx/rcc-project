@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifndef RCC_TARGET_RISCV_RISCVCALLLOWERING_H
-#define RCC_TARGET_RISCV_RISCVCALLLOWERING_H
+#ifndef RCC_LIB_TARGET_RISCV_GISEL_RISCVCALLLOWERING_H
+#define RCC_LIB_TARGET_RISCV_GISEL_RISCVCALLLOWERING_H
 
 #include "rcc/CodeGen/TargetCallLowering.h"
 #include "rcc/Target/RISCV/RISCVInstructions.h"
@@ -36,8 +36,18 @@ callingConventionID(CallingConvention Convention) noexcept {
   return CallingConventionID::fromValue(static_cast<std::uint32_t>(Convention));
 }
 
-[[nodiscard]] const TargetCallLowering &callLowering() noexcept;
+class RISCVCallLowering final : public TargetCallLowering {
+public:
+  [[nodiscard]] Expected<CallLoweringPlan>
+  planFormalArguments(const FormalArgumentRequest &Request) const override;
+  [[nodiscard]] Expected<CallLoweringPlan>
+  planCall(const CallLoweringRequest &Request) const override;
+  [[nodiscard]] Expected<CallLoweringPlan>
+  planReturn(const ReturnLoweringRequest &Request) const override;
+  [[nodiscard]] Expected<void> emitPlan(MachineIRBuilder &Builder,
+                                        const CallLoweringPlan &Plan) const override;
+};
 
 } // namespace rcc::riscv
 
-#endif // RCC_TARGET_RISCV_RISCVCALLLOWERING_H
+#endif // RCC_LIB_TARGET_RISCV_GISEL_RISCVCALLLOWERING_H

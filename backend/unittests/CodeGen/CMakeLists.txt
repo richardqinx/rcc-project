@@ -348,6 +348,10 @@ target_link_libraries(
 add_test(NAME RCCBackend.CodeGen.MachineAnalyses COMMAND RCCBackendCodeGenMachineAnalysesTests)
 
 add_executable(RCCBackendCodeGenMachineOptimizationTests MachineOptimizationTest.cpp)
+target_include_directories(
+  RCCBackendCodeGenMachineOptimizationTests
+  PRIVATE "${RCC_BACKEND_SOURCE_DIR}/lib/Target/RISCV"
+)
 rcc_backend_configure_target(RCCBackendCodeGenMachineOptimizationTests)
 target_link_libraries(
   RCCBackendCodeGenMachineOptimizationTests
@@ -356,6 +360,10 @@ target_link_libraries(
 add_test(NAME RCCBackend.CodeGen.MachineOptimization COMMAND RCCBackendCodeGenMachineOptimizationTests)
 
 add_executable(RCCBackendCodeGenMachineSchedulingTests MachineSchedulingTest.cpp)
+target_include_directories(
+  RCCBackendCodeGenMachineSchedulingTests
+  PRIVATE "${RCC_BACKEND_SOURCE_DIR}/lib/Target/RISCV"
+)
 rcc_backend_configure_target(RCCBackendCodeGenMachineSchedulingTests)
 target_link_libraries(
   RCCBackendCodeGenMachineSchedulingTests

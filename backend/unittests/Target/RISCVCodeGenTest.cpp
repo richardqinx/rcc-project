@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
-
+#include "RISCV.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/CodeGen/GlobalISel/InstructionSelector.h"
+#include "rcc/CodeGen/GlobalISel/LegalizerInfo.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
+#include "rcc/Target/RISCV/RISCVSubtarget.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <array>
@@ -21,6 +23,14 @@
 #include <vector>
 
 namespace {
+
+struct RISCVGISelTestComponents final {
+  rcc::riscv::RISCVSubtarget Subtarget{rcc::riscv::RISCVSubtargetFeatures::rv64gc()};
+  const rcc::LegalizerInfo &Legalizer{*Subtarget.getLegalizerInfo()};
+  const rcc::InstructionSelector *Selector{Subtarget.getInstructionSelector()};
+};
+
+const RISCVGISelTestComponents GISel;
 
 class TestContext final {
 public:
@@ -262,32 +272,24 @@ void testClassification(TestContext &Context) {
                  "RISC-V integer test instructions must be constructible");
   if (Add32.Instruction == nullptr || Add64.Instruction == nullptr)
     return;
-  auto Add32Action =
-      rcc::riscv::legalizerInfo().classify(*Add32.Instruction, *Add32.Function, *Target);
-  auto Add64Action =
-      rcc::riscv::legalizerInfo().classify(*Add64.Instruction, *Add64.Function, *Target);
+  auto Add32Action = GISel.Legalizer.classify(*Add32.Instruction, *Add32.Function, *Target);
+  auto Add64Action = GISel.Legalizer.classify(*Add64.Instruction, *Add64.Function, *Target);
   Context.expect(Add32Action && *Add32Action == rcc::LegalizationAction::Legal,
                  "RV64GC legalizer must accept i32 arithmetic");
   Context.expect(Add64Action && *Add64Action == rcc::LegalizationAction::Legal,
                  "RV64GC legalizer must accept i64 arithmetic");
-  Context.expect(rcc::riscv::instructionSelector()
-                     .canSelect(*Add32.Instruction, *Add32.Function, *Target)
-                     .has_value(),
-                 "RV64GC selector must pre-match i32 arithmetic");
-  Context.expect(rcc::riscv::instructionSelector()
-                     .canSelect(*Add64.Instruction, *Add64.Function, *Target)
-                     .has_value(),
-                 "RV64GC selector must pre-match i64 arithmetic");
-  Context.expect(rcc::riscv::instructionSelector()
-                     .select(*Add32.Instruction, *Add32.Function, *Target)
-                     .has_value(),
+  Context.expect(
+      (*GISel.Selector).canSelect(*Add32.Instruction, *Add32.Function, *Target).has_value(),
+      "RV64GC selector must pre-match i32 arithmetic");
+  Context.expect(
+      (*GISel.Selector).canSelect(*Add64.Instruction, *Add64.Function, *Target).has_value(),
+      "RV64GC selector must pre-match i64 arithmetic");
+  Context.expect((*GISel.Selector).select(*Add32.Instruction, *Add32.Function, *Target).has_value(),
                  "RV64GC selector must lower i32 arithmetic");
   Context.expect(Add32.Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                     rcc::riscv::InstructionOpcode::ADDW)),
                  "i32 G_ADD must select ADDW");
-  Context.expect(rcc::riscv::instructionSelector()
-                     .select(*Add64.Instruction, *Add64.Function, *Target)
-                     .has_value(),
+  Context.expect((*GISel.Selector).select(*Add64.Instruction, *Add64.Function, *Target).has_value(),
                  "RV64GC selector must lower i64 arithmetic");
   Context.expect(Add64.Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                     rcc::riscv::InstructionOpcode::ADD)),
@@ -377,16 +379,14 @@ void testClassification(TestContext &Context) {
                  "floating constant instructions must remain in layout order");
   if (F32Instruction == nullptr || F64Instruction == nullptr)
     return;
-  auto F32Action = rcc::riscv::legalizerInfo().classify(*F32Instruction, **FloatFunction, *Target);
-  auto F64Action = rcc::riscv::legalizerInfo().classify(*F64Instruction, **FloatFunction, *Target);
+  auto F32Action = GISel.Legalizer.classify(*F32Instruction, **FloatFunction, *Target);
+  auto F64Action = GISel.Legalizer.classify(*F64Instruction, **FloatFunction, *Target);
   Context.expect(F32Action && *F32Action == rcc::LegalizationAction::Legal,
                  "RV64GC legalizer must accept f32 constants");
   Context.expect(F64Action && *F64Action == rcc::LegalizationAction::Legal,
                  "RV64GC legalizer must accept f64 constants");
-  auto F32Selection =
-      rcc::riscv::instructionSelector().select(*F32Instruction, **FloatFunction, *Target);
-  auto F64Selection =
-      rcc::riscv::instructionSelector().select(*F64Instruction, **FloatFunction, *Target);
+  auto F32Selection = (*GISel.Selector).select(*F32Instruction, **FloatFunction, *Target);
+  auto F64Selection = (*GISel.Selector).select(*F64Instruction, **FloatFunction, *Target);
   Context.expect(F32Selection.has_value(), "RV64GC selector must lower f32 constants");
   Context.expect(F64Selection.has_value(), "RV64GC selector must lower f64 constants");
   bool HasFMVWX = false;
@@ -425,12 +425,10 @@ void testNarrowIntegerSelection(TestContext &Context) {
       Context.expect(false, "narrow integer fixture must be constructible");
       continue;
     }
-    auto Action =
-        rcc::riscv::legalizerInfo().classify(*Fixture.Instruction, *Fixture.Function, *Target);
+    auto Action = GISel.Legalizer.classify(*Fixture.Instruction, *Fixture.Function, *Target);
     Context.expect(Action && *Action == rcc::LegalizationAction::Legal,
                    "i1-i24 scalar operations must be legal on RV64GC GPR containers");
-    auto Selection =
-        rcc::riscv::instructionSelector().select(*Fixture.Instruction, *Fixture.Function, *Target);
+    auto Selection = (*GISel.Selector).select(*Fixture.Instruction, *Fixture.Function, *Target);
     Context.expect(Selection.has_value(), "narrow integer operation must select");
     bool FoundRequiredOpcode = false;
     for (const rcc::MachineInstr *Instruction : Fixture.Function->allInstructions()) {
@@ -453,18 +451,16 @@ void testNarrowIntegerSelection(TestContext &Context) {
                                        rcc::FloatingPredicate::AlwaysFalse);
   if (Compare && Compare->firstBlock()->firstInstruction() != nullptr) {
     rcc::MachineInstr *Instruction = Compare->firstBlock()->firstInstruction();
-    auto Action = rcc::riscv::legalizerInfo().classify(*Instruction, *Compare, *Target);
-    auto Lowered = Action
-                       ? rcc::riscv::legalizerInfo().lower(*Instruction, *Compare, *Target, *Action)
-                       : rcc::Expected<void>(std::unexpected(Action.error()));
-    auto LegalAction = rcc::riscv::legalizerInfo().classify(*Instruction, *Compare, *Target);
+    auto Action = GISel.Legalizer.classify(*Instruction, *Compare, *Target);
+    auto Lowered = Action ? GISel.Legalizer.lower(*Instruction, *Compare, *Target, *Action)
+                          : rcc::Expected<void>(std::unexpected(Action.error()));
+    auto LegalAction = GISel.Legalizer.classify(*Instruction, *Compare, *Target);
     bool Selected = Lowered && LegalAction && *LegalAction == rcc::LegalizationAction::Legal &&
                     constrainVirtualRegisters(*Compare);
     const auto Instructions = Compare->allInstructions();
     for (rcc::MachineInstr *Candidate : Instructions) {
       if (Selected && rcc::isGenericOpcode(Candidate->opcode()))
-        Selected =
-            rcc::riscv::instructionSelector().select(*Candidate, *Compare, *Target).has_value();
+        Selected = (*GISel.Selector).select(*Candidate, *Compare, *Target).has_value();
     }
     Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Selected,
                    "signed i7 comparisons must legalize to RV64 containers and select");
@@ -475,8 +471,8 @@ void testNarrowIntegerSelection(TestContext &Context) {
   auto Extension = createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_SEXT, *I24, *I7);
   if (Extension && Extension->firstBlock()->firstInstruction() != nullptr) {
     rcc::MachineInstr *Instruction = Extension->firstBlock()->firstInstruction();
-    auto Action = rcc::riscv::legalizerInfo().classify(*Instruction, *Extension, *Target);
-    auto Selection = rcc::riscv::instructionSelector().select(*Instruction, *Extension, *Target);
+    auto Action = GISel.Legalizer.classify(*Instruction, *Extension, *Target);
+    auto Selection = (*GISel.Selector).select(*Instruction, *Extension, *Target);
     Context.expect(Action && *Action == rcc::LegalizationAction::Legal && Selection,
                    "i7-to-i24 sign extension must select through a 32-bit container");
     Context.expect(Selection && validatesSelectedFunction(*Target, *Extension),
@@ -485,8 +481,8 @@ void testNarrowIntegerSelection(TestContext &Context) {
 
   auto UnsupportedMulHigh = createBinary(Context, *Target, rcc::GenericOpcode::G_SMULH, 16);
   if (UnsupportedMulHigh.Function && UnsupportedMulHigh.Instruction != nullptr) {
-    auto Action = rcc::riscv::legalizerInfo().classify(*UnsupportedMulHigh.Instruction,
-                                                       *UnsupportedMulHigh.Function, *Target);
+    auto Action = GISel.Legalizer.classify(*UnsupportedMulHigh.Instruction,
+                                           *UnsupportedMulHigh.Function, *Target);
     Context.expect(Action && *Action == rcc::LegalizationAction::Unsupported,
                    "non-native multiply-high widths must be explicitly unsupported");
   }
@@ -519,7 +515,7 @@ void testScalarSelection(TestContext &Context) {
     if (Entry.first == nullptr)
       continue;
     auto *Instruction = Entry.first->firstBlock()->firstInstruction();
-    auto Selection = rcc::riscv::instructionSelector().select(*Instruction, *Entry.first, *Target);
+    auto Selection = (*GISel.Selector).select(*Instruction, *Entry.first, *Target);
     const std::string_view Name = Entry.second == rcc::GenericOpcode::G_ANYEXT ? "anyext"
                                   : Entry.second == rcc::GenericOpcode::G_SEXT ? "sext"
                                   : Entry.second == rcc::GenericOpcode::G_ZEXT ? "zext"
@@ -557,45 +553,40 @@ void testScalarSelection(TestContext &Context) {
   auto Bitcast = createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_BITCAST, *I32, *F32);
   if (FPExt) {
     auto *Instruction = FPExt->firstBlock()->firstInstruction();
-    Context.expect(
-        rcc::riscv::instructionSelector().select(*Instruction, *FPExt, *Target).has_value(),
-        "fpext must select");
+    Context.expect((*GISel.Selector).select(*Instruction, *FPExt, *Target).has_value(),
+                   "fpext must select");
     Context.expect(Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                 rcc::riscv::InstructionOpcode::FCVT_D_S)),
                    "fpext must select FCVT.D.S");
   }
   if (FPTrunc) {
     auto *Instruction = FPTrunc->firstBlock()->firstInstruction();
-    Context.expect(
-        rcc::riscv::instructionSelector().select(*Instruction, *FPTrunc, *Target).has_value(),
-        "fptrunc must select");
+    Context.expect((*GISel.Selector).select(*Instruction, *FPTrunc, *Target).has_value(),
+                   "fptrunc must select");
     Context.expect(Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                 rcc::riscv::InstructionOpcode::FCVT_S_D)),
                    "fptrunc must select FCVT.S.D");
   }
   if (FPToSI) {
     auto *Instruction = FPToSI->firstBlock()->firstInstruction();
-    Context.expect(
-        rcc::riscv::instructionSelector().select(*Instruction, *FPToSI, *Target).has_value(),
-        "fptosi must select");
+    Context.expect((*GISel.Selector).select(*Instruction, *FPToSI, *Target).has_value(),
+                   "fptosi must select");
     Context.expect(Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                 rcc::riscv::InstructionOpcode::FCVT_L_S)),
                    "fptosi must select FCVT.L.S");
   }
   if (SIToFP) {
     auto *Instruction = SIToFP->firstBlock()->firstInstruction();
-    Context.expect(
-        rcc::riscv::instructionSelector().select(*Instruction, *SIToFP, *Target).has_value(),
-        "sitofp must select");
+    Context.expect((*GISel.Selector).select(*Instruction, *SIToFP, *Target).has_value(),
+                   "sitofp must select");
     Context.expect(Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                 rcc::riscv::InstructionOpcode::FCVT_D_W)),
                    "sitofp must select FCVT.D.W");
   }
   if (Bitcast) {
     auto *Instruction = Bitcast->firstBlock()->firstInstruction();
-    Context.expect(
-        rcc::riscv::instructionSelector().select(*Instruction, *Bitcast, *Target).has_value(),
-        "float-to-integer bitcast must select");
+    Context.expect((*GISel.Selector).select(*Instruction, *Bitcast, *Target).has_value(),
+                   "float-to-integer bitcast must select");
     Context.expect(Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                 rcc::riscv::InstructionOpcode::FMV_X_W)),
                    "float-to-integer bitcast must select FMV.X.W");
@@ -633,15 +624,14 @@ void testComparisonsAndControl(TestContext &Context) {
     auto BuiltExtension = Extension->build();
     if (!BuiltExtension)
       return;
-    auto Action = rcc::riscv::legalizerInfo().classify(*Instruction, *Equal, *Target);
-    auto Lowered = Action
-                       ? rcc::riscv::legalizerInfo().lower(*Instruction, *Equal, *Target, *Action)
-                       : rcc::Expected<void>(std::unexpected(Action.error()));
+    auto Action = GISel.Legalizer.classify(*Instruction, *Equal, *Target);
+    auto Lowered = Action ? GISel.Legalizer.lower(*Instruction, *Equal, *Target, *Action)
+                          : rcc::Expected<void>(std::unexpected(Action.error()));
     const rcc::Register *LegalResult = Instruction->operandAt(0)->getIf<rcc::Register>();
     Context.expect(Lowered && (*BuiltExtension)->parent() == nullptr && LegalResult != nullptr &&
                        *LegalResult == *WideResult,
                    "RV64 integer comparison legalization must fold a single result extension");
-    auto Selection = rcc::riscv::instructionSelector().select(*Instruction, *Equal, *Target);
+    auto Selection = (*GISel.Selector).select(*Instruction, *Equal, *Target);
     Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered && Selection,
                    "integer equality must legalize its result container and select");
     rcc::MachineInstr *FirstSelected = Equal->firstBlock()->firstInstruction();
@@ -659,13 +649,12 @@ void testComparisonsAndControl(TestContext &Context) {
   }
   if (LessEqual) {
     auto *Instruction = LessEqual->firstBlock()->firstInstruction();
-    auto Action = rcc::riscv::legalizerInfo().classify(*Instruction, *LessEqual, *Target);
-    auto Lowered =
-        Action ? rcc::riscv::legalizerInfo().lower(*Instruction, *LessEqual, *Target, *Action)
-               : rcc::Expected<void>(std::unexpected(Action.error()));
+    auto Action = GISel.Legalizer.classify(*Instruction, *LessEqual, *Target);
+    auto Lowered = Action ? GISel.Legalizer.lower(*Instruction, *LessEqual, *Target, *Action)
+                          : rcc::Expected<void>(std::unexpected(Action.error()));
     Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered &&
                        constrainVirtualRegisters(*LessEqual) &&
-                       rcc::riscv::instructionSelector().select(*Instruction, *LessEqual, *Target),
+                       (*GISel.Selector).select(*Instruction, *LessEqual, *Target),
                    "signed less-equal must legalize its result container and select");
     Context.expect(LessEqual->allInstructions().size() == 2,
                    "signed less-equal must emit compare and inversion");
@@ -679,18 +668,15 @@ void testComparisonsAndControl(TestContext &Context) {
                             rcc::IntegerPredicate::Equal, rcc::FloatingPredicate::UnorderedEqual);
   if (Ordered) {
     auto *Instruction = Ordered->firstBlock()->firstInstruction();
-    Context.expect(
-        rcc::riscv::instructionSelector().select(*Instruction, *Ordered, *Target).has_value(),
-        "ordered floating equality must select");
+    Context.expect((*GISel.Selector).select(*Instruction, *Ordered, *Target).has_value(),
+                   "ordered floating equality must select");
     Context.expect(Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                 rcc::riscv::InstructionOpcode::FEQ_S)),
                    "ordered floating equality must select FEQ.S");
   }
   if (UnorderedEqual) {
     auto *Instruction = UnorderedEqual->firstBlock()->firstInstruction();
-    Context.expect(rcc::riscv::instructionSelector()
-                       .select(*Instruction, *UnorderedEqual, *Target)
-                       .has_value(),
+    Context.expect((*GISel.Selector).select(*Instruction, *UnorderedEqual, *Target).has_value(),
                    "unordered floating equality must select");
     Context.expect(UnorderedEqual->allInstructions().size() == 4,
                    "unordered floating equality must emit ordered compare sequence");
@@ -699,9 +685,8 @@ void testComparisonsAndControl(TestContext &Context) {
   auto FMin = createFloatBinaryFunction(Context, *Target, rcc::GenericOpcode::G_FMINNUM, *F32);
   if (FMin) {
     auto *Instruction = FMin->firstBlock()->firstInstruction();
-    Context.expect(
-        rcc::riscv::instructionSelector().select(*Instruction, *FMin, *Target).has_value(),
-        "floating minnum must select");
+    Context.expect((*GISel.Selector).select(*Instruction, *FMin, *Target).has_value(),
+                   "floating minnum must select");
     Context.expect(Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                 rcc::riscv::InstructionOpcode::FMIN_S)),
                    "floating minnum must select FMIN.S");
@@ -728,25 +713,21 @@ void testComparisonsAndControl(TestContext &Context) {
       !Fence->addImmediate(7) || !Fence->addImmediate(0) || !Fence->build() || !Trap->build())
     return;
   auto *IndirectInstruction = (*ControlFunction)->firstBlock()->firstInstruction();
-  Context.expect(rcc::riscv::instructionSelector()
-                     .select(*IndirectInstruction, **ControlFunction, *Target)
-                     .has_value(),
-                 "indirect branch must select");
+  Context.expect(
+      (*GISel.Selector).select(*IndirectInstruction, **ControlFunction, *Target).has_value(),
+      "indirect branch must select");
   Context.expect(IndirectInstruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                       rcc::riscv::InstructionOpcode::JALR)),
                  "indirect branch must select JALR");
   auto *FenceInstruction = IndirectInstruction->next();
-  Context.expect(rcc::riscv::instructionSelector()
-                     .select(*FenceInstruction, **ControlFunction, *Target)
-                     .has_value(),
-                 "fence must select");
+  Context.expect(
+      (*GISel.Selector).select(*FenceInstruction, **ControlFunction, *Target).has_value(),
+      "fence must select");
   Context.expect(FenceInstruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                    rcc::riscv::InstructionOpcode::FENCE)),
                  "fence must select FENCE");
   auto *TrapInstruction = FenceInstruction->next();
-  Context.expect(rcc::riscv::instructionSelector()
-                     .select(*TrapInstruction, **ControlFunction, *Target)
-                     .has_value(),
+  Context.expect((*GISel.Selector).select(*TrapInstruction, **ControlFunction, *Target).has_value(),
                  "trap must select");
   Context.expect(TrapInstruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                   rcc::riscv::InstructionOpcode::EBREAK)),
@@ -786,10 +767,10 @@ void testCompositeScalarSelection(TestContext &Context) {
     if (Function == nullptr)
       continue;
     rcc::MachineInstr *Instruction = Function->firstBlock()->firstInstruction();
-    auto Classification = rcc::riscv::legalizerInfo().classify(*Instruction, *Function, *Target);
+    auto Classification = GISel.Legalizer.classify(*Instruction, *Function, *Target);
     Context.expect(Classification && *Classification == rcc::LegalizationAction::Legal,
                    "composite scalar operation must be legal on RV64GC");
-    auto Selection = rcc::riscv::instructionSelector().select(*Instruction, *Function, *Target);
+    auto Selection = (*GISel.Selector).select(*Instruction, *Function, *Target);
     Context.expect(Selection.has_value(), "composite scalar operation must select on RV64GC");
     Context.expect(Selection && validatesSelectedFunction(*Target, *Function),
                    "composite scalar selection must satisfy all target descriptors");
@@ -840,7 +821,7 @@ void testOverflowSelection(TestContext &Context) {
     if (!Function)
       continue;
     rcc::MachineInstr *Instruction = Function->firstBlock()->firstInstruction();
-    auto Selection = rcc::riscv::instructionSelector().select(*Instruction, *Function, *Target);
+    auto Selection = (*GISel.Selector).select(*Instruction, *Function, *Target);
     Context.expect(Selection.has_value(), "RV64GC overflow operation must select");
     Context.expect(Selection && validatesSelectedFunction(*Target, *Function),
                    "overflow sequence must satisfy all target descriptors");
@@ -856,7 +837,7 @@ void testOverflowSelection(TestContext &Context) {
     if (!Function)
       continue;
     rcc::MachineInstr *Instruction = Function->firstBlock()->firstInstruction();
-    auto Selection = rcc::riscv::instructionSelector().select(*Instruction, *Function, *Target);
+    auto Selection = (*GISel.Selector).select(*Instruction, *Function, *Target);
     Context.expect(Selection.has_value(), "extended RV64GC overflow operation must select");
     Context.expect(Selection && validatesSelectedFunction(*Target, *Function),
                    "extended overflow sequence must satisfy all target descriptors");
@@ -923,10 +904,9 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
   if (!BuiltExtension)
     return;
 
-  auto Action = rcc::riscv::legalizerInfo().classify(**BuiltAtomic, **Function, *Target);
-  auto Lowered =
-      Action ? rcc::riscv::legalizerInfo().lower(**BuiltAtomic, **Function, *Target, *Action)
-             : rcc::Expected<void>(std::unexpected(Action.error()));
+  auto Action = GISel.Legalizer.classify(**BuiltAtomic, **Function, *Target);
+  auto Lowered = Action ? GISel.Legalizer.lower(**BuiltAtomic, **Function, *Target, *Action)
+                        : rcc::Expected<void>(std::unexpected(Action.error()));
   Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered.has_value(),
                  "narrow RV64 compare-exchange must use the widening legalizer rule");
   if (!Lowered)
@@ -940,7 +920,7 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
           ? rcc::Expected<std::reference_wrapper<const rcc::VirtualRegisterInfo>>(std::unexpected(
                 rcc::Error(rcc::ErrorCode::InvalidArgument, "missing compare-exchange result")))
           : (*Function)->registerInfo().virtualRegisterInfo(*AtomicResult);
-  auto LegalAction = rcc::riscv::legalizerInfo().classify(**BuiltAtomic, **Function, *Target);
+  auto LegalAction = GISel.Legalizer.classify(**BuiltAtomic, **Function, *Target);
   Context.expect(CompareInfo && CompareInfo->get().Type == *I64 && NewValueInfo &&
                      NewValueInfo->get().Type == *I64 && AtomicResultInfo &&
                      AtomicResultInfo->get().Type == *I64 &&
@@ -967,11 +947,10 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
   auto BuiltFallback = Fallback->build();
   if (!BuiltFallback)
     return;
-  auto FallbackAction = rcc::riscv::legalizerInfo().classify(**BuiltFallback, **Function, *Target);
+  auto FallbackAction = GISel.Legalizer.classify(**BuiltFallback, **Function, *Target);
   auto FallbackLowered =
-      FallbackAction
-          ? rcc::riscv::legalizerInfo().lower(**BuiltFallback, **Function, *Target, *FallbackAction)
-          : rcc::Expected<void>(std::unexpected(FallbackAction.error()));
+      FallbackAction ? GISel.Legalizer.lower(**BuiltFallback, **Function, *Target, *FallbackAction)
+                     : rcc::Expected<void>(std::unexpected(FallbackAction.error()));
   rcc::MachineInstr *Truncation = (*BuiltFallback)->next();
   const rcc::Register *WideFallbackResult = (*BuiltFallback)->operandAt(0)->getIf<rcc::Register>();
   const rcc::Register *TruncatedResult =
@@ -999,12 +978,11 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
   auto BuiltWithSuccess = WithSuccess->build();
   if (!BuiltWithSuccess)
     return;
-  auto WithSuccessAction =
-      rcc::riscv::legalizerInfo().classify(**BuiltWithSuccess, **Function, *Target);
-  auto WithSuccessLowered = WithSuccessAction
-                                ? rcc::riscv::legalizerInfo().lower(**BuiltWithSuccess, **Function,
-                                                                    *Target, *WithSuccessAction)
-                                : rcc::Expected<void>(std::unexpected(WithSuccessAction.error()));
+  auto WithSuccessAction = GISel.Legalizer.classify(**BuiltWithSuccess, **Function, *Target);
+  auto WithSuccessLowered =
+      WithSuccessAction
+          ? GISel.Legalizer.lower(**BuiltWithSuccess, **Function, *Target, *WithSuccessAction)
+          : rcc::Expected<void>(std::unexpected(WithSuccessAction.error()));
   rcc::MachineInstr *SuccessCompare = (*BuiltWithSuccess)->previous();
   rcc::MachineInstr *LoweredAtomic =
       SuccessCompare == nullptr ? nullptr : SuccessCompare->previous();
@@ -1056,10 +1034,9 @@ void testConstantExtensionPreservesLiveSource(TestContext &Context) {
       !Copy->build())
     return;
 
-  auto Action = rcc::riscv::legalizerInfo().classify(**BuiltExtension, **Function, *Target);
-  auto Lowered =
-      Action ? rcc::riscv::legalizerInfo().lower(**BuiltExtension, **Function, *Target, *Action)
-             : rcc::Expected<void>(std::unexpected(Action.error()));
+  auto Action = GISel.Legalizer.classify(**BuiltExtension, **Function, *Target);
+  auto Lowered = Action ? GISel.Legalizer.lower(**BuiltExtension, **Function, *Target, *Action)
+                        : rcc::Expected<void>(std::unexpected(Action.error()));
   Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered &&
                      (*BuiltExtension)->opcode() == rcc::opcode(rcc::GenericOpcode::G_CONSTANT) &&
                      (*BuiltConstant)->parent() != nullptr &&
@@ -1104,8 +1081,8 @@ void testIntegerCompareReusesConstantExtension(TestContext &Context) {
   if (!BuiltExtension)
     return;
 
-  auto Action = rcc::riscv::legalizerInfo().classify(*Compare, *Function, *Target);
-  auto Lowered = Action ? rcc::riscv::legalizerInfo().lower(*Compare, *Function, *Target, *Action)
+  auto Action = GISel.Legalizer.classify(*Compare, *Function, *Target);
+  auto Lowered = Action ? GISel.Legalizer.lower(*Compare, *Function, *Target, *Action)
                         : rcc::Expected<void>(std::unexpected(Action.error()));
   const rcc::Register *LegalRight = Compare->operandAt(3)->getIf<rcc::Register>();
   Context.expect(Action && *Action == rcc::LegalizationAction::Custom && Lowered,
@@ -1115,10 +1092,10 @@ void testIntegerCompareReusesConstantExtension(TestContext &Context) {
   Context.expect(Function->registerInfo().verifyDefUseChains().has_value(),
                  "integer comparison extension reuse must preserve exact def-use chains");
 
-  auto ExtensionAction = rcc::riscv::legalizerInfo().classify(**BuiltExtension, *Function, *Target);
-  auto Folded = ExtensionAction ? rcc::riscv::legalizerInfo().lower(**BuiltExtension, *Function,
-                                                                    *Target, *ExtensionAction)
-                                : rcc::Expected<void>(std::unexpected(ExtensionAction.error()));
+  auto ExtensionAction = GISel.Legalizer.classify(**BuiltExtension, *Function, *Target);
+  auto Folded = ExtensionAction
+                    ? GISel.Legalizer.lower(**BuiltExtension, *Function, *Target, *ExtensionAction)
+                    : rcc::Expected<void>(std::unexpected(ExtensionAction.error()));
   const rcc::Register *FoldedResult = (*BuiltConstant)->operandAt(0)->getIf<rcc::Register>();
   Context.expect(ExtensionAction && *ExtensionAction == rcc::LegalizationAction::Custom && Folded &&
                      (*BuiltExtension)->parent() == nullptr && FoldedResult != nullptr &&
@@ -1178,10 +1155,9 @@ void testNarrowAnyExtBinaryArtifacts(TestContext &Context) {
   if (!BuiltMultiply || OuterExtension == nullptr)
     return;
 
-  auto Action = rcc::riscv::legalizerInfo().classify(*OuterExtension, **Function, *Target);
-  auto Lowered =
-      Action ? rcc::riscv::legalizerInfo().lower(*OuterExtension, **Function, *Target, *Action)
-             : rcc::Expected<void>(std::unexpected(Action.error()));
+  auto Action = GISel.Legalizer.classify(*OuterExtension, **Function, *Target);
+  auto Lowered = Action ? GISel.Legalizer.lower(*OuterExtension, **Function, *Target, *Action)
+                        : rcc::Expected<void>(std::unexpected(Action.error()));
   const rcc::Register *LegalLeft = OuterExtension->operandAt(1)->getIf<rcc::Register>();
   const rcc::Register *LegalRight = OuterExtension->operandAt(2)->getIf<rcc::Register>();
   Context.expect(
@@ -1200,10 +1176,12 @@ void testMultiplyLibcallWithoutM(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   const std::vector<std::string> FeatureNames{"+a"};
   auto Features = rcc::riscv::RISCVSubtargetFeatures::fromFeatureList(FeatureNames);
-  auto Legalizer = Features ? rcc::riscv::createLegalizerInfo(*Features) : nullptr;
-  auto Multiply64 =
-      Target ? createBinary(Context, *Target, rcc::GenericOpcode::G_MUL, 64) : InstructionFixture{};
-  if (!Target || !Features || !Legalizer || Multiply64.Instruction == nullptr)
+  if (!Target || !Features)
+    return;
+  const rcc::riscv::RISCVSubtarget Subtarget(*Features);
+  const rcc::LegalizerInfo *Legalizer = Subtarget.getLegalizerInfo();
+  auto Multiply64 = createBinary(Context, *Target, rcc::GenericOpcode::G_MUL, 64);
+  if (Multiply64.Instruction == nullptr)
     return;
 
   auto Action = Legalizer->classify(*Multiply64.Instruction, *Multiply64.Function, *Target);
@@ -1314,8 +1292,7 @@ void testAtomicSelection(TestContext &Context) {
                      Nand.Instruction != nullptr,
                  "atomic RMW fixtures must be complete");
   if (Add.Instruction != nullptr) {
-    auto Selection =
-        rcc::riscv::instructionSelector().select(*Add.Instruction, *Add.Function, *Target);
+    auto Selection = (*GISel.Selector).select(*Add.Instruction, *Add.Function, *Target);
     Context.expect(Selection.has_value() && Add.Instruction->opcode() ==
                                                 rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                                     rcc::riscv::InstructionOpcode::AMOADD_D)),
@@ -1324,21 +1301,18 @@ void testAtomicSelection(TestContext &Context) {
                    "selected AMOADD.D must satisfy its descriptor and MMO contract");
   }
   if (Sub.Instruction != nullptr) {
-    auto Selection =
-        rcc::riscv::instructionSelector().select(*Sub.Instruction, *Sub.Function, *Target);
+    auto Selection = (*GISel.Selector).select(*Sub.Instruction, *Sub.Function, *Target);
     Context.expect(Selection.has_value() && Sub.Function->allInstructions().size() == 2,
                    "G_ATOMICRMW_SUB must negate its operand before AMOADD.D");
     Context.expect(Selection && validatesSelectedFunction(*Target, *Sub.Function),
                    "selected atomic subtraction must satisfy target descriptors");
   }
   if (Nand.Instruction != nullptr) {
-    auto Classification =
-        rcc::riscv::legalizerInfo().classify(*Nand.Instruction, *Nand.Function, *Target);
+    auto Classification = GISel.Legalizer.classify(*Nand.Instruction, *Nand.Function, *Target);
     Context.expect(
         Classification && *Classification == rcc::LegalizationAction::Unsupported,
         "an atomic operation without a single-instruction RV64GC mapping must be explicit");
-    auto Match =
-        rcc::riscv::instructionSelector().canSelect(*Nand.Instruction, *Nand.Function, *Target);
+    auto Match = (*GISel.Selector).canSelect(*Nand.Instruction, *Nand.Function, *Target);
     Context.expect(!Match && Match.error().code() == rcc::ErrorCode::Unsupported,
                    "unsupported atomic RMW must fail before mutating MachineIR");
     Context.expect(!Match && Match.error().message().find("G_ATOMICRMW_NAND") != std::string::npos,
@@ -1391,8 +1365,8 @@ void testAtomicSelection(TestContext &Context) {
   auto AtomicLoad = MakeAtomicAccess(true, 1303);
   auto AtomicStore = MakeAtomicAccess(false, 1304);
   if (AtomicLoad.Instruction != nullptr) {
-    auto Selection = rcc::riscv::instructionSelector().select(*AtomicLoad.Instruction,
-                                                              *AtomicLoad.Function, *Target);
+    auto Selection =
+        (*GISel.Selector).select(*AtomicLoad.Instruction, *AtomicLoad.Function, *Target);
     Context.expect(Selection && AtomicLoad.Instruction->opcode() ==
                                     rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                         rcc::riscv::InstructionOpcode::LR_D)),
@@ -1401,8 +1375,8 @@ void testAtomicSelection(TestContext &Context) {
                    "selected atomic load must satisfy target descriptors");
   }
   if (AtomicStore.Instruction != nullptr) {
-    auto Selection = rcc::riscv::instructionSelector().select(*AtomicStore.Instruction,
-                                                              *AtomicStore.Function, *Target);
+    auto Selection =
+        (*GISel.Selector).select(*AtomicStore.Instruction, *AtomicStore.Function, *Target);
     Context.expect(Selection && AtomicStore.Instruction->opcode() ==
                                     rcc::Opcode::fromValue(static_cast<std::uint32_t>(
                                         rcc::riscv::InstructionOpcode::AMOSWAP_D)),
@@ -1419,8 +1393,8 @@ void testUnsupportedTypes(TestContext &Context) {
     return;
   auto WideInteger = createBinary(Context, *Target, rcc::GenericOpcode::G_ADD, 128);
   if (WideInteger.Function && WideInteger.Instruction != nullptr) {
-    auto Selection = rcc::riscv::instructionSelector().canSelect(*WideInteger.Instruction,
-                                                                 *WideInteger.Function, *Target);
+    auto Selection =
+        (*GISel.Selector).canSelect(*WideInteger.Instruction, *WideInteger.Function, *Target);
     Context.expect(!Selection && Selection.error().code() == rcc::ErrorCode::Unsupported,
                    "i128 arithmetic must produce an Unsupported diagnostic");
     Context.expect(!Selection && Selection.error().message().find("i128") != std::string::npos,
@@ -1449,10 +1423,10 @@ void testUnsupportedTypes(TestContext &Context) {
   if (!Pending->build())
     return;
   const rcc::MachineInstr &Instruction = **Function->get()->allInstructions().begin();
-  auto Action = rcc::riscv::legalizerInfo().classify(Instruction, **Function, *Target);
+  auto Action = GISel.Legalizer.classify(Instruction, **Function, *Target);
   Context.expect(Action && *Action == rcc::LegalizationAction::Unsupported,
                  "unsupported floating operations must remain explicitly diagnosed");
-  auto Selection = rcc::riscv::instructionSelector().canSelect(Instruction, **Function, *Target);
+  auto Selection = (*GISel.Selector).canSelect(Instruction, **Function, *Target);
   Context.expect(!Selection && Selection.error().code() == rcc::ErrorCode::Unsupported,
                  "selector pre-matching must reject unsupported floating operations");
   Context.expect(!Selection && Selection.error().message().find("G_FEXP") != std::string::npos,
@@ -1492,12 +1466,12 @@ void testVACopyLegalization(TestContext &Context) {
   auto Built = Pending->build();
   if (!Built)
     return;
-  auto Action = rcc::riscv::legalizerInfo().classify(**Built, **Function, *Target);
+  auto Action = GISel.Legalizer.classify(**Built, **Function, *Target);
   Context.expect(Action && *Action == rcc::LegalizationAction::Custom,
                  "RV64GC must custom-legalize va_copy");
   if (!Action)
     return;
-  auto Lowered = rcc::riscv::legalizerInfo().lower(**Built, **Function, *Target, *Action);
+  auto Lowered = GISel.Legalizer.lower(**Built, **Function, *Target, *Action);
   Context.expect(Lowered.has_value(), "RV64GC va_copy legalization must succeed");
   if (!Lowered)
     return;
@@ -1575,12 +1549,12 @@ void testVAArgLegalization(TestContext &Context) {
 
   Context.expect(Target->validateInstruction(**Built, (*Function)->registerInfo()).has_value(),
                  "canonical G_VAARG without MMOs must satisfy the generic descriptor");
-  auto Action = rcc::riscv::legalizerInfo().classify(**Built, **Function, *Target);
+  auto Action = GISel.Legalizer.classify(**Built, **Function, *Target);
   Context.expect(Action && *Action == rcc::LegalizationAction::Custom,
                  "RV64GC must custom-legalize G_VAARG");
   if (!Action)
     return;
-  auto Lowered = rcc::riscv::legalizerInfo().lower(**Built, **Function, *Target, *Action);
+  auto Lowered = GISel.Legalizer.lower(**Built, **Function, *Target, *Action);
   Context.expect(Lowered.has_value(), "RV64GC va_arg legalization must succeed");
   if (!Lowered)
     return;
@@ -1666,9 +1640,8 @@ void testFrameIndexLegalization(TestContext &Context) {
   if (!BuiltUnsupported)
     return;
 
-  auto LegalAction = rcc::riscv::legalizerInfo().classify(**BuiltLegal, **Function, *Target);
-  auto UnsupportedAction =
-      rcc::riscv::legalizerInfo().classify(**BuiltUnsupported, **Function, *Target);
+  auto LegalAction = GISel.Legalizer.classify(**BuiltLegal, **Function, *Target);
+  auto UnsupportedAction = GISel.Legalizer.classify(**BuiltUnsupported, **Function, *Target);
   Context.expect(LegalAction && *LegalAction == rcc::LegalizationAction::Legal,
                  "RV64GC must legalize G_FRAME_INDEX for p0");
   Context.expect(UnsupportedAction && *UnsupportedAction == rcc::LegalizationAction::Unsupported,
@@ -1691,10 +1664,10 @@ void testPointerArithmeticLegalization(TestContext &Context) {
                                                 {*Pointer}, {*Pointer, *S32});
   if (!Legal || !Unsupported)
     return;
-  auto LegalAction = rcc::riscv::legalizerInfo().classify(*Legal->firstBlock()->firstInstruction(),
-                                                          *Legal, *Target);
-  auto UnsupportedAction = rcc::riscv::legalizerInfo().classify(
-      *Unsupported->firstBlock()->firstInstruction(), *Unsupported, *Target);
+  auto LegalAction =
+      GISel.Legalizer.classify(*Legal->firstBlock()->firstInstruction(), *Legal, *Target);
+  auto UnsupportedAction = GISel.Legalizer.classify(*Unsupported->firstBlock()->firstInstruction(),
+                                                    *Unsupported, *Target);
   Context.expect(LegalAction && *LegalAction == rcc::LegalizationAction::Legal,
                  "RV64GC must legalize G_PTR_ADD for p0 and s64");
   Context.expect(UnsupportedAction && *UnsupportedAction == rcc::LegalizationAction::Unsupported,
@@ -1745,10 +1718,10 @@ void testMemoryOffsetSelection(TestContext &Context) {
   Context.expect(Instruction != nullptr, "generic load must remain attached to its block");
   if (Instruction == nullptr)
     return;
-  auto Action = rcc::riscv::legalizerInfo().classify(*Instruction, **Function, *Target);
+  auto Action = GISel.Legalizer.classify(*Instruction, **Function, *Target);
   Context.expect(Action && *Action == rcc::LegalizationAction::Legal,
                  "RV64GC legalizer must accept volatile scalar loads");
-  auto Selection = rcc::riscv::instructionSelector().select(*Instruction, **Function, *Target);
+  auto Selection = (*GISel.Selector).select(*Instruction, **Function, *Target);
   Context.expect(Selection.has_value(), "RV64GC selector must select a volatile scalar load");
   if (!Selection)
     return;

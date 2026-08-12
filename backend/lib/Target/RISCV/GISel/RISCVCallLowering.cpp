@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/Target/RISCV/RISCVCallLowering.h"
+#include "RISCVCallLowering.h"
 
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -527,17 +527,7 @@ riscvConvention(CallingConventionID Convention) {
   return Info;
 }
 
-class RISCVCallLowering final : public TargetCallLowering {
-public:
-  [[nodiscard]] Expected<CallLoweringPlan>
-  planFormalArguments(const FormalArgumentRequest &Request) const override;
-  [[nodiscard]] Expected<CallLoweringPlan>
-  planCall(const CallLoweringRequest &Request) const override;
-  [[nodiscard]] Expected<CallLoweringPlan>
-  planReturn(const ReturnLoweringRequest &Request) const override;
-  [[nodiscard]] Expected<void> emitPlan(MachineIRBuilder &Builder,
-                                        const CallLoweringPlan &Plan) const override;
-};
+} // namespace
 
 Expected<CallLoweringPlan>
 RISCVCallLowering::planFormalArguments(const FormalArgumentRequest &Request) const {
@@ -1500,13 +1490,6 @@ Expected<void> RISCVCallLowering::emitPlan(MachineIRBuilder &Builder,
     return emitReturn(Builder, Plan);
   }
   return makeUnexpected(ErrorCode::InternalError, "call-lowering plan kind is invalid");
-}
-
-} // namespace
-
-const TargetCallLowering &callLowering() noexcept {
-  static const RISCVCallLowering Lowering;
-  return Lowering;
 }
 
 } // namespace rcc::riscv

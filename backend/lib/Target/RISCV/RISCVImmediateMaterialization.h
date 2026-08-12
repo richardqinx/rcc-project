@@ -12,10 +12,8 @@ inline constexpr std::size_t DefaultRV64IntegerBuildCost = 5;
 
 [[nodiscard]] std::size_t estimateRV64IntegerBuildCost(std::int64_t Value) noexcept;
 
-[[nodiscard]] bool
-shouldUseRV64IntegerConstantPool(
-    std::int64_t Value,
-    std::size_t MaximumBuildCost = DefaultRV64IntegerBuildCost) noexcept;
+[[nodiscard]] bool shouldUseRV64IntegerConstantPool(
+    std::int64_t Value, std::size_t MaximumBuildCost = DefaultRV64IntegerBuildCost) noexcept;
 
 } // namespace rcc::riscv
 

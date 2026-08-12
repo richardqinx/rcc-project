@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/Target/RISCV/RISCVCallLowering.h"
+#include "GISel/RISCVCallLowering.h"
 
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -11,6 +11,7 @@
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineVerifier.h"
+#include "rcc/Target/RISCV/RISCVSubtarget.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <algorithm>
@@ -28,6 +29,9 @@
 #include <vector>
 
 namespace {
+
+const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
+const rcc::TargetCallLowering &CallLowering = *Subtarget.getCallLowering();
 
 class TestContext final {
 public:
@@ -186,7 +190,7 @@ abiValue(rcc::LLT Type, std::uint32_t OriginalValue, rcc::Register Value = plann
 
 void testIntegerAndFloatingAssignments(TestContext &Context) {
   auto Integers = callRequest(integerValues(9), 9);
-  auto IntegerPlan = rcc::riscv::callLowering().planCall(Integers);
+  auto IntegerPlan = CallLowering.planCall(Integers);
   Context.expect(IntegerPlan.has_value(), "nine integer arguments must produce an LP64D call plan");
   if (!IntegerPlan)
     return;
@@ -207,7 +211,7 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
                  "LP64D integer arguments must use a0-a7 before a 16-byte stack area");
 
   auto Floats = callRequest(floatingValues(17), 17);
-  auto FloatPlan = rcc::riscv::callLowering().planCall(Floats);
+  auto FloatPlan = CallLowering.planCall(Floats);
   Context.expect(FloatPlan.has_value(),
                  "seventeen floating arguments must produce an LP64D call plan");
   if (!FloatPlan)
@@ -228,7 +232,7 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
 
   auto Single = callRequest({abiValue(floating(rcc::FloatSemantics::IEEESingle), 0)}, 1);
   Single.Results = {abiValue(floating(rcc::FloatSemantics::IEEESingle), 0)};
-  auto SinglePlan = rcc::riscv::callLowering().planCall(Single);
+  auto SinglePlan = CallLowering.planCall(Single);
   Context.expect(SinglePlan && SinglePlan->argumentAssignments().size() == 1 &&
                      SinglePlan->returnAssignments().size() == 1 &&
                      isLocation(SinglePlan->argumentAssignments()[0],
@@ -246,7 +250,7 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
   IntegerFragment.FragmentOffsetBytes = 8;
   IntegerFragment.OriginalAlignment = align(16);
   auto Mixed = callRequest({FloatFragment, IntegerFragment}, 1);
-  auto MixedPlan = rcc::riscv::callLowering().planCall(Mixed);
+  auto MixedPlan = CallLowering.planCall(Mixed);
   Context.expect(MixedPlan && MixedPlan->argumentAssignments().size() == 2 &&
                      isLocation(MixedPlan->argumentAssignments()[0], argumentFPR(0)) &&
                      isLocation(MixedPlan->argumentAssignments()[1], argumentGPR(0)),
@@ -254,7 +258,7 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
 
   auto GenericScalar = callRequest({abiValue(anyScalar(64), 0)}, 1);
   GenericScalar.Results = {abiValue(anyScalar(64), 0)};
-  auto GenericScalarPlan = rcc::riscv::callLowering().planCall(GenericScalar);
+  auto GenericScalarPlan = CallLowering.planCall(GenericScalar);
   Context.expect(GenericScalarPlan && GenericScalarPlan->argumentAssignments().size() == 1 &&
                      GenericScalarPlan->returnAssignments().size() == 1 &&
                      GenericScalarPlan->argumentAssignments()[0].ValueType == anyScalar(64) &&
@@ -264,7 +268,7 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
   auto LP64Float = callRequest({abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0)}, 1);
   LP64Float.Convention = rcc::riscv::callingConventionID(rcc::riscv::CallingConvention::LP64);
   LP64Float.Results = {abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0)};
-  auto LP64Plan = rcc::riscv::callLowering().planCall(LP64Float);
+  auto LP64Plan = CallLowering.planCall(LP64Float);
   const auto LP64Mask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64);
   Context.expect(
       LP64Plan && LP64Plan->argumentAssignments().size() == 1 &&
@@ -279,11 +283,11 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
 
   auto Narrow = abiValue(integer(32), 0);
   auto InvalidNarrow = callRequest({Narrow}, 1);
-  Context.expect(!rcc::riscv::callLowering().planCall(InvalidNarrow),
+  Context.expect(!CallLowering.planCall(InvalidNarrow),
                  "a narrow integer without an explicit ABI extension must be rejected");
   Narrow.Extension = rcc::ABIExtensionKind::SignExtend;
   auto ExtendedNarrow = callRequest({Narrow}, 1);
-  auto NarrowPlan = rcc::riscv::callLowering().planCall(ExtendedNarrow);
+  auto NarrowPlan = CallLowering.planCall(ExtendedNarrow);
   Context.expect(NarrowPlan && NarrowPlan->argumentAssignments()[0].LocationType == integer(64) &&
                      NarrowPlan->argumentAssignments()[0].Extension ==
                          rcc::ABIExtensionKind::SignExtend,
@@ -294,7 +298,7 @@ void testVariadicAssignments(TestContext &Context) {
   auto FixedFloat = abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0);
   auto VariableFloat = abiValue(floating(rcc::FloatSemantics::IEEEDouble), 1);
   auto Request = callRequest({FixedFloat, VariableFloat}, 1, true);
-  auto Plan = rcc::riscv::callLowering().planCall(Request);
+  auto Plan = CallLowering.planCall(Request);
   Context.expect(
       Plan && isLocation(Plan->argumentAssignments()[0], argumentFPR(0)) &&
           isLocation(Plan->argumentAssignments()[1], argumentGPR(0)) &&
@@ -312,7 +316,7 @@ void testVariadicAssignments(TestContext &Context) {
   PairHigh.FragmentOffsetBytes = 8;
   PairHigh.OriginalAlignment = align(16);
   auto PairRequest = callRequest({FixedInteger, PairLow, PairHigh}, 1, true);
-  auto PairPlan = rcc::riscv::callLowering().planCall(PairRequest);
+  auto PairPlan = CallLowering.planCall(PairRequest);
   Context.expect(PairPlan && isLocation(PairPlan->argumentAssignments()[0], argumentGPR(0)) &&
                      isLocation(PairPlan->argumentAssignments()[1], argumentGPR(2)) &&
                      isLocation(PairPlan->argumentAssignments()[2], argumentGPR(3)),
@@ -323,7 +327,7 @@ void testVariadicAssignments(TestContext &Context) {
   Formal.Arguments = {FixedInteger};
   Formal.FixedArgumentCount = 1;
   Formal.IsVariadic = true;
-  auto FormalPlan = rcc::riscv::callLowering().planFormalArguments(Formal);
+  auto FormalPlan = CallLowering.planFormalArguments(Formal);
   Context.expect(FormalPlan && FormalPlan->varArgs().IsVariadic &&
                      FormalPlan->varArgs().FirstUnallocatedIntegerRegister == 1 &&
                      FormalPlan->varArgs().RegisterSaveAreaSizeBytes == 56 &&
@@ -341,7 +345,7 @@ void testSpecialArgumentsAndReturns(TestContext &Context) {
   ByVal.ByValSizeBytes = 24;
   ByVal.ByValAlignment = align(16);
   auto ByValRequest = callRequest({ByVal}, 1);
-  auto ByValPlan = rcc::riscv::callLowering().planCall(ByValRequest);
+  auto ByValPlan = CallLowering.planCall(ByValRequest);
   Context.expect(
       ByValPlan && ByValPlan->byValCopies().size() == 1 &&
           ByValPlan->byValCopies()[0].StackOffsetBytes == 0 &&
@@ -351,23 +355,23 @@ void testSpecialArgumentsAndReturns(TestContext &Context) {
 
   auto SRet = abiValue(pointer(), 0);
   SRet.Flags.set(rcc::ABIValueFlag::StructReturn);
-  auto SRetPlan = rcc::riscv::callLowering().planCall(callRequest({SRet}, 1));
+  auto SRetPlan = CallLowering.planCall(callRequest({SRet}, 1));
   Context.expect(
       SRetPlan && isLocation(SRetPlan->argumentAssignments()[0], argumentGPR(0)) &&
           SRetPlan->argumentAssignments()[0].CustomFlags.has(rcc::CCAssignmentFlag::StructReturn),
       "sret must be carried as the first integer argument");
   auto SRetWithDirectResult = callRequest({SRet}, 1);
   SRetWithDirectResult.Results = {abiValue(integer(64), 0)};
-  Context.expect(!rcc::riscv::callLowering().planCall(SRetWithDirectResult),
+  Context.expect(!CallLowering.planCall(SRetWithDirectResult),
                  "an sret call cannot also expose direct ABI return registers");
   auto Plain = abiValue(integer(64), 0);
   SRet.OriginalValue = 1;
-  Context.expect(!rcc::riscv::callLowering().planCall(callRequest({Plain, SRet}, 2)),
+  Context.expect(!CallLowering.planCall(callRequest({Plain, SRet}, 2)),
                  "sret outside the first argument position must be rejected");
 
   auto Indirect = abiValue(pointer(), 0);
   Indirect.Flags.set(rcc::ABIValueFlag::Indirect);
-  auto IndirectPlan = rcc::riscv::callLowering().planCall(callRequest({Indirect}, 1));
+  auto IndirectPlan = CallLowering.planCall(callRequest({Indirect}, 1));
   Context.expect(
       IndirectPlan &&
           IndirectPlan->argumentAssignments()[0].LocationKind == rcc::CCLocationKind::Indirect &&
@@ -376,14 +380,14 @@ void testSpecialArgumentsAndReturns(TestContext &Context) {
 
   auto InRegister = integerValues(9);
   InRegister.back().Flags.set(rcc::ABIValueFlag::InRegister);
-  Context.expect(!rcc::riscv::callLowering().planCall(callRequest(std::move(InRegister), 9)),
+  Context.expect(!CallLowering.planCall(callRequest(std::move(InRegister), 9)),
                  "an inreg argument that would spill to the stack must be rejected");
 
   rcc::ReturnLoweringRequest Return;
   Return.Convention = convention();
   Return.Values = {abiValue(integer(64), 0),
                    abiValue(floating(rcc::FloatSemantics::IEEEDouble), 1)};
-  auto ReturnPlan = rcc::riscv::callLowering().planReturn(Return);
+  auto ReturnPlan = CallLowering.planReturn(Return);
   Context.expect(ReturnPlan && ReturnPlan->returnAssignments().size() == 2 &&
                      isLocation(ReturnPlan->returnAssignments()[0], returnGPR(0)) &&
                      isLocation(ReturnPlan->returnAssignments()[1], returnFPR(0)),
@@ -402,14 +406,14 @@ void testTailCalls(TestContext &Context) {
   auto Tail = callRequest({}, 0);
   Tail.TailKind = rcc::TailCallKind::Tail;
   Tail.TailContext = emptyTailContext();
-  auto TailPlan = rcc::riscv::callLowering().planCall(Tail);
+  auto TailPlan = CallLowering.planCall(Tail);
   Context.expect(TailPlan && TailPlan->tailDecision() == rcc::TailCallKind::Tail &&
                      TailPlan->callFrame().ReusesIncomingArea && !TailPlan->callFrame().EmitSetup,
                  "an ABI-compatible tail call must reuse the incoming argument area");
 
   auto Fallback = callRequest({}, 0);
   Fallback.TailKind = rcc::TailCallKind::Tail;
-  auto FallbackPlan = rcc::riscv::callLowering().planCall(Fallback);
+  auto FallbackPlan = CallLowering.planCall(Fallback);
   Context.expect(FallbackPlan && FallbackPlan->tailDecision() == rcc::TailCallKind::NotTail &&
                      !FallbackPlan->tailRejectionReason().empty() &&
                      FallbackPlan->callFrame().EmitSetup,
@@ -417,7 +421,7 @@ void testTailCalls(TestContext &Context) {
 
   auto MustTail = callRequest({}, 0);
   MustTail.TailKind = rcc::TailCallKind::MustTail;
-  auto MustTailPlan = rcc::riscv::callLowering().planCall(MustTail);
+  auto MustTailPlan = CallLowering.planCall(MustTail);
   Context.expect(!MustTailPlan && MustTailPlan.error().code() == rcc::ErrorCode::Unsupported,
                  "an incompatible musttail call must fail instead of falling back");
 
@@ -427,7 +431,7 @@ void testTailCalls(TestContext &Context) {
   StackContext.CallerFixedArgumentCount = 9;
   StackContext.ReusableIncomingArgumentBytes = 16;
   StackTail.TailContext = std::move(StackContext);
-  auto StackTailPlan = rcc::riscv::callLowering().planCall(StackTail);
+  auto StackTailPlan = CallLowering.planCall(StackTail);
   Context.expect(StackTailPlan && StackTailPlan->tailDecision() == rcc::TailCallKind::Tail &&
                      StackTailPlan->callFrame().SizeBytes == 16,
                  "a tail call may reuse a sufficiently large incoming stack argument area");
@@ -506,7 +510,7 @@ void testOrdinaryAndIndirectEmission(TestContext &Context) {
   rcc::MachineIRBuilder Builder(*Function, *Target);
   Context.expect(Builder.setInsertPoint(*Block).has_value(),
                  "ordinary-call insertion point must be valid");
-  auto Lowered = rcc::riscv::callLowering().lowerCall(Builder, Request);
+  auto Lowered = CallLowering.lowerCall(Builder, Request);
   Context.expect(Lowered.has_value(), "ordinary direct call emission must succeed");
   if (!Lowered)
     return;
@@ -602,7 +606,7 @@ void testOrdinaryAndIndirectEmission(TestContext &Context) {
   rcc::MachineIRBuilder IndirectBuilder(*IndirectFunction, *Target);
   if (!IndirectBuilder.setInsertPoint(*IndirectBlock))
     return;
-  auto IndirectLowered = rcc::riscv::callLowering().lowerCall(IndirectBuilder, IndirectRequest);
+  auto IndirectLowered = CallLowering.lowerCall(IndirectBuilder, IndirectRequest);
   rcc::MachineInstr *IndirectCall =
       findInstruction(*IndirectBlock, rcc::riscv::InstructionOpcode::PseudoCALL);
   Context.expect(IndirectLowered && IndirectCall != nullptr &&
@@ -632,7 +636,7 @@ void testStackAndByValEmission(TestContext &Context) {
   rcc::MachineIRBuilder Builder(*Function, *Target);
   if (!Builder.setInsertPoint(*Block))
     return;
-  auto Lowered = rcc::riscv::callLowering().lowerCall(Builder, Request);
+  auto Lowered = CallLowering.lowerCall(Builder, Request);
   rcc::MachineInstr *ByValCopy =
       findInstruction(*Block, rcc::riscv::InstructionOpcode::PseudoBYVAL_COPY);
   rcc::MachineInstr *StackStore =
@@ -679,7 +683,7 @@ void testFormalReturnAndTailEmission(TestContext &Context) {
   rcc::MachineIRBuilder FormalBuilder(*FormalFunction, *Target);
   if (!FormalBuilder.setInsertPoint(*FormalBlock))
     return;
-  auto FormalLowered = rcc::riscv::callLowering().lowerFormalArguments(FormalBuilder, Formal);
+  auto FormalLowered = CallLowering.lowerFormalArguments(FormalBuilder, Formal);
   std::size_t SaveStores = 0;
   for (rcc::MachineInstr *Instruction : instructions(*FormalBlock)) {
     if (Instruction->opcode() == opcode(rcc::riscv::InstructionOpcode::PseudoSTORE_STACK_ARG))
@@ -713,7 +717,7 @@ void testFormalReturnAndTailEmission(TestContext &Context) {
   rcc::MachineIRBuilder ReturnBuilder(*ReturnFunction, *Target);
   if (!ReturnBuilder.setInsertPoint(*ReturnBlock))
     return;
-  auto ReturnLowered = rcc::riscv::callLowering().lowerReturn(ReturnBuilder, Return);
+  auto ReturnLowered = CallLowering.lowerReturn(ReturnBuilder, Return);
   rcc::MachineInstr *ReturnPseudo =
       findInstruction(*ReturnBlock, rcc::riscv::InstructionOpcode::PseudoRET);
   bool HasReturnRegister = false;
@@ -738,7 +742,7 @@ void testFormalReturnAndTailEmission(TestContext &Context) {
   rcc::MachineIRBuilder TailBuilder(*TailFunction, *Target);
   if (!TailBuilder.setInsertPoint(*TailBlock))
     return;
-  auto TailLowered = rcc::riscv::callLowering().lowerCall(TailBuilder, Tail);
+  auto TailLowered = CallLowering.lowerCall(TailBuilder, Tail);
   Context.expect(TailLowered && instructions(*TailBlock).size() == 1 &&
                      TailBlock->firstInstruction()->opcode() ==
                          opcode(rcc::riscv::InstructionOpcode::PseudoTAIL) &&
@@ -767,7 +771,7 @@ void testFormalReturnAndTailEmission(TestContext &Context) {
   rcc::MachineIRBuilder StackTailBuilder(*StackTailFunction, *Target);
   if (!StackTailBuilder.setInsertPoint(*StackTailBlock))
     return;
-  auto StackTailLowered = rcc::riscv::callLowering().lowerCall(StackTailBuilder, StackTail);
+  auto StackTailLowered = CallLowering.lowerCall(StackTailBuilder, StackTail);
   Context.expect(
       StackTailLowered &&
           findInstruction(*StackTailBlock, rcc::riscv::InstructionOpcode::PseudoSTORE_STACK_ARG) !=
@@ -802,7 +806,7 @@ void testFormalStackAlignmentAndPreflight(TestContext &Context) {
   rcc::MachineIRBuilder StackBuilder(*StackFunction, *Target);
   if (!StackBuilder.setInsertPoint(*StackBlock))
     return;
-  auto StackLowered = rcc::riscv::callLowering().lowerFormalArguments(StackBuilder, StackRequest);
+  auto StackLowered = CallLowering.lowerFormalArguments(StackBuilder, StackRequest);
   bool HasIncomingObject = false;
   for (const rcc::StackObject &Object : StackFunction->frameInfo().objects()) {
     const rcc::StackObjectDesc *Description = Object.description();
@@ -840,8 +844,7 @@ void testFormalStackAlignmentAndPreflight(TestContext &Context) {
   rcc::MachineIRBuilder ConflictBuilder(*ConflictFunction, *Target);
   if (!ConflictBuilder.setInsertPoint(*ConflictBlock))
     return;
-  auto ConflictLowered =
-      rcc::riscv::callLowering().lowerFormalArguments(ConflictBuilder, ConflictRequest);
+  auto ConflictLowered = CallLowering.lowerFormalArguments(ConflictBuilder, ConflictRequest);
   Context.expect(
       !ConflictLowered && ConflictBlock->instructionCount() == 0 &&
           ConflictFunction->allInstructions().empty() &&
@@ -862,7 +865,7 @@ void testPlanningFailureDoesNotMutate(TestContext &Context) {
   rcc::MachineIRBuilder Builder(*Function, *Target);
   if (!Builder.setInsertPoint(*Block))
     return;
-  auto Lowered = rcc::riscv::callLowering().lowerCall(Builder, Request);
+  auto Lowered = CallLowering.lowerCall(Builder, Request);
   auto UnknownPhysical = rcc::PhysicalRegister::create(999);
   auto UnknownRequest =
       UnknownPhysical
@@ -870,7 +873,7 @@ void testPlanningFailureDoesNotMutate(TestContext &Context) {
                         1)
           : rcc::CallLoweringRequest{};
   auto UnknownLowered = UnknownPhysical
-                            ? rcc::riscv::callLowering().lowerCall(Builder, UnknownRequest)
+                            ? CallLowering.lowerCall(Builder, UnknownRequest)
                             : rcc::Expected<void>{std::unexpected(UnknownPhysical.error())};
   Context.expect(!Lowered && !UnknownLowered && Block->instructionCount() == 0 &&
                      Function->allInstructions().empty() &&

@@ -2,8 +2,10 @@
 
 #include "rcc/CodeGen/GlobalISel/RegBankSelect.h"
 
+#include "GISel/RISCVRegisterBankInfo.h"
 #include "GISelMITest.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
+#include "rcc/Target/RISCV/RISCVSubtarget.h"
+#include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <cstdint>
 
@@ -29,7 +31,8 @@ void testBankConflict(TestContext &Context) {
           .has_value(),
       "conflicting bank assignment must be constructible");
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::Legalized};
-  rcc::RegBankSelect Pass(rcc::riscv::registerBankInfo());
+  const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
+  rcc::RegBankSelect Pass(Subtarget.getRegBankInfo());
   rcc::MachineAnalysisManager Analyses;
   auto Result = Pass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(!Result && Result.error().code() == rcc::ErrorCode::VerificationError,
@@ -61,7 +64,8 @@ void testBankClassOnlyChange(TestContext &Context) {
   Context.expect(Fixture.Function->registerInfo().setRegisterBank(Value, GPR).has_value(),
                  "pre-existing GPR bank must be assignable");
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::Legalized};
-  rcc::RegBankSelect Pass(rcc::riscv::registerBankInfo());
+  const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
+  rcc::RegBankSelect Pass(Subtarget.getRegBankInfo());
   rcc::MachineAnalysisManager Analyses;
   auto Result = Pass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(Result.has_value() && Result->Changed &&

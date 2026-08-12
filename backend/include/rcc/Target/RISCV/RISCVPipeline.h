@@ -20,16 +20,12 @@ class TargetDescription;
 namespace riscv {
 
 [[nodiscard]] Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline,
-                                                  const MachineFunction &Function);
-[[nodiscard]] Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline,
                                                   const MachineFunction &Function,
-                                                  RISCVSubtargetFeatures Features);
+                                                  const RISCVSubtarget &Subtarget);
 [[nodiscard]] Expected<std::unique_ptr<MachineFunctionPass>>
-createCanonicalPipelinePass(std::string_view Name);
-[[nodiscard]] Expected<std::unique_ptr<MachineFunctionPass>>
-createCanonicalPipelinePass(std::string_view Name, RISCVSubtargetFeatures Features);
+createCanonicalPipelinePass(std::string_view Name, const RISCVSubtarget &Subtarget);
 [[nodiscard]] Expected<std::vector<std::string>>
-canonicalPipelinePassNames(const MachineFunction &Function);
+canonicalPipelinePassNames(const MachineFunction &Function, const RISCVSubtarget &Subtarget);
 } // namespace riscv
 } // namespace rcc
 

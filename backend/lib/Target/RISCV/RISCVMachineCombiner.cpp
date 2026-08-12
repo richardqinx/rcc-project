@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
+#include "RISCV.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <cstdint>

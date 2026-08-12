@@ -6,10 +6,19 @@
 #include "rcc/Support/Error.h"
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 
-namespace rcc::riscv {
+namespace rcc {
+
+class InstructionSelector;
+class LegalizerInfo;
+class TargetCallLowering;
+
+namespace riscv {
+
+class RISCVRegisterBankInfo;
 
 enum class RISCVExtension : std::uint8_t {
   I,
@@ -42,6 +51,33 @@ private:
   std::uint16_t Enabled = 0;
 };
 
-} // namespace rcc::riscv
+class RISCVSubtarget final {
+public:
+  explicit RISCVSubtarget(RISCVSubtargetFeatures Features);
+  RISCVSubtarget(const RISCVSubtarget &) = delete;
+  RISCVSubtarget &operator=(const RISCVSubtarget &) = delete;
+  RISCVSubtarget(RISCVSubtarget &&) = delete;
+  RISCVSubtarget &operator=(RISCVSubtarget &&) = delete;
+  ~RISCVSubtarget();
+
+  [[nodiscard]] const RISCVSubtargetFeatures &features() const noexcept {
+    return Features;
+  }
+
+  [[nodiscard]] const TargetCallLowering *getCallLowering() const;
+  [[nodiscard]] InstructionSelector *getInstructionSelector() const;
+  [[nodiscard]] const LegalizerInfo *getLegalizerInfo() const;
+  [[nodiscard]] const RISCVRegisterBankInfo *getRegBankInfo() const;
+
+private:
+  RISCVSubtargetFeatures Features;
+  mutable std::unique_ptr<TargetCallLowering> CallLoweringInfo;
+  mutable std::unique_ptr<InstructionSelector> InstSelector;
+  mutable std::unique_ptr<LegalizerInfo> Legalizer;
+  mutable std::unique_ptr<RISCVRegisterBankInfo> RegBankInfo;
+};
+
+} // namespace riscv
+} // namespace rcc
 
 #endif // RCC_TARGET_RISCV_RISCVSUBTARGET_H

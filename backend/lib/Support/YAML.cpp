@@ -247,7 +247,7 @@ private:
   }
 
   void diagnose(std::size_t Begin, std::size_t End, std::string Message,
-               std::string SourceName = {}) {
+                std::string SourceName = {}) {
     if (Failed)
       return;
     Failed = true;
@@ -255,8 +255,8 @@ private:
         .Severity = DiagnosticSeverity::Error,
         .Category = "yaml",
         .Message = std::move(Message),
-        .SourceName = SourceName.empty() ? std::string(Parsed.Source.name())
-                                         : std::move(SourceName),
+        .SourceName =
+            SourceName.empty() ? std::string(Parsed.Source.name()) : std::move(SourceName),
         .Range = Parsed.Source.range(Begin, End),
     });
   }

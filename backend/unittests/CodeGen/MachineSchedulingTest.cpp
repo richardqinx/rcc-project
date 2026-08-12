@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "RISCV.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
@@ -11,7 +12,6 @@
 #include "rcc/CodeGen/ScheduleDAG.h"
 #include "rcc/CodeGen/ScheduleHazardRecognizer.h"
 #include "rcc/CodeGen/TargetSchedulingModel.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <array>

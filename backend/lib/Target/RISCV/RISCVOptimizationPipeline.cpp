@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "RISCV.h"
 #include "RISCVInstrInfo.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
 
 namespace rcc::riscv {
 

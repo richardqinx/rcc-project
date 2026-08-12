@@ -21,24 +21,22 @@ namespace {
 [[nodiscard]] Expected<std::int32_t> parseSignedField(const MIRTargetNode &Node,
                                                       std::string_view Name) {
   if (Node.Kind != MIRTargetNodeKind::Scalar)
-    return makeUnexpected(ErrorCode::ParseError,
-                          "RISC-V machineFunctionInfo field '" + std::string(Name) +
-                              "' must be a scalar");
+    return makeUnexpected(ErrorCode::ParseError, "RISC-V machineFunctionInfo field '" +
+                                                     std::string(Name) + "' must be a scalar");
   std::int32_t Value = 0;
   const auto Result =
       std::from_chars(Node.Scalar.data(), Node.Scalar.data() + Node.Scalar.size(), Value, 10);
   if (Result.ec != std::errc{} || Result.ptr != Node.Scalar.data() + Node.Scalar.size()) {
-    return makeUnexpected(ErrorCode::ParseError,
-                          "RISC-V machineFunctionInfo field '" + std::string(Name) +
-                              "' must be a 32-bit signed integer");
+    return makeUnexpected(ErrorCode::ParseError, "RISC-V machineFunctionInfo field '" +
+                                                     std::string(Name) +
+                                                     "' must be a 32-bit signed integer");
   }
   return Value;
 }
 
 [[nodiscard]] Expected<TargetFunctionState> parseFunctionInfo(const MIRTargetNode &Node) {
   if (Node.Kind != MIRTargetNodeKind::Mapping)
-    return makeUnexpected(ErrorCode::ParseError,
-                          "RISC-V machineFunctionInfo must be a mapping");
+    return makeUnexpected(ErrorCode::ParseError, "RISC-V machineFunctionInfo must be a mapping");
 
   std::int32_t VarArgsFrameIndex = 0;
   std::int32_t VarArgsSaveSize = 0;
@@ -60,21 +58,19 @@ namespace {
     return makeUnexpected(ErrorCode::ParseError,
                           "unknown RISC-V machineFunctionInfo field '" + Entry.Key + "'");
   }
-  return TargetFunctionState::create(
-      RISCVFunctionInfo(VarArgsFrameIndex, VarArgsSaveSize));
+  return TargetFunctionState::create(RISCVFunctionInfo(VarArgsFrameIndex, VarArgsSaveSize));
 }
 
-[[nodiscard]] Expected<MIRTargetNode>
-printFunctionInfo(const TargetFunctionState &State) {
+[[nodiscard]] Expected<MIRTargetNode> printFunctionInfo(const TargetFunctionState &State) {
   const auto *Info = State.getIf<RISCVFunctionInfo>();
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "target function state is not RISC-V function information");
   std::vector<MIRTargetMappingEntry> Entries;
-  Entries.push_back({"varArgsFrameIndex",
-                     MIRTargetNode::scalar(std::to_string(Info->varArgsFrameIndex()))});
-  Entries.push_back({"varArgsSaveSize",
-                     MIRTargetNode::scalar(std::to_string(Info->varArgsSaveSize()))});
+  Entries.push_back(
+      {"varArgsFrameIndex", MIRTargetNode::scalar(std::to_string(Info->varArgsFrameIndex()))});
+  Entries.push_back(
+      {"varArgsSaveSize", MIRTargetNode::scalar(std::to_string(Info->varArgsSaveSize()))});
   return MIRTargetNode::mapping(std::move(Entries));
 }
 
@@ -99,8 +95,7 @@ Expected<void> RISCVFunctionInfo::verify() const {
   return {};
 }
 
-Expected<RISCVFunctionInfo>
-RISCVFunctionInfo::clone(const MachineFunctionCloneContext &) const {
+Expected<RISCVFunctionInfo> RISCVFunctionInfo::clone(const MachineFunctionCloneContext &) const {
   return RISCVFunctionInfo(VarArgsFrameIndex, VarArgsSaveSize);
 }
 
@@ -117,11 +112,10 @@ Expected<std::vector<std::byte>> RISCVFunctionInfo::encode() const {
   return Payload;
 }
 
-Expected<RISCVFunctionInfo>
-RISCVFunctionInfo::decode(std::uint32_t Version, std::span<const std::byte> Payload) {
+Expected<RISCVFunctionInfo> RISCVFunctionInfo::decode(std::uint32_t Version,
+                                                      std::span<const std::byte> Payload) {
   if (Version != schemaVersion())
-    return makeUnexpected(ErrorCode::ParseError,
-                          "unsupported RISC-V function-info schema version");
+    return makeUnexpected(ErrorCode::ParseError, "unsupported RISC-V function-info schema version");
   if (Payload.size() != 8)
     return makeUnexpected(ErrorCode::ParseError,
                           "RISC-V function-info payload must contain eight bytes");

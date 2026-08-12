@@ -19,8 +19,7 @@ namespace riscv {
 
 class RISCVFunctionInfo final {
 public:
-  RISCVFunctionInfo(std::int32_t VarArgsFrameIndex = 0,
-                    std::int32_t VarArgsSaveSize = 0) noexcept
+  RISCVFunctionInfo(std::int32_t VarArgsFrameIndex = 0, std::int32_t VarArgsSaveSize = 0) noexcept
       : VarArgsFrameIndex(VarArgsFrameIndex), VarArgsSaveSize(VarArgsSaveSize) {}
 
   [[nodiscard]] static constexpr TargetFunctionStateTypeID stableTypeID() noexcept {
@@ -32,12 +31,11 @@ public:
   }
 
   [[nodiscard]] Expected<void> verify() const;
-  [[nodiscard]] Expected<RISCVFunctionInfo>
-  clone(const MachineFunctionCloneContext &Context) const;
+  [[nodiscard]] Expected<RISCVFunctionInfo> clone(const MachineFunctionCloneContext &Context) const;
   [[nodiscard]] std::string print() const;
   [[nodiscard]] Expected<std::vector<std::byte>> encode() const;
-  [[nodiscard]] static Expected<RISCVFunctionInfo>
-  decode(std::uint32_t Version, std::span<const std::byte> Payload);
+  [[nodiscard]] static Expected<RISCVFunctionInfo> decode(std::uint32_t Version,
+                                                          std::span<const std::byte> Payload);
 
   [[nodiscard]] std::int32_t varArgsFrameIndex() const noexcept {
     return VarArgsFrameIndex;
@@ -47,8 +45,7 @@ public:
     return VarArgsSaveSize;
   }
 
-  friend bool operator==(const RISCVFunctionInfo &Left,
-                         const RISCVFunctionInfo &Right) = default;
+  friend bool operator==(const RISCVFunctionInfo &Left, const RISCVFunctionInfo &Right) = default;
 
 private:
   std::int32_t VarArgsFrameIndex = 0;

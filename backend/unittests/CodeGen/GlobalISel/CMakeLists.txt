@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+include_directories("${RCC_BACKEND_SOURCE_DIR}/lib/Target/RISCV")
+
 add_executable(RCCBackendCodeGenLegalizerTests LegalizerTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenLegalizerTests)
 target_link_libraries(

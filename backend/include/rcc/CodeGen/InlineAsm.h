@@ -28,8 +28,7 @@ enum class InlineAsmExtraInfoFlag : std::uint32_t {
 
 class InlineAsmExtraInfo final {
 public:
-  explicit constexpr InlineAsmExtraInfo(std::uint32_t RawValue = 0) noexcept
-      : Value(RawValue) {}
+  explicit constexpr InlineAsmExtraInfo(std::uint32_t RawValue = 0) noexcept : Value(RawValue) {}
 
   [[nodiscard]] constexpr std::uint32_t rawValue() const noexcept {
     return Value;
@@ -193,8 +192,7 @@ public:
   }
 
   [[nodiscard]] constexpr std::optional<std::uint32_t> matchingOperand() const noexcept {
-    return isMatched() ? std::optional((Value >> PayloadShift) & MatchedOperandMask)
-                       : std::nullopt;
+    return isMatched() ? std::optional((Value >> PayloadShift) & MatchedOperandMask) : std::nullopt;
   }
 
   [[nodiscard]] constexpr std::optional<std::uint32_t> registerClass() const noexcept {
@@ -226,8 +224,7 @@ public:
     return true;
   }
 
-  [[nodiscard]] constexpr bool
-  setMemoryConstraint(InlineAsmMemoryConstraint Constraint) noexcept {
+  [[nodiscard]] constexpr bool setMemoryConstraint(InlineAsmMemoryConstraint Constraint) noexcept {
     const std::uint32_t Encoded = static_cast<std::uint32_t>(Constraint);
     if (Encoded == 0 || Encoded > MatchedOperandMask || isMatched())
       return false;
@@ -253,8 +250,7 @@ public:
     return std::nullopt;
   }
 
-  [[nodiscard]] static constexpr std::string_view
-  kindName(InlineAsmOperandKind Kind) noexcept {
+  [[nodiscard]] static constexpr std::string_view kindName(InlineAsmOperandKind Kind) noexcept {
     switch (Kind) {
     case InlineAsmOperandKind::RegisterUse:
       return "reguse";

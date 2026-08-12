@@ -30,7 +30,7 @@ namespace rcc {
 namespace {
 
 [[nodiscard]] std::string formatDebugInstruction(const MachineInstr &Instruction,
-                                                  const TargetDescription &Target) {
+                                                 const TargetDescription &Target) {
   const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
   std::string Result = Descriptor == nullptr ? "<unknown>" : Descriptor->Name;
   for (std::size_t Index = 0; Index < Instruction.operandCount(); ++Index) {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "RISCV.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -7,7 +8,6 @@
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
 #include "rcc/Target/RISCV/RISCVInstructions.h"
 #include "rcc/Target/RISCV/RISCVRegisters.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"

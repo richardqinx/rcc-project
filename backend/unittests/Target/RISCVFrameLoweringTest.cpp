@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "GISel/RISCVCallLowering.h"
+#include "RISCV.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
@@ -16,8 +18,6 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetFrameLowering.h"
 #include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
-#include "rcc/Target/RISCV/RISCVCallLowering.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
 #include "rcc/Target/RISCV/RISCVInstructions.h"
 #include "rcc/Target/RISCV/RISCVRegisters.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"

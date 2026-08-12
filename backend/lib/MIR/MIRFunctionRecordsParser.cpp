@@ -240,16 +240,14 @@ bool MIRDocumentParser::parseFunctionRecords(const yaml::Node &Root, MachineFunc
           TargetNode->scalarStyle() == yaml::ScalarStyle::DoubleQuoted) {
         ++ContentOffset;
       }
-      const auto ErrorRange = [this, ContentOffset](std::size_t Begin,
-                                                     std::size_t End = 1U) {
+      const auto ErrorRange = [this, ContentOffset](std::size_t Begin, std::size_t End = 1U) {
         return Result.Source.range(ContentOffset + Begin, ContentOffset + Begin + End);
       };
       const auto SkipSpace = [&Text](std::size_t &Cursor) {
         while (Cursor < Text.size() && (Text[Cursor] == ' ' || Text[Cursor] == '\t'))
           ++Cursor;
       };
-      const auto ParseNumber = [&Text, &SkipSpace](std::size_t &Cursor,
-                                                   std::uint32_t &Value) {
+      const auto ParseNumber = [&Text, &SkipSpace](std::size_t &Cursor, std::uint32_t &Value) {
         SkipSpace(Cursor);
         const std::size_t Begin = Cursor;
         while (Cursor < Text.size() && Text[Cursor] >= '0' && Text[Cursor] <= '9')

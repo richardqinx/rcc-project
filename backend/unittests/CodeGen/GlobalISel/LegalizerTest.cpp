@@ -3,7 +3,8 @@
 #include "rcc/CodeGen/GlobalISel/Legalizer.h"
 
 #include "GISelMITest.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
+#include "rcc/Target/RISCV/RISCVSubtarget.h"
+#include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <cstdint>
 #include <memory>
@@ -79,7 +80,8 @@ void testNullAndMissingContracts(TestContext &Context) {
   Context.expect(Fixture.Function->properties().empty(),
                  "a rejected pass must not publish function properties");
 
-  rcc::Legalizer ValidPass(rcc::riscv::legalizerInfo());
+  const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
+  rcc::Legalizer ValidPass(Subtarget.getLegalizerInfo());
   auto MissingResult = ValidPass.run(*Fixture.Function, *Target, Analyses);
   Context.expect(!MissingResult &&
                      MissingResult.error().code() == rcc::ErrorCode::VerificationError,
@@ -114,9 +116,10 @@ void testUnsupportedRollback(TestContext &Context) {
                  "unsupported floating operation must be constructible");
   Unsupported.Function->properties() = {rcc::MachineFunctionProperty::IsSSA,
                                         rcc::MachineFunctionProperty::TracksLiveness};
+  const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
   rcc::MachinePassManager OnlyLegalizer;
   Context.expect(
-      OnlyLegalizer.addPass(std::make_unique<rcc::Legalizer>(rcc::riscv::legalizerInfo()))
+      OnlyLegalizer.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo()))
           .has_value(),
       "standalone legalizer must be accepted");
   rcc::MachineAnalysisManager UnsupportedAnalyses;

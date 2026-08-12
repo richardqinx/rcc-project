@@ -857,12 +857,17 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
     return {};
   }
   if (Command.Action == Operation::ListPasses) {
+    auto Features =
+        rcc::riscv::RISCVSubtargetFeatures::fromFeatureList(Command.Invocation.Features);
+    if (!Features)
+      return std::unexpected(Features.error());
+    const rcc::riscv::RISCVSubtarget Subtarget(*Features);
     std::vector<std::string> Names;
     for (std::size_t Index = 0; Index < Input->Document.unit().functionCount(); ++Index) {
       const rcc::MachineFunction *Function = Input->Document.unit().functionAt(Index);
       if (Function == nullptr)
         return rcc::makeUnexpected(ErrorCode::InternalError, "MIR input contains a null function");
-      auto FunctionNames = rcc::riscv::canonicalPipelinePassNames(*Function);
+      auto FunctionNames = rcc::riscv::canonicalPipelinePassNames(*Function, Subtarget);
       if (!FunctionNames)
         return std::unexpected(FunctionNames.error());
       for (std::string &Name : *FunctionNames) {

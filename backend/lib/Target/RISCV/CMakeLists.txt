@@ -47,9 +47,11 @@ set_source_files_properties(
 
 add_library(
   RCCBackendRISCV
+  GISel/RISCVCallLowering.cpp
+  GISel/RISCVInstructionSelector.cpp
+  GISel/RISCVLegalizerInfo.cpp
+  GISel/RISCVRegisterBankInfo.cpp
   RISCVInstrInfo.cpp
-  RISCVCodeGen.cpp
-  RISCVCallLowering.cpp
   RISCVAssemblyPrinter.cpp
   RISCVFrameLowering.cpp
   RISCVFunctionInfo.cpp
@@ -118,10 +120,16 @@ install(
 )
 
 rcc_backend_register_format_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVInstructionSelector.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVLegalizerInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVLegalizerInfo.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVRegisterBankInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVRegisterBankInfo.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCV.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFunctionInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVImmediateMaterialization.cpp"
@@ -141,10 +149,8 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSubtarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetConstant.cpp"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCodeGen.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVAssemblyPrinter.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCallLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVInstPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVAsmBackend.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVFixupKinds.h"
@@ -159,10 +165,12 @@ rcc_backend_register_format_files(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTargetRelocationKinds.h"
 )
 rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVInstructionSelector.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVLegalizerInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVRegisterBankInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFunctionInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVImmediateMaterialization.cpp"

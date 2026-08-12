@@ -2,11 +2,13 @@
 
 #include "rcc/CodeGen/GlobalISel/InstructionSelect.h"
 
+#include "GISel/RISCVRegisterBankInfo.h"
 #include "GISelMITest.h"
 #include "rcc/CodeGen/GlobalISel/Legalizer.h"
 #include "rcc/CodeGen/GlobalISel/RegBankSelect.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
+#include "rcc/Target/RISCV/RISCVSubtarget.h"
+#include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <algorithm>
 #include <array>
@@ -117,16 +119,16 @@ void testPipeline(TestContext &Context) {
 
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::IsSSA,
                                     rcc::MachineFunctionProperty::TracksLiveness};
+  const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
   rcc::MachinePassManager Pipeline;
   Context.expect(
-      Pipeline.addPass(std::make_unique<rcc::Legalizer>(rcc::riscv::legalizerInfo())).has_value(),
+      Pipeline.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo())).has_value(),
       "legalizer must be accepted by the pass manager");
+  Context.expect(Pipeline.addPass(std::make_unique<rcc::RegBankSelect>(Subtarget.getRegBankInfo()))
+                     .has_value(),
+                 "register-bank selector must be accepted by the pass manager");
   Context.expect(
-      Pipeline.addPass(std::make_unique<rcc::RegBankSelect>(rcc::riscv::registerBankInfo()))
-          .has_value(),
-      "register-bank selector must be accepted by the pass manager");
-  Context.expect(
-      Pipeline.addPass(std::make_unique<rcc::InstructionSelect>(rcc::riscv::instructionSelector()))
+      Pipeline.addPass(std::make_unique<rcc::InstructionSelect>(Subtarget.getInstructionSelector()))
           .has_value(),
       "instruction selector must be accepted by the pass manager");
   rcc::MachineAnalysisManager Analyses;
@@ -198,7 +200,8 @@ void testInstructionSelectionOrder(TestContext &Context) {
   }
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::Legalized,
                                     rcc::MachineFunctionProperty::RegBankSelected};
-  RecordingSelector Selector(rcc::riscv::instructionSelector());
+  const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
+  RecordingSelector Selector(*Subtarget.getInstructionSelector());
   rcc::InstructionSelect Pass(Selector);
   rcc::MachineAnalysisManager Analyses;
   auto Run = Pass.run(*Fixture.Function, *Target, Analyses);
@@ -322,11 +325,12 @@ void testExtendedRV64GCPipeline(TestContext &Context) {
 
   Fixture.Function->properties() = {rcc::MachineFunctionProperty::IsSSA,
                                     rcc::MachineFunctionProperty::TracksLiveness};
+  const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
   rcc::MachinePassManager Pipeline;
-  if (!Pipeline.addPass(std::make_unique<rcc::Legalizer>(rcc::riscv::legalizerInfo())) ||
-      !Pipeline.addPass(std::make_unique<rcc::RegBankSelect>(rcc::riscv::registerBankInfo())) ||
+  if (!Pipeline.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo())) ||
+      !Pipeline.addPass(std::make_unique<rcc::RegBankSelect>(Subtarget.getRegBankInfo())) ||
       !Pipeline.addPass(
-          std::make_unique<rcc::InstructionSelect>(rcc::riscv::instructionSelector()))) {
+          std::make_unique<rcc::InstructionSelect>(Subtarget.getInstructionSelector()))) {
     Context.expect(false, "extended RV64GC pipeline construction must succeed");
     return;
   }

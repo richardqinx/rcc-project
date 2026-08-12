@@ -290,7 +290,11 @@ private:
   const MachineFunction *Function = Parsed->Document.unit().functionAt(0);
   if (Function == nullptr)
     return std::unexpected(Error(ErrorCode::InternalError, "pipeline fuzz input has no function"));
-  auto Names = riscv::canonicalPipelinePassNames(*Function);
+  auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
+  if (!Features)
+    return std::unexpected(Features.error());
+  const riscv::RISCVSubtarget Subtarget(*Features);
+  auto Names = riscv::canonicalPipelinePassNames(*Function, Subtarget);
   if (!Names)
     return std::unexpected(Names.error());
   PipelineControls Controls;

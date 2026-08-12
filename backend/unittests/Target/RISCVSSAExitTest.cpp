@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "RISCV.h"
 #include "RISCVInstrInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -12,7 +13,6 @@
 #include "rcc/CodeGen/MachinePass.h"
 #include "rcc/CodeGen/MachineSSAExit.h"
 #include "rcc/CodeGen/MachineVerifier.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <algorithm>

@@ -2,6 +2,12 @@
 
 #include "rcc/Target/RISCV/RISCVSubtarget.h"
 
+#include "GISel/RISCVCallLowering.h"
+#include "GISel/RISCVLegalizerInfo.h"
+#include "GISel/RISCVRegisterBankInfo.h"
+#include "RISCV.h"
+#include "rcc/CodeGen/GlobalISel/InstructionSelector.h"
+
 #include <array>
 #include <cstddef>
 #include <string_view>
@@ -89,6 +95,34 @@ bool RISCVSubtargetFeatures::has(RISCVExtension Extension) const noexcept {
   if (Extension >= RISCVExtension::Count)
     return false;
   return (Enabled & extensionBit(Extension)) != 0;
+}
+
+RISCVSubtarget::RISCVSubtarget(RISCVSubtargetFeatures Features) : Features(Features) {}
+
+RISCVSubtarget::~RISCVSubtarget() = default;
+
+const TargetCallLowering *RISCVSubtarget::getCallLowering() const {
+  if (!CallLoweringInfo)
+    CallLoweringInfo = std::make_unique<RISCVCallLowering>();
+  return CallLoweringInfo.get();
+}
+
+InstructionSelector *RISCVSubtarget::getInstructionSelector() const {
+  if (!InstSelector)
+    InstSelector.reset(createRISCVInstructionSelector(*this, *getRegBankInfo()));
+  return InstSelector.get();
+}
+
+const LegalizerInfo *RISCVSubtarget::getLegalizerInfo() const {
+  if (!Legalizer)
+    Legalizer = std::make_unique<RISCVLegalizerInfo>(*this);
+  return Legalizer.get();
+}
+
+const RISCVRegisterBankInfo *RISCVSubtarget::getRegBankInfo() const {
+  if (!RegBankInfo)
+    RegBankInfo = std::make_unique<RISCVRegisterBankInfo>();
+  return RegBankInfo.get();
 }
 
 } // namespace rcc::riscv

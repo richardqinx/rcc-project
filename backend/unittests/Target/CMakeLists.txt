@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+include_directories("${RCC_BACKEND_SOURCE_DIR}/lib/Target/RISCV")
+
 add_library(RCCBackendTestTarget TestTarget.cpp)
 add_library(RCCBackend::TestTarget ALIAS RCCBackendTestTarget)
 
@@ -34,10 +36,6 @@ target_link_libraries(RCCBackendRISCVCodeGenTests PRIVATE RCCBackend::RISCV RCCB
 add_test(NAME RCCBackendRISCVCodeGenTests COMMAND RCCBackendRISCVCodeGenTests)
 
 add_executable(RCCBackendRISCVSSAExitTests RISCVSSAExitTest.cpp)
-target_include_directories(
-  RCCBackendRISCVSSAExitTests
-  PRIVATE "${RCC_BACKEND_SOURCE_DIR}/lib/Target/RISCV"
-)
 rcc_backend_configure_target(RCCBackendRISCVSSAExitTests)
 target_link_libraries(RCCBackendRISCVSSAExitTests PRIVATE RCCBackend::RISCV RCCBackend::CodeGen)
 add_test(NAME RCCBackendRISCVSSAExitTests COMMAND RCCBackendRISCVSSAExitTests)
@@ -65,10 +63,6 @@ add_test(
 )
 
 add_executable(RCCBackendRISCVLateCodeGenTests RISCVLateCodeGenTest.cpp)
-target_include_directories(
-  RCCBackendRISCVLateCodeGenTests
-  PRIVATE "${RCC_BACKEND_SOURCE_DIR}/lib/Target/RISCV"
-)
 rcc_backend_configure_target(RCCBackendRISCVLateCodeGenTests)
 target_link_libraries(
   RCCBackendRISCVLateCodeGenTests
