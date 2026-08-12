@@ -6,11 +6,11 @@
 #define RCC_LIB_CODEGEN_REGALLOCINTERNAL_H
 
 #include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
-#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/MachineVerifier.h"

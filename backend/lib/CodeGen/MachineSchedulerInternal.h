@@ -5,8 +5,8 @@
 #ifndef RCC_LIB_CODEGEN_MACHINESCHEDULERINTERNAL_H
 #define RCC_LIB_CODEGEN_MACHINESCHEDULERINTERNAL_H
 
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineAnalyses.h"
-#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineScheduler.h"
 #include "rcc/CodeGen/ScheduleDAG.h"
 #include "rcc/Support/Error.h"

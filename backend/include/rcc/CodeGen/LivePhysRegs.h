@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifndef RCC_CODEGEN_MACHINELIVENESSREPAIR_H
-#define RCC_CODEGEN_MACHINELIVENESSREPAIR_H
+#ifndef RCC_CODEGEN_LIVEPHYSREGS_H
+#define RCC_CODEGEN_LIVEPHYSREGS_H
 
-#include "rcc/CodeGen/MachineLiveness.h"
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/Support/Error.h"
 
 #include <span>
@@ -20,4 +20,4 @@ repairPostRAMachineBlockLiveness(std::span<MachineBasicBlock *const> Blocks,
 
 } // namespace rcc
 
-#endif // RCC_CODEGEN_MACHINELIVENESSREPAIR_H
+#endif // RCC_CODEGEN_LIVEPHYSREGS_H

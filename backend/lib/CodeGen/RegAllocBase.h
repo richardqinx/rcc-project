@@ -6,7 +6,7 @@
 #define RCC_LIB_CODEGEN_REGALLOCBASE_H
 
 #include "RegAllocInternal.h"
-#include "rcc/CodeGen/MachineLiveness.h"
+#include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/RegAllocCommon.h"
 #include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
 #include "rcc/CodeGen/VirtRegMap.h"

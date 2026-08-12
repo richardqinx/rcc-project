@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_LIVEREGMATRIX_H
 #define RCC_CODEGEN_LIVEREGMATRIX_H
 
-#include "rcc/CodeGen/MachineLiveness.h"
+#include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 
 #include <cstdint>

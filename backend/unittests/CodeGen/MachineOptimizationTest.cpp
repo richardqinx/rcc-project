@@ -2,6 +2,7 @@
 
 #include "RISCV.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
 #include "rcc/CodeGen/MachineCSE.h"
@@ -11,7 +12,6 @@
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineLICM.h"
-#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineMemoryFolding.h"
 #include "rcc/CodeGen/MachineOperand.h"

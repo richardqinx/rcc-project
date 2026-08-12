@@ -3,6 +3,7 @@
 #include "rcc/CodeGen/MachineBranchOptimization.h"
 
 #include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineBasicBlockAttributes.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
@@ -11,7 +12,6 @@
 #include "rcc/CodeGen/MachineFunctionRecords.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
-#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetInstrInfo.h"
 

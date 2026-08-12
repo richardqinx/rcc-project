@@ -3,8 +3,9 @@
 #include "RegAllocBasic.h"
 
 #include "RegAllocBase.h"
+#include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/LiveRegMatrix.h"
-#include "rcc/CodeGen/MachineLiveness.h"
+#include "rcc/CodeGen/LiveVariables.h"
 
 #include <algorithm>
 #include <memory>

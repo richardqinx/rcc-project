@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
 
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineAnalyses.h"
 #include "rcc/CodeGen/MachineBlockPlacement.h"
 #include "rcc/CodeGen/MachineBranchOptimization.h"
@@ -13,7 +14,6 @@
 #include "rcc/CodeGen/MachineFallthrough.h"
 #include "rcc/CodeGen/MachineFinalization.h"
 #include "rcc/CodeGen/MachineLICM.h"
-#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineMemoryFolding.h"
 #include "rcc/CodeGen/MachinePseudoExpansion.h"
 #include "rcc/CodeGen/MachineScheduler.h"

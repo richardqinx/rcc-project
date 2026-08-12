@@ -3,11 +3,12 @@
 #include "rcc/CodeGen/VirtRegMap.h"
 
 #include "RegAllocInternal.h"
+#include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/LiveRegMatrix.h"
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
-#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"

@@ -4,11 +4,11 @@
 
 #include "MachineSchedulerInternal.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
-#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/RegisterPressure.h"
 #include "rcc/CodeGen/ScheduleDAG.h"
 #include "rcc/CodeGen/ScheduleHazardRecognizer.h"

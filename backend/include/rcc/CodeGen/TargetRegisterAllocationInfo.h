@@ -3,8 +3,8 @@
 #ifndef RCC_CODEGEN_TARGETREGISTERALLOCATIONINFO_H
 #define RCC_CODEGEN_TARGETREGISTERALLOCATIONINFO_H
 
+#include "rcc/CodeGen/LiveInterval.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
-#include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 
 #include <cstdint>

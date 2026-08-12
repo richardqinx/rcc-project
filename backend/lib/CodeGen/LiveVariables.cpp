@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/CodeGen/MachineLiveness.h"
+#include "rcc/CodeGen/LiveVariables.h"
 
+#include "rcc/CodeGen/LiveInterval.h"
+#include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/RegisterMask.h"
+#include "rcc/CodeGen/SlotIndexes.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 
@@ -20,16 +23,14 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace rcc {
+
 namespace {
-
-constexpr std::uint64_t SlotSpacing = 16;
-constexpr std::uint64_t SlotAlignmentMask = 3;
-
 [[nodiscard]] LaneMask subtractLanes(LaneMask Left, LaneMask Right) noexcept {
   return LaneMask::fromRaw(Left.rawValue() & ~Right.rawValue());
 }
@@ -90,182 +91,7 @@ void subtractLaneSets(std::unordered_map<KeyT, LaneMask> &Values,
     removeLanes(Values, Key, Lanes);
 }
 
-struct PhysicalUnitAccess final {
-  RegisterUnitID Unit;
-  LaneMask Lanes;
-};
-
-[[nodiscard]] LaneMask normalizeUnitLanes(LaneMask UnitViewLanes, LaneMask RegisterLanes) noexcept {
-  std::uint64_t View = UnitViewLanes.rawValue();
-  const std::uint64_t Selected = View & RegisterLanes.rawValue();
-  std::uint64_t Normalized = 0;
-  std::uint32_t UnitLane = 0;
-  while (View != 0) {
-    const std::uint64_t RegisterLane = std::uint64_t{1} << std::countr_zero(View);
-    if ((Selected & RegisterLane) != 0)
-      Normalized |= std::uint64_t{1} << UnitLane;
-    View &= View - 1U;
-    ++UnitLane;
-  }
-  return LaneMask::fromRaw(Normalized);
-}
-
-[[nodiscard]] LaneMask denormalizeUnitLanes(LaneMask UnitLanes, LaneMask UnitViewLanes) noexcept {
-  std::uint64_t View = UnitViewLanes.rawValue();
-  const std::uint64_t Selected = UnitLanes.rawValue();
-  std::uint64_t RegisterLanes = 0;
-  std::uint32_t UnitLane = 0;
-  while (View != 0) {
-    const std::uint64_t RegisterLane = std::uint64_t{1} << std::countr_zero(View);
-    if ((Selected & (std::uint64_t{1} << UnitLane)) != 0)
-      RegisterLanes |= RegisterLane;
-    View &= View - 1U;
-    ++UnitLane;
-  }
-  return LaneMask::fromRaw(RegisterLanes);
-}
-
-[[nodiscard]] LaneMask physicalRegisterLanes(const PhysicalRegisterDesc &Description) noexcept {
-  LaneMask Result;
-  for (const RegisterUnitLane &Unit : Description.Units)
-    Result = Result | Unit.Lanes;
-  return Result;
-}
-
-[[nodiscard]] RegisterUnitLaneSet physicalRegisterCoverage(const PhysicalRegisterDesc &Description,
-                                                           LaneMask Requested) {
-  RegisterUnitLaneSet Result;
-  for (const RegisterUnitLane &Unit : Description.Units)
-    Result.add(Unit.Unit, normalizeUnitLanes(Unit.Lanes, Requested));
-  return Result;
-}
-
-[[nodiscard]] bool isSubset(const RegisterUnitLaneSet &Subset,
-                            const RegisterUnitLaneSet &Superset) noexcept {
-  return std::ranges::all_of(Subset.entries(), [&Superset](const auto &Entry) {
-    return Superset.contains(Entry.first, Entry.second);
-  });
-}
-
-[[nodiscard]] std::size_t laneCount(const RegisterUnitLaneSet &Set) noexcept {
-  std::size_t Result = 0;
-  for (const auto &[Unit, Lanes] : Set.entries()) {
-    (void)Unit;
-    Result += static_cast<std::size_t>(std::popcount(Lanes.rawValue()));
-  }
-  return Result;
-}
-
-[[nodiscard]] Expected<LaneMask> virtualRegisterLanes(Register Reg, const MachineFunction &Function,
-                                                      const TargetDescription &Target) {
-  if (!Reg.isVirtual()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "virtual lane query requires a virtual register");
-  }
-  auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
-  if (!Info)
-    return std::unexpected(Info.error());
-  const std::optional<RegisterClassID> ClassID = Info->get().RegClass;
-  if (!ClassID)
-    return LaneMask::all();
-  const RegisterClassDesc *Class = Target.registers().registerClass(*ClassID);
-  if (Class == nullptr || Class->Lanes.empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "liveness encountered an unknown or empty register class");
-  }
-  return Class->Lanes;
-}
-
-[[nodiscard]] Expected<LaneMask> virtualOperandLanes(const MachineOperand &Operand,
-                                                     const MachineFunction &Function,
-                                                     const TargetDescription &Target) {
-  const Register *Reg = Operand.getIf<Register>();
-  if (Reg == nullptr || !Reg->isVirtual()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "virtual lane query requires a virtual-register operand");
-  }
-  if (Operand.subReg().value() != 0) {
-    const SubRegIndexDesc *SubReg = Target.registers().subRegIndex(Operand.subReg());
-    if (SubReg == nullptr || SubReg->Lanes.empty()) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "liveness encountered an unknown or empty subregister lane mask");
-    }
-    return SubReg->Lanes;
-  }
-
-  return virtualRegisterLanes(*Reg, Function, Target);
-}
-
-[[nodiscard]] Expected<std::vector<PhysicalUnitAccess>>
-physicalOperandUnits(const MachineOperand &Operand, const TargetDescription &Target) {
-  const Register *Reg = Operand.getIf<Register>();
-  const std::optional<PhysicalRegister> Original =
-      Reg == nullptr ? std::nullopt : Reg->physicalRegister();
-  if (!Original) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "physical unit query requires a physical-register operand");
-  }
-
-  PhysicalRegister Effective = *Original;
-  if (Operand.subReg().value() != 0) {
-    const std::optional<PhysicalRegister> SubRegister =
-        Target.registers().subRegister(*Original, Operand.subReg());
-    if (!SubRegister) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "physical register has no requested subregister projection");
-    }
-    Effective = *SubRegister;
-  }
-  const PhysicalRegisterDesc *Description = Target.registers().physicalRegister(Effective);
-  if (Description == nullptr || Description->Units.empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "liveness encountered an unknown or unitless physical register");
-  }
-
-  std::vector<PhysicalUnitAccess> Result;
-  Result.reserve(Description->Units.size());
-  for (const RegisterUnitLane &Unit : Description->Units) {
-    if (Unit.Lanes.empty()) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "physical register unit has an empty lane mask");
-    }
-    Result.push_back({Unit.Unit, normalizeUnitLanes(Unit.Lanes, LaneMask::all())});
-  }
-  return Result;
-}
-
-void addPhysicalRegister(RegisterUnitLaneSet &Set, const PhysicalRegisterDesc &Description,
-                         LaneMask Requested = LaneMask::all()) {
-  Set.unite(physicalRegisterCoverage(Description, Requested));
-}
-
-[[nodiscard]] bool isReservedPhysicalRegister(Register Reg, const MachineFunction &Function,
-                                              const TargetDescription &Target) noexcept {
-  const std::optional<PhysicalRegister> Physical = Reg.physicalRegister();
-  return Physical && (Function.registerInfo().isReserved(*Physical) ||
-                      Target.registers().isReservedRegister(*Physical));
-}
-
-[[nodiscard]] Expected<void> addRegisterMaskDefs(RegisterUnitLaneSet &Set, const RegisterMask &Mask,
-                                                 const TargetDescription &Target) {
-  for (const PhysicalRegisterDesc &Description : Target.registers().physicalRegisters()) {
-    if (Mask.clobbers(Description.Reg))
-      addPhysicalRegister(Set, Description);
-  }
-  return {};
-}
-
-[[nodiscard]] Expected<void> addRegisterMaskUses(RegisterUnitLaneSet &Set, const RegisterMask &Mask,
-                                                 const TargetDescription &Target) {
-  for (const PhysicalRegisterDesc &Description : Target.registers().physicalRegisters()) {
-    if (Mask.preserves(Description.Reg))
-      addPhysicalRegister(Set, Description);
-  }
-  return {};
-}
-
-[[nodiscard]] Expected<void> addOperandUse(RegisterLaneSet &VirtualUses,
-                                           RegisterUnitLaneSet &PhysicalUses,
+[[nodiscard]] Expected<void> addOperandUse(RegisterLaneSet &VirtualUses, LiveRegUnits &PhysicalUses,
                                            const MachineOperand &Operand,
                                            const MachineFunction &Function,
                                            const TargetDescription &Target) {
@@ -291,8 +117,7 @@ void addPhysicalRegister(RegisterUnitLaneSet &Set, const PhysicalRegisterDesc &D
   return {};
 }
 
-[[nodiscard]] Expected<void> addOperandDef(RegisterLaneSet &VirtualDefs,
-                                           RegisterUnitLaneSet &PhysicalDefs,
+[[nodiscard]] Expected<void> addOperandDef(RegisterLaneSet &VirtualDefs, LiveRegUnits &PhysicalDefs,
                                            const MachineOperand &Operand,
                                            const MachineFunction &Function,
                                            const TargetDescription &Target) {
@@ -331,7 +156,7 @@ struct LivenessEdgeKeyHash final {
 
 struct EdgeLivenessUses final {
   RegisterLaneSet Virtual;
-  RegisterUnitLaneSet Physical;
+  LiveRegUnits Physical;
 };
 
 [[nodiscard]] Expected<LiveVariablesAnalysis::Result>
@@ -408,8 +233,8 @@ computeLiveVariables(const MachineFunction &Function, const TargetDescription &T
 
       RegisterLaneSet InstructionVirtualUses;
       RegisterLaneSet InstructionVirtualDefs;
-      RegisterUnitLaneSet InstructionPhysicalUses;
-      RegisterUnitLaneSet InstructionPhysicalDefs;
+      LiveRegUnits InstructionPhysicalUses;
+      LiveRegUnits InstructionPhysicalDefs;
       for (std::size_t Index = 0; Index < Instruction->operandCount(); ++Index) {
         const MachineOperand &Operand = *Instruction->operandAt(Index);
         if (Operand.isRegister()) {
@@ -453,7 +278,7 @@ computeLiveVariables(const MachineFunction &Function, const TargetDescription &T
       Liveness.VirtualUses.unite(NewVirtualUses);
       Liveness.VirtualDefs.unite(InstructionVirtualDefs);
 
-      RegisterUnitLaneSet NewPhysicalUses = InstructionPhysicalUses;
+      LiveRegUnits NewPhysicalUses = InstructionPhysicalUses;
       NewPhysicalUses.subtract(Liveness.PhysicalDefs);
       Liveness.PhysicalUses.unite(NewPhysicalUses);
       Liveness.PhysicalDefs.unite(InstructionPhysicalDefs);
@@ -466,7 +291,7 @@ computeLiveVariables(const MachineFunction &Function, const TargetDescription &T
     for (const MachineBasicBlock *Block : Blocks | std::views::reverse) {
       MachineBlockLiveness &Liveness = Result.getOrCreateBlock(*Block);
       RegisterLaneSet VirtualOut;
-      RegisterUnitLaneSet PhysicalOut;
+      LiveRegUnits PhysicalOut;
       for (const MachineSuccessor &Successor : Block->successors()) {
         if (Successor.Block == nullptr || Result.block(*Successor.Block) == nullptr) {
           return makeUnexpected(ErrorCode::VerificationError,
@@ -485,7 +310,7 @@ computeLiveVariables(const MachineFunction &Function, const TargetDescription &T
       RegisterLaneSet VirtualIn = VirtualOut;
       VirtualIn.subtract(Liveness.VirtualDefs);
       VirtualIn.unite(Liveness.VirtualUses);
-      RegisterUnitLaneSet PhysicalIn = PhysicalOut;
+      LiveRegUnits PhysicalIn = PhysicalOut;
       PhysicalIn.subtract(Liveness.PhysicalDefs);
       PhysicalIn.unite(Liveness.PhysicalUses);
 
@@ -501,241 +326,12 @@ computeLiveVariables(const MachineFunction &Function, const TargetDescription &T
   }
   return Result;
 }
-
-[[nodiscard]] bool maskIntersects(LaneMask Access, std::optional<LaneMask> Filter) noexcept {
-  return !Filter || Access.intersects(*Filter);
-}
-
-struct InstructionRangeEvent final {
-  bool HasUse = false;
-  bool HasNormalDef = false;
-  bool HasEarlyDef = false;
-  bool HasRegMaskClobber = false;
-};
-
-[[nodiscard]] Expected<InstructionRangeEvent>
-virtualRangeEvent(const MachineInstr &Instruction, Register Reg, std::optional<LaneMask> Filter,
-                  const MachineFunction &Function, const TargetDescription &Target) {
-  InstructionRangeEvent Event;
-  for (const MachineOperand &Operand : Instruction.operands()) {
-    const Register *OperandReg = Operand.getIf<Register>();
-    if (OperandReg == nullptr || *OperandReg != Reg)
-      continue;
-    auto Lanes = virtualOperandLanes(Operand, Function, Target);
-    if (!Lanes)
-      return std::unexpected(Lanes.error());
-    if (!maskIntersects(*Lanes, Filter))
-      continue;
-    Event.HasUse |= Operand.isUse() && !Operand.isDebugUse() &&
-                    !Operand.registerFlags().has(RegisterOperandFlag::Undef);
-    if (Operand.isDef()) {
-      if (Operand.registerFlags().has(RegisterOperandFlag::EarlyClobber))
-        Event.HasEarlyDef = true;
-      else
-        Event.HasNormalDef = true;
-    }
-  }
-  return Event;
-}
-
-[[nodiscard]] Expected<InstructionRangeEvent> unitRangeEvent(const MachineInstr &Instruction,
-                                                             RegisterUnitID Unit,
-                                                             std::optional<LaneMask> Filter,
-                                                             const TargetDescription &Target) {
-  InstructionRangeEvent Event;
-  for (const MachineOperand &Operand : Instruction.operands()) {
-    if (Operand.isRegister()) {
-      const Register *Reg = Operand.getIf<Register>();
-      if (Reg == nullptr || !Reg->isPhysical())
-        continue;
-      auto Units = physicalOperandUnits(Operand, Target);
-      if (!Units)
-        return std::unexpected(Units.error());
-      const auto Position = std::ranges::find_if(
-          *Units, [Unit](const PhysicalUnitAccess &Access) { return Access.Unit == Unit; });
-      if (Position == Units->end() || !maskIntersects(Position->Lanes, Filter))
-        continue;
-      Event.HasUse |= Operand.isUse() && !Operand.isDebugUse() &&
-                      !Operand.registerFlags().has(RegisterOperandFlag::Undef);
-      if (Operand.isDef()) {
-        if (Operand.registerFlags().has(RegisterOperandFlag::EarlyClobber))
-          Event.HasEarlyDef = true;
-        else
-          Event.HasNormalDef = true;
-      }
-      continue;
-    }
-    if (const auto *MaskOperand = Operand.getIf<RegisterMaskOperand>();
-        MaskOperand != nullptr && MaskOperand->Mask) {
-      for (const PhysicalRegisterDesc &Description : Target.registers().physicalRegisters()) {
-        if (!MaskOperand->Mask->clobbers(Description.Reg))
-          continue;
-        if (std::ranges::any_of(Description.Units, [Unit, Filter](const RegisterUnitLane &Access) {
-              return Access.Unit == Unit && maskIntersects(Access.Lanes, Filter);
-            })) {
-          Event.HasRegMaskClobber = true;
-          break;
-        }
-      }
-      continue;
-    }
-    if (const auto *MaskOperand = Operand.getIf<LiveOutRegisterMaskOperand>();
-        MaskOperand != nullptr && MaskOperand->Mask) {
-      for (const PhysicalRegisterDesc &Description : Target.registers().physicalRegisters()) {
-        if (!MaskOperand->Mask->preserves(Description.Reg))
-          continue;
-        if (std::ranges::any_of(Description.Units, [Unit, Filter](const RegisterUnitLane &Access) {
-              return Access.Unit == Unit && maskIntersects(Access.Lanes, Filter);
-            })) {
-          Event.HasUse = true;
-          break;
-        }
-      }
-    }
-  }
-  return Event;
-}
-
-template <typename EventFn, typename LiveOutFn>
-[[nodiscard]] Expected<LiveRange>
-buildLiveRange(MachineFunction &Function, const SlotIndexesAnalysis::Result &Indexes,
-               const EventFn &EventForInstruction, const LiveOutFn &IsLiveOut) {
-  LiveRange Range;
-  for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {
-    std::optional<SlotIndex> End;
-    bool SawLaterDefinition = false;
-    if (IsLiveOut(*Block))
-      End = Indexes.blockEnd(*Block);
-
-    for (MachineInstr *Instruction = Block->lastInstruction(); Instruction != nullptr;
-         Instruction = Instruction->previous()) {
-      auto Event = EventForInstruction(*Instruction);
-      if (!Event)
-        return std::unexpected(Event.error());
-      if (!Event->HasUse && !Event->HasNormalDef && !Event->HasEarlyDef &&
-          !Event->HasRegMaskClobber) {
-        continue;
-      }
-
-      const SlotIndex InstructionSlot = Indexes.instructionIndex(*Instruction);
-      if (!InstructionSlot.isValid()) {
-        return makeUnexpected(ErrorCode::InternalError,
-                              "live-range construction has no instruction SlotIndex");
-      }
-      auto AddDefinition = [&](SlotIndex DefSlot, bool IsRegMask) -> Expected<void> {
-        const bool HasLiveValue = End && DefSlot < *End;
-        if (IsRegMask && !HasLiveValue) {
-          End.reset();
-          SawLaterDefinition = true;
-          return {};
-        }
-        const LiveValueState State = IsRegMask            ? LiveValueState::Redefined
-                                     : HasLiveValue       ? LiveValueState::Normal
-                                     : SawLaterDefinition ? LiveValueState::Redefined
-                                                          : LiveValueState::Unused;
-        auto Value = Range.createValue(DefSlot, State, Instruction->stableID());
-        if (!Value)
-          return std::unexpected(Value.error());
-        const SlotIndex SegmentEnd = HasLiveValue ? *End : InstructionSlot.deadSlot();
-        if (DefSlot < SegmentEnd) {
-          auto Added = Range.addSegment({DefSlot, SegmentEnd, *Value});
-          if (!Added)
-            return std::unexpected(Added.error());
-        }
-        End.reset();
-        SawLaterDefinition = true;
-        return {};
-      };
-
-      if (Event->HasNormalDef) {
-        auto Added = AddDefinition(InstructionSlot.registerSlot(), false);
-        if (!Added)
-          return std::unexpected(Added.error());
-      }
-      if (Event->HasUse) {
-        const SlotIndex UseEnd =
-            Event->HasNormalDef ? InstructionSlot.registerSlot() : InstructionSlot.deadSlot();
-        if (!End || *End < UseEnd)
-          End = UseEnd;
-      }
-      if (Event->HasEarlyDef) {
-        auto Added = AddDefinition(InstructionSlot.earlyClobberSlot(), false);
-        if (!Added)
-          return std::unexpected(Added.error());
-      } else if (Event->HasRegMaskClobber) {
-        auto Added = AddDefinition(InstructionSlot.earlyClobberSlot(), true);
-        if (!Added)
-          return std::unexpected(Added.error());
-      }
-    }
-
-    if (End) {
-      const SlotIndex Start = Indexes.blockStart(*Block);
-      if (!Start.isValid() || !(*End > Start)) {
-        return makeUnexpected(ErrorCode::InternalError,
-                              "live-in range has invalid block boundary indexes");
-      }
-      auto Value = Range.createValue(Start, LiveValueState::Phi);
-      if (!Value)
-        return std::unexpected(Value.error());
-      auto Added = Range.addSegment({Start, *End, *Value});
-      if (!Added)
-        return std::unexpected(Added.error());
-    }
-  }
-  auto Verification = Range.verify();
-  if (!Verification)
-    return std::unexpected(Verification.error());
-  return Range;
-}
-
-[[nodiscard]] Expected<LaneMask> virtualRegisterFullLanes(Register Reg,
-                                                          const MachineFunction &Function,
-                                                          const TargetDescription &Target) {
-  return virtualRegisterLanes(Reg, Function, Target);
-}
-
-[[nodiscard]] Expected<std::vector<LaneMask>>
-partitionVirtualRegisterLanes(Register Reg, MachineFunction &Function,
-                              const TargetDescription &Target) {
-  auto Full = virtualRegisterFullLanes(Reg, Function, Target);
-  if (!Full)
-    return std::unexpected(Full.error());
-  std::vector<LaneMask> AccessMasks;
-  for (const MachineOperand &Operand : Function.registerInfo().regNoDebugOperands(Reg)) {
-    auto Lanes = virtualOperandLanes(Operand, Function, Target);
-    if (!Lanes)
-      return std::unexpected(Lanes.error());
-    if (*Lanes != *Full && std::ranges::find(AccessMasks, *Lanes) == AccessMasks.end())
-      AccessMasks.push_back(*Lanes);
-  }
-  if (AccessMasks.empty())
-    return {};
-
-  std::vector<LaneMask> Groups{*Full};
-  for (const LaneMask Access : AccessMasks) {
-    std::vector<LaneMask> Refined;
-    for (const LaneMask Group : Groups) {
-      const LaneMask Intersection = Group & Access;
-      const LaneMask Difference = subtractLanes(Group, Access);
-      if (!Intersection.empty())
-        Refined.push_back(Intersection);
-      if (!Difference.empty())
-        Refined.push_back(Difference);
-    }
-    Groups = std::move(Refined);
-  }
-  std::ranges::sort(
-      Groups, [](LaneMask Left, LaneMask Right) { return Left.rawValue() < Right.rawValue(); });
-  return Groups;
-}
-
 [[nodiscard]] Expected<std::vector<MachineBasicBlockLiveIn>>
-canonicalPhysicalLiveIns(const RegisterUnitLaneSet &Units, const TargetDescription &Target) {
+canonicalPhysicalLiveIns(const LiveRegUnits &Units, const TargetDescription &Target) {
   struct Candidate final {
     const PhysicalRegisterDesc *Description = nullptr;
     LaneMask RegisterLanes;
-    RegisterUnitLaneSet Coverage;
+    LiveRegUnits Coverage;
     std::size_t ExtraLanes = 0;
     bool Selected = false;
   };
@@ -751,8 +347,7 @@ canonicalPhysicalLiveIns(const RegisterUnitLaneSet &Units, const TargetDescripti
     std::uint64_t PendingLanes = RelevantLanes.rawValue();
     while (PendingLanes != 0) {
       const std::uint64_t Lane = std::uint64_t{1} << std::countr_zero(PendingLanes);
-      const RegisterUnitLaneSet Coverage =
-          physicalRegisterCoverage(Description, LaneMask::fromRaw(Lane));
+      const LiveRegUnits Coverage = physicalRegisterCoverage(Description, LaneMask::fromRaw(Lane));
       if (isSubset(Coverage, Units))
         SelectableLanes |= Lane;
       PendingLanes &= PendingLanes - 1U;
@@ -768,7 +363,7 @@ canonicalPhysicalLiveIns(const RegisterUnitLaneSet &Units, const TargetDescripti
     Candidates.push_back(std::move(Value));
   }
 
-  RegisterUnitLaneSet Covered;
+  LiveRegUnits Covered;
   std::vector<MachineBasicBlockLiveIn> Result;
   while (Covered != Units) {
     Candidate *Best = nullptr;
@@ -777,7 +372,7 @@ canonicalPhysicalLiveIns(const RegisterUnitLaneSet &Units, const TargetDescripti
     for (Candidate &Value : Candidates) {
       if (Value.Selected)
         continue;
-      RegisterUnitLaneSet NewCoverage = Value.Coverage;
+      LiveRegUnits NewCoverage = Value.Coverage;
       NewCoverage.subtract(Covered);
       const std::size_t NewLanes = laneCount(NewCoverage);
       if (NewLanes == 0)
@@ -812,9 +407,9 @@ canonicalPhysicalLiveIns(const RegisterUnitLaneSet &Units, const TargetDescripti
   return Result;
 }
 
-[[nodiscard]] Expected<RegisterUnitLaneSet>
-liveInUnits(std::span<const MachineBasicBlockLiveIn> LiveIns, const TargetDescription &Target) {
-  RegisterUnitLaneSet Result;
+[[nodiscard]] Expected<LiveRegUnits> liveInUnits(std::span<const MachineBasicBlockLiveIn> LiveIns,
+                                                 const TargetDescription &Target) {
+  LiveRegUnits Result;
   for (const MachineBasicBlockLiveIn &LiveIn : LiveIns) {
     const PhysicalRegisterDesc *Description = Target.registers().physicalRegister(LiveIn.PhysReg);
     if (Description == nullptr) {
@@ -848,7 +443,7 @@ struct LivenessRebuildPlan final {
 
 [[nodiscard]] Expected<bool>
 liveSetIntersects(const MachineOperand &Operand, const RegisterLaneSet &Virtual,
-                  const RegisterUnitLaneSet &Physical, const MachineFunction &Function,
+                  const LiveRegUnits &Physical, const MachineFunction &Function,
                   const TargetDescription &Target, bool TreatReservedAsLive) {
   const Register *Reg = Operand.getIf<Register>();
   if (Reg == nullptr || Reg->isNoRegister())
@@ -871,7 +466,7 @@ liveSetIntersects(const MachineOperand &Operand, const RegisterLaneSet &Virtual,
 
 [[nodiscard]] Expected<void> removeOperandFromLiveSet(const MachineOperand &Operand,
                                                       RegisterLaneSet &Virtual,
-                                                      RegisterUnitLaneSet &Physical,
+                                                      LiveRegUnits &Physical,
                                                       const MachineFunction &Function,
                                                       const TargetDescription &Target) {
   const Register *Reg = Operand.getIf<Register>();
@@ -893,18 +488,17 @@ liveSetIntersects(const MachineOperand &Operand, const RegisterLaneSet &Virtual,
 }
 
 [[nodiscard]] Expected<void> addOperandToLiveSet(const MachineOperand &Operand,
-                                                 RegisterLaneSet &Virtual,
-                                                 RegisterUnitLaneSet &Physical,
+                                                 RegisterLaneSet &Virtual, LiveRegUnits &Physical,
                                                  const MachineFunction &Function,
                                                  const TargetDescription &Target) {
   return addOperandUse(Virtual, Physical, Operand, Function, Target);
 }
 
-[[nodiscard]] Expected<RegisterUnitLaneSet>
-requiredLocalPhysicalLiveIns(const MachineBasicBlock &Block, const MachineFunction &Function,
-                             const TargetDescription &Target) {
+[[nodiscard]] Expected<LiveRegUnits> requiredLocalPhysicalLiveIns(const MachineBasicBlock &Block,
+                                                                  const MachineFunction &Function,
+                                                                  const TargetDescription &Target) {
   RegisterLaneSet Virtual;
-  RegisterUnitLaneSet Physical;
+  LiveRegUnits Physical;
   for (const MachineInstr *Instruction = Block.lastInstruction(); Instruction != nullptr;
        Instruction = Instruction->previous()) {
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
@@ -940,7 +534,7 @@ requiredLocalPhysicalLiveIns(const MachineBasicBlock &Block, const MachineFuncti
         return makeUnexpected(ErrorCode::VerificationError,
                               "liveness verification encountered a null register mask");
       }
-      RegisterUnitLaneSet Clobbers;
+      LiveRegUnits Clobbers;
       auto Added = addRegisterMaskDefs(Clobbers, *MaskOperand->Mask, Target);
       if (!Added)
         return std::unexpected(Added.error());
@@ -981,7 +575,7 @@ buildLivenessRebuildPlan(const MachineFunction &Function, const TargetDescriptio
          std::move(*NewLiveIns)});
 
     RegisterLaneSet Virtual = BlockVariables->VirtualLiveOut;
-    RegisterUnitLaneSet Physical = BlockVariables->PhysicalLiveOut;
+    LiveRegUnits Physical = BlockVariables->PhysicalLiveOut;
     for (const MachineInstr *Instruction = Block->lastInstruction(); Instruction != nullptr;
          Instruction = Instruction->previous()) {
       const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
@@ -1030,7 +624,7 @@ buildLivenessRebuildPlan(const MachineFunction &Function, const TargetDescriptio
         if (!MaskOperand->Mask)
           return makeUnexpected(ErrorCode::VerificationError,
                                 "liveness rebuild encountered a null register mask");
-        RegisterUnitLaneSet Clobbers;
+        LiveRegUnits Clobbers;
         auto Added = addRegisterMaskDefs(Clobbers, *MaskOperand->Mask, Target);
         if (!Added)
           return std::unexpected(Added.error());
@@ -1221,148 +815,7 @@ resolveLivenessPlan(MachineFunction &Function, const LivenessRebuildPlan &Plan) 
   }
   return Changed;
 }
-
 } // namespace
-
-SlotIndex
-SlotIndexesAnalysis::Result::instructionIndex(const MachineInstr &Instruction) const noexcept {
-  const auto Position = InstructionSlots.find(Instruction.stableID());
-  return Position == InstructionSlots.end() ? SlotIndex{} : Position->second;
-}
-
-SlotIndex SlotIndexesAnalysis::Result::blockStart(const MachineBasicBlock &Block) const noexcept {
-  const auto Position = BlockStarts.find(&Block);
-  return Position == BlockStarts.end() ? SlotIndex{} : Position->second;
-}
-
-SlotIndex SlotIndexesAnalysis::Result::blockEnd(const MachineBasicBlock &Block) const noexcept {
-  const auto Position = BlockEnds.find(&Block);
-  return Position == BlockEnds.end() ? SlotIndex{} : Position->second;
-}
-
-const MachineInstr *
-SlotIndexesAnalysis::Result::instructionFromIndex(SlotIndex Index) const noexcept {
-  if (!Index.isValid())
-    return nullptr;
-  const auto Position = SlotToInstruction.find(Index.baseIndex().value());
-  return Position == SlotToInstruction.end() ? nullptr : Position->second;
-}
-
-const MachineBasicBlock *
-SlotIndexesAnalysis::Result::blockFromIndex(SlotIndex Index) const noexcept {
-  if (!Index.isValid())
-    return nullptr;
-  for (const MachineBasicBlock *Block : BlocksByStart) {
-    const SlotIndex Start = blockStart(*Block);
-    const SlotIndex End = blockEnd(*Block);
-    if (!(Index < Start) && Index < End)
-      return Block;
-  }
-  return nullptr;
-}
-
-Expected<void> SlotIndexesAnalysis::Result::insertInstruction(const MachineInstr &Instruction) {
-  const MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr || !BlockStarts.contains(Block) || !BlockEnds.contains(Block)) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "SlotIndex insertion requires a linked indexed instruction");
-  }
-  if (InstructionSlots.contains(Instruction.stableID())) {
-    return makeUnexpected(ErrorCode::InvalidArgument, "instruction already has a SlotIndex");
-  }
-
-  const MachineInstr *Previous = Instruction.previous();
-  const MachineInstr *Next = Instruction.next();
-  const SlotIndex LowerIndex =
-      Previous == nullptr ? blockStart(*Block) : instructionIndex(*Previous);
-  const SlotIndex UpperIndex = Next == nullptr ? blockEnd(*Block) : instructionIndex(*Next);
-  if (!LowerIndex.isValid() || !UpperIndex.isValid()) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "adjacent instructions are missing SlotIndexes");
-  }
-  const std::uint64_t Lower = LowerIndex.baseIndex().value();
-  const std::uint64_t Upper = UpperIndex.baseIndex().value();
-  if (Upper <= Lower || Upper - Lower <= SlotAlignmentMask + 1U) {
-    return makeUnexpected(ErrorCode::Unsupported,
-                          "local SlotIndex space is exhausted; renumbering is required");
-  }
-  std::uint64_t Candidate = ((Lower + Upper) / 2U) & ~SlotAlignmentMask;
-  if (Candidate <= Lower)
-    Candidate = Lower + SlotAlignmentMask + 1U;
-  if (Candidate >= Upper) {
-    return makeUnexpected(ErrorCode::Unsupported,
-                          "local SlotIndex space is exhausted; renumbering is required");
-  }
-  const SlotIndex Index = SlotIndex::fromValue(Candidate).registerSlot();
-  InstructionSlots.emplace(Instruction.stableID(), Index);
-  SlotToInstruction.emplace(Index.baseIndex().value(), &Instruction);
-  return {};
-}
-
-Expected<void> SlotIndexesAnalysis::Result::eraseInstruction(const MachineInstr &Instruction) {
-  const auto Position = InstructionSlots.find(Instruction.stableID());
-  if (Position == InstructionSlots.end())
-    return makeUnexpected(ErrorCode::InvalidArgument, "instruction has no SlotIndex");
-  SlotToInstruction.erase(Position->second.baseIndex().value());
-  InstructionSlots.erase(Position);
-  return {};
-}
-
-Expected<void> SlotIndexesAnalysis::Result::renumber(MachineFunction &Function) {
-  Result NewResult;
-  std::uint64_t Position = SlotSpacing;
-  auto Advance = [&Position]() -> Expected<void> {
-    if (Position > std::numeric_limits<std::uint64_t>::max() - SlotSpacing) {
-      return makeUnexpected(ErrorCode::Unsupported, "machine SlotIndex space is exhausted");
-    }
-    Position += SlotSpacing;
-    return {};
-  };
-
-  for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {
-    const SlotIndex Start = SlotIndex::fromValue(Position).withKind(SlotIndexKind::Block);
-    NewResult.BlockStarts.emplace(Block, Start);
-    NewResult.BlocksByStart.push_back(Block);
-    auto Advanced = Advance();
-    if (!Advanced)
-      return std::unexpected(Advanced.error());
-
-    for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
-         Instruction = Instruction->next()) {
-      const SlotIndex Index = SlotIndex::fromValue(Position).registerSlot();
-      if (!NewResult.InstructionSlots.emplace(Instruction->stableID(), Index).second ||
-          !NewResult.SlotToInstruction.emplace(Index.baseIndex().value(), Instruction).second) {
-        return makeUnexpected(ErrorCode::VerificationError,
-                              "duplicate instruction identity during SlotIndex construction");
-      }
-      Advanced = Advance();
-      if (!Advanced)
-        return std::unexpected(Advanced.error());
-    }
-    NewResult.BlockEnds.emplace(Block,
-                                SlotIndex::fromValue(Position).withKind(SlotIndexKind::Block));
-    Advanced = Advance();
-    if (!Advanced)
-      return std::unexpected(Advanced.error());
-  }
-  *this = std::move(NewResult);
-  return {};
-}
-
-bool SlotIndexesAnalysis::Result::invalidate(const MachineFunction &,
-                                             const PreservedAnalyses &Preserved) const noexcept {
-  return !Preserved.preserves(MachineAnalysisManager::id<SlotIndexesAnalysis>());
-}
-
-Expected<SlotIndexesAnalysis::Result> SlotIndexesAnalysis::run(MachineFunction &Function,
-                                                               const TargetDescription &,
-                                                               MachineAnalysisManager &) {
-  Result ResultValue;
-  auto Numbered = ResultValue.renumber(Function);
-  if (!Numbered)
-    return std::unexpected(Numbered.error());
-  return ResultValue;
-}
 
 LaneMask RegisterLaneSet::lanes(Register Reg) const noexcept {
   return lanesFor(Values, Reg);
@@ -1392,36 +845,6 @@ void RegisterLaneSet::unite(const RegisterLaneSet &Other) {
 void RegisterLaneSet::subtract(const RegisterLaneSet &Other) {
   subtractLaneSets(Values, Other.Values);
 }
-
-LaneMask RegisterUnitLaneSet::lanes(RegisterUnitID Unit) const noexcept {
-  return lanesFor(Values, Unit);
-}
-
-bool RegisterUnitLaneSet::contains(RegisterUnitID Unit, LaneMask Lanes) const noexcept {
-  return containsLanes(Values, Unit, Lanes);
-}
-
-bool RegisterUnitLaneSet::intersects(RegisterUnitID Unit, LaneMask Lanes) const noexcept {
-  return intersectsLanes(Values, Unit, Lanes);
-}
-
-void RegisterUnitLaneSet::add(RegisterUnitID Unit, LaneMask Lanes) {
-  if (Unit.value() != 0 && !Lanes.empty())
-    addLanes(Values, Unit, Lanes);
-}
-
-void RegisterUnitLaneSet::remove(RegisterUnitID Unit, LaneMask Lanes) {
-  removeLanes(Values, Unit, Lanes);
-}
-
-void RegisterUnitLaneSet::unite(const RegisterUnitLaneSet &Other) {
-  uniteLanes(Values, Other.Values);
-}
-
-void RegisterUnitLaneSet::subtract(const RegisterUnitLaneSet &Other) {
-  subtractLaneSets(Values, Other.Values);
-}
-
 const MachineBlockLiveness *
 LiveVariablesAnalysis::Result::block(const MachineBasicBlock &Block) const noexcept {
   const auto Position = Blocks.find(&Block);
@@ -1469,340 +892,6 @@ Expected<LiveVariablesAnalysis::Result> LiveVariablesAnalysis::run(MachineFuncti
                                                                    MachineAnalysisManager &) {
   return computeLiveVariables(Function, Target);
 }
-
-const LiveSegment *LiveRange::segmentAt(SlotIndex Position) const noexcept {
-  const auto Candidate = std::ranges::upper_bound(
-      Segments, Position, {}, [](const LiveSegment &Segment) { return Segment.Start; });
-  if (Candidate == Segments.begin())
-    return nullptr;
-  const LiveSegment &Previous = *std::prev(Candidate);
-  return Previous.contains(Position) ? &Previous : nullptr;
-}
-
-const LiveValueNumber *LiveRange::value(LiveValueNumberID ID) const noexcept {
-  if (!ID.isValid() || ID.value() > Values.size())
-    return nullptr;
-  const LiveValueNumber &Result = Values[ID.value() - 1U];
-  return Result.ID == ID ? &Result : nullptr;
-}
-
-const LiveValueNumber *LiveRange::valueAt(SlotIndex Position) const noexcept {
-  const LiveSegment *Segment = segmentAt(Position);
-  return Segment == nullptr ? nullptr : value(Segment->Value);
-}
-
-bool LiveRange::liveAt(SlotIndex Position) const noexcept {
-  return segmentAt(Position) != nullptr;
-}
-
-bool LiveRange::overlaps(const LiveRange &Other) const noexcept {
-  std::size_t Left = 0;
-  std::size_t Right = 0;
-  while (Left < Segments.size() && Right < Other.Segments.size()) {
-    if (Segments[Left].overlaps(Other.Segments[Right]))
-      return true;
-    if (Segments[Left].End <= Other.Segments[Right].Start)
-      ++Left;
-    else
-      ++Right;
-  }
-  return false;
-}
-
-Expected<LiveValueNumberID> LiveRange::createValue(SlotIndex Definition, LiveValueState State,
-                                                   std::optional<MachineInstrStableID> Origin) {
-  if (!Definition.isValid())
-    return makeUnexpected(ErrorCode::InvalidArgument, "live value requires a valid definition");
-  if (Values.size() >= std::numeric_limits<std::uint32_t>::max())
-    return makeUnexpected(ErrorCode::Unsupported, "live value-number space is exhausted");
-  const LiveValueNumberID ID =
-      LiveValueNumberID::fromValue(static_cast<std::uint32_t>(Values.size() + 1U));
-  Values.push_back({ID, Definition, State, Origin});
-  return ID;
-}
-
-Expected<void> LiveRange::addSegment(LiveSegment Segment) {
-  if (!Segment.Start.isValid() || !Segment.End.isValid() || Segment.empty() ||
-      value(Segment.Value) == nullptr) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "live segment requires ordered indexes and a known value number");
-  }
-  std::vector<LiveSegment> Candidate = Segments;
-  Candidate.push_back(Segment);
-  std::ranges::sort(Candidate, [](const LiveSegment &Left, const LiveSegment &Right) {
-    if (Left.Start != Right.Start)
-      return Left.Start < Right.Start;
-    return Left.End < Right.End;
-  });
-  for (std::size_t Index = 1; Index < Candidate.size(); ++Index) {
-    if (Candidate[Index].Start < Candidate[Index - 1U].End &&
-        Candidate[Index].Value != Candidate[Index - 1U].Value) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "live segments with different values overlap");
-    }
-  }
-  Segments = std::move(Candidate);
-  mergeAdjacent();
-  return {};
-}
-
-Expected<void> LiveRange::extend(LiveValueNumberID Value, SlotIndex Start, SlotIndex End) {
-  return addSegment({Start, End, Value});
-}
-
-Expected<void> LiveRange::remove(SlotIndex Start, SlotIndex End) {
-  if (!Start.isValid() || !End.isValid() || !(Start < End)) {
-    return makeUnexpected(ErrorCode::InvalidArgument, "removed live range must be nonempty");
-  }
-  std::vector<LiveSegment> Result;
-  for (const LiveSegment &Segment : Segments) {
-    if (!(Segment.Start < End && Start < Segment.End)) {
-      Result.push_back(Segment);
-      continue;
-    }
-    if (Segment.Start < Start)
-      Result.push_back({Segment.Start, Start, Segment.Value});
-    if (End < Segment.End)
-      Result.push_back({End, Segment.End, Segment.Value});
-  }
-  Segments = std::move(Result);
-  mergeAdjacent();
-  return {};
-}
-
-Expected<void> LiveRange::shrinkToUses(std::span<const SlotIndex> Uses) {
-  std::vector<LiveSegment> Result;
-  for (const LiveSegment &Segment : Segments) {
-    const LiveValueNumber *Value = value(Segment.Value);
-    if (Value == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "live segment references an unknown value number");
-    std::optional<SlotIndex> LastUse;
-    for (const SlotIndex Use : Uses) {
-      if (Segment.contains(Use) && (!LastUse || *LastUse < Use))
-        LastUse = Use;
-    }
-    if (!LastUse) {
-      if (Value->State == LiveValueState::Unused)
-        Result.push_back(Segment);
-      continue;
-    }
-    SlotIndex NewEnd = LastUse->deadSlot();
-    if (Segment.End < NewEnd)
-      NewEnd = Segment.End;
-    if (Segment.Start < NewEnd)
-      Result.push_back({Segment.Start, NewEnd, Segment.Value});
-  }
-  Segments = std::move(Result);
-  mergeAdjacent();
-  return verify();
-}
-
-Expected<void> LiveRange::verify() const {
-  std::unordered_set<LiveValueNumberID> IDs;
-  for (std::size_t Index = 0; Index < Values.size(); ++Index) {
-    const LiveValueNumber &Value = Values[Index];
-    if (!Value.ID.isValid() || Value.ID.value() != Index + 1U || !IDs.insert(Value.ID).second ||
-        !Value.Definition.isValid()) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "live range contains an invalid value number");
-    }
-  }
-  for (std::size_t Index = 0; Index < Segments.size(); ++Index) {
-    const LiveSegment &Segment = Segments[Index];
-    if (!Segment.Start.isValid() || !Segment.End.isValid() || Segment.empty() ||
-        value(Segment.Value) == nullptr) {
-      return makeUnexpected(ErrorCode::VerificationError, "live range contains an invalid segment");
-    }
-    if (Index != 0 && Segments[Index - 1U].End > Segment.Start) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "live range segments are not ordered and disjoint");
-    }
-  }
-  return {};
-}
-
-void LiveRange::mergeAdjacent() {
-  if (Segments.empty())
-    return;
-  std::vector<LiveSegment> Result;
-  Result.reserve(Segments.size());
-  Result.push_back(Segments.front());
-  for (std::size_t Index = 1; Index < Segments.size(); ++Index) {
-    LiveSegment &Previous = Result.back();
-    const LiveSegment &Current = Segments[Index];
-    if (Current.Value == Previous.Value && Current.Start <= Previous.End) {
-      if (Previous.End < Current.End)
-        Previous.End = Current.End;
-      continue;
-    }
-    Result.push_back(Current);
-  }
-  Segments = std::move(Result);
-}
-
-const LiveInterval *LiveIntervalsAnalysis::Result::interval(Register Reg) const noexcept {
-  const auto Position = Intervals.find(Reg);
-  return Position == Intervals.end() ? nullptr : &Position->second;
-}
-
-LiveInterval *LiveIntervalsAnalysis::Result::interval(Register Reg) noexcept {
-  const auto Position = Intervals.find(Reg);
-  return Position == Intervals.end() ? nullptr : &Position->second;
-}
-
-const LiveRange *LiveIntervalsAnalysis::Result::regUnitRange(RegisterUnitID Unit) const noexcept {
-  const auto Position = RegisterUnitRanges.find(Unit);
-  return Position == RegisterUnitRanges.end() ? nullptr : &Position->second;
-}
-
-bool LiveIntervalsAnalysis::Result::interferes(Register Left, Register Right) const noexcept {
-  const LiveInterval *LeftInterval = interval(Left);
-  const LiveInterval *RightInterval = interval(Right);
-  return LeftInterval != nullptr && RightInterval != nullptr &&
-         LeftInterval->overlaps(*RightInterval);
-}
-
-bool LiveIntervalsAnalysis::Result::regMaskClobbers(const LiveInterval &Interval,
-                                                    PhysicalRegister Candidate) const noexcept {
-  for (const RegMaskPosition &Position : RegMasks) {
-    if (Position.Mask && Position.Mask->clobbers(Candidate) &&
-        Interval.MainRange.liveAt(Position.Position)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-Expected<void> LiveIntervalsAnalysis::Result::shrinkToUses(Register Reg,
-                                                           std::span<const SlotIndex> Uses) {
-  LiveInterval *Value = interval(Reg);
-  if (Value == nullptr)
-    return makeUnexpected(ErrorCode::InvalidArgument, "virtual register has no live interval");
-  auto Main = Value->MainRange.shrinkToUses(Uses);
-  if (!Main)
-    return std::unexpected(Main.error());
-  for (LiveSubRange &SubRange : Value->SubRanges) {
-    auto Shrunk = SubRange.Range.shrinkToUses(Uses);
-    if (!Shrunk)
-      return std::unexpected(Shrunk.error());
-  }
-  return {};
-}
-
-bool LiveIntervalsAnalysis::Result::invalidate(const MachineFunction &,
-                                               const PreservedAnalyses &Preserved) const noexcept {
-  return !Preserved.preserves(MachineAnalysisManager::id<LiveIntervalsAnalysis>());
-}
-
-Expected<LiveIntervalsAnalysis::Result>
-LiveIntervalsAnalysis::run(MachineFunction &Function, const TargetDescription &Target,
-                           MachineAnalysisManager &Analyses) {
-  auto Indexes = Analyses.getResult<SlotIndexesAnalysis>(Function, Target);
-  if (!Indexes)
-    return std::unexpected(Indexes.error());
-  auto Variables = Analyses.getResult<LiveVariablesAnalysis>(Function, Target);
-  if (!Variables)
-    return std::unexpected(Variables.error());
-
-  Result ResultValue;
-  ResultValue.Indexes = **Indexes;
-  for (std::size_t Index = 0; Index < Function.registerInfo().virtualRegisters().size(); ++Index) {
-    auto RegValue = Register::makeVirtual(Index);
-    if (!RegValue || !Function.registerInfo().isKnownVirtualRegister(*RegValue))
-      continue;
-    const Register Reg = *RegValue;
-    auto MainRange = buildLiveRange(
-        Function, ResultValue.Indexes,
-        [&Function, &Target, Reg](const MachineInstr &Instruction) {
-          return virtualRangeEvent(Instruction, Reg, std::nullopt, Function, Target);
-        },
-        [&Variables, Reg](const MachineBasicBlock &Block) {
-          const MachineBlockLiveness *Value = (*Variables)->block(Block);
-          return Value != nullptr && Value->VirtualLiveOut.intersects(Reg);
-        });
-    if (!MainRange)
-      return std::unexpected(MainRange.error());
-    if (MainRange->empty())
-      continue;
-
-    LiveInterval Interval;
-    Interval.Reg = Reg;
-    Interval.MainRange = std::move(*MainRange);
-    auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
-    if (!Info)
-      return std::unexpected(Info.error());
-    // Preserve the target-provided hint order.  MachineRegisterInfo already de-duplicates
-    // hints, and their order is the deterministic preference order consumed by allocators.
-    Interval.AllocationHints = Info->get().AllocationHints;
-
-    std::uint64_t Weight = 1;
-    for (const MachineOperand &Operand : Function.registerInfo().useOperands(Reg, false)) {
-      if (Operand.parent() == nullptr || Operand.registerFlags().has(RegisterOperandFlag::Undef)) {
-        continue;
-      }
-      Weight = Weight > std::numeric_limits<std::uint64_t>::max() - 10U
-                   ? std::numeric_limits<std::uint64_t>::max()
-                   : Weight + 10U;
-    }
-    Interval.SpillWeight = Weight;
-
-    auto LaneGroups = partitionVirtualRegisterLanes(Reg, Function, Target);
-    if (!LaneGroups)
-      return std::unexpected(LaneGroups.error());
-    for (const LaneMask Lanes : *LaneGroups) {
-      auto SubRange = buildLiveRange(
-          Function, ResultValue.Indexes,
-          [&Function, &Target, Reg, Lanes](const MachineInstr &Instruction) {
-            return virtualRangeEvent(Instruction, Reg, Lanes, Function, Target);
-          },
-          [&Variables, Reg, Lanes](const MachineBasicBlock &Block) {
-            const MachineBlockLiveness *Value = (*Variables)->block(Block);
-            return Value != nullptr && Value->VirtualLiveOut.intersects(Reg, Lanes);
-          });
-      if (!SubRange)
-        return std::unexpected(SubRange.error());
-      if (!SubRange->empty())
-        Interval.SubRanges.push_back({Lanes, std::move(*SubRange)});
-    }
-    ResultValue.Intervals.emplace(Reg, std::move(Interval));
-  }
-
-  for (const RegisterUnitDesc &Unit : Target.registers().registerUnits()) {
-    auto Range = buildLiveRange(
-        Function, ResultValue.Indexes,
-        [&Target, Unit](const MachineInstr &Instruction) {
-          return unitRangeEvent(Instruction, Unit.ID, std::nullopt, Target);
-        },
-        [&Variables, Unit](const MachineBasicBlock &Block) {
-          const MachineBlockLiveness *Value = (*Variables)->block(Block);
-          return Value != nullptr && Value->PhysicalLiveOut.intersects(Unit.ID);
-        });
-    if (!Range)
-      return std::unexpected(Range.error());
-    if (!Range->empty())
-      ResultValue.RegisterUnitRanges.emplace(Unit.ID, std::move(*Range));
-  }
-
-  for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {
-    for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
-         Instruction = Instruction->next()) {
-      for (const MachineOperand &Operand : Instruction->operands()) {
-        const auto *MaskOperand = Operand.getIf<RegisterMaskOperand>();
-        if (MaskOperand == nullptr)
-          continue;
-        if (!MaskOperand->Mask)
-          return makeUnexpected(ErrorCode::VerificationError,
-                                "live intervals encountered a null register mask");
-        ResultValue.RegMasks.push_back(
-            {ResultValue.Indexes.instructionIndex(*Instruction).earlyClobberSlot(),
-             Instruction->stableID(), MaskOperand->Mask});
-      }
-    }
-  }
-  return ResultValue;
-}
-
 const MachinePassContract &RebuildMachineLivenessPass::contract() const noexcept {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{

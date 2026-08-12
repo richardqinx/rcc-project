@@ -37,7 +37,12 @@ set(
   MachineInstr.cpp
   MachineJumpTableInfo.cpp
   MachineLICM.cpp
-  MachineLiveness.cpp
+  SlotIndexes.cpp
+  LiveVariables.cpp
+  LiveInterval.cpp
+  LiveIntervals.cpp
+  LivePhysRegs.cpp
+  LiveRegUnits.cpp
   MachineMemoryFolding.cpp
   MachineMemOperand.cpp
   MachineMetadata.cpp
@@ -120,8 +125,12 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineInstr.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineJumpTableInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineLICM.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineLiveness.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineLivenessRepair.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/SlotIndexes.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LiveVariables.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LiveInterval.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LiveIntervals.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LivePhysRegs.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LiveRegUnits.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemoryFolding.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMetadata.h"
@@ -242,7 +251,12 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineLICM.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachineLiveness.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/SlotIndexes.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveVariables.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveInterval.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveIntervals.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LivePhysRegs.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegUnits.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemoryFolding.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"
@@ -325,7 +339,12 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineInstr.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineLICM.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachineLiveness.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/SlotIndexes.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveVariables.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveInterval.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveIntervals.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LivePhysRegs.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegUnits.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemoryFolding.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMemOperand.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadata.cpp"

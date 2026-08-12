@@ -2,11 +2,11 @@
 
 #include "rcc/CodeGen/MachineFallthrough.h"
 
+#include "rcc/CodeGen/LivePhysRegs.h"
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
-#include "rcc/CodeGen/MachineLiveness.h"
-#include "rcc/CodeGen/MachineLivenessRepair.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetInstrInfo.h"
 

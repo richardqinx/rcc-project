@@ -17,7 +17,13 @@ set(
   MachineIRCoreTest.cpp
   MachineAnalysesTest.cpp
   MachineJumpTableInfoTest.cpp
-  MachineLivenessTest.cpp
+  SlotIndexesTest.cpp
+  LiveVariablesTest.cpp
+  LiveIntervalTest.cpp
+  LiveIntervalsTest.cpp
+  LivePhysRegsTest.cpp
+  LiveRegUnitsTest.cpp
+  LiveTestSupport.h
   MachineMetadataTest.cpp
   MachineOperandTest.cpp
   MachineOptimizationTest.cpp
@@ -292,17 +298,26 @@ add_test(
   COMMAND RCCBackendCodeGenMachineJumpTableInfoTests
 )
 
-add_executable(RCCBackendCodeGenMachineLivenessTests MachineLivenessTest.cpp)
-rcc_backend_configure_target(RCCBackendCodeGenMachineLivenessTests)
-target_link_libraries(
-  RCCBackendCodeGenMachineLivenessTests
-  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget RCCBackend::RISCV
+foreach(
+  Component
+  SlotIndexes
+  LiveVariables
+  LiveInterval
+  LiveIntervals
+  LivePhysRegs
+  LiveRegUnits
 )
-
-add_test(
-  NAME RCCBackend.CodeGen.MachineLiveness
-  COMMAND RCCBackendCodeGenMachineLivenessTests
-)
+  add_executable(RCCBackendCodeGen${Component}Tests ${Component}Test.cpp)
+  rcc_backend_configure_target(RCCBackendCodeGen${Component}Tests)
+  target_link_libraries(
+    RCCBackendCodeGen${Component}Tests
+    PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget RCCBackend::RISCV
+  )
+  add_test(
+    NAME RCCBackend.CodeGen.${Component}
+    COMMAND RCCBackendCodeGen${Component}Tests
+  )
+endforeach()
 
 add_executable(RCCBackendCodeGenMachineMetadataTests MachineMetadataTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineMetadataTests)
@@ -470,7 +485,13 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalysesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachineLivenessTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/SlotIndexesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveVariablesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveIntervalTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveIntervalsTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LivePhysRegsTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegUnitsTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveTestSupport.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationTest.cpp"
@@ -513,7 +534,13 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineIRCoreTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineAnalysesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineJumpTableInfoTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachineLivenessTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/SlotIndexesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveVariablesTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveIntervalTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveIntervalsTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LivePhysRegsTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveRegUnitsTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LiveTestSupport.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineMetadataTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationTest.cpp"

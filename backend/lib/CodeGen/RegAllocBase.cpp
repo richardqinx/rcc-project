@@ -2,7 +2,7 @@
 
 #include "RegAllocBase.h"
 
-#include "rcc/CodeGen/MachineLiveness.h"
+#include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/Spiller.h"
 
 #include <algorithm>
