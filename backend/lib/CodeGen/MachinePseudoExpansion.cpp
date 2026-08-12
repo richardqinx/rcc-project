@@ -154,7 +154,7 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
   }();
   static const MachinePassContract PostRA = [] {
     MachinePassContract Value{
-        .Name = "expand-post-ra-pseudos",
+        .Name = "postrapseudos",
         .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
                      MachineFunctionProperty::NoVRegs, MachineFunctionProperty::TracksLiveness,
                      MachineFunctionProperty::FrameFinalized,

@@ -27,7 +27,7 @@ set(CachedAssembly "${WORK_DIRECTORY}/cached.s")
 set(ReloadedAssembly "${WORK_DIRECTORY}/reloaded.s")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" --emit assembly --cache-dir "${CacheDirectory}"
+    "${TOOL}" "${INPUT}" -filetype=asm --cache-dir "${CacheDirectory}"
     --cache-policy write -o "${CachedAssembly}"
   RESULT_VARIABLE CacheWriteResult
   ERROR_VARIABLE CacheWriteDiagnostics
@@ -37,7 +37,7 @@ if(NOT CacheWriteResult EQUAL 0)
 endif()
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" --emit assembly --cache-dir "${CacheDirectory}"
+    "${TOOL}" "${INPUT}" -filetype=asm --cache-dir "${CacheDirectory}"
     --cache-policy read -o "${ReloadedAssembly}"
   RESULT_VARIABLE CacheReadResult
   ERROR_VARIABLE CacheReadDiagnostics
@@ -55,7 +55,7 @@ endif()
 
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" --emit assembly --cache-dir
+    "${TOOL}" "${INPUT}" -filetype=asm --cache-dir
     "${WORK_DIRECTORY}/empty-cache" --cache-policy read -o "${WORK_DIRECTORY}/miss.s"
   RESULT_VARIABLE CacheMissResult
   ERROR_VARIABLE CacheMissDiagnostics
@@ -73,7 +73,7 @@ list(GET CachedArtifacts 0 CachedArtifact)
 file(WRITE "${CachedArtifact}" "corrupt")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" --emit assembly --cache-dir "${CacheDirectory}"
+    "${TOOL}" "${INPUT}" -filetype=asm --cache-dir "${CacheDirectory}"
     --cache-policy read -o "${WORK_DIRECTORY}/corrupt.s"
   RESULT_VARIABLE CorruptCacheResult
   ERROR_VARIABLE CorruptCacheDiagnostics
@@ -87,7 +87,7 @@ set(SuccessAssembly "${WORK_DIRECTORY}/success.s")
 set(ReplayedAssembly "${WORK_DIRECTORY}/success-replayed.s")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" --emit assembly --crash-reproducer "${SuccessReproducer}"
+    "${TOOL}" "${INPUT}" -filetype=asm --crash-reproducer "${SuccessReproducer}"
     -o "${SuccessAssembly}"
   RESULT_VARIABLE ReproducerWriteResult
   ERROR_VARIABLE ReproducerWriteDiagnostics
@@ -113,7 +113,7 @@ endif()
 
 set(RegBankInput "${WORK_DIRECTORY}/regbank.mir")
 execute_process(
-  COMMAND "${TOOL}" --input "${INPUT}" --emit regbank-mir -o "${RegBankInput}"
+  COMMAND "${TOOL}" "${INPUT}" -stop-after=regbankselect -o "${RegBankInput}"
   RESULT_VARIABLE RegBankResult
   ERROR_VARIABLE RegBankDiagnostics
 )
@@ -124,7 +124,7 @@ endif()
 set(FailureReproducer "${WORK_DIRECTORY}/failure-reproducer")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${RegBankInput}" -run-pass instruction-select --emit selected-mir
+    "${TOOL}" "${RegBankInput}" -run-pass instruction-select
     --fuel 0 --crash-reproducer "${FailureReproducer}" -o "${WORK_DIRECTORY}/failure.mir"
   RESULT_VARIABLE FailureResult
   ERROR_VARIABLE FailureDiagnostics
@@ -151,7 +151,7 @@ endif()
 set(ActionOutput "${WORK_DIRECTORY}/selected.mir")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${RegBankInput}" -run-pass instruction-select --emit selected-mir
+    "${TOOL}" "${RegBankInput}" -run-pass instruction-select
     --print-actions -o "${ActionOutput}"
   RESULT_VARIABLE ActionResult
   ERROR_VARIABLE ActionDiagnostics
@@ -172,7 +172,7 @@ set(CanonicalReducerSeed "${WORK_DIRECTORY}/reducer-seed.canonical.mir")
 set(ReducedMIR "${WORK_DIRECTORY}/reduced.mir")
 file(WRITE "${ReducerSeed}" "${ReducerSeedText}")
 execute_process(
-  COMMAND "${TOOL}" --verify --input "${ReducerSeed}" -o "${CanonicalReducerSeed}"
+  COMMAND "${TOOL}" --verify "${ReducerSeed}" -o "${CanonicalReducerSeed}"
   RESULT_VARIABLE ReducerSeedResult
   ERROR_VARIABLE ReducerSeedDiagnostics
 )
@@ -180,7 +180,7 @@ if(NOT ReducerSeedResult EQUAL 0)
   message(FATAL_ERROR "reducer seed failed canonicalization: ${ReducerSeedDiagnostics}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --reduce validity --input "${ReducerSeed}" -o "${ReducedMIR}"
+  COMMAND "${TOOL}" --reduce validity "${ReducerSeed}" -o "${ReducedMIR}"
   RESULT_VARIABLE ValidityReducerResult
   ERROR_VARIABLE ValidityReducerDiagnostics
 )
@@ -193,7 +193,7 @@ if(NOT ReducedMIRSize LESS CanonicalReducerSeedSize)
   message(FATAL_ERROR "validity reducer did not make the canonical seed smaller")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --verify --input "${ReducedMIR}"
+  COMMAND "${TOOL}" --verify "${ReducedMIR}"
   RESULT_VARIABLE ReducedVerifyResult
   ERROR_VARIABLE ReducedVerifyDiagnostics
 )
@@ -204,8 +204,8 @@ endif()
 set(FailureReducedMIR "${WORK_DIRECTORY}/failure-reduced.mir")
 execute_process(
   COMMAND
-    "${TOOL}" --reduce failure --input "${RegBankInput}" -run-pass instruction-select
-    --emit selected-mir --fuel 0 -o "${FailureReducedMIR}"
+    "${TOOL}" --reduce failure "${RegBankInput}" -run-pass instruction-select --fuel 0 -o
+    "${FailureReducedMIR}"
   RESULT_VARIABLE FailureReducerResult
   ERROR_VARIABLE FailureReducerDiagnostics
 )
@@ -214,7 +214,7 @@ if(NOT FailureReducerResult EQUAL 0)
 endif()
 execute_process(
   COMMAND
-    "${TOOL}" --input "${FailureReducedMIR}" -run-pass instruction-select --emit selected-mir
+    "${TOOL}" "${FailureReducedMIR}" -run-pass instruction-select
     --fuel 0 -o "${WORK_DIRECTORY}/failure-reduced-output.mir"
   RESULT_VARIABLE ReducedFailureResult
   ERROR_VARIABLE ReducedFailureDiagnostics
@@ -228,7 +228,7 @@ set(FirstFuzz "${WORK_DIRECTORY}/fuzz-1.txt")
 set(SecondFuzz "${WORK_DIRECTORY}/fuzz-2.txt")
 execute_process(
   COMMAND
-    "${TOOL}" --fuzz all --fuzz-iterations 2 --seed 123 --input "${INPUT}" -o
+    "${TOOL}" --fuzz all --fuzz-iterations 2 --seed 123 "${INPUT}" -o
     "${FirstFuzz}"
   RESULT_VARIABLE FirstFuzzResult
   ERROR_VARIABLE FirstFuzzDiagnostics
@@ -238,7 +238,7 @@ if(NOT FirstFuzzResult EQUAL 0)
 endif()
 execute_process(
   COMMAND
-    "${TOOL}" --fuzz all --fuzz-iterations 2 --seed 123 --input "${INPUT}" -o
+    "${TOOL}" --fuzz all --fuzz-iterations 2 --seed 123 "${INPUT}" -o
     "${SecondFuzz}"
   RESULT_VARIABLE SecondFuzzResult
   ERROR_VARIABLE SecondFuzzDiagnostics
@@ -264,7 +264,7 @@ if(NOT FuzzText MATCHES "seed=123 executed=11" OR
   message(FATAL_ERROR "layered fuzz output does not account for all six layers")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --fuzz parser,parser --input "${INPUT}"
+  COMMAND "${TOOL}" --fuzz parser,parser "${INPUT}"
   RESULT_VARIABLE DuplicateFuzzResult
   ERROR_VARIABLE DuplicateFuzzDiagnostics
 )

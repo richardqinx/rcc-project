@@ -46,7 +46,6 @@ runBackend(CanonicalMIR Input, const TargetDescription &Target, const BackendInv
            MachinePassInstrumentation *Instrumentation = nullptr);
 
 [[nodiscard]] std::string_view spelling(BackendOutputKind Output) noexcept;
-[[nodiscard]] Expected<BackendOutputKind> parseBackendOutputKind(std::string_view Value);
 [[nodiscard]] ArtifactKind manifestArtifactKind(BackendOutputKind Output) noexcept;
 [[nodiscard]] Expected<ArtifactKind> cacheArtifactKind(BackendOutputKind Output);
 

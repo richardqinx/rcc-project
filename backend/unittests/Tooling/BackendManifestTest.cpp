@@ -97,11 +97,11 @@ int main() {
   if (!keyDiffers(Base, Changed, Input, *Fingerprint))
     return tooling_test::fail("cache key must include the data layout");
   Changed = Base;
-  Changed.Relocation = rcc::tooling::RelocationModel::Static;
+  Changed.Relocation = rcc::RelocationModel::Static;
   if (!keyDiffers(Base, Changed, Input, *Fingerprint))
     return tooling_test::fail("cache key must include the relocation model");
   Changed = Base;
-  Changed.Code = rcc::tooling::CodeModel::Medium;
+  Changed.Code = rcc::CodeModel::Medium;
   if (!keyDiffers(Base, Changed, Input, *Fingerprint))
     return tooling_test::fail("cache key must include the code model");
   Changed = Base;
@@ -121,7 +121,7 @@ int main() {
   if (!keyDiffers(Base, Changed, Input, *Fingerprint))
     return tooling_test::fail("cache key must include assembler options");
   Changed = Base;
-  Changed.Optimization = rcc::tooling::OptimizationLevel::O3;
+  Changed.Optimization = rcc::OptimizationLevel::O3;
   if (!keyDiffers(Base, Changed, Input, *Fingerprint))
     return tooling_test::fail("cache key must include the optimization level");
   Changed = Base;

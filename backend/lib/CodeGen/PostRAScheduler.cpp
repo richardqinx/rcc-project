@@ -31,7 +31,7 @@ namespace {
 [[nodiscard]] const MachinePassContract &postRASchedulerContract() {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
-        .Name = "post-ra-machine-scheduler",
+        .Name = "postmisched",
         .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
                      MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs,
                      MachineFunctionProperty::TracksLiveness},

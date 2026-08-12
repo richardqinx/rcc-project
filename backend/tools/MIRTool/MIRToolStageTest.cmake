@@ -17,12 +17,24 @@ set(
   post-ra-mir
   final-mir
 )
+set(
+  StageOptions
+  --verify
+  -stop-after=legalizer
+  -stop-after=regbankselect
+  -stop-after=instruction-select
+  -stop-after=twoaddressinstruction
+  -stop-after=PBQPAllocator
+  -stop-after=final-encodability-verifier
+)
+set(StageIndex 0)
 foreach(Stage IN LISTS Stages)
+  list(GET StageOptions ${StageIndex} StageOption)
   set(StageOutput "${WORK_DIRECTORY}/${Stage}.mir")
   set(RepeatedOutput "${WORK_DIRECTORY}/${Stage}.repeat.mir")
   set(CanonicalOutput "${WORK_DIRECTORY}/${Stage}.canonical.mir")
   execute_process(
-    COMMAND "${TOOL}" --input "${INPUT}" --emit "${Stage}" -o "${StageOutput}"
+    COMMAND "${TOOL}" "${INPUT}" "${StageOption}" -o "${StageOutput}"
     RESULT_VARIABLE StageResult
     ERROR_VARIABLE StageDiagnostics
   )
@@ -30,7 +42,7 @@ foreach(Stage IN LISTS Stages)
     message(FATAL_ERROR "${Stage} production failed: ${StageDiagnostics}")
   endif()
   execute_process(
-    COMMAND "${TOOL}" --input "${INPUT}" --emit "${Stage}" -o "${RepeatedOutput}"
+    COMMAND "${TOOL}" "${INPUT}" "${StageOption}" -o "${RepeatedOutput}"
     RESULT_VARIABLE RepeatedResult
     ERROR_VARIABLE RepeatedDiagnostics
   )
@@ -45,7 +57,7 @@ foreach(Stage IN LISTS Stages)
     message(FATAL_ERROR "${Stage} output is not deterministic")
   endif()
   execute_process(
-    COMMAND "${TOOL}" --verify --input "${StageOutput}" -o "${CanonicalOutput}"
+    COMMAND "${TOOL}" --verify "${StageOutput}" -o "${CanonicalOutput}"
     RESULT_VARIABLE VerifyResult
     ERROR_VARIABLE VerifyDiagnostics
   )
@@ -59,31 +71,13 @@ foreach(Stage IN LISTS Stages)
   if(NOT CanonicalResult EQUAL 0)
     message(FATAL_ERROR "${Stage} output is not canonical after strict reload")
   endif()
+  math(EXPR StageIndex "${StageIndex} + 1")
 endforeach()
-
-set(NoPassOutput "${WORK_DIRECTORY}/none.mir")
-execute_process(
-  COMMAND
-    "${TOOL}" --input "${INPUT}" -run-pass=none --emit final-mir -o "${NoPassOutput}"
-  RESULT_VARIABLE NoPassResult
-  ERROR_VARIABLE NoPassDiagnostics
-)
-if(NOT NoPassResult EQUAL 0)
-  message(FATAL_ERROR "LLVM-compatible none pass failed: ${NoPassDiagnostics}")
-endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E compare_files "${NoPassOutput}"
-    "${WORK_DIRECTORY}/prelegalizer-mir.mir"
-  RESULT_VARIABLE NoPassComparisonResult
-)
-if(NOT NoPassComparisonResult EQUAL 0)
-  message(FATAL_ERROR "LLVM-compatible none pass changed canonical MIR")
-endif()
 
 set(LLVMContractOutput "${WORK_DIRECTORY}/llvm-contract.mir")
 execute_process(
   COMMAND
-    "${TOOL}" "${INPUT}" -run-pass=none -mtriple=riscv64
+    "${TOOL}" --verify "${INPUT}" -mtriple=riscv64
     -mattr=+m,+a,+f,+d,+c -relocation-model=pic -code-model=small -simplify-mir
     -verify-machineinstrs -o "${LLVMContractOutput}"
   RESULT_VARIABLE LLVMContractResult
@@ -100,13 +94,7 @@ endif()
 foreach(
   RemovedOption
   IN ITEMS
-    --run-pass=none
-    --passes=none
-    --stop-after=legalizer
-    --print-before=legalizer
     --features=+m
-    --relocation-model=pic
-    --code-model=small
     --output=-
 )
   execute_process(
@@ -122,7 +110,7 @@ endforeach()
 
 set(PassList "${WORK_DIRECTORY}/passes.txt")
 execute_process(
-  COMMAND "${TOOL}" --list-passes --input "${INPUT}" -o "${PassList}"
+  COMMAND "${TOOL}" --list-passes "${INPUT}" -o "${PassList}"
   RESULT_VARIABLE ListResult
   ERROR_VARIABLE ListDiagnostics
 )
@@ -130,7 +118,7 @@ if(NOT ListResult EQUAL 0)
   message(FATAL_ERROR "pass listing failed: ${ListDiagnostics}")
 endif()
 file(READ "${PassList}" PassListText)
-foreach(RequiredPass IN ITEMS legalizer regbankselect instruction-select PrologueEpilogueInsertion)
+foreach(RequiredPass IN ITEMS legalizer regbankselect instruction-select prologepilog)
   if(NOT PassListText MATCHES "(^|\n)${RequiredPass}(\n|$)")
     message(FATAL_ERROR "canonical pass list is missing ${RequiredPass}")
   endif()
@@ -139,7 +127,7 @@ endforeach()
 set(LegalizedOutput "${WORK_DIRECTORY}/run-pass.mir")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" -run-pass legalizer --emit legalized-mir -o
+    "${TOOL}" "${INPUT}" -run-pass legalizer -o
     "${LegalizedOutput}"
   RESULT_VARIABLE RunPassResult
   ERROR_VARIABLE RunPassDiagnostics
@@ -151,7 +139,7 @@ endif()
 set(RegBankOutput "${WORK_DIRECTORY}/passes.mir")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" -passes legalizer,regbankselect --emit regbank-mir -o
+    "${TOOL}" "${INPUT}" -passes legalizer,regbankselect -o
     "${RegBankOutput}"
   RESULT_VARIABLE PassesResult
   ERROR_VARIABLE PassesDiagnostics
@@ -163,7 +151,7 @@ endif()
 set(StoppedOutput "${WORK_DIRECTORY}/stopped.mir")
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" -stop-after legalizer --emit final-mir -o
+    "${TOOL}" "${INPUT}" -stop-after legalizer -o
     "${StoppedOutput}"
   RESULT_VARIABLE StopResult
   ERROR_VARIABLE StopDiagnostics
@@ -172,7 +160,7 @@ if(NOT StopResult EQUAL 0)
   message(FATAL_ERROR "stop-after control failed: ${StopDiagnostics}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --verify --input "${StoppedOutput}"
+  COMMAND "${TOOL}" --verify "${StoppedOutput}"
   RESULT_VARIABLE StopVerifyResult
   ERROR_VARIABLE StopVerifyDiagnostics
 )
@@ -182,8 +170,7 @@ endif()
 
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" --emit legalized-mir -print-before legalizer -print-after
-    legalizer -o "${WORK_DIRECTORY}/printed.mir"
+    "${TOOL}" "${INPUT}" -filetype=null -print-before legalizer -print-after legalizer
   RESULT_VARIABLE PrintResult
   ERROR_VARIABLE PrintDiagnostics
 )
@@ -197,8 +184,7 @@ endif()
 
 execute_process(
   COMMAND
-    "${TOOL}" --input "${INPUT}" --emit final-mir --stage-snapshots -o
-    "${WORK_DIRECTORY}/snapshot-final.mir"
+    "${TOOL}" "${INPUT}" -filetype=null --stage-snapshots
   RESULT_VARIABLE SnapshotResult
   ERROR_VARIABLE SnapshotDiagnostics
 )

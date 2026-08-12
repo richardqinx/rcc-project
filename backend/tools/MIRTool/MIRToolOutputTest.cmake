@@ -10,7 +10,7 @@ file(MAKE_DIRECTORY "${OutputDirectory}")
 set(RepeatedOutput "${OUTPUT}.repeat")
 
 execute_process(
-  COMMAND "${TOOL}" --input "${INPUT}" --emit "${OUTPUT_KIND}" -o "${OUTPUT}"
+  COMMAND "${TOOL}" "${INPUT}" -filetype "${OUTPUT_KIND}" -o "${OUTPUT}"
   RESULT_VARIABLE FirstResult
   ERROR_VARIABLE FirstDiagnostics
 )
@@ -18,7 +18,7 @@ if(NOT FirstResult EQUAL 0)
   message(FATAL_ERROR "${OUTPUT_KIND} production failed: ${FirstDiagnostics}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" --input "${INPUT}" --emit "${OUTPUT_KIND}" -o "${RepeatedOutput}"
+  COMMAND "${TOOL}" "${INPUT}" -filetype "${OUTPUT_KIND}" -o "${RepeatedOutput}"
   RESULT_VARIABLE SecondResult
   ERROR_VARIABLE SecondDiagnostics
 )
@@ -33,7 +33,7 @@ if(NOT ComparisonResult EQUAL 0)
   message(FATAL_ERROR "${OUTPUT_KIND} output is not deterministic")
 endif()
 
-if(OUTPUT_KIND STREQUAL "assembly")
+if(OUTPUT_KIND STREQUAL "asm")
   file(READ "${OUTPUT}" Assembly)
   if(NOT Assembly MATCHES "\\.attribute arch, \"rv64gc\"" OR
      NOT Assembly MATCHES "jalr x0, x1, 0")
@@ -60,7 +60,7 @@ if(OUTPUT_KIND STREQUAL "assembly")
       message(FATAL_ERROR "LLVM MC rejected MIR tool assembly: ${AssemblerDiagnostics}")
     endif()
   endif()
-elseif(OUTPUT_KIND STREQUAL "object")
+elseif(OUTPUT_KIND STREQUAL "obj")
   file(READ "${OUTPUT}" ObjectMagic OFFSET 0 LIMIT 4 HEX)
   if(NOT ObjectMagic STREQUAL "7f454c46")
     message(FATAL_ERROR "object output is not an ELF file")

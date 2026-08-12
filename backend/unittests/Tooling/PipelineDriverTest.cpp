@@ -195,7 +195,7 @@ int main() {
     return tooling_test::fail(PrintInput.error().message());
   rcc::tooling::PipelineControls PrintControls;
   PrintControls.PrintBefore = {"legalizer"};
-  PrintControls.PrintAfter = {"legalizer#1"};
+  PrintControls.PrintAfter = {"legalizer"};
   auto PrintPoints =
       rcc::tooling::runRV64GCPipeline(PrintInput->Document, *Target, Invocation, PrintControls);
   if (!PrintPoints || PrintPoints->Snapshots.size() != 2 ||
@@ -209,7 +209,7 @@ int main() {
   if (!StopInput)
     return tooling_test::fail(StopInput.error().message());
   rcc::tooling::PipelineControls StopControls;
-  StopControls.StopAfter = "legalizer#1";
+  StopControls.StopAfter = "legalizer,0";
   auto Stopped =
       rcc::tooling::runRV64GCPipeline(StopInput->Document, *Target, Invocation, StopControls);
   const rcc::MachineFunction *StoppedFunction = StopInput->Document.unit().functionAt(0);
@@ -221,9 +221,9 @@ int main() {
       Stopped->ExecutedPasses[1].Pass != "legalizer") {
     return tooling_test::fail("stop-after must stop at the selected pass occurrence");
   }
-  StopControls.StopAfter = "legalizer#0";
+  StopControls.StopAfter = "legalizer,-1";
   if (rcc::tooling::runRV64GCPipeline(StopInput->Document, *Target, Invocation, StopControls))
-    return tooling_test::fail("pipeline controls must reject occurrence zero");
+    return tooling_test::fail("pipeline controls must reject a negative pass instance");
 
   rcc::tooling::BackendInvocation MixedPipeline = Invocation;
   MixedPipeline.PassPipeline = {"default", "legalizer"};
@@ -233,20 +233,6 @@ int main() {
     return tooling_test::fail(MixedInput.error().message());
   if (rcc::tooling::runRV64GCPipeline(MixedInput->Document, *Target, MixedPipeline))
     return tooling_test::fail("named passes must not be mixed with the default pipeline marker");
-
-  rcc::tooling::BackendInvocation NoPassInvocation = Invocation;
-  NoPassInvocation.PassPipeline = {"none"};
-  auto NoPassInput =
-      rcc::tooling::parseAndCanonicalizeMIR("no-pass.mir", *Source, *Target, NoPassInvocation);
-  if (!NoPassInput)
-    return tooling_test::fail(NoPassInput.error().message());
-  const std::string NoPassExpected = NoPassInput->Text;
-  auto NoPassRun = rcc::tooling::runBackend(std::move(*NoPassInput), *Target, NoPassInvocation,
-                                            rcc::tooling::BackendOutputKind::FinalMIR);
-  if (!NoPassRun || !NoPassRun->Pipeline.ExecutedPasses.empty() ||
-      NoPassRun->text() != NoPassExpected) {
-    return tooling_test::fail("the LLVM-compatible none pass must preserve canonical MIR");
-  }
 
   if (!SelectedMIR)
     return tooling_test::fail("selected MIR stage was not captured");

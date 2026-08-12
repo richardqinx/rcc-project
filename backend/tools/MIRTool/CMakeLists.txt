@@ -53,7 +53,7 @@ foreach(
       "-DTOOL=$<TARGET_FILE:RCCBackendMIRTool>"
       "-DINPUT=${RCCBackendMIRToolInputDirectory}/${InputName}.mir"
       "-DOUTPUT=${RCCBackendMIRToolTestDirectory}/${InputName}.s"
-      -DOUTPUT_KIND=assembly
+      -DOUTPUT_KIND=asm
       "-DLLVM_MC=${RCCBackendMIRToolLLVMMC}"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/MIRToolOutputTest.cmake"
   )
@@ -64,7 +64,7 @@ foreach(
       "-DTOOL=$<TARGET_FILE:RCCBackendMIRTool>"
       "-DINPUT=${RCCBackendMIRToolInputDirectory}/${InputName}.mir"
       "-DOUTPUT=${RCCBackendMIRToolTestDirectory}/${InputName}.o"
-      -DOUTPUT_KIND=object
+      -DOUTPUT_KIND=obj
       "-DLLVM_READELF=${RCCBackendMIRToolLLVMReadELF}"
       "-DLLVM_OBJDUMP=${RCCBackendMIRToolLLVMObjdump}"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/MIRToolOutputTest.cmake"

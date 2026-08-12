@@ -225,7 +225,23 @@ private:
 }
 
 [[nodiscard]] BackendOutputKind outputForStage(BackendStage Stage) noexcept {
-  return static_cast<BackendOutputKind>(static_cast<std::uint8_t>(Stage));
+  switch (Stage) {
+  case BackendStage::PreLegalizerMIR:
+    return BackendOutputKind::PreLegalizerMIR;
+  case BackendStage::LegalizedMIR:
+    return BackendOutputKind::LegalizedMIR;
+  case BackendStage::RegisterBankMIR:
+    return BackendOutputKind::RegisterBankMIR;
+  case BackendStage::SelectedMIR:
+    return BackendOutputKind::SelectedMIR;
+  case BackendStage::PostSSAMIR:
+    return BackendOutputKind::PostSSAMIR;
+  case BackendStage::PostRegisterAllocationMIR:
+    return BackendOutputKind::PostRegisterAllocationMIR;
+  case BackendStage::FinalMIR:
+    return BackendOutputKind::FinalMIR;
+  }
+  return BackendOutputKind::FinalMIR;
 }
 
 [[nodiscard]] Expected<bool> propertyCase(std::string_view Canonical, DeterministicRandom &Random,

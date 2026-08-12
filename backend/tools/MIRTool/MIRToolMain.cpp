@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "rcc/CodeGen/CommandFlags.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/Support/Error.h"
 #include "rcc/Target/RISCV/RISCVPipeline.h"
@@ -68,6 +69,7 @@ struct CommandLine final {
   rcc::tooling::PipelineControls Controls;
   rcc::tooling::MIRFuzzOptions FuzzOptions;
   bool OutputWasSpecified = false;
+  bool DiscardOutput = false;
   bool PrintActions = false;
   bool ShowHelp = false;
 };
@@ -83,14 +85,16 @@ void printUsage(std::ostream &Output) {
             "pipeline/output:\n"
             "  -run-pass <name>               Run one named pass\n"
             "  -passes <name,...>             Run an explicit pass sequence\n"
-            "  -stop-before <pass[#N]>        Stop before a pass occurrence\n"
-            "  -stop-after <pass[#N]>         Stop after a pass occurrence\n"
-            "  -print-before <pass[#N],...>   Print snapshots before passes\n"
-            "  -print-after <pass[#N],...>    Print snapshots after passes\n"
+            "  -start-before <pass[,N]>       Start before a pass instance\n"
+            "  -start-after <pass[,N]>        Start after a pass instance\n"
+            "  -stop-before <pass[,N]>        Stop before a pass instance\n"
+            "  -stop-after <pass[,N]>         Stop after a pass instance\n"
+            "  -print-before <selector,...>   Print snapshots before passes\n"
+            "  -print-after <selector,...>    Print snapshots after passes\n"
             "  -simplify-mir                  Omit default-valued MIR fields\n"
             "  -verify-machineinstrs          Verify each machine pass result\n"
             "  --stage-snapshots              Print every stage boundary\n"
-            "  --emit <stage|assembly|object> Select the output artifact\n"
+            "  -filetype <asm|obj|null>       Select the output artifact\n"
             "  -o <file|->                    Select the output path\n"
             "reproduction/cache/fuzz:\n"
             "  --crash-reproducer <path>      Save input and manifest before execution\n"
@@ -118,7 +122,9 @@ void printUsage(std::ostream &Output) {
                                                                    std::string_view Name,
                                                                    int &Index, int ArgumentCount,
                                                                    char *Arguments[]) {
-  if (Argument == Name) {
+  const std::string LongName =
+      Name.starts_with('-') && !Name.starts_with("--") ? "-" + std::string(Name) : std::string();
+  if (Argument == Name || (!LongName.empty() && Argument == LongName)) {
     if (Index + 1 >= ArgumentCount) {
       return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
                                  "missing value for command-line option '" + std::string(Name) +
@@ -130,6 +136,12 @@ void printUsage(std::ostream &Output) {
   Prefix.push_back('=');
   if (Argument.starts_with(Prefix))
     return Argument.substr(Prefix.size());
+  if (!LongName.empty()) {
+    std::string LongPrefix(LongName);
+    LongPrefix.push_back('=');
+    if (Argument.starts_with(LongPrefix))
+      return Argument.substr(LongPrefix.size());
+  }
   return std::nullopt;
 }
 
@@ -237,6 +249,13 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
 [[nodiscard]] Expected<CommandLine> parseCommandLine(int ArgumentCount, char *Arguments[]) {
   CommandLine Command;
   bool ExplicitPipeline = false;
+  bool UsedRunPass = false;
+  bool UsedPasses = false;
+  rcc::CodeGenCommandFlags CodeGenFlags;
+  std::vector<std::string_view> ArgumentViews;
+  ArgumentViews.reserve(static_cast<std::size_t>(ArgumentCount));
+  for (int Index = 0; Index < ArgumentCount; ++Index)
+    ArgumentViews.emplace_back(Arguments[Index]);
   for (int Index = 1; Index < ArgumentCount; ++Index) {
     const std::string_view Argument(Arguments[Index]);
     if (Argument == "--help" || Argument == "-h") {
@@ -259,11 +278,11 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
       Command.Controls.CaptureStageSnapshots = true;
       continue;
     }
-    if (Argument == "-simplify-mir") {
+    if (Argument == "-simplify-mir" || Argument == "--simplify-mir") {
       Command.Controls.SimplifyMIR = true;
       continue;
     }
-    if (Argument == "-verify-machineinstrs") {
+    if (Argument == "-verify-machineinstrs" || Argument == "--verify-machineinstrs") {
       Command.Controls.VerifyEach = true;
       continue;
     }
@@ -279,24 +298,15 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
       Command.PrintActions = true;
       continue;
     }
-    if (Argument == "-O0" || Argument == "-O1" || Argument == "-O2" || Argument == "-O3" ||
-        Argument == "-Os" || Argument == "-Oz") {
-      auto Level = rcc::tooling::parseOptimizationLevel(Argument.substr(1));
-      if (!Level)
-        return std::unexpected(Level.error());
-      Command.Invocation.Optimization = *Level;
+    std::size_t CodeGenIndex = static_cast<std::size_t>(Index);
+    auto CodeGenFlag = rcc::parseCodeGenCommandFlag(ArgumentViews, CodeGenIndex, CodeGenFlags);
+    if (!CodeGenFlag)
+      return std::unexpected(CodeGenFlag.error());
+    if (*CodeGenFlag) {
+      Index = static_cast<int>(CodeGenIndex);
       continue;
     }
 
-    auto Input = takeOption(Argument, "--input", Index, ArgumentCount, Arguments);
-    if (!Input)
-      return std::unexpected(Input.error());
-    if (*Input) {
-      if (!Command.InputPath.empty())
-        return rcc::makeUnexpected(ErrorCode::InvalidInvocation, "input path is specified twice");
-      Command.InputPath = std::string(**Input);
-      continue;
-    }
     auto Output = takeOption(Argument, "-o", Index, ArgumentCount, Arguments);
     if (!Output)
       return std::unexpected(Output.error());
@@ -305,25 +315,22 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
       Command.OutputWasSpecified = true;
       continue;
     }
-    auto Emit = takeOption(Argument, "--emit", Index, ArgumentCount, Arguments);
-    if (!Emit)
-      return std::unexpected(Emit.error());
-    if (*Emit) {
-      auto Kind = rcc::tooling::parseBackendOutputKind(**Emit);
-      if (!Kind)
-        return std::unexpected(Kind.error());
-      Command.Output = *Kind;
-      Command.OutputWasSpecified = true;
-      continue;
-    }
     auto RunPass = takeOption(Argument, "-run-pass", Index, ArgumentCount, Arguments);
     if (!RunPass)
       return std::unexpected(RunPass.error());
     if (*RunPass) {
-      if (ExplicitPipeline)
+      if (UsedPasses)
         return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
                                    "-run-pass and -passes cannot be combined");
-      Command.Invocation.PassPipeline = {std::string(**RunPass)};
+      auto Names = splitList(**RunPass, "pass pipeline");
+      if (!Names)
+        return std::unexpected(Names.error());
+      if (!UsedRunPass)
+        Command.Invocation.PassPipeline.clear();
+      Command.Invocation.PassPipeline.insert(Command.Invocation.PassPipeline.end(),
+                                             std::make_move_iterator(Names->begin()),
+                                             std::make_move_iterator(Names->end()));
+      UsedRunPass = true;
       ExplicitPipeline = true;
       continue;
     }
@@ -331,13 +338,14 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
     if (!Passes)
       return std::unexpected(Passes.error());
     if (*Passes) {
-      if (ExplicitPipeline)
+      if (UsedRunPass || UsedPasses)
         return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
                                    "-run-pass and -passes cannot be combined");
       auto Names = splitList(**Passes, "pass pipeline");
       if (!Names)
         return std::unexpected(Names.error());
       Command.Invocation.PassPipeline = std::move(*Names);
+      UsedPasses = true;
       ExplicitPipeline = true;
       continue;
     }
@@ -362,6 +370,26 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
       return std::unexpected(StopAfter.error());
     if (*StopAfter)
       continue;
+    auto StartBefore = ParseSelector("-start-before", Command.Controls.StartBefore);
+    if (!StartBefore)
+      return std::unexpected(StartBefore.error());
+    if (*StartBefore)
+      continue;
+    auto StartAfter = ParseSelector("-start-after", Command.Controls.StartAfter);
+    if (!StartAfter)
+      return std::unexpected(StartAfter.error());
+    if (*StartAfter)
+      continue;
+
+    auto InputLanguage = takeOption(Argument, "-x", Index, ArgumentCount, Arguments);
+    if (!InputLanguage)
+      return std::unexpected(InputLanguage.error());
+    if (*InputLanguage) {
+      if (**InputLanguage != "mir") {
+        return rcc::makeUnexpected(ErrorCode::InvalidInvocation, "input language must be 'mir'");
+      }
+      continue;
+    }
 
     const auto ParseSelectorList = [&](std::string_view Name,
                                        std::vector<std::string> &Destination) -> Expected<bool> {
@@ -515,28 +543,6 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
       Destination = std::string(**Value);
       return true;
     };
-    auto Triple = takeOption(Argument, "-mtriple", Index, ArgumentCount, Arguments);
-    if (!Triple)
-      return std::unexpected(Triple.error());
-    if (*Triple) {
-      Command.Invocation.Triple = normalizeRV64Triple(**Triple);
-      continue;
-    }
-    auto CPU = ParseString("-mcpu", Command.Invocation.CPU);
-    if (!CPU)
-      return std::unexpected(CPU.error());
-    if (*CPU)
-      continue;
-    auto TuneCPU = ParseString("-mtune", Command.Invocation.TuneCPU);
-    if (!TuneCPU)
-      return std::unexpected(TuneCPU.error());
-    if (*TuneCPU)
-      continue;
-    auto ABI = ParseString("-target-abi", Command.Invocation.ABI);
-    if (!ABI)
-      return std::unexpected(ABI.error());
-    if (*ABI)
-      continue;
     auto DataLayout = ParseString("--data-layout", Command.Invocation.DataLayout);
     if (!DataLayout)
       return std::unexpected(DataLayout.error());
@@ -552,36 +558,6 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
       return std::unexpected(AssemblerVersion.error());
     if (*AssemblerVersion)
       continue;
-    auto Features = takeOption(Argument, "-mattr", Index, ArgumentCount, Arguments);
-    if (!Features)
-      return std::unexpected(Features.error());
-    if (*Features) {
-      auto Values = splitList(**Features, "target feature list");
-      if (!Values)
-        return std::unexpected(Values.error());
-      applyFeatureOverrides(std::move(*Values), Command.Invocation.Features);
-      continue;
-    }
-    auto Relocation = takeOption(Argument, "-relocation-model", Index, ArgumentCount, Arguments);
-    if (!Relocation)
-      return std::unexpected(Relocation.error());
-    if (*Relocation) {
-      auto Value = rcc::tooling::parseRelocationModel(**Relocation);
-      if (!Value)
-        return std::unexpected(Value.error());
-      Command.Invocation.Relocation = *Value;
-      continue;
-    }
-    auto Code = takeOption(Argument, "-code-model", Index, ArgumentCount, Arguments);
-    if (!Code)
-      return std::unexpected(Code.error());
-    if (*Code) {
-      auto Value = rcc::tooling::parseCodeModel(**Code);
-      if (!Value)
-        return std::unexpected(Value.error());
-      Command.Invocation.Code = *Value;
-      continue;
-    }
     auto Layout = takeOption(Argument, "--layout", Index, ArgumentCount, Arguments);
     if (!Layout)
       return std::unexpected(Layout.error());
@@ -636,6 +612,46 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
 
   if (Command.ShowHelp)
     return Command;
+  if (CodeGenFlags.Triple)
+    Command.Invocation.Triple = normalizeRV64Triple(*CodeGenFlags.Triple);
+  if (CodeGenFlags.CPU)
+    Command.Invocation.CPU = *CodeGenFlags.CPU;
+  if (CodeGenFlags.TuneCPU)
+    Command.Invocation.TuneCPU = *CodeGenFlags.TuneCPU;
+  if (CodeGenFlags.ABI)
+    Command.Invocation.ABI = *CodeGenFlags.ABI;
+  applyFeatureOverrides(std::move(CodeGenFlags.FeatureOverrides), Command.Invocation.Features);
+  if (CodeGenFlags.Relocation)
+    Command.Invocation.Relocation = *CodeGenFlags.Relocation;
+  if (CodeGenFlags.Code)
+    Command.Invocation.Code = *CodeGenFlags.Code;
+  if (CodeGenFlags.Optimization)
+    Command.Invocation.Optimization = *CodeGenFlags.Optimization;
+  const bool HasLimitedCodeGenPipeline = Command.Controls.StartBefore ||
+                                         Command.Controls.StartAfter ||
+                                         Command.Controls.StopBefore || Command.Controls.StopAfter;
+  if (UsedRunPass && HasLimitedCodeGenPipeline) {
+    return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
+                               "-run-pass cannot be used with a limited code-generation pipeline");
+  }
+  if (ExplicitPipeline || HasLimitedCodeGenPipeline) {
+    Command.Output = BackendOutputKind::FinalMIR;
+  } else {
+    switch (CodeGenFlags.FileType) {
+    case rcc::CodeGenFileType::AssemblyFile:
+      Command.Output = BackendOutputKind::Assembly;
+      break;
+    case rcc::CodeGenFileType::ObjectFile:
+      Command.Output = BackendOutputKind::RelocatableObject;
+      break;
+    case rcc::CodeGenFileType::Null:
+      Command.Output = BackendOutputKind::Assembly;
+      Command.DiscardOutput = true;
+      break;
+    }
+  }
+  Command.DiscardOutput =
+      CodeGenFlags.FileTypeWasSpecified && CodeGenFlags.FileType == rcc::CodeGenFileType::Null;
   if (Command.Action == Operation::Reproduce) {
     if (!Command.InputPath.empty())
       return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
@@ -700,10 +716,27 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
 }
 
 [[nodiscard]] Expected<BackendOutputKind> outputFromArtifact(ArtifactKind Artifact) {
-  const auto Value = static_cast<BackendOutputKind>(static_cast<std::uint8_t>(Artifact));
-  if (rcc::tooling::spelling(Value) == "invalid")
-    return rcc::makeUnexpected(ErrorCode::ReproducerError, "invalid reproducer artifact kind");
-  return Value;
+  switch (Artifact) {
+  case ArtifactKind::PreLegalizerMIR:
+    return BackendOutputKind::PreLegalizerMIR;
+  case ArtifactKind::LegalizedMIR:
+    return BackendOutputKind::LegalizedMIR;
+  case ArtifactKind::RegisterBankMIR:
+    return BackendOutputKind::RegisterBankMIR;
+  case ArtifactKind::SelectedMIR:
+    return BackendOutputKind::SelectedMIR;
+  case ArtifactKind::PostSSAMIR:
+    return BackendOutputKind::PostSSAMIR;
+  case ArtifactKind::PostRegisterAllocationMIR:
+    return BackendOutputKind::PostRegisterAllocationMIR;
+  case ArtifactKind::FinalMIR:
+    return BackendOutputKind::FinalMIR;
+  case ArtifactKind::Assembly:
+    return BackendOutputKind::Assembly;
+  case ArtifactKind::RelocatableObject:
+    return BackendOutputKind::RelocatableObject;
+  }
+  return rcc::makeUnexpected(ErrorCode::ReproducerError, "invalid reproducer artifact kind");
 }
 
 void printSnapshots(const BackendRunResult &Result) {
@@ -996,6 +1029,8 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
   printSnapshots(*Run);
   if (Command.PrintActions)
     printActions(*Run);
+  if (Command.DiscardOutput)
+    return {};
   return writeOutput(Command.OutputPath, Run->Output);
 }
 

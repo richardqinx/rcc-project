@@ -3,6 +3,7 @@
 set(
   RCCBackendCodeGenSources
   CompilationUnit.cpp
+  CommandFlags.cpp
   GlobalObject.cpp
   GenericOpcodes.cpp
   GenericConstant.cpp
@@ -83,6 +84,7 @@ set(
 set(
   RCCBackendCodeGenHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CompilationUnit.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CommandFlags.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalObject.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericOpcodes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericConstant.h"
@@ -204,6 +206,7 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/CommandFlags.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GlobalObject.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GenericOpcodes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GenericConstant.cpp"
@@ -285,6 +288,7 @@ rcc_backend_register_format_files(
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CompilationUnit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/CommandFlags.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GlobalObject.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GenericOpcodes.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GenericConstant.cpp"

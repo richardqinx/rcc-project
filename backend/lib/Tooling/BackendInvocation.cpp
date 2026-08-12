@@ -265,46 +265,6 @@ void appendMIRTextInfo(std::string &Output, const TargetMIRTextInfo &MIRText) {
 
 } // namespace
 
-std::string_view spelling(RelocationModel Value) noexcept {
-  switch (Value) {
-  case RelocationModel::Static:
-    return "static";
-  case RelocationModel::PositionIndependent:
-    return "pic";
-  }
-  return "invalid";
-}
-
-std::string_view spelling(CodeModel Value) noexcept {
-  switch (Value) {
-  case CodeModel::Small:
-    return "small";
-  case CodeModel::Medium:
-    return "medium";
-  case CodeModel::Large:
-    return "large";
-  }
-  return "invalid";
-}
-
-std::string_view spelling(OptimizationLevel Value) noexcept {
-  switch (Value) {
-  case OptimizationLevel::O0:
-    return "O0";
-  case OptimizationLevel::O1:
-    return "O1";
-  case OptimizationLevel::O2:
-    return "O2";
-  case OptimizationLevel::O3:
-    return "O3";
-  case OptimizationLevel::Os:
-    return "Os";
-  case OptimizationLevel::Oz:
-    return "Oz";
-  }
-  return "invalid";
-}
-
 std::string_view spelling(LayoutOwnership Value) noexcept {
   switch (Value) {
   case LayoutOwnership::NativeObject:
@@ -315,40 +275,6 @@ std::string_view spelling(LayoutOwnership Value) noexcept {
     return "external-relaxation";
   }
   return "invalid";
-}
-
-Expected<RelocationModel> parseRelocationModel(std::string_view Value) {
-  if (Value == "static")
-    return RelocationModel::Static;
-  if (Value == "pic")
-    return RelocationModel::PositionIndependent;
-  return makeUnexpected(ErrorCode::ManifestError, "unknown relocation model");
-}
-
-Expected<CodeModel> parseCodeModel(std::string_view Value) {
-  if (Value == "small")
-    return CodeModel::Small;
-  if (Value == "medium")
-    return CodeModel::Medium;
-  if (Value == "large")
-    return CodeModel::Large;
-  return makeUnexpected(ErrorCode::ManifestError, "unknown code model");
-}
-
-Expected<OptimizationLevel> parseOptimizationLevel(std::string_view Value) {
-  if (Value == "O0")
-    return OptimizationLevel::O0;
-  if (Value == "O1")
-    return OptimizationLevel::O1;
-  if (Value == "O2")
-    return OptimizationLevel::O2;
-  if (Value == "O3")
-    return OptimizationLevel::O3;
-  if (Value == "Os")
-    return OptimizationLevel::Os;
-  if (Value == "Oz")
-    return OptimizationLevel::Oz;
-  return makeUnexpected(ErrorCode::ManifestError, "unknown optimization level");
 }
 
 Expected<LayoutOwnership> parseLayoutOwnership(std::string_view Value) {

@@ -164,30 +164,28 @@ std::string_view spelling(BackendOutputKind Output) noexcept {
   return "invalid";
 }
 
-Expected<BackendOutputKind> parseBackendOutputKind(std::string_view Value) {
-  if (Value == "prelegalizer-mir")
-    return BackendOutputKind::PreLegalizerMIR;
-  if (Value == "legalized-mir")
-    return BackendOutputKind::LegalizedMIR;
-  if (Value == "regbank-mir")
-    return BackendOutputKind::RegisterBankMIR;
-  if (Value == "selected-mir")
-    return BackendOutputKind::SelectedMIR;
-  if (Value == "post-ssa-mir")
-    return BackendOutputKind::PostSSAMIR;
-  if (Value == "post-ra-mir")
-    return BackendOutputKind::PostRegisterAllocationMIR;
-  if (Value == "final-mir")
-    return BackendOutputKind::FinalMIR;
-  if (Value == "assembly" || Value == "asm")
-    return BackendOutputKind::Assembly;
-  if (Value == "object" || Value == "obj")
-    return BackendOutputKind::RelocatableObject;
-  return makeUnexpected(ErrorCode::InvalidInvocation, "unknown backend output kind");
-}
-
 ArtifactKind manifestArtifactKind(BackendOutputKind Output) noexcept {
-  return static_cast<ArtifactKind>(static_cast<std::uint8_t>(Output));
+  switch (Output) {
+  case BackendOutputKind::PreLegalizerMIR:
+    return ArtifactKind::PreLegalizerMIR;
+  case BackendOutputKind::LegalizedMIR:
+    return ArtifactKind::LegalizedMIR;
+  case BackendOutputKind::RegisterBankMIR:
+    return ArtifactKind::RegisterBankMIR;
+  case BackendOutputKind::SelectedMIR:
+    return ArtifactKind::SelectedMIR;
+  case BackendOutputKind::PostSSAMIR:
+    return ArtifactKind::PostSSAMIR;
+  case BackendOutputKind::PostRegisterAllocationMIR:
+    return ArtifactKind::PostRegisterAllocationMIR;
+  case BackendOutputKind::FinalMIR:
+    return ArtifactKind::FinalMIR;
+  case BackendOutputKind::Assembly:
+    return ArtifactKind::Assembly;
+  case BackendOutputKind::RelocatableObject:
+    return ArtifactKind::RelocatableObject;
+  }
+  return ArtifactKind::FinalMIR;
 }
 
 Expected<ArtifactKind> cacheArtifactKind(BackendOutputKind Output) {

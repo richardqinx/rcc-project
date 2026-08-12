@@ -776,7 +776,7 @@ placePhiCopiesOnEdge(MachineFunction &Function, const TargetDescription &Target,
 
 const MachinePassContract &PHIEliminationPass::contract() const noexcept {
   static const MachinePassContract Contract{
-      .Name = "PHIElimination",
+      .Name = "phi-node-elimination",
       .Requires = {MachineFunctionProperty::IsSSA, MachineFunctionProperty::Selected,
                    MachineFunctionProperty::RegBankSelected},
       .Sets = {MachineFunctionProperty::NoPHIs},
@@ -912,7 +912,7 @@ Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunctio
 
 const MachinePassContract &TwoAddressRewritePass::contract() const noexcept {
   static const MachinePassContract Contract{
-      .Name = "TwoAddressRewrite",
+      .Name = "twoaddressinstruction",
       .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs},
       .Sets = {MachineFunctionProperty::TiedOpsRewritten},
       .Clears = {MachineFunctionProperty::IsSSA},

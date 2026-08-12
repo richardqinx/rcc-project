@@ -31,7 +31,7 @@ namespace {
 const MachinePassContract &PrologueEpilogueInsertionPass::contract() const noexcept {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
-        .Name = "PrologueEpilogueInsertion",
+        .Name = "prologepilog",
         .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
                      MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs},
         .Sets = {MachineFunctionProperty::FrameFinalized, MachineFunctionProperty::NoFrameIndices},

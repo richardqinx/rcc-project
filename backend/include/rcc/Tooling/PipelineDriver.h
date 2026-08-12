@@ -36,6 +36,8 @@ enum class SnapshotPhase : std::uint8_t {
 };
 
 struct PipelineControls final {
+  std::optional<std::string> StartBefore;
+  std::optional<std::string> StartAfter;
   std::optional<std::string> StopBefore;
   std::optional<std::string> StopAfter;
   std::vector<std::string> PrintBefore;

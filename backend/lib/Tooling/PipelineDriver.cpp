@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -38,19 +39,27 @@ struct FunctionRunResult final {
 }
 
 [[nodiscard]] bool selectorMatches(std::string_view Selector, std::string_view Pass,
-                                   std::uint32_t Occurrence) {
-  if (Selector == "all" || Selector == Pass)
+                                   std::uint32_t Occurrence, bool MatchAllOccurrences) {
+  if (Selector == "all")
     return true;
-  std::string Qualified(Pass);
-  Qualified.push_back('#');
-  Qualified.append(std::to_string(Occurrence));
-  return Selector == Qualified;
+  const std::size_t Comma = Selector.find(',');
+  const std::string_view Name =
+      Comma == std::string_view::npos ? Selector : Selector.substr(0, Comma);
+  if (Name != Pass)
+    return false;
+  if (Comma == std::string_view::npos)
+    return MatchAllOccurrences || Occurrence == 1U;
+  std::uint32_t Instance = 0;
+  const std::string_view Text = Selector.substr(Comma + 1U);
+  const auto Parsed = std::from_chars(Text.data(), Text.data() + Text.size(), Instance);
+  return Parsed.ec == std::errc{} && Parsed.ptr == Text.data() + Text.size() &&
+         Occurrence == Instance + 1U;
 }
 
 [[nodiscard]] bool anySelectorMatches(std::span<const std::string> Selectors, std::string_view Pass,
                                       std::uint32_t Occurrence) {
   return std::ranges::any_of(Selectors, [Pass, Occurrence](const std::string &Selector) {
-    return selectorMatches(Selector, Pass, Occurrence);
+    return selectorMatches(Selector, Pass, Occurrence, true);
   });
 }
 
@@ -61,7 +70,7 @@ struct FunctionRunResult final {
     return BackendStage::RegisterBankMIR;
   if (Pass == "instruction-select")
     return BackendStage::SelectedMIR;
-  if (Pass == "TwoAddressRewrite")
+  if (Pass == "twoaddressinstruction")
     return BackendStage::PostSSAMIR;
   if (Pass == "PBQPAllocator")
     return BackendStage::PostRegisterAllocationMIR;
@@ -84,8 +93,6 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
                             "the default pipeline marker cannot be mixed with named passes");
     }
     for (const std::string &Name : Invocation.PassPipeline) {
-      if (Name == "none")
-        continue;
       auto Pass = riscv::createCanonicalPipelinePass(Name, Features);
       if (!Pass)
         return std::unexpected(Pass.error());
@@ -97,47 +104,67 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
   return std::move(Pipeline).takePasses();
 }
 
-[[nodiscard]] Expected<void> validateSelector(std::string_view Selector) {
-  if (Selector == "all")
+[[nodiscard]] Expected<void> validateSelector(std::string_view Selector, bool AllowAll) {
+  if (Selector == "all" && AllowAll)
     return {};
-  const std::size_t Hash = Selector.rfind('#');
+  const std::size_t Comma = Selector.find(',');
   const std::string_view Name =
-      Hash == std::string_view::npos ? Selector : Selector.substr(0, Hash);
+      Comma == std::string_view::npos ? Selector : Selector.substr(0, Comma);
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidInvocation, "empty pipeline pass selector");
   auto Pass = riscv::createCanonicalPipelinePass(Name);
   if (!Pass)
     return std::unexpected(Pass.error());
-  if (Hash != std::string_view::npos) {
-    const std::string_view Occurrence = Selector.substr(Hash + 1U);
-    if (Occurrence.empty() || Occurrence == "0" ||
-        !std::ranges::all_of(Occurrence,
-                             [](char Character) { return Character >= '0' && Character <= '9'; })) {
+  if (Comma != std::string_view::npos) {
+    const std::string_view InstanceText = Selector.substr(Comma + 1U);
+    std::uint32_t Instance = 0;
+    const auto Parsed =
+        std::from_chars(InstanceText.data(), InstanceText.data() + InstanceText.size(), Instance);
+    if (InstanceText.empty() || Parsed.ec != std::errc{} ||
+        Parsed.ptr != InstanceText.data() + InstanceText.size()) {
       return makeUnexpected(ErrorCode::InvalidInvocation,
-                            "pipeline pass occurrence must be a positive integer");
+                            "pipeline pass instance must be a nonnegative integer");
     }
   }
   return {};
 }
 
 [[nodiscard]] Expected<void> validateControls(const PipelineControls &Controls) {
+  if (Controls.StartBefore && Controls.StartAfter) {
+    return makeUnexpected(ErrorCode::InvalidInvocation,
+                          "-start-before and -start-after cannot be combined");
+  }
+  if (Controls.StopBefore && Controls.StopAfter) {
+    return makeUnexpected(ErrorCode::InvalidInvocation,
+                          "-stop-before and -stop-after cannot be combined");
+  }
+  if (Controls.StartBefore) {
+    auto Result = validateSelector(*Controls.StartBefore, false);
+    if (!Result)
+      return Result;
+  }
+  if (Controls.StartAfter) {
+    auto Result = validateSelector(*Controls.StartAfter, false);
+    if (!Result)
+      return Result;
+  }
   if (Controls.StopBefore) {
-    auto Result = validateSelector(*Controls.StopBefore);
+    auto Result = validateSelector(*Controls.StopBefore, false);
     if (!Result)
       return Result;
   }
   if (Controls.StopAfter) {
-    auto Result = validateSelector(*Controls.StopAfter);
+    auto Result = validateSelector(*Controls.StopAfter, false);
     if (!Result)
       return Result;
   }
   for (const std::string &Selector : Controls.PrintBefore) {
-    auto Result = validateSelector(Selector);
+    auto Result = validateSelector(Selector, true);
     if (!Result)
       return Result;
   }
   for (const std::string &Selector : Controls.PrintAfter) {
-    auto Result = validateSelector(Selector);
+    auto Result = validateSelector(Selector, true);
     if (!Result)
       return Result;
   }
@@ -198,13 +225,26 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
   }
 
   std::unordered_map<std::string, std::uint32_t> Occurrences;
+  bool Started = !Controls.StartBefore && !Controls.StartAfter;
+  bool StopMatched = !Controls.StopBefore && !Controls.StopAfter;
   for (std::unique_ptr<MachineFunctionPass> &Pass : *Passes) {
     if (Pass == nullptr)
       return makeUnexpected(ErrorCode::InternalError, "pipeline contains a null pass");
     const std::string Name = Pass->contract().Name;
     const std::uint32_t Occurrence = ++Occurrences[Name];
-    if (Controls.StopBefore && selectorMatches(*Controls.StopBefore, Name, Occurrence))
+    if (!Started) {
+      if (Controls.StartBefore && selectorMatches(*Controls.StartBefore, Name, Occurrence, false)) {
+        Started = true;
+      } else {
+        if (Controls.StartAfter && selectorMatches(*Controls.StartAfter, Name, Occurrence, false))
+          Started = true;
+        continue;
+      }
+    }
+    if (Controls.StopBefore && selectorMatches(*Controls.StopBefore, Name, Occurrence, false)) {
+      StopMatched = true;
       break;
+    }
     if (AllowSnapshots && anySelectorMatches(Controls.PrintBefore, Name, Occurrence)) {
       auto Captured =
           captureSnapshot(Result, Document, Target, Invocation, SnapshotPhase::BeforePass,
@@ -241,11 +281,24 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
       if (!Captured)
         return std::unexpected(Captured.error());
     }
-    if (Controls.StopAfter && selectorMatches(*Controls.StopAfter, Name, Occurrence))
+    if (Controls.StopAfter && selectorMatches(*Controls.StopAfter, Name, Occurrence, false)) {
+      StopMatched = true;
       break;
+    }
     if (Controls.StopAtStage && stageOrdinal(CurrentStage) >= stageOrdinal(*Controls.StopAtStage)) {
       break;
     }
+  }
+  if (!Started) {
+    const std::string &Selector =
+        Controls.StartBefore ? *Controls.StartBefore : *Controls.StartAfter;
+    return makeUnexpected(ErrorCode::InvalidInvocation,
+                          "pipeline start selector did not match: '" + Selector + "'");
+  }
+  if (!StopMatched) {
+    const std::string &Selector = Controls.StopBefore ? *Controls.StopBefore : *Controls.StopAfter;
+    return makeUnexpected(ErrorCode::InvalidInvocation,
+                          "pipeline stop selector did not match: '" + Selector + "'");
   }
   return Result;
 }

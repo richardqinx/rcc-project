@@ -3,6 +3,7 @@
 #ifndef RCC_TOOLING_BACKENDINVOCATION_H
 #define RCC_TOOLING_BACKENDINVOCATION_H
 
+#include "rcc/CodeGen/CommandFlags.h"
 #include "rcc/Support/Error.h"
 
 #include <cstdint>
@@ -24,26 +25,6 @@ inline constexpr std::string_view LLVMReferenceRevision =
 inline constexpr std::string_view GenericOpcodeReferenceVersion = "rcc-generic-opcode-v1";
 inline constexpr std::string_view RV64GCTargetABILoweringVersion = "rcc-rv64gc-lp64d-v1";
 inline constexpr std::string_view CompilerBuildFingerprint = "rcc-backend-0.1.0-stage17";
-
-enum class RelocationModel : std::uint8_t {
-  Static,
-  PositionIndependent,
-};
-
-enum class CodeModel : std::uint8_t {
-  Small,
-  Medium,
-  Large,
-};
-
-enum class OptimizationLevel : std::uint8_t {
-  O0,
-  O1,
-  O2,
-  O3,
-  Os,
-  Oz,
-};
 
 enum class LayoutOwnership : std::uint8_t {
   NativeObject,
@@ -74,14 +55,14 @@ struct BackendInvocation final {
   std::vector<std::string> Features;
   std::string ABI;
   std::string DataLayout;
-  RelocationModel Relocation = RelocationModel::PositionIndependent;
-  CodeModel Code = CodeModel::Small;
+  rcc::RelocationModel Relocation = rcc::RelocationModel::PositionIndependent;
+  rcc::CodeModel Code = rcc::CodeModel::Small;
   std::vector<BackendOption> TargetOptions;
   LayoutOwnership Layout = LayoutOwnership::NativeObject;
   std::string AssemblerFlavor;
   std::string AssemblerVersion;
   std::vector<BackendOption> AssemblerOptions;
-  OptimizationLevel Optimization = OptimizationLevel::O2;
+  rcc::OptimizationLevel Optimization = rcc::OptimizationLevel::O2;
   std::vector<std::string> PassPipeline{"default"};
   DeterminismOptions Determinism;
   std::optional<std::uint64_t> ActionFuel;
@@ -104,13 +85,7 @@ computeTargetDescriptionFingerprint(const TargetDescription &Target);
                                                     const BackendInvocation &Invocation,
                                                     std::string_view TargetFingerprint);
 
-[[nodiscard]] std::string_view spelling(RelocationModel Value) noexcept;
-[[nodiscard]] std::string_view spelling(CodeModel Value) noexcept;
-[[nodiscard]] std::string_view spelling(OptimizationLevel Value) noexcept;
 [[nodiscard]] std::string_view spelling(LayoutOwnership Value) noexcept;
-[[nodiscard]] Expected<RelocationModel> parseRelocationModel(std::string_view Value);
-[[nodiscard]] Expected<CodeModel> parseCodeModel(std::string_view Value);
-[[nodiscard]] Expected<OptimizationLevel> parseOptimizationLevel(std::string_view Value);
 [[nodiscard]] Expected<LayoutOwnership> parseLayoutOwnership(std::string_view Value);
 
 } // namespace tooling
