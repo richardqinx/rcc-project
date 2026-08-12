@@ -3,10 +3,12 @@
 #include "rcc/Target/RISCV/RISCVPipeline.h"
 
 #include "RISCVInstrInfo.h"
+#include "rcc/CodeGen/GlobalISel/InstructionSelect.h"
+#include "rcc/CodeGen/GlobalISel/Legalizer.h"
+#include "rcc/CodeGen/GlobalISel/RegBankSelect.h"
 #include "rcc/CodeGen/MachineCombiner.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
-#include "rcc/CodeGen/MachinePipelinePasses.h"
 #include "rcc/CodeGen/MachineSSAExit.h"
 #include "rcc/CodeGen/RegAllocPBQP.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -33,13 +35,13 @@ template <typename PassT, typename... ArgumentT>
                                             MachineCombinerStage::PreLegalizer);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<LegalizerPass>(Pipeline, createLegalizerInfo(Features));
+  Added = addPass<Legalizer>(Pipeline, createLegalizerInfo(Features));
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<RegisterBankSelectPass>(Pipeline, registerBankInfo());
+  Added = addPass<RegBankSelect>(Pipeline, registerBankInfo());
   if (!Added)
     return std::unexpected(Added.error());
-  return addPass<InstructionSelectPass>(Pipeline, instructionSelector());
+  return addPass<InstructionSelect>(Pipeline, instructionSelector());
 }
 
 [[nodiscard]] Expected<void> addSSAExitPipeline(MachinePassManager &Pipeline) {
@@ -86,17 +88,17 @@ Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineF
                                               MachineCombinerStage::PreLegalizer);
     if (!Added)
       return std::unexpected(Added.error());
-    Added = addPass<LegalizerPass>(Pipeline, createLegalizerInfo(Features));
+    Added = addPass<Legalizer>(Pipeline, createLegalizerInfo(Features));
     if (!Added)
       return std::unexpected(Added.error());
   }
   if (!Function.properties().has(MachineFunctionProperty::RegBankSelected)) {
-    auto Added = addPass<RegisterBankSelectPass>(Pipeline, registerBankInfo());
+    auto Added = addPass<RegBankSelect>(Pipeline, registerBankInfo());
     if (!Added)
       return std::unexpected(Added.error());
   }
   if (!Function.properties().has(MachineFunctionProperty::Selected)) {
-    auto Added = addPass<InstructionSelectPass>(Pipeline, instructionSelector());
+    auto Added = addPass<InstructionSelect>(Pipeline, instructionSelector());
     if (!Added)
       return std::unexpected(Added.error());
   }

@@ -45,7 +45,6 @@ set(
   MachineOptimizationPipeline.cpp
   MachinePass.cpp
   MachinePseudoExpansion.cpp
-  MachinePipelinePasses.cpp
   MachineRegisterInfo.cpp
   MachineScheduler.cpp
   MachineShrinkWrapping.cpp
@@ -129,13 +128,11 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOptimizationPipeline.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePass.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePseudoExpansion.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePipelinePasses.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PrologueEpilogueInsertion.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterPressure.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterScavenger.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/ScheduleDAG.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/ScheduleHazardRecognizer.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetCodeGen.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFrameLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineRegisterInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineScheduler.h"
@@ -163,6 +160,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionProperties.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionRecords.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/Register.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterBankInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterMask.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/StableID.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetConstant.h"
@@ -179,6 +177,8 @@ set(
 
 add_library(RCCBackendCodeGen ${RCCBackendCodeGenSources})
 add_library(RCCBackend::CodeGen ALIAS RCCBackendCodeGen)
+
+add_subdirectory(GlobalISel)
 
 rcc_backend_configure_target(RCCBackendCodeGen)
 
@@ -248,7 +248,6 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePseudoExpansion.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePasses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineScheduler.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulerInternal.h"
@@ -331,7 +330,6 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePass.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePseudoExpansion.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePasses.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineScheduler.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineShrinkWrapping.cpp"

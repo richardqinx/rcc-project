@@ -22,7 +22,6 @@ set(
   MachineOperandTest.cpp
   MachineOptimizationTest.cpp
   MachinePassTest.cpp
-  MachinePipelinePassesTest.cpp
   MachineSchedulingTest.cpp
   PBQPTest.cpp
   RegisterAllocationTest.cpp
@@ -337,16 +336,7 @@ target_link_libraries(
 
 add_test(NAME RCCBackend.CodeGen.MachinePass COMMAND RCCBackendCodeGenMachinePassTests)
 
-add_executable(RCCBackendCodeGenMachinePipelinePassesTests MachinePipelinePassesTest.cpp)
-rcc_backend_configure_target(RCCBackendCodeGenMachinePipelinePassesTests)
-target_link_libraries(
-  RCCBackendCodeGenMachinePipelinePassesTests
-  PRIVATE RCCBackend::CodeGen RCCBackend::RISCV RCCBackend::TestTarget
-)
-add_test(
-  NAME RCCBackend.CodeGen.MachinePipelinePasses
-  COMMAND RCCBackendCodeGenMachinePipelinePassesTests
-)
+add_subdirectory(GlobalISel)
 
 add_executable(RCCBackendCodeGenMachineAnalysesTests MachineAnalysesTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenMachineAnalysesTests)
@@ -459,7 +449,6 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePassesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulingTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"
@@ -501,7 +490,6 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOperandTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineOptimizationTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachinePassTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachinePipelinePassesTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulingTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"

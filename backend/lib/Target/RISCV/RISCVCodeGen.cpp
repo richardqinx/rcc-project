@@ -3250,7 +3250,7 @@ struct VACopyPlan final {
   return eraseInstruction(Instruction);
 }
 
-class RISCVLegalizerInfo final : public TargetLegalizerInfo {
+class RISCVLegalizerInfo final : public LegalizerInfo {
 public:
   explicit RISCVLegalizerInfo(RISCVSubtargetFeatures Features) : Features(Features) {}
 
@@ -3985,7 +3985,7 @@ private:
   RISCVSubtargetFeatures Features;
 };
 
-class RISCVRegisterBankInfo final : public TargetRegisterBankInfo {
+class RISCVRegisterBankInfo final : public RegisterBankInfo {
 public:
   [[nodiscard]] Expected<RegisterBankID> selectBank(const MachineFunction &, Register,
                                                     const VirtualRegisterInfo &Info,
@@ -4049,7 +4049,7 @@ public:
   }
 };
 
-class RISCVInstructionSelector final : public TargetInstructionSelector {
+class RISCVInstructionSelector final : public InstructionSelector {
 public:
   [[nodiscard]] Expected<void>
   constrainSelectedInstruction(MachineInstr &Instruction, MachineFunction &Function,
@@ -6514,21 +6514,21 @@ private:
 
 } // namespace
 
-const TargetLegalizerInfo &legalizerInfo() noexcept {
+const LegalizerInfo &legalizerInfo() noexcept {
   static const RISCVLegalizerInfo Value(RISCVSubtargetFeatures::rv64gc());
   return Value;
 }
 
-std::unique_ptr<TargetLegalizerInfo> createLegalizerInfo(RISCVSubtargetFeatures Features) {
+std::unique_ptr<LegalizerInfo> createLegalizerInfo(RISCVSubtargetFeatures Features) {
   return std::make_unique<RISCVLegalizerInfo>(Features);
 }
 
-const TargetRegisterBankInfo &registerBankInfo() noexcept {
+const RegisterBankInfo &registerBankInfo() noexcept {
   static const RISCVRegisterBankInfo Value;
   return Value;
 }
 
-const TargetInstructionSelector &instructionSelector() noexcept {
+const InstructionSelector &instructionSelector() noexcept {
   static const RISCVInstructionSelector Value;
   return Value;
 }
