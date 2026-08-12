@@ -9,7 +9,7 @@
 
 namespace rcc {
 
-class TargetBranchInfo;
+class TargetInstrInfo;
 
 struct MachineBranchRelaxationOptions final {
   std::size_t ConvergenceWatchdog = 1000000;
@@ -17,7 +17,7 @@ struct MachineBranchRelaxationOptions final {
 
 class MachineBranchRelaxationPass final : public MachineFunctionPass {
 public:
-  explicit MachineBranchRelaxationPass(const TargetBranchInfo &Info,
+  explicit MachineBranchRelaxationPass(const TargetInstrInfo &Info,
                                        MachineBranchRelaxationOptions Options = {}) noexcept
       : Info(&Info), Options(Options) {}
 
@@ -31,7 +31,7 @@ private:
                                                               const TargetDescription &Target,
                                                               MachineActionReplay &Actions) const;
 
-  const TargetBranchInfo *Info;
+  const TargetInstrInfo *Info;
   MachineBranchRelaxationOptions Options;
 };
 

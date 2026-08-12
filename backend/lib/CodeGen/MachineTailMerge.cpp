@@ -14,8 +14,8 @@
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/RegisterMask.h"
-#include "rcc/CodeGen/TargetBranchInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -243,7 +243,7 @@ template <typename MaskOperandT>
                                                     MachineBasicBlock &Duplicate,
                                                     MachineFunction &Function,
                                                     const TargetDescription &Target,
-                                                    const TargetBranchInfo &Info) {
+                                                    const TargetInstrInfo &Info) {
   auto Analysis = Info.analyzeBranch(Predecessor, Function, Target);
   if (!Analysis)
     return std::unexpected(Analysis.error());
@@ -264,7 +264,7 @@ template <typename MaskOperandT>
 [[nodiscard]] Expected<bool>
 redirectPredecessor(MachineBasicBlock &Predecessor, MachineBasicBlock &Duplicate,
                     MachineBasicBlock &Canonical, MachineFunction &Function,
-                    const TargetDescription &Target, const TargetBranchInfo &Info) {
+                    const TargetDescription &Target, const TargetInstrInfo &Info) {
   auto Analysis = Info.analyzeBranch(Predecessor, Function, Target);
   if (!Analysis)
     return std::unexpected(Analysis.error());

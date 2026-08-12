@@ -9,7 +9,7 @@
 
 namespace rcc {
 
-class TargetBranchInfo;
+class TargetInstrInfo;
 
 struct MachineBranchOptimizationOptions final {
   std::size_t MaximumThreadedEdges = 10'000;
@@ -17,7 +17,7 @@ struct MachineBranchOptimizationOptions final {
 
 class MachineBranchOptimizationPass final : public MachineFunctionPass {
 public:
-  explicit MachineBranchOptimizationPass(const TargetBranchInfo &Info,
+  explicit MachineBranchOptimizationPass(const TargetInstrInfo &Info,
                                          MachineBranchOptimizationOptions Options = {}) noexcept
       : Info(&Info), Options(Options) {}
 
@@ -30,7 +30,7 @@ private:
   [[nodiscard]] Expected<MachinePassResult>
   runImplementation(MachineFunction &Function, const TargetDescription &Target) const;
 
-  const TargetBranchInfo *Info;
+  const TargetInstrInfo *Info;
   MachineBranchOptimizationOptions Options;
 };
 

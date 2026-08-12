@@ -11,8 +11,8 @@
 #include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
-#include "rcc/CodeGen/TargetBranchInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -41,7 +41,7 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
 [[nodiscard]] Expected<std::uint64_t> blockSize(const MachineBasicBlock &Block,
                                                 const MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                const TargetBranchInfo &BranchInfo) {
+                                                const TargetInstrInfo &BranchInfo) {
   std::uint64_t Size = 0;
   for (const MachineInstr *Instruction = Block.firstInstruction(); Instruction != nullptr;
        Instruction = Instruction->next()) {
@@ -58,7 +58,7 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
 
 [[nodiscard]] Expected<BlockSizeSnapshot> snapshotBlockSizes(const MachineFunction &Function,
                                                              const TargetDescription &Target,
-                                                             const TargetBranchInfo &BranchInfo) {
+                                                             const TargetInstrInfo &BranchInfo) {
   BlockSizeSnapshot Result;
   for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
        Block = Block->next()) {
@@ -248,7 +248,7 @@ prepareImplementation(MachineFunction &Function, const TargetDescription &Target
 [[nodiscard]] Expected<MachinePassResult>
 expandImplementation(MachineFunction &Function, const TargetDescription &Target,
                      const TargetPseudoExpansionInfo &Info, MachinePseudoExpansionPhase Phase,
-                     const TargetBranchInfo *BranchInfo, MachineActionReplay &Actions) {
+                     const TargetInstrInfo *BranchInfo, MachineActionReplay &Actions) {
   const ResourceSnapshot Before = snapshotResources(Function);
   std::optional<BlockSizeSnapshot> SizesBefore;
   if (Phase == MachinePseudoExpansionPhase::TargetLate) {
@@ -380,7 +380,7 @@ runPreparationTransaction(MachineFunction &Function, const TargetDescription &Ta
 [[nodiscard]] Expected<MachinePassResult>
 runExpansionTransaction(MachineFunction &Function, const TargetDescription &Target,
                         const TargetPseudoExpansionInfo &Info, MachinePseudoExpansionPhase Phase,
-                        const TargetBranchInfo *BranchInfo, MachineAnalysisManager &Analyses) {
+                        const TargetInstrInfo *BranchInfo, MachineAnalysisManager &Analyses) {
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

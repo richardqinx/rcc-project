@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifndef RCC_CODEGEN_TARGETBRANCHINFO_H
-#define RCC_CODEGEN_TARGETBRANCHINFO_H
+#ifndef RCC_CODEGEN_TARGETINSTRINFO_H
+#define RCC_CODEGEN_TARGETINSTRINFO_H
 
 #include "rcc/Support/Error.h"
 
@@ -23,9 +23,9 @@ struct MachineBranchAnalysis final {
   bool HasUnanalyzableTerminator = false;
 };
 
-class TargetBranchInfo {
+class TargetInstrInfo {
 public:
-  virtual ~TargetBranchInfo() = default;
+  virtual ~TargetInstrInfo();
 
   [[nodiscard]] virtual Expected<MachineBranchAnalysis>
   analyzeBranch(MachineBasicBlock &Block, MachineFunction &Function,
@@ -63,4 +63,4 @@ public:
 
 } // namespace rcc
 
-#endif // RCC_CODEGEN_TARGETBRANCHINFO_H
+#endif // RCC_CODEGEN_TARGETINSTRINFO_H

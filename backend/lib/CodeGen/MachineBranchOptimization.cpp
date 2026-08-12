@@ -12,8 +12,8 @@
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineLiveness.h"
-#include "rcc/CodeGen/TargetBranchInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -107,7 +107,7 @@ namespace {
 
 [[nodiscard]] Expected<bool> foldConstantBranches(MachineFunction &Function,
                                                   const TargetDescription &Target,
-                                                  const TargetBranchInfo &Info) {
+                                                  const TargetInstrInfo &Info) {
   bool Changed = false;
   MachineCFGUpdater CFG = Function.cfgUpdater();
   for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {
@@ -198,7 +198,7 @@ namespace {
 
 [[nodiscard]] Expected<bool> isForwardingBlock(MachineBasicBlock &Block, MachineFunction &Function,
                                                const TargetDescription &Target,
-                                               const TargetBranchInfo &Info) {
+                                               const TargetInstrInfo &Info) {
   if (&Block == Function.firstBlock() || Block.successors().size() != 1 ||
       Block.successors().front().Block == nullptr || Block.successors().front().Block == &Block ||
       hasObservableBlockIdentity(Block, Function)) {
@@ -222,7 +222,7 @@ namespace {
 
 [[nodiscard]] Expected<bool> threadForwardingBlocks(MachineFunction &Function,
                                                     const TargetDescription &Target,
-                                                    const TargetBranchInfo &Info,
+                                                    const TargetInstrInfo &Info,
                                                     std::size_t MaximumEdges) {
   MachineCFGUpdater CFG = Function.cfgUpdater();
   std::size_t ThreadedEdges = 0;

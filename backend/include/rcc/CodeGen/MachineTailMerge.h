@@ -9,7 +9,7 @@
 
 namespace rcc {
 
-class TargetBranchInfo;
+class TargetInstrInfo;
 
 struct MachineTailMergeOptions final {
   std::size_t MaximumMergedBlocks = 4'096;
@@ -17,7 +17,7 @@ struct MachineTailMergeOptions final {
 
 class MachineTailMergePass final : public MachineFunctionPass {
 public:
-  explicit MachineTailMergePass(const TargetBranchInfo &Info,
+  explicit MachineTailMergePass(const TargetInstrInfo &Info,
                                 MachineTailMergeOptions Options = {}) noexcept
       : Info(&Info), Options(Options) {}
 
@@ -30,7 +30,7 @@ private:
   [[nodiscard]] Expected<MachinePassResult>
   runImplementation(MachineFunction &Function, const TargetDescription &Target) const;
 
-  const TargetBranchInfo *Info;
+  const TargetInstrInfo *Info;
   MachineTailMergeOptions Options;
 };
 

@@ -5,9 +5,9 @@
 
 #include "rcc/CodeGen/MachineCombinerPattern.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
-#include "rcc/CodeGen/TargetBranchInfo.h"
 #include "rcc/CodeGen/TargetCodeGen.h"
 #include "rcc/CodeGen/TargetFrameLowering.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 #include "rcc/CodeGen/TargetMemoryFolding.h"
 #include "rcc/CodeGen/TargetPseudoExpansion.h"
 #include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
@@ -29,7 +29,7 @@ createLegalizerInfo(RISCVSubtargetFeatures Features);
 [[nodiscard]] const TargetSchedulingModel &schedulingModel() noexcept;
 [[nodiscard]] const TargetMachineCombinerInfo &machineCombinerInfo() noexcept;
 [[nodiscard]] const TargetMemoryFoldingInfo &memoryFoldingInfo() noexcept;
-[[nodiscard]] const TargetBranchInfo &branchInfo() noexcept;
+[[nodiscard]] const TargetInstrInfo &branchInfo() noexcept;
 [[nodiscard]] const TargetPseudoExpansionInfo &pseudoExpansionInfo() noexcept;
 [[nodiscard]] MachineOptimizationPipelineTargetInfo optimizationPipelineInfo() noexcept;
 

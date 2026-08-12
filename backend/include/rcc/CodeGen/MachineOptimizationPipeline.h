@@ -7,7 +7,7 @@
 
 namespace rcc {
 
-class TargetBranchInfo;
+class TargetInstrInfo;
 class TargetFrameLowering;
 class TargetMachineCombinerInfo;
 class TargetMemoryFoldingInfo;
@@ -22,7 +22,7 @@ struct MachineOptimizationPipelineTargetInfo final {
   const TargetFrameLowering &FrameLowering;
   const TargetPseudoExpansionInfo &PseudoExpansion;
   const TargetSchedulingModel &SchedulingModel;
-  const TargetBranchInfo &BranchInfo;
+  const TargetInstrInfo &BranchInfo;
 };
 
 [[nodiscard]] Expected<void> registerMachineOptimizationAnalyses(MachineAnalysisManager &Analyses);

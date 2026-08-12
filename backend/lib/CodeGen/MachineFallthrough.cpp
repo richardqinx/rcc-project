@@ -7,8 +7,8 @@
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineLivenessRepair.h"
-#include "rcc/CodeGen/TargetBranchInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 
 #include <optional>
 #include <string>
@@ -43,7 +43,7 @@ namespace {
 
 [[nodiscard]] Expected<std::vector<MachineBasicBlock *>>
 normalizeFallthroughs(MachineFunction &Function, const TargetDescription &Target,
-                      const TargetBranchInfo &Info) {
+                      const TargetInstrInfo &Info) {
   std::vector<MachineBasicBlock *> ChangedBlocks;
   for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {
     MachineBasicBlock *LayoutSuccessor = Block->next();

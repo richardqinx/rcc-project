@@ -102,7 +102,7 @@ public:
   }
 };
 
-class FixedSizeBranchInfo final : public rcc::TargetBranchInfo {
+class FixedSizeBranchInfo final : public rcc::TargetInstrInfo {
 public:
   [[nodiscard]] rcc::Expected<rcc::MachineBranchAnalysis>
   analyzeBranch(rcc::MachineBasicBlock &, rcc::MachineFunction &,

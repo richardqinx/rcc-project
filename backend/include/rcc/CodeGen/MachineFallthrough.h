@@ -7,11 +7,11 @@
 
 namespace rcc {
 
-class TargetBranchInfo;
+class TargetInstrInfo;
 
 class MachineFallthroughPass final : public MachineFunctionPass {
 public:
-  explicit MachineFallthroughPass(const TargetBranchInfo &Info) noexcept : Info(&Info) {}
+  explicit MachineFallthroughPass(const TargetInstrInfo &Info) noexcept : Info(&Info) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
@@ -19,7 +19,7 @@ public:
                                                 MachineAnalysisManager &Analyses) override;
 
 private:
-  const TargetBranchInfo *Info;
+  const TargetInstrInfo *Info;
 };
 
 } // namespace rcc

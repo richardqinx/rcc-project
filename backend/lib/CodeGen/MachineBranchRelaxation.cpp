@@ -7,8 +7,8 @@
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineLiveness.h"
-#include "rcc/CodeGen/TargetBranchInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -63,7 +63,7 @@ struct MachineLayout final {
 
 [[nodiscard]] Expected<MachineLayout> computeLayout(MachineFunction &Function,
                                                     const TargetDescription &Target,
-                                                    const TargetBranchInfo &Info) {
+                                                    const TargetInstrInfo &Info) {
   MachineLayout Result;
   std::uint64_t Offset = 0;
   for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {

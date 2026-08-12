@@ -497,7 +497,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   return true;
 }
 
-class RISCVBranchInfo final : public TargetBranchInfo {
+class RISCVBranchInfo final : public TargetInstrInfo {
 public:
   [[nodiscard]] Expected<MachineBranchAnalysis>
   analyzeBranch(MachineBasicBlock &Block, MachineFunction &Function,
@@ -730,7 +730,7 @@ public:
 
 } // namespace
 
-const TargetBranchInfo &branchInfo() noexcept {
+const TargetInstrInfo &branchInfo() noexcept {
   static const RISCVBranchInfo Value;
   return Value;
 }

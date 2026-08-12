@@ -75,6 +75,7 @@ set(
   RegisterMask.cpp
   TargetConstant.cpp
   TargetCallLowering.cpp
+  TargetInstrInfo.cpp
   TargetDescription.cpp
   TargetFunctionState.cpp
   TargetMIRTextInfo.cpp
@@ -166,7 +167,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/StableID.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetConstant.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetCallLowering.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetBranchInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetInstrInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetDescription.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetFunctionState.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetMIRTextInfo.h"
@@ -279,6 +280,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetCallLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetInstrInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetDescription.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"
@@ -357,6 +359,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterMask.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetCallLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TargetInstrInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetDescription.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetFunctionState.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"

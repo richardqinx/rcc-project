@@ -8,7 +8,7 @@
 
 namespace rcc {
 
-class TargetBranchInfo;
+class TargetInstrInfo;
 class TargetPseudoExpansionInfo;
 
 class PreparePostRAPseudosPass final : public MachineFunctionPass {
@@ -54,7 +54,7 @@ private:
 class TargetLatePseudoExpansionPass final : public MachineFunctionPass {
 public:
   TargetLatePseudoExpansionPass(const TargetPseudoExpansionInfo &Info,
-                                const TargetBranchInfo &BranchInfo) noexcept
+                                const TargetInstrInfo &BranchInfo) noexcept
       : Info(&Info), BranchInfo(&BranchInfo) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
@@ -64,7 +64,7 @@ public:
 
 private:
   const TargetPseudoExpansionInfo *Info;
-  const TargetBranchInfo *BranchInfo;
+  const TargetInstrInfo *BranchInfo;
 };
 
 } // namespace rcc

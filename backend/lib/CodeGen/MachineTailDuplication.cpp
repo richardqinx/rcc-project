@@ -13,8 +13,8 @@
 #include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/CodeGen/TargetBranchInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -163,7 +163,7 @@ struct TailCandidate final {
 
 [[nodiscard]] Expected<std::optional<TailCandidate>>
 analyzeTail(MachineBasicBlock &Tail, MachineFunction &Function, const TargetDescription &Target,
-            const TargetBranchInfo &Info, std::size_t MaximumInstructions) {
+            const TargetInstrInfo &Info, std::size_t MaximumInstructions) {
   if (&Tail == Function.firstBlock() || Tail.predecessors().size() < 2 ||
       Tail.successors().size() != 1 || Tail.successors().front().Block == nullptr ||
       hasProtectedIdentity(Tail, Function)) {
@@ -201,7 +201,7 @@ analyzeTail(MachineBasicBlock &Tail, MachineFunction &Function, const TargetDesc
 [[nodiscard]] Expected<bool>
 duplicateTailIntoPredecessor(const TailCandidate &Candidate, MachineBasicBlock &Tail,
                              MachineBasicBlock &Predecessor, MachineFunction &Function,
-                             const TargetDescription &Target, const TargetBranchInfo &Info) {
+                             const TargetDescription &Target, const TargetInstrInfo &Info) {
   if (Predecessor.successors().size() != 1 || Predecessor.successors().front().Block != &Tail) {
     return false;
   }

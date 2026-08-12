@@ -7,7 +7,7 @@
 
 namespace rcc {
 
-class TargetBranchInfo;
+class TargetInstrInfo;
 
 class FinalizeEmissionPseudosPass final : public MachineFunctionPass {
 public:
@@ -19,7 +19,7 @@ public:
 
 class FinalEncodabilityVerifierPass final : public MachineFunctionPass {
 public:
-  explicit FinalEncodabilityVerifierPass(const TargetBranchInfo &BranchInfo) noexcept
+  explicit FinalEncodabilityVerifierPass(const TargetInstrInfo &BranchInfo) noexcept
       : BranchInfo(&BranchInfo) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
@@ -28,7 +28,7 @@ public:
                                                 MachineAnalysisManager &Analyses) override;
 
 private:
-  const TargetBranchInfo *BranchInfo;
+  const TargetInstrInfo *BranchInfo;
 };
 
 } // namespace rcc

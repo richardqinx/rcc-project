@@ -9,7 +9,7 @@
 
 namespace rcc {
 
-class TargetBranchInfo;
+class TargetInstrInfo;
 
 struct MachineTailDuplicationOptions final {
   std::size_t MaximumTailInstructions = 8;
@@ -18,7 +18,7 @@ struct MachineTailDuplicationOptions final {
 
 class MachineTailDuplicationPass final : public MachineFunctionPass {
 public:
-  explicit MachineTailDuplicationPass(const TargetBranchInfo &Info,
+  explicit MachineTailDuplicationPass(const TargetInstrInfo &Info,
                                       MachineTailDuplicationOptions Options = {}) noexcept
       : Info(&Info), Options(Options) {}
 
@@ -31,7 +31,7 @@ private:
   [[nodiscard]] Expected<MachinePassResult>
   runImplementation(MachineFunction &Function, const TargetDescription &Target) const;
 
-  const TargetBranchInfo *Info;
+  const TargetInstrInfo *Info;
   MachineTailDuplicationOptions Options;
 };
 
