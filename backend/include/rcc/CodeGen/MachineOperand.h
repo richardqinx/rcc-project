@@ -3,6 +3,8 @@
 #ifndef RCC_CODEGEN_MACHINEOPERAND_H
 #define RCC_CODEGEN_MACHINEOPERAND_H
 
+#include "rcc/ADT/APFloat.h"
+#include "rcc/ADT/APInt.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
@@ -10,7 +12,6 @@
 #include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/Support/Error.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -29,72 +30,6 @@ class MachineBasicBlock;
 class MachineInstr;
 class MachineRegisterInfo;
 class RegOperandIterator;
-
-class FloatingPointBits final {
-public:
-  [[nodiscard]] static Expected<FloatingPointBits> create(FloatSemantics Semantics,
-                                                          std::span<const std::uint64_t> Words);
-
-  [[nodiscard]] FloatSemantics semantics() const noexcept {
-    return Semantics;
-  }
-
-  [[nodiscard]] std::uint32_t bitWidth() const noexcept {
-    return getFloatSemanticsBitWidth(Semantics).value_or(0);
-  }
-
-  [[nodiscard]] std::span<const std::uint64_t> words() const noexcept {
-    return std::span(Words).first(WordCount);
-  }
-
-  friend bool operator==(const FloatingPointBits &Left, const FloatingPointBits &Right) = default;
-
-private:
-  FloatingPointBits(FloatSemantics Semantics, std::array<std::uint64_t, 2> Words,
-                    std::uint8_t WordCount) noexcept
-      : Semantics(Semantics), Words(Words), WordCount(WordCount) {}
-
-  FloatSemantics Semantics;
-  std::array<std::uint64_t, 2> Words;
-  std::uint8_t WordCount;
-};
-
-class IntegerImmediate final {
-public:
-  static constexpr std::uint32_t MaxBitWidth = std::uint32_t{1} << 23U;
-
-  [[nodiscard]] static Expected<IntegerImmediate> create(std::uint32_t BitWidth,
-                                                         std::span<const std::uint64_t> Words);
-  [[nodiscard]] static Expected<IntegerImmediate> fromUnsigned(std::uint32_t BitWidth,
-                                                               std::uint64_t Value);
-  [[nodiscard]] static Expected<IntegerImmediate> fromSigned(std::uint32_t BitWidth,
-                                                             std::int64_t Value);
-  [[nodiscard]] static Expected<IntegerImmediate> parseDecimal(std::uint32_t BitWidth,
-                                                               std::string_view Text);
-
-  [[nodiscard]] std::uint32_t bitWidth() const noexcept {
-    return BitWidth;
-  }
-
-  [[nodiscard]] std::span<const std::uint64_t> words() const noexcept {
-    return Words;
-  }
-
-  [[nodiscard]] bool isZero() const noexcept;
-  [[nodiscard]] bool isNegative() const noexcept;
-  [[nodiscard]] std::string toUnsignedDecimal() const;
-  [[nodiscard]] std::string toSignedDecimal() const;
-  [[nodiscard]] Expected<void> verify() const;
-
-  friend bool operator==(const IntegerImmediate &Left, const IntegerImmediate &Right) = default;
-
-private:
-  IntegerImmediate(std::uint32_t BitWidth, std::vector<std::uint64_t> Words)
-      : BitWidth(BitWidth), Words(std::move(Words)) {}
-
-  std::uint32_t BitWidth;
-  std::vector<std::uint64_t> Words;
-};
 
 enum class RegisterOperandFlag : std::uint8_t {
   Define,
@@ -147,14 +82,14 @@ private:
 };
 
 struct FloatingImmediateOperand final {
-  FloatingPointBits Bits;
+  APFloat Bits;
 
   friend bool operator==(const FloatingImmediateOperand &Left,
                          const FloatingImmediateOperand &Right) = default;
 };
 
 struct IntegerImmediateOperand final {
-  IntegerImmediate Value;
+  APInt Value;
 
   friend bool operator==(const IntegerImmediateOperand &Left,
                          const IntegerImmediateOperand &Right) = default;
@@ -382,9 +317,8 @@ public:
                                                                 SubRegIndex SubReg = {},
                                                                 std::uint32_t TargetFlags = 0);
   [[nodiscard]] static MachineOperand immediate(std::int64_t Value, std::uint32_t TargetFlags = 0);
-  [[nodiscard]] static MachineOperand integerImmediate(IntegerImmediate Value,
-                                                       std::uint32_t TargetFlags = 0);
-  [[nodiscard]] static MachineOperand floatingImmediate(FloatingPointBits Bits,
+  [[nodiscard]] static MachineOperand integerImmediate(APInt Value, std::uint32_t TargetFlags = 0);
+  [[nodiscard]] static MachineOperand floatingImmediate(APFloat Bits,
                                                         std::uint32_t TargetFlags = 0);
   [[nodiscard]] static MachineOperand basicBlock(MachineBasicBlock &Block,
                                                  std::uint32_t TargetFlags = 0);

@@ -642,7 +642,7 @@ void testTableReferenceFailures(TestContext &Context) {
     return;
 
   rcc::MachineConstantPoolEntryDesc ConstantDescription;
-  auto Integer = rcc::IntegerImmediate::fromUnsigned(32, 0x01010101U);
+  auto Integer = rcc::APInt::fromUnsigned(32, 0x01010101U);
   ConstantDescription.Value = std::move(*rcc::GenericConstantData::integer(std::move(*Integer)));
   ConstantDescription.Size = 4;
   ConstantDescription.Align = *rcc::Alignment::create(4);

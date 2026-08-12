@@ -99,9 +99,8 @@ namespace {
          Destination.scalarBitWidth() <= 64;
 }
 
-[[nodiscard]] Expected<IntegerImmediate> extendIntegerImmediate(const IntegerImmediate &Value,
-                                                                std::uint32_t DestinationWidth,
-                                                                bool SignExtend) {
+[[nodiscard]] Expected<APInt>
+extendIntegerImmediate(const APInt &Value, std::uint32_t DestinationWidth, bool SignExtend) {
   if (DestinationWidth == 0 || DestinationWidth > 64)
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V constant extension requires a destination no wider than 64 bits");
@@ -112,7 +111,7 @@ namespace {
     Raw |= ~std::uint64_t{0} << SourceWidth;
   if (DestinationWidth < 64)
     Raw &= (std::uint64_t{1} << DestinationWidth) - 1U;
-  return IntegerImmediate::create(DestinationWidth, std::span<const std::uint64_t>(&Raw, 1));
+  return APInt::create(DestinationWidth, std::span<const std::uint64_t>(&Raw, 1));
 }
 
 [[nodiscard]] Expected<void>
@@ -271,9 +270,8 @@ wideConstantUnmergePlan(const MachineInstr &Constant, const MachineFunction &Fun
   return Plan;
 }
 
-[[nodiscard]] Expected<IntegerImmediate> wideConstantWord(const IntegerImmediate &Value,
-                                                          std::size_t WordIndex,
-                                                          std::uint32_t Width, bool SignExtend) {
+[[nodiscard]] Expected<APInt> wideConstantWord(const APInt &Value, std::size_t WordIndex,
+                                               std::uint32_t Width, bool SignExtend) {
   std::uint64_t Raw = 0;
   if (WordIndex < Value.words().size())
     Raw = Value.words()[WordIndex];
@@ -287,7 +285,7 @@ wideConstantUnmergePlan(const MachineInstr &Constant, const MachineFunction &Fun
   }
   if (Width < 64)
     Raw &= (std::uint64_t{1} << Width) - 1U;
-  return IntegerImmediate::create(Width, std::span<const std::uint64_t>(&Raw, 1));
+  return APInt::create(Width, std::span<const std::uint64_t>(&Raw, 1));
 }
 
 [[nodiscard]] Expected<void> foldWideConstant(MachineInstr &Instruction, MachineFunction &Function,
@@ -303,7 +301,7 @@ wideConstantUnmergePlan(const MachineInstr &Constant, const MachineFunction &Fun
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V wide constant has no integer immediate");
 
-  std::vector<IntegerImmediate> Words;
+  std::vector<APInt> Words;
   Words.reserve(Plan->Outputs.size());
   for (std::size_t Index = 0; Index < Plan->Outputs.size(); ++Index) {
     const auto Info = Function.registerInfo().virtualRegisterInfo(Plan->Outputs[Index]);
@@ -1240,7 +1238,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
   auto Result = Builder.function().registerInfo().createVirtualRegister(*Type);
   if (!Result)
     return std::unexpected(Result.error());
-  auto Immediate = IntegerImmediate::fromUnsigned(Width, Value);
+  auto Immediate = APInt::fromUnsigned(Width, Value);
   if (!Immediate)
     return std::unexpected(Immediate.error());
   auto Point = Builder.setInsertPointBefore(Anchor);

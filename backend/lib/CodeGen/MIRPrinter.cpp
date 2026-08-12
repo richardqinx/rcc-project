@@ -2249,7 +2249,7 @@ Expected<void> BodyPrinter::printOperand(const MachineOperand &Operand, bool IsE
     Output.append(std::to_string(*Operand.getIf<std::int64_t>()));
     return {};
   case MachineOperand::Kind::IntegerImmediate: {
-    const IntegerImmediate &Value = Operand.getIf<IntegerImmediateOperand>()->Value;
+    const APInt &Value = Operand.getIf<IntegerImmediateOperand>()->Value;
     Output.push_back('i');
     Output.append(std::to_string(Value.bitWidth()));
     Output.push_back(' ');
@@ -2260,7 +2260,7 @@ Expected<void> BodyPrinter::printOperand(const MachineOperand &Operand, bool IsE
     return {};
   }
   case MachineOperand::Kind::FloatingImmediate: {
-    const FloatingPointBits &Bits = Operand.getIf<FloatingImmediateOperand>()->Bits;
+    const APFloat &Bits = Operand.getIf<FloatingImmediateOperand>()->Bits;
     auto Constant = GenericConstantData::floating(Bits);
     if (!Constant)
       return std::unexpected(Constant.error());

@@ -45,7 +45,7 @@ namespace {
   case GlobalInitializer::Kind::Invalid:
     return makeUnexpected(ErrorCode::VerificationError, "global initializer is invalid");
   case GlobalInitializer::Kind::Integer: {
-    const auto *Value = Initializer.getIf<IntegerImmediate>();
+    const auto *Value = Initializer.getIf<APInt>();
     if (Value == nullptr)
       return makeUnexpected(ErrorCode::InternalError, "integer initializer storage is invalid");
     auto Verified = Value->verify();
@@ -54,7 +54,7 @@ namespace {
     return (static_cast<std::uint64_t>(Value->bitWidth()) + 7U) / 8U;
   }
   case GlobalInitializer::Kind::Floating: {
-    const auto *Value = Initializer.getIf<FloatingPointBits>();
+    const auto *Value = Initializer.getIf<APFloat>();
     if (Value == nullptr)
       return makeUnexpected(ErrorCode::InternalError, "floating initializer storage is invalid");
     return (static_cast<std::uint64_t>(Value->bitWidth()) + 7U) / 8U;
@@ -141,11 +141,11 @@ namespace {
 
 } // namespace
 
-GlobalInitializer GlobalInitializer::integer(IntegerImmediate Value) {
+GlobalInitializer GlobalInitializer::integer(APInt Value) {
   return GlobalInitializer(std::move(Value));
 }
 
-GlobalInitializer GlobalInitializer::floating(FloatingPointBits Value) {
+GlobalInitializer GlobalInitializer::floating(APFloat Value) {
   return GlobalInitializer(Value);
 }
 

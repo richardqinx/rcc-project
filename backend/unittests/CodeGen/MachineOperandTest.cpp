@@ -108,7 +108,7 @@ buildOperandInstruction(rcc::MachineFunction &Function, const rcc::TargetDescrip
       0x0123456789abcdefULL,
       0xfedcba9876543210ULL,
   };
-  auto Integer = rcc::IntegerImmediate::create(128, Words);
+  auto Integer = rcc::APInt::create(128, Words);
   if (!Integer)
     return std::unexpected(Integer.error());
 
@@ -149,35 +149,34 @@ void testIntegerImmediate(TestContext &Context) {
       0x0123456789abcdefULL,
       0x0000000000000001ULL,
   };
-  auto Integer = rcc::IntegerImmediate::create(65, Words);
+  auto Integer = rcc::APInt::create(65, Words);
   Context.expect(Integer.has_value() && Integer->bitWidth() == 65 && Integer->words().size() == 2 &&
                      Integer->words()[0] == Words[0] && Integer->words()[1] == Words[1] &&
                      Integer->isNegative() && !Integer->isZero(),
                  "arbitrary-width integer must preserve exact little-endian words");
 
-  Context.expect(!rcc::IntegerImmediate::create(0, std::span<const std::uint64_t>{}) &&
-                     !rcc::IntegerImmediate::create(rcc::IntegerImmediate::MaxBitWidth + 1,
-                                                    std::span<const std::uint64_t>{}),
-                 "integer immediate must reject unsupported bit widths");
+  Context.expect(
+      !rcc::APInt::create(0, std::span<const std::uint64_t>{}) &&
+          !rcc::APInt::create(rcc::APInt::MaxBitWidth + 1, std::span<const std::uint64_t>{}),
+      "integer immediate must reject unsupported bit widths");
   const std::array<std::uint64_t, 2> TwoWords{1, 0};
   const std::array<std::uint64_t, 1> HighBits{0x100};
-  Context.expect(!rcc::IntegerImmediate::create(64, TwoWords) &&
-                     !rcc::IntegerImmediate::create(8, HighBits),
+  Context.expect(!rcc::APInt::create(64, TwoWords) && !rcc::APInt::create(8, HighBits),
                  "integer immediate must reject word-count and high-bit mismatches");
 
-  auto UnsignedMaximum = rcc::IntegerImmediate::fromUnsigned(8, 255);
-  auto UnsignedOverflow = rcc::IntegerImmediate::fromUnsigned(8, 256);
-  auto SignedMinimum = rcc::IntegerImmediate::fromSigned(8, -128);
-  auto SignedMaximum = rcc::IntegerImmediate::fromSigned(8, 127);
-  auto SignedUnderflow = rcc::IntegerImmediate::fromSigned(8, -129);
-  auto SignedOverflow = rcc::IntegerImmediate::fromSigned(8, 128);
+  auto UnsignedMaximum = rcc::APInt::fromUnsigned(8, 255);
+  auto UnsignedOverflow = rcc::APInt::fromUnsigned(8, 256);
+  auto SignedMinimum = rcc::APInt::fromSigned(8, -128);
+  auto SignedMaximum = rcc::APInt::fromSigned(8, 127);
+  auto SignedUnderflow = rcc::APInt::fromSigned(8, -129);
+  auto SignedOverflow = rcc::APInt::fromSigned(8, 128);
   Context.expect(UnsignedMaximum && UnsignedMaximum->words()[0] == 255 && !UnsignedOverflow &&
                      SignedMinimum && SignedMinimum->words()[0] == 128 && SignedMaximum &&
                      SignedMaximum->words()[0] == 127 && !SignedUnderflow && !SignedOverflow,
                  "integer immediate scalar factories must enforce signedness and width");
 
-  auto SignExtended = rcc::IntegerImmediate::fromSigned(128, -1);
-  auto Zero = rcc::IntegerImmediate::fromUnsigned(128, 0);
+  auto SignExtended = rcc::APInt::fromSigned(128, -1);
+  auto Zero = rcc::APInt::fromUnsigned(128, 0);
   Context.expect(SignExtended && SignExtended->isNegative() && SignExtended->words().size() == 2 &&
                      SignExtended->words()[0] == std::numeric_limits<std::uint64_t>::max() &&
                      SignExtended->words()[1] == std::numeric_limits<std::uint64_t>::max() &&

@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_LOWLEVELTYPE_H
 #define RCC_CODEGEN_LOWLEVELTYPE_H
 
+#include "rcc/ADT/APFloat.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
@@ -14,35 +15,6 @@
 #include <type_traits>
 
 namespace rcc {
-
-enum class FloatSemantics : std::uint8_t {
-  IEEEHalf,
-  BFloat,
-  IEEESingle,
-  IEEEDouble,
-  IEEEQuad,
-  PPCDoubleDouble,
-  Float8E5M2,
-  Float8E5M2FNUZ,
-  Float8E4M3,
-  Float8E4M3FN,
-  Float8E4M3FNUZ,
-  Float8E4M3B11FNUZ,
-  Float8E3M4,
-  FloatTF32,
-  Float8E8M0FNU,
-  Float6E3M2FN,
-  Float6E2M3FN,
-  Float4E2M1FN,
-  X87DoubleExtended,
-  Count,
-};
-
-[[nodiscard]] bool isKnownFloatSemantics(FloatSemantics Semantics) noexcept;
-[[nodiscard]] std::optional<std::uint32_t>
-getFloatSemanticsBitWidth(FloatSemantics Semantics) noexcept;
-[[nodiscard]] std::string_view getFloatSemanticsName(FloatSemantics Semantics) noexcept;
-[[nodiscard]] std::string_view getFloatSemanticsSpelling(FloatSemantics Semantics) noexcept;
 
 class LLT final {
 public:

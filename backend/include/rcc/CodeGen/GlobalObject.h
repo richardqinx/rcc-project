@@ -82,8 +82,8 @@ public:
   GlobalInitializer &operator=(GlobalInitializer &&) noexcept = default;
   ~GlobalInitializer() = default;
 
-  [[nodiscard]] static GlobalInitializer integer(IntegerImmediate Value);
-  [[nodiscard]] static GlobalInitializer floating(FloatingPointBits Value);
+  [[nodiscard]] static GlobalInitializer integer(APInt Value);
+  [[nodiscard]] static GlobalInitializer floating(APFloat Value);
   [[nodiscard]] static Expected<GlobalInitializer> bytes(std::vector<std::byte> Value);
   [[nodiscard]] static Expected<GlobalInitializer> zeroFill(std::uint64_t Size);
   [[nodiscard]] static Expected<GlobalInitializer> repeated(std::uint64_t Count,
@@ -108,10 +108,10 @@ public:
 
 private:
   using StorageT =
-      std::variant<std::monostate, IntegerImmediate, FloatingPointBits, std::vector<std::byte>,
-                   GlobalZeroFill, GlobalRepeatedInitializer, GlobalAggregateInitializer,
-                   GlobalSymbolAddress, GlobalSymbolDifference, TargetConstant,
-                   GlobalAlignmentPadding, GlobalUndefinedStorage>;
+      std::variant<std::monostate, APInt, APFloat, std::vector<std::byte>, GlobalZeroFill,
+                   GlobalRepeatedInitializer, GlobalAggregateInitializer, GlobalSymbolAddress,
+                   GlobalSymbolDifference, TargetConstant, GlobalAlignmentPadding,
+                   GlobalUndefinedStorage>;
 
   explicit GlobalInitializer(StorageT Storage) : Storage(std::move(Storage)) {}
 

@@ -252,7 +252,7 @@ struct TypeLayout final {
   return mc::MCOperand::expression(std::move(*TargetExpression));
 }
 
-[[nodiscard]] Expected<std::int64_t> lowerIntegerImmediate(const IntegerImmediate &Value) {
+[[nodiscard]] Expected<std::int64_t> lowerIntegerImmediate(const APInt &Value) {
   if (Value.bitWidth() > 64 || Value.words().size() != 1) {
     return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                           "RISC-V instruction has an integer immediate wider than 64 bits");
@@ -714,14 +714,14 @@ struct TypeLayout final {
   }
   switch (Initializer.kind()) {
   case GlobalInitializer::Kind::Integer: {
-    const auto *Value = Initializer.getIf<IntegerImmediate>();
+    const auto *Value = Initializer.getIf<APInt>();
     if (Value == nullptr)
       return makeUnexpected(ErrorCode::InternalError, "integer initializer has no value");
     const std::uint64_t Size = (static_cast<std::uint64_t>(Value->bitWidth()) + 7U) / 8U;
     return Streamer.emitBytes(bytesFromWords(Value->words(), Size));
   }
   case GlobalInitializer::Kind::Floating: {
-    const auto *Value = Initializer.getIf<FloatingPointBits>();
+    const auto *Value = Initializer.getIf<APFloat>();
     if (Value == nullptr)
       return makeUnexpected(ErrorCode::InternalError, "floating initializer has no value");
     const std::uint64_t Size = (static_cast<std::uint64_t>(Value->bitWidth()) + 7U) / 8U;
@@ -839,12 +839,12 @@ struct TypeLayout final {
     return false;
   switch (Initializer.kind()) {
   case GlobalInitializer::Kind::Integer: {
-    const auto *Value = Initializer.getIf<IntegerImmediate>();
+    const auto *Value = Initializer.getIf<APInt>();
     return Value != nullptr &&
            std::ranges::all_of(Value->words(), [](std::uint64_t Word) { return Word == 0; });
   }
   case GlobalInitializer::Kind::Floating: {
-    const auto *Value = Initializer.getIf<FloatingPointBits>();
+    const auto *Value = Initializer.getIf<APFloat>();
     return Value != nullptr &&
            std::ranges::all_of(Value->words(), [](std::uint64_t Word) { return Word == 0; });
   }

@@ -45,7 +45,7 @@ makeObject(std::string Symbol, std::uint64_t Size, std::uint64_t Alignment,
 }
 
 [[nodiscard]] rcc::Expected<void> addObjects(rcc::CompilationUnit &Unit) {
-  auto AnswerValue = rcc::IntegerImmediate::fromUnsigned(32, 42);
+  auto AnswerValue = rcc::APInt::fromUnsigned(32, 42);
   if (!AnswerValue)
     return std::unexpected(AnswerValue.error());
   auto Answer =

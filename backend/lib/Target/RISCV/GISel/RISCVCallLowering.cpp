@@ -781,7 +781,7 @@ RISCVCallLowering::planReturn(const ReturnLoweringRequest &Request) const {
 
 [[nodiscard]] Expected<void> addUnsignedImmediate(MachineInstrBuilder &Builder,
                                                   std::uint64_t Value) {
-  auto Immediate = IntegerImmediate::fromUnsigned(64, Value);
+  auto Immediate = APInt::fromUnsigned(64, Value);
   if (!Immediate)
     return std::unexpected(Immediate.error());
   return Builder.addIntegerImmediate(std::move(*Immediate));

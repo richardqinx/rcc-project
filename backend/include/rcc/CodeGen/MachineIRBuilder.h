@@ -52,10 +52,8 @@ public:
                                               std::uint32_t TargetFlags = 0);
 
   [[nodiscard]] Expected<void> addImmediate(std::int64_t Value, std::uint32_t TargetFlags = 0);
-  [[nodiscard]] Expected<void> addIntegerImmediate(IntegerImmediate Value,
-                                                   std::uint32_t TargetFlags = 0);
-  [[nodiscard]] Expected<void> addFloatingImmediate(FloatingPointBits Bits,
-                                                    std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addIntegerImmediate(APInt Value, std::uint32_t TargetFlags = 0);
+  [[nodiscard]] Expected<void> addFloatingImmediate(APFloat Bits, std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addBasicBlock(MachineBasicBlock &Block,
                                              std::uint32_t TargetFlags = 0);
   [[nodiscard]] Expected<void> addFrameIndex(FrameIndex Index, std::int64_t Offset = 0,

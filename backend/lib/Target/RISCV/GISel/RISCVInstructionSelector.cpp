@@ -2512,7 +2512,7 @@ private:
 
     const std::uint32_t BitWidth = Type->scalarBitWidth();
     const std::uint64_t Bits = Floating->Bits.words().empty() ? 0 : Floating->Bits.words().front();
-    auto Integer = IntegerImmediate::fromUnsigned(64, Bits);
+    auto Integer = APInt::fromUnsigned(64, Bits);
     if (!Integer)
       return std::unexpected(Integer.error());
     auto IntegerType = LLT::makeInteger(64);

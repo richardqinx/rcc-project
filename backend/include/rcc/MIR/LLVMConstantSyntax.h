@@ -4,6 +4,7 @@
 #define RCC_MIR_LLVMCONSTANTSYNTAX_H
 
 #include "rcc/CodeGen/GenericConstant.h"
+#include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>

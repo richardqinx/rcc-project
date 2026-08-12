@@ -203,8 +203,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
   return false;
 }
 
-[[nodiscard]] bool signedIntegerLess(const IntegerImmediate &Left,
-                                     const IntegerImmediate &Right) noexcept {
+[[nodiscard]] bool signedIntegerLess(const APInt &Left, const APInt &Right) noexcept {
   if (Left.bitWidth() != Right.bitWidth())
     return false;
   if (Left.isNegative() != Right.isNegative())
@@ -249,7 +248,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
   case GenericConstantTypeKind::Metadata:
     return RequireNoElements();
   case GenericConstantTypeKind::Integer:
-    if (Type.BitWidth == 0 || Type.BitWidth > IntegerImmediate::MaxBitWidth) {
+    if (Type.BitWidth == 0 || Type.BitWidth > APInt::MaxBitWidth) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "generic integer type has an invalid bit width");
     }
@@ -257,7 +256,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
   case GenericConstantTypeKind::Byte:
     return RequireNoElements();
   case GenericConstantTypeKind::Floating:
-    if (!isKnownFloatSemantics(Type.Semantics)) {
+    if (!getFloatSemanticsBitWidth(Type.Semantics)) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "generic floating type has unknown semantics");
     }
@@ -702,7 +701,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
 } // namespace
 
 Expected<GenericConstantType> GenericConstantType::integer(std::uint32_t Width) {
-  if (Width == 0 || Width > IntegerImmediate::MaxBitWidth)
+  if (Width == 0 || Width > APInt::MaxBitWidth)
     return makeUnexpected(ErrorCode::InvalidArgument, "generic integer type width is invalid");
   GenericConstantType Type;
   Type.Kind = GenericConstantTypeKind::Integer;
@@ -724,7 +723,7 @@ GenericConstantType GenericConstantType::byte() noexcept {
 }
 
 Expected<GenericConstantType> GenericConstantType::floating(FloatSemantics ValueSemantics) {
-  if (!isKnownFloatSemantics(ValueSemantics))
+  if (!getFloatSemanticsBitWidth(ValueSemantics))
     return makeUnexpected(ErrorCode::InvalidArgument, "generic floating semantics is unknown");
   GenericConstantType Type;
   Type.Kind = GenericConstantTypeKind::Floating;
@@ -810,7 +809,7 @@ Expected<void> GenericConstantType::verify() const {
   return verifyType(*this, 0, Nodes);
 }
 
-Expected<GenericConstantData> GenericConstantData::integer(IntegerImmediate Value) {
+Expected<GenericConstantData> GenericConstantData::integer(APInt Value) {
   auto Type = GenericConstantType::integer(Value.bitWidth());
   if (!Type)
     return std::unexpected(Type.error());
@@ -821,7 +820,7 @@ Expected<GenericConstantData> GenericConstantData::integer(IntegerImmediate Valu
   return Result;
 }
 
-Expected<GenericConstantData> GenericConstantData::floating(FloatingPointBits Value) {
+Expected<GenericConstantData> GenericConstantData::floating(APFloat Value) {
   auto Type = GenericConstantType::floating(Value.semantics());
   if (!Type)
     return std::unexpected(Type.error());

@@ -102,7 +102,7 @@ void testOperandKinds(TestContext &Context) {
     return;
 
   const std::array<std::uint64_t, 1> HalfWords{0x3c00};
-  auto HalfBits = rcc::FloatingPointBits::create(rcc::FloatSemantics::IEEEHalf, HalfWords);
+  auto HalfBits = rcc::APFloat::create(rcc::FloatSemantics::IEEEHalf, HalfWords);
   Context.expect(HalfBits.has_value(), "well-sized floating immediate must be accepted");
   if (!HalfBits)
     return;
@@ -110,10 +110,10 @@ void testOperandKinds(TestContext &Context) {
                  "floating immediate must preserve semantics and raw bits");
 
   const std::array<std::uint64_t, 1> OverflowHalfWords{0x10000};
-  Context.expect(!rcc::FloatingPointBits::create(rcc::FloatSemantics::IEEEHalf, OverflowHalfWords),
+  Context.expect(!rcc::APFloat::create(rcc::FloatSemantics::IEEEHalf, OverflowHalfWords),
                  "floating immediate bits above semantics width must be rejected");
   const std::array<std::uint64_t, 2> TooManyHalfWords{0, 0};
-  Context.expect(!rcc::FloatingPointBits::create(rcc::FloatSemantics::IEEEHalf, TooManyHalfWords),
+  Context.expect(!rcc::APFloat::create(rcc::FloatSemantics::IEEEHalf, TooManyHalfWords),
                  "floating immediate word-count mismatch must be rejected");
 
   auto Virtual = Function->registerInfo().createVirtualRegister(*rcc::LLT::makeInteger(32));

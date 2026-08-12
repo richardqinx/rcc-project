@@ -116,9 +116,9 @@ namespace {
          Token.isKeyword("llvm_vector_register_mask");
 }
 
-[[nodiscard]] Expected<IntegerImmediate> parseIntegerImmediateValue(std::uint32_t BitWidth,
-                                                                    std::string_view Spelling) {
-  if (BitWidth == 0 || BitWidth > IntegerImmediate::MaxBitWidth)
+[[nodiscard]] Expected<APInt> parseIntegerImmediateValue(std::uint32_t BitWidth,
+                                                         std::string_view Spelling) {
+  if (BitWidth == 0 || BitWidth > APInt::MaxBitWidth)
     return makeUnexpected(ErrorCode::ParseError, "typed integer width is out of range");
 
   const bool Negative = Spelling.starts_with('-');
@@ -155,7 +155,7 @@ namespace {
     if (BitWidth % 64U != 0)
       Words.back() &= (std::uint64_t{1} << (BitWidth % 64U)) - 1U;
   }
-  return IntegerImmediate::create(BitWidth, Words);
+  return APInt::create(BitWidth, Words);
 }
 
 [[nodiscard]] std::optional<std::uint64_t> minimumTypeSizeInBits(LLT Type) noexcept {
@@ -1244,7 +1244,7 @@ bool MIParser::Impl::parseTypedIntegerOperand(ParsedOperand &Result) {
     return fail(Begin, "typed integer operand must use an 'iN' type");
   std::uint64_t WideBitWidth = 0;
   if (!parseUnsignedDigits(TypeSpelling.substr(1), WideBitWidth) ||
-      WideBitWidth > IntegerImmediate::MaxBitWidth) {
+      WideBitWidth > APInt::MaxBitWidth) {
     return fail(Begin, "typed integer operand has an invalid bit width");
   }
   const auto BitWidth = static_cast<std::uint32_t>(WideBitWidth);

@@ -335,7 +335,7 @@ struct SourceFixture final {
     return false;
 
   rcc::MachineConstantPoolEntryDesc HistoricalConstant;
-  auto HistoricalInteger = rcc::IntegerImmediate::fromUnsigned(32, 0x01010101U);
+  auto HistoricalInteger = rcc::APInt::fromUnsigned(32, 0x01010101U);
   HistoricalConstant.Value =
       std::move(*rcc::GenericConstantData::integer(std::move(*HistoricalInteger)));
   HistoricalConstant.Size = 4;

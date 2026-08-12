@@ -326,7 +326,7 @@ void testShapesAndTypes(TestContext &Context) {
                                                 (*Function)->registerInfo()),
                  "G_ADD must reject a source from a different LLT equality group");
 
-  auto ZeroImmediate = rcc::IntegerImmediate::fromUnsigned(64, 0);
+  auto ZeroImmediate = rcc::APInt::fromUnsigned(64, 0);
   std::vector<rcc::MachineOperand> PointerConstant;
   PointerConstant.push_back(registerOperand(*Address, true));
   if (ZeroImmediate)
@@ -489,7 +489,7 @@ void testShapesAndTypes(TestContext &Context) {
                  "G_FPEXTLOAD must reject an integer result");
 
   const std::array<std::uint64_t, 1> FloatWords{0};
-  auto FloatBits = rcc::FloatingPointBits::create(rcc::FloatSemantics::IEEESingle, FloatWords);
+  auto FloatBits = rcc::APFloat::create(rcc::FloatSemantics::IEEESingle, FloatWords);
   if (!FloatBits)
     std::terminate();
   std::vector<rcc::MachineOperand> FConstantOperands;
@@ -505,7 +505,7 @@ void testShapesAndTypes(TestContext &Context) {
                  "G_FCONSTANT must reject mismatched floating semantics");
 
   const std::array<std::uint64_t, 1> BFloatWords{0};
-  auto BFloatBits = rcc::FloatingPointBits::create(rcc::FloatSemantics::BFloat, BFloatWords);
+  auto BFloatBits = rcc::APFloat::create(rcc::FloatSemantics::BFloat, BFloatWords);
   if (!BFloatBits)
     std::terminate();
   FConstantOperands[0] = registerOperand(Scalar16, true);

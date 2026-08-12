@@ -3,8 +3,9 @@
 #ifndef RCC_CODEGEN_GENERICCONSTANT_H
 #define RCC_CODEGEN_GENERICCONSTANT_H
 
+#include "rcc/ADT/APFloat.h"
+#include "rcc/ADT/APInt.h"
 #include "rcc/CodeGen/LowLevelType.h"
-#include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
@@ -144,8 +145,8 @@ private:
 struct GenericConstantData final {
   GenericConstantType Type;
   GenericConstantKind Kind = GenericConstantKind::Invalid;
-  std::optional<IntegerImmediate> IntegerValue;
-  std::optional<FloatingPointBits> FloatingValue;
+  std::optional<APInt> IntegerValue;
+  std::optional<APFloat> FloatingValue;
   std::vector<std::byte> ByteValue;
   std::vector<GenericConstantData> Elements;
   std::string Symbol;
@@ -155,11 +156,11 @@ struct GenericConstantData final {
   GenericConstantExpressionOpcode ExpressionOpcode = GenericConstantExpressionOpcode::Invalid;
   GenericConstantExpressionFlags ExpressionFlags;
   std::optional<GenericConstantType> SourceElementType;
-  std::optional<IntegerImmediate> InRangeStart;
-  std::optional<IntegerImmediate> InRangeEnd;
+  std::optional<APInt> InRangeStart;
+  std::optional<APInt> InRangeEnd;
 
-  [[nodiscard]] static Expected<GenericConstantData> integer(IntegerImmediate Value);
-  [[nodiscard]] static Expected<GenericConstantData> floating(FloatingPointBits Value);
+  [[nodiscard]] static Expected<GenericConstantData> integer(APInt Value);
+  [[nodiscard]] static Expected<GenericConstantData> floating(APFloat Value);
   [[nodiscard]] static Expected<GenericConstantData> byteString(GenericConstantType Type,
                                                                 std::vector<std::byte> Bytes);
 

@@ -347,8 +347,8 @@ void testClassification(TestContext &Context) {
     return;
   const std::array<std::uint64_t, 1> SingleWords{0x3f800000U};
   const std::array<std::uint64_t, 1> DoubleWords{0x3ff0000000000000ULL};
-  auto SingleBits = rcc::FloatingPointBits::create(rcc::FloatSemantics::IEEESingle, SingleWords);
-  auto DoubleBits = rcc::FloatingPointBits::create(rcc::FloatSemantics::IEEEDouble, DoubleWords);
+  auto SingleBits = rcc::APFloat::create(rcc::FloatSemantics::IEEESingle, SingleWords);
+  auto DoubleBits = rcc::APFloat::create(rcc::FloatSemantics::IEEEDouble, DoubleWords);
   Context.expect(SingleBits.has_value() && DoubleBits.has_value(),
                  "floating constant payloads must be constructible");
   if (!SingleBits || !DoubleBits)
@@ -875,7 +875,7 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
   if (!AddressDefinition || !AddressDefinition->addDef(*Address) || !AddressDefinition->build())
     return;
   const auto BuildConstant = [&](rcc::Register Destination, std::uint64_t Value) -> bool {
-    auto Immediate = rcc::IntegerImmediate::fromUnsigned(8, Value);
+    auto Immediate = rcc::APInt::fromUnsigned(8, Value);
     auto Pending = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::G_CONSTANT));
     return Immediate && Pending && Pending->addDef(Destination) &&
            Pending->addIntegerImmediate(std::move(*Immediate)) && Pending->build();
@@ -1013,7 +1013,7 @@ void testConstantExtensionPreservesLiveSource(TestContext &Context) {
   auto Source = (*Function)->registerInfo().createVirtualRegister(*I32);
   auto Extended = (*Function)->registerInfo().createVirtualRegister(*I64);
   auto PreservedUse = (*Function)->registerInfo().createVirtualRegister(*I32);
-  auto Immediate = rcc::IntegerImmediate::fromUnsigned(32, 7);
+  auto Immediate = rcc::APInt::fromUnsigned(32, 7);
   if (!Source || !Extended || !PreservedUse || !Immediate)
     return;
 
@@ -1060,7 +1060,7 @@ void testIntegerCompareReusesConstantExtension(TestContext &Context) {
   rcc::MachineInstr *Compare = Function->firstBlock()->firstInstruction();
   const rcc::Register *Right = Compare->operandAt(3)->getIf<rcc::Register>();
   auto WideRight = Function->registerInfo().createVirtualRegister(*I64);
-  auto Immediate = rcc::IntegerImmediate::fromUnsigned(32, 0);
+  auto Immediate = rcc::APInt::fromUnsigned(32, 0);
   if (Right == nullptr || !WideRight || !Immediate)
     return;
 

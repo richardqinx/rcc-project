@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-set(RCCBackendSupportSources Error.cpp SHA256.cpp TextDiagnostic.cpp YAML.cpp)
+set(RCCBackendSupportSources APFloat.cpp APInt.cpp Error.cpp SHA256.cpp TextDiagnostic.cpp YAML.cpp)
 set(
   RCCBackendSupportHeaders
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/ADT/APFloat.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/ADT/APInt.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Support/Error.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Support/SHA256.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Support/TextDiagnostic.h"
@@ -37,6 +39,8 @@ install(
 )
 
 rcc_backend_register_format_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/APFloat.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/APInt.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Error.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/SHA256.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TextDiagnostic.cpp"
@@ -44,6 +48,8 @@ rcc_backend_register_format_files(
   ${RCCBackendSupportHeaders}
 )
 rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/APFloat.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/APInt.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Error.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/SHA256.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TextDiagnostic.cpp"

@@ -8,222 +8,14 @@
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <span>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace rcc {
-namespace {
-
-[[nodiscard]] constexpr std::size_t integerWordCount(std::uint32_t BitWidth) noexcept {
-  return (static_cast<std::size_t>(BitWidth) + 63U) / 64U;
-}
-
-[[nodiscard]] constexpr std::uint64_t integerHighWordMask(std::uint32_t BitWidth) noexcept {
-  const std::uint32_t UsedBits = BitWidth % 64U;
-  if (UsedBits == 0)
-    return std::numeric_limits<std::uint64_t>::max();
-  return (std::uint64_t{1} << UsedBits) - 1U;
-}
-
-[[nodiscard]] Expected<void> verifyIntegerImmediate(std::uint32_t BitWidth,
-                                                    std::span<const std::uint64_t> Words,
-                                                    ErrorCode Code) {
-  if (BitWidth == 0 || BitWidth > IntegerImmediate::MaxBitWidth) {
-    return makeUnexpected(Code, "integer immediate bit width is outside the supported range");
-  }
-  if (Words.size() != integerWordCount(BitWidth)) {
-    return makeUnexpected(Code, "integer immediate bit pattern has the wrong word count");
-  }
-  if ((Words.back() & ~integerHighWordMask(BitWidth)) != 0) {
-    return makeUnexpected(Code, "integer immediate has nonzero bits above its declared width");
-  }
-  return {};
-}
-
-} // namespace
-
-Expected<IntegerImmediate> IntegerImmediate::create(std::uint32_t BitWidth,
-                                                    std::span<const std::uint64_t> Words) {
-  auto Verification = verifyIntegerImmediate(BitWidth, Words, ErrorCode::InvalidArgument);
-  if (!Verification)
-    return std::unexpected(Verification.error());
-  return IntegerImmediate(BitWidth, std::vector<std::uint64_t>(Words.begin(), Words.end()));
-}
-
-Expected<IntegerImmediate> IntegerImmediate::fromUnsigned(std::uint32_t BitWidth,
-                                                          std::uint64_t Value) {
-  if (BitWidth == 0 || BitWidth > MaxBitWidth) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "integer immediate bit width is outside the supported range");
-  }
-  if (BitWidth < 64U && (Value >> BitWidth) != 0) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "unsigned value does not fit the integer immediate bit width");
-  }
-
-  std::vector<std::uint64_t> Words(integerWordCount(BitWidth), 0);
-  Words.front() = Value;
-  return create(BitWidth, Words);
-}
-
-Expected<IntegerImmediate> IntegerImmediate::fromSigned(std::uint32_t BitWidth,
-                                                        std::int64_t Value) {
-  if (BitWidth == 0 || BitWidth > MaxBitWidth) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "integer immediate bit width is outside the supported range");
-  }
-  if (BitWidth < 64U) {
-    const std::uint32_t MagnitudeBits = BitWidth - 1U;
-    const std::int64_t Minimum = -(std::int64_t{1} << MagnitudeBits);
-    const std::int64_t Maximum = (std::int64_t{1} << MagnitudeBits) - 1;
-    if (Value < Minimum || Value > Maximum) {
-      return makeUnexpected(ErrorCode::InvalidArgument,
-                            "signed value does not fit the integer immediate bit width");
-    }
-  }
-
-  const std::uint64_t Fill =
-      Value < 0 ? std::numeric_limits<std::uint64_t>::max() : std::uint64_t{0};
-  std::vector<std::uint64_t> Words(integerWordCount(BitWidth), Fill);
-  Words.front() = static_cast<std::uint64_t>(Value);
-  Words.back() &= integerHighWordMask(BitWidth);
-  return create(BitWidth, Words);
-}
-
-Expected<IntegerImmediate> IntegerImmediate::parseDecimal(std::uint32_t BitWidth,
-                                                          std::string_view Text) {
-  if (BitWidth == 0 || BitWidth > MaxBitWidth) {
-    return makeUnexpected(ErrorCode::ParseError,
-                          "integer immediate bit width is outside the supported range");
-  }
-  const bool Negative = Text.starts_with('-');
-  if (Negative)
-    Text.remove_prefix(1);
-  if (Text.empty())
-    return makeUnexpected(ErrorCode::ParseError, "integer immediate has no decimal digits");
-
-  std::vector<std::uint64_t> Words(integerWordCount(BitWidth), 0);
-  for (const char Character : Text) {
-    if (Character < '0' || Character > '9') {
-      return makeUnexpected(ErrorCode::ParseError,
-                            "integer immediate contains a non-decimal digit");
-    }
-    std::uint64_t Carry = static_cast<unsigned>(Character - '0');
-    for (std::uint64_t &Word : Words) {
-      const unsigned __int128 Product = static_cast<unsigned __int128>(Word) * 10U + Carry;
-      Word = static_cast<std::uint64_t>(Product);
-      Carry = static_cast<std::uint64_t>(Product >> 64U);
-    }
-  }
-
-  // LLVM integer literals are arbitrary precision and are extended or
-  // truncated to the declared bit width before becoming a constant.
-  Words.back() &= integerHighWordMask(BitWidth);
-  if (Negative) {
-    for (std::uint64_t &Word : Words)
-      Word = ~Word;
-    std::uint64_t Carry = 1;
-    for (std::uint64_t &Word : Words) {
-      const std::uint64_t Previous = Word;
-      Word += Carry;
-      Carry = Carry != 0 && Word < Previous ? 1 : 0;
-    }
-    Words.back() &= integerHighWordMask(BitWidth);
-  }
-  return create(BitWidth, Words);
-}
-
-bool IntegerImmediate::isZero() const noexcept {
-  return std::ranges::all_of(Words, [](std::uint64_t Word) { return Word == 0; });
-}
-
-bool IntegerImmediate::isNegative() const noexcept {
-  const std::uint32_t SignBit = BitWidth - 1U;
-  return (Words[SignBit / 64U] & (std::uint64_t{1} << (SignBit % 64U))) != 0;
-}
-
-std::string IntegerImmediate::toUnsignedDecimal() const {
-  if (isZero())
-    return "0";
-  std::vector<std::uint64_t> Remaining = Words;
-  std::string Digits;
-  while (!std::ranges::all_of(Remaining, [](std::uint64_t Word) { return Word == 0; })) {
-    unsigned __int128 Remainder = 0;
-    for (auto Iterator = Remaining.rbegin(); Iterator != Remaining.rend(); ++Iterator) {
-      const unsigned __int128 Dividend = (Remainder << 64U) | *Iterator;
-      *Iterator = static_cast<std::uint64_t>(Dividend / 10U);
-      Remainder = Dividend % 10U;
-    }
-    Digits.push_back(static_cast<char>('0' + static_cast<unsigned>(Remainder)));
-  }
-  std::ranges::reverse(Digits);
-  return Digits;
-}
-
-std::string IntegerImmediate::toSignedDecimal() const {
-  if (!isNegative())
-    return toUnsignedDecimal();
-
-  std::vector<std::uint64_t> Magnitude = Words;
-  for (std::uint64_t &Word : Magnitude)
-    Word = ~Word;
-  std::uint64_t Carry = 1;
-  for (std::uint64_t &Word : Magnitude) {
-    const std::uint64_t Previous = Word;
-    Word += Carry;
-    Carry = Carry != 0 && Word < Previous ? 1 : 0;
-  }
-  Magnitude.back() &= integerHighWordMask(BitWidth);
-
-  std::string Digits;
-  while (!std::ranges::all_of(Magnitude, [](std::uint64_t Word) { return Word == 0; })) {
-    unsigned __int128 Remainder = 0;
-    for (auto Iterator = Magnitude.rbegin(); Iterator != Magnitude.rend(); ++Iterator) {
-      const unsigned __int128 Dividend = (Remainder << 64U) | *Iterator;
-      *Iterator = static_cast<std::uint64_t>(Dividend / 10U);
-      Remainder = Dividend % 10U;
-    }
-    Digits.push_back(static_cast<char>('0' + static_cast<unsigned>(Remainder)));
-  }
-  std::ranges::reverse(Digits);
-  Digits.insert(Digits.begin(), '-');
-  return Digits;
-}
-
-Expected<void> IntegerImmediate::verify() const {
-  return verifyIntegerImmediate(BitWidth, Words, ErrorCode::VerificationError);
-}
-
-Expected<FloatingPointBits> FloatingPointBits::create(FloatSemantics Semantics,
-                                                      std::span<const std::uint64_t> Words) {
-  const auto BitWidth = getFloatSemanticsBitWidth(Semantics);
-  if (!BitWidth) {
-    return makeUnexpected(ErrorCode::InvalidArgument, "floating immediate has unknown semantics");
-  }
-
-  const std::size_t RequiredWords = (*BitWidth + 63U) / 64U;
-  if (RequiredWords > 2 || Words.size() != RequiredWords) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "floating immediate bit pattern has the wrong word count");
-  }
-
-  const std::uint32_t UsedBitsInLastWord = *BitWidth % 64U;
-  if (UsedBitsInLastWord != 0 && (Words.back() >> UsedBitsInLastWord) != 0) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "floating immediate has nonzero bits above its semantics width");
-  }
-
-  std::array<std::uint64_t, 2> StoredWords{};
-  std::ranges::copy(Words, StoredWords.begin());
-  return FloatingPointBits(Semantics, StoredWords, static_cast<std::uint8_t>(RequiredWords));
-}
 
 RegisterOperandFlags::RegisterOperandFlags(
     std::initializer_list<RegisterOperandFlag> Flags) noexcept {
@@ -296,13 +88,12 @@ MachineOperand MachineOperand::immediate(std::int64_t Value, std::uint32_t Targe
   return MachineOperand(Kind::Immediate, Value, TargetFlags);
 }
 
-MachineOperand MachineOperand::integerImmediate(IntegerImmediate Value, std::uint32_t TargetFlags) {
+MachineOperand MachineOperand::integerImmediate(APInt Value, std::uint32_t TargetFlags) {
   return MachineOperand(Kind::IntegerImmediate, IntegerImmediateOperand{std::move(Value)},
                         TargetFlags);
 }
 
-MachineOperand MachineOperand::floatingImmediate(FloatingPointBits Bits,
-                                                 std::uint32_t TargetFlags) {
+MachineOperand MachineOperand::floatingImmediate(APFloat Bits, std::uint32_t TargetFlags) {
   return MachineOperand(Kind::FloatingImmediate, FloatingImmediateOperand{Bits}, TargetFlags);
 }
 

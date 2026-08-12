@@ -162,13 +162,11 @@ Expected<void> MachineInstrBuilder::addImmediate(std::int64_t Value, std::uint32
   return addOperand(MachineOperand::immediate(Value, TargetFlags));
 }
 
-Expected<void> MachineInstrBuilder::addIntegerImmediate(IntegerImmediate Value,
-                                                        std::uint32_t TargetFlags) {
+Expected<void> MachineInstrBuilder::addIntegerImmediate(APInt Value, std::uint32_t TargetFlags) {
   return addOperand(MachineOperand::integerImmediate(std::move(Value), TargetFlags));
 }
 
-Expected<void> MachineInstrBuilder::addFloatingImmediate(FloatingPointBits Bits,
-                                                         std::uint32_t TargetFlags) {
+Expected<void> MachineInstrBuilder::addFloatingImmediate(APFloat Bits, std::uint32_t TargetFlags) {
   return addOperand(MachineOperand::floatingImmediate(Bits, TargetFlags));
 }
 

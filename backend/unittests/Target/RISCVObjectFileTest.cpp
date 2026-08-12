@@ -293,7 +293,7 @@ private:
 
 [[nodiscard]] rcc::Expected<rcc::GlobalInitializer> integer(std::uint32_t Bits,
                                                             std::uint64_t Value) {
-  auto Immediate = rcc::IntegerImmediate::fromUnsigned(Bits, Value);
+  auto Immediate = rcc::APInt::fromUnsigned(Bits, Value);
   if (!Immediate)
     return std::unexpected(Immediate.error());
   return rcc::GlobalInitializer::integer(std::move(*Immediate));

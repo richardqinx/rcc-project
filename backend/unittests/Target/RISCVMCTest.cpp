@@ -260,7 +260,7 @@ symbolExpression(rcc::mc::MCContext &Context, std::string_view Name, std::uint32
 
 [[nodiscard]] bool testObjectEmission(const rcc::TargetDescription &Target) {
   auto Alignment = rcc::Alignment::create(8);
-  auto Value = rcc::IntegerImmediate::fromUnsigned(64, 0x1122334455667788ULL);
+  auto Value = rcc::APInt::fromUnsigned(64, 0x1122334455667788ULL);
   if (!Alignment || !Value)
     return false;
   rcc::GlobalObjectDesc Global;

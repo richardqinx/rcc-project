@@ -8,43 +8,6 @@
 namespace rcc {
 namespace {
 
-struct FloatSemanticsInfo final {
-  std::uint32_t BitWidth;
-  std::string_view Name;
-  std::string_view Spelling;
-};
-
-constexpr std::array FloatSemanticsTable{
-    FloatSemanticsInfo{16, "IEEE half", "f16"},
-    FloatSemanticsInfo{16, "bfloat", "bf16"},
-    FloatSemanticsInfo{32, "IEEE single", "f32"},
-    FloatSemanticsInfo{64, "IEEE double", "f64"},
-    FloatSemanticsInfo{128, "IEEE quad", "f128"},
-    FloatSemanticsInfo{128, "PPC double-double", "ppcf128"},
-    FloatSemanticsInfo{8, "float8 E5M2", "f8e5m2"},
-    FloatSemanticsInfo{8, "float8 E5M2 FNUZ", "f8e5m2fnuz"},
-    FloatSemanticsInfo{8, "float8 E4M3", "f8e4m3"},
-    FloatSemanticsInfo{8, "float8 E4M3 FN", "f8e4m3fn"},
-    FloatSemanticsInfo{8, "float8 E4M3 FNUZ", "f8e4m3fnuz"},
-    FloatSemanticsInfo{8, "float8 E4M3 B11 FNUZ", "f8e4m3b11fnuz"},
-    FloatSemanticsInfo{8, "float8 E3M4", "f8e3m4"},
-    FloatSemanticsInfo{19, "TensorFloat-32", "tf32"},
-    FloatSemanticsInfo{8, "float8 E8M0 FNU", "f8e8m0fnu"},
-    FloatSemanticsInfo{6, "float6 E3M2 FN", "f6e3m2fn"},
-    FloatSemanticsInfo{6, "float6 E2M3 FN", "f6e2m3fn"},
-    FloatSemanticsInfo{4, "float4 E2M1 FN", "f4e2m1fn"},
-    FloatSemanticsInfo{80, "x87 double-extended", "x86fp80"},
-};
-
-static_assert(FloatSemanticsTable.size() == static_cast<std::size_t>(FloatSemantics::Count));
-
-[[nodiscard]] const FloatSemanticsInfo *getFloatSemanticsInfo(FloatSemantics Semantics) noexcept {
-  const auto Index = static_cast<std::size_t>(Semantics);
-  if (Index >= FloatSemanticsTable.size())
-    return nullptr;
-  return &FloatSemanticsTable[Index];
-}
-
 [[nodiscard]] LLT::Kind getVectorKind(LLT ElementType) noexcept {
   switch (ElementType.kind()) {
   case LLT::Kind::AnyScalar:
@@ -68,31 +31,6 @@ static_assert(FloatSemanticsTable.size() == static_cast<std::size_t>(FloatSemant
 }
 
 } // namespace
-
-bool isKnownFloatSemantics(FloatSemantics Semantics) noexcept {
-  return getFloatSemanticsInfo(Semantics) != nullptr;
-}
-
-std::optional<std::uint32_t> getFloatSemanticsBitWidth(FloatSemantics Semantics) noexcept {
-  const auto *Info = getFloatSemanticsInfo(Semantics);
-  if (Info == nullptr)
-    return std::nullopt;
-  return Info->BitWidth;
-}
-
-std::string_view getFloatSemanticsName(FloatSemantics Semantics) noexcept {
-  const auto *Info = getFloatSemanticsInfo(Semantics);
-  if (Info == nullptr)
-    return "unknown";
-  return Info->Name;
-}
-
-std::string_view getFloatSemanticsSpelling(FloatSemantics Semantics) noexcept {
-  const auto *Info = getFloatSemanticsInfo(Semantics);
-  if (Info == nullptr)
-    return "invalid-float";
-  return Info->Spelling;
-}
 
 Expected<LLT> LLT::makeScalar(Kind TypeKind, std::uint64_t BitWidth) {
   if (BitWidth == 0 || BitWidth > MaxBitWidth) {
