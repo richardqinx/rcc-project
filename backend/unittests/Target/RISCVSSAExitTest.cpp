@@ -11,8 +11,8 @@
 #include "rcc/CodeGen/MachineLiveness.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachinePass.h"
-#include "rcc/CodeGen/MachineSSAExit.h"
 #include "rcc/CodeGen/MachineVerifier.h"
+#include "rcc/CodeGen/PHIElimination.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <algorithm>

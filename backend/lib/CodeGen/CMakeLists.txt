@@ -66,7 +66,7 @@ set(
   RegAllocFast.cpp
   RegAllocPBQP.cpp
   VirtRegMap.cpp
-  MachineSSAExit.cpp
+  PHIElimination.cpp
   MachineVerifier.cpp
   MachineFunctionProperties.cpp
   MachineFunctionRecords.cpp
@@ -80,6 +80,7 @@ set(
   TargetMIRTextInfo.cpp
   TargetRegisterInfo.cpp
   TargetSchedulingModel.cpp
+  TwoAddressInstructionPass.cpp
 )
 set(
   RCCBackendCodeGenHeaders
@@ -155,7 +156,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/Spiller.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetRegisterAllocationInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/VirtRegMap.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineSSAExit.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PHIElimination.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineVerifier.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionProperties.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionRecords.h"
@@ -172,6 +173,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetMemoryFolding.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetRegisterInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetSchedulingModel.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TwoAddressInstructionPass.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetPseudoExpansion.h"
 )
 
@@ -271,7 +273,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBase.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBasic.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocInternal.h"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PHIElimination.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionRecords.cpp"
@@ -285,6 +287,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetSchedulingModel.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TwoAddressInstructionPass.cpp"
   ${RCCBackendCodeGenHeaders}
 )
 rcc_backend_register_tidy_files(
@@ -349,7 +352,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocFast.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocPBQP.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/VirtRegMap.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExit.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PHIElimination.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifier.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionProperties.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineFunctionRecords.cpp"
@@ -363,4 +366,5 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetMIRTextInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetRegisterInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TargetSchedulingModel.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TwoAddressInstructionPass.cpp"
 )

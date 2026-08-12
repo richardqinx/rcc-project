@@ -25,7 +25,8 @@ set(
   MachineSchedulingTest.cpp
   PBQPTest.cpp
   RegisterAllocationTest.cpp
-  MachineSSAExitTest.cpp
+  PHIEliminationTest.cpp
+  TwoAddressInstructionPassTest.cpp
   MachineVerifierTest.cpp
   MachineVerifierTargetTest.cpp
   MachineValueTypesTest.cpp
@@ -371,13 +372,30 @@ target_link_libraries(
 )
 add_test(NAME RCCBackend.CodeGen.MachineScheduling COMMAND RCCBackendCodeGenMachineSchedulingTests)
 
-add_executable(RCCBackendCodeGenMachineSSAExitTests MachineSSAExitTest.cpp)
-rcc_backend_configure_target(RCCBackendCodeGenMachineSSAExitTests)
+add_executable(RCCBackendCodeGenPHIEliminationTests PHIEliminationTest.cpp)
+rcc_backend_configure_target(RCCBackendCodeGenPHIEliminationTests)
 target_link_libraries(
-  RCCBackendCodeGenMachineSSAExitTests
+  RCCBackendCodeGenPHIEliminationTests
   PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
 )
-add_test(NAME RCCBackend.CodeGen.MachineSSAExit COMMAND RCCBackendCodeGenMachineSSAExitTests)
+add_test(
+  NAME RCCBackend.CodeGen.PHIElimination
+  COMMAND RCCBackendCodeGenPHIEliminationTests
+)
+
+add_executable(
+  RCCBackendCodeGenTwoAddressInstructionPassTests
+  TwoAddressInstructionPassTest.cpp
+)
+rcc_backend_configure_target(RCCBackendCodeGenTwoAddressInstructionPassTests)
+target_link_libraries(
+  RCCBackendCodeGenTwoAddressInstructionPassTests
+  PRIVATE RCCBackend::CodeGen RCCBackend::TestTarget
+)
+add_test(
+  NAME RCCBackend.CodeGen.TwoAddressInstructionPass
+  COMMAND RCCBackendCodeGenTwoAddressInstructionPassTests
+)
 
 add_executable(RCCBackendCodeGenTargetConstantTests TargetConstantTest.cpp)
 rcc_backend_configure_target(RCCBackendCodeGenTargetConstantTests)
@@ -460,7 +478,9 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulingTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExitTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PHIEliminationTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/SSAExitTestSupport.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TwoAddressInstructionPassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"
@@ -501,7 +521,9 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulingTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/PBQPTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocationTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MachineSSAExitTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/PHIEliminationTest.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/SSAExitTestSupport.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TwoAddressInstructionPassTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineVerifierTargetTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineValueTypesTest.cpp"

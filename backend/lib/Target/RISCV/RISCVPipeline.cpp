@@ -11,9 +11,10 @@
 #include "rcc/CodeGen/MachineCombiner.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
-#include "rcc/CodeGen/MachineSSAExit.h"
+#include "rcc/CodeGen/PHIElimination.h"
 #include "rcc/CodeGen/RegAllocPBQP.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TwoAddressInstructionPass.h"
 
 #include <memory>
 #include <ranges>
@@ -52,7 +53,7 @@ template <typename PassT, typename... ArgumentT>
   Added = addPass<PHIEliminationPass>(Pipeline, instrInfo());
   if (!Added)
     return std::unexpected(Added.error());
-  return addPass<TwoAddressRewritePass>(Pipeline, instrInfo());
+  return addPass<TwoAddressInstructionPass>(Pipeline, instrInfo());
 }
 
 [[nodiscard]] Expected<void> addRegisterAllocationPipeline(MachinePassManager &Pipeline) {
@@ -110,7 +111,7 @@ Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineF
     }
   }
   if (!Function.properties().has(MachineFunctionProperty::TiedOpsRewritten)) {
-    auto Added = addPass<TwoAddressRewritePass>(Pipeline, instrInfo());
+    auto Added = addPass<TwoAddressInstructionPass>(Pipeline, instrInfo());
     if (!Added)
       return std::unexpected(Added.error());
   }
