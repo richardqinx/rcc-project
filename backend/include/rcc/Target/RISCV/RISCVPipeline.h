@@ -30,11 +30,6 @@ createCanonicalPipelinePass(std::string_view Name);
 createCanonicalPipelinePass(std::string_view Name, RISCVSubtargetFeatures Features);
 [[nodiscard]] Expected<std::vector<std::string>>
 canonicalPipelinePassNames(const MachineFunction &Function);
-[[nodiscard]] Expected<void>
-runCanonicalPipeline(MachineFunction &Function, const TargetDescription &Target,
-                     MachinePassManagerOptions Options = {},
-                     MachinePassInstrumentation *Instrumentation = nullptr);
-
 } // namespace riscv
 } // namespace rcc
 

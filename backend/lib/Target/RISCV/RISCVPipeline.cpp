@@ -166,18 +166,4 @@ Expected<std::vector<std::string>> canonicalPipelinePassNames(const MachineFunct
   return Result;
 }
 
-Expected<void> runCanonicalPipeline(MachineFunction &Function, const TargetDescription &Target,
-                                    MachinePassManagerOptions Options,
-                                    MachinePassInstrumentation *Instrumentation) {
-  MachinePassManager Pipeline(Options);
-  auto Added = addCanonicalPipeline(Pipeline, Function);
-  if (!Added)
-    return std::unexpected(Added.error());
-  MachineAnalysisManager Analyses;
-  auto Registered = registerMachineOptimizationAnalyses(Analyses);
-  if (!Registered)
-    return std::unexpected(Registered.error());
-  return Pipeline.run(Function, Target, Analyses, Instrumentation);
-}
-
 } // namespace rcc::riscv
