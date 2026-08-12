@@ -4,14 +4,14 @@
 #define RCC_CODEGEN_MACHINESSAEXIT_H
 
 #include "rcc/CodeGen/MachinePass.h"
-#include "rcc/CodeGen/TargetCodeGen.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 
 namespace rcc {
 
 class PHIEliminationPass final : public MachineFunctionPass {
 public:
   PHIEliminationPass() noexcept = default;
-  explicit PHIEliminationPass(const TargetSSAInfo &Info) noexcept : Info(&Info) {}
+  explicit PHIEliminationPass(const TargetInstrInfo &Info) noexcept : Info(&Info) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
@@ -23,13 +23,13 @@ private:
                                                               const TargetDescription &Target,
                                                               MachineActionReplay &Actions);
 
-  const TargetSSAInfo *Info = nullptr;
+  const TargetInstrInfo *Info = nullptr;
 };
 
 class TwoAddressRewritePass final : public MachineFunctionPass {
 public:
   TwoAddressRewritePass() noexcept = default;
-  explicit TwoAddressRewritePass(const TargetSSAInfo &Info) noexcept : Info(&Info) {}
+  explicit TwoAddressRewritePass(const TargetInstrInfo &Info) noexcept : Info(&Info) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
@@ -41,7 +41,7 @@ private:
                                                               const TargetDescription &Target,
                                                               MachineActionReplay &Actions);
 
-  const TargetSSAInfo *Info = nullptr;
+  const TargetInstrInfo *Info = nullptr;
 };
 
 } // namespace rcc

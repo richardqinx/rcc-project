@@ -142,7 +142,7 @@ namespace {
       if (!RemovedUnconditional)
         return std::unexpected(RemovedUnconditional.error());
     }
-    auto Inserted = Info.insertUnconditionalBranch(*Block, *Selected, Function, Target);
+    auto Inserted = Info.insertBranch(*Block, *Selected, Function, Target);
     if (!Inserted)
       return std::unexpected(Inserted.error());
 
@@ -269,8 +269,7 @@ namespace {
         } else {
           if (Predecessor->next() != Block)
             continue;
-          auto Inserted =
-              Info.insertUnconditionalBranch(*Predecessor, *Successor, Function, Target);
+          auto Inserted = Info.insertBranch(*Predecessor, *Successor, Function, Target);
           if (!Inserted)
             return std::unexpected(Inserted.error());
         }

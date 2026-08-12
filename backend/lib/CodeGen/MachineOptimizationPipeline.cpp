@@ -69,10 +69,10 @@ addSelectedSSAOptimizationPipeline(MachinePassManager &Pipeline,
 
 Expected<void> addPreRegisterAllocationOptimizationPipeline(
     MachinePassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo) {
-  auto Added = addPass<MachineBranchOptimizationPass>(Pipeline, TargetInfo.BranchInfo);
+  auto Added = addPass<MachineBranchOptimizationPass>(Pipeline, TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<MachineCopyPropagationPass>(Pipeline, TargetInfo.SSA,
+  Added = addPass<MachineCopyPropagationPass>(Pipeline, TargetInfo.InstrInfo,
                                               MachineCopyPropagationStage::PreRegisterAllocation);
   if (!Added)
     return std::unexpected(Added.error());
@@ -92,7 +92,7 @@ addPostRegisterAllocationPipeline(MachinePassManager &Pipeline,
   auto Added = addPass<MachineStackSlotColoringPass>(Pipeline);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<MachineCopyPropagationPass>(Pipeline, TargetInfo.SSA,
+  Added = addPass<MachineCopyPropagationPass>(Pipeline, TargetInfo.InstrInfo,
                                               MachineCopyPropagationStage::PostRegisterAllocation);
   if (!Added)
     return std::unexpected(Added.error());
@@ -128,29 +128,29 @@ addPostRegisterAllocationPipeline(MachinePassManager &Pipeline,
   Added = addPass<PostRASchedulerPass>(Pipeline, TargetInfo.SchedulingModel);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<MachineTailDuplicationPass>(Pipeline, TargetInfo.BranchInfo);
+  Added = addPass<MachineTailDuplicationPass>(Pipeline, TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<MachineTailMergePass>(Pipeline, TargetInfo.BranchInfo);
+  Added = addPass<MachineTailMergePass>(Pipeline, TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<MachineBlockPlacementPass>(Pipeline);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<MachineFallthroughPass>(Pipeline, TargetInfo.BranchInfo);
+  Added = addPass<MachineFallthroughPass>(Pipeline, TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<MachineBranchRelaxationPass>(Pipeline, TargetInfo.BranchInfo);
+  Added = addPass<MachineBranchRelaxationPass>(Pipeline, TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<TargetLatePseudoExpansionPass>(Pipeline, TargetInfo.PseudoExpansion,
-                                                 TargetInfo.BranchInfo);
+                                                 TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<FinalizeEmissionPseudosPass>(Pipeline);
   if (!Added)
     return std::unexpected(Added.error());
-  return addPass<FinalEncodabilityVerifierPass>(Pipeline, TargetInfo.BranchInfo);
+  return addPass<FinalEncodabilityVerifierPass>(Pipeline, TargetInfo.InstrInfo);
 }
 
 } // namespace rcc

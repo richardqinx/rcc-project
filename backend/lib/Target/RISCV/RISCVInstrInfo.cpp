@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "RISCVInstrInfo.h"
+
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -8,7 +10,6 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
-#include "rcc/Target/RISCV/RISCVCodeGen.h"
 #include "rcc/Target/RISCV/RISCVInstructions.h"
 #include "rcc/Target/RISCV/RISCVRegisters.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
@@ -497,7 +498,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   return true;
 }
 
-class RISCVBranchInfo final : public TargetInstrInfo {
+class RISCVInstrInfo final : public TargetInstrInfo {
 public:
   [[nodiscard]] Expected<MachineBranchAnalysis>
   analyzeBranch(MachineBasicBlock &Block, MachineFunction &Function,
@@ -623,9 +624,8 @@ public:
   }
 
   [[nodiscard]] Expected<MachineInstr *>
-  insertUnconditionalBranch(MachineBasicBlock &Block, MachineBasicBlock &TargetBlock,
-                            MachineFunction &Function,
-                            const TargetDescription &Target) const override {
+  insertBranch(MachineBasicBlock &Block, MachineBasicBlock &TargetBlock, MachineFunction &Function,
+               const TargetDescription &Target) const override {
     if (&Block.function() != &Function || &TargetBlock.function() != &Function)
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "RISC-V branch insertion references another function");
@@ -633,6 +633,75 @@ public:
     if (!Zero)
       return std::unexpected(Zero.error());
     return buildJAL(Function, Target, Block, nullptr, *Zero, TargetBlock);
+  }
+
+  [[nodiscard]] Expected<bool> isFallthroughEdge(const MachineBasicBlock &From,
+                                                 const MachineBasicBlock &To,
+                                                 const MachineFunction &Function,
+                                                 const TargetDescription &Target) const override {
+    if (&From.function() != &Function || &To.function() != &Function)
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "RISC-V fallthrough query references another machine function");
+    if (From.next() != &To ||
+        std::ranges::none_of(From.successors(), [&To](const MachineSuccessor &Successor) {
+          return Successor.Block == &To;
+        })) {
+      return false;
+    }
+
+    bool CanFallThrough = true;
+    for (const MachineInstr *Instruction = From.firstInstruction(); Instruction != nullptr;
+         Instruction = Instruction->next()) {
+      const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
+      if (Descriptor == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V fallthrough analysis encountered an unknown opcode");
+      if (Descriptor->Flags.has(InstructionFlag::Terminator))
+        CanFallThrough = isConditionalBranch(Instruction->opcode());
+    }
+    return CanFallThrough;
+  }
+
+  [[nodiscard]] Expected<void> validateCopy(Register Destination, SubRegIndex DestinationSubReg,
+                                            Register Source, SubRegIndex SourceSubReg,
+                                            const MachineFunction &Function,
+                                            const TargetDescription &Target) const override {
+    if (Destination.isNoRegister() || Source.isNoRegister())
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V COPY requires two nonzero registers");
+    if (DestinationSubReg.value() != 0 || SourceSubReg.value() != 0)
+      return makeUnexpected(ErrorCode::Unsupported, "RV64GC does not model register subindices");
+
+    auto DestinationShape = copyShape(Destination, Function, Target);
+    if (!DestinationShape)
+      return std::unexpected(DestinationShape.error());
+    auto SourceShape = copyShape(Source, Function, Target);
+    if (!SourceShape)
+      return std::unexpected(SourceShape.error());
+    if (DestinationShape->Bank == SourceShape->Bank) {
+      if (DestinationShape->Width && SourceShape->Width &&
+          DestinationShape->Width != SourceShape->Width)
+        return makeUnexpected(ErrorCode::Unsupported,
+                              "RISC-V same-bank COPY has incompatible register widths");
+      return {};
+    }
+
+    const RegisterBankID GPR =
+        RegisterBankID::fromValue(static_cast<std::uint32_t>(RegisterBank::GPR));
+    const RegisterBankID FPR =
+        RegisterBankID::fromValue(static_cast<std::uint32_t>(RegisterBank::FPR));
+    const bool IsCrossBankMove = (DestinationShape->Bank == GPR && SourceShape->Bank == FPR) ||
+                                 (DestinationShape->Bank == FPR && SourceShape->Bank == GPR);
+    if (!IsCrossBankMove)
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "RISC-V COPY crosses unsupported register banks");
+    const auto SupportedWidth = [](std::optional<std::uint32_t> Width) {
+      return !Width || *Width == 32 || *Width == 64;
+    };
+    if (!SupportedWidth(DestinationShape->Width) || !SupportedWidth(SourceShape->Width))
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "RISC-V GPR/FPR COPY requires 32-bit or 64-bit values");
+    return {};
   }
 
   [[nodiscard]] Expected<std::uint32_t>
@@ -726,12 +795,48 @@ public:
       return relaxJAL(Instruction, Offset, Function, Target);
     return false;
   }
+
+private:
+  struct CopyShape final {
+    RegisterBankID Bank;
+    std::optional<std::uint32_t> Width;
+  };
+
+  [[nodiscard]] static Expected<CopyShape> copyShape(Register Reg, const MachineFunction &Function,
+                                                     const TargetDescription &Target) {
+    if (Reg.isVirtual()) {
+      auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
+      if (!Info)
+        return std::unexpected(Info.error());
+      const std::optional<RegisterBankID> &Bank = Info->get().Bank;
+      const std::optional<RegisterClassID> &RegClass = Info->get().RegClass;
+      if (!Bank || !RegClass)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V COPY virtual register is not fully constrained");
+      const RegisterClassDesc *Class = Target.registers().registerClass(*RegClass);
+      if (Class == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V COPY references an unknown register class");
+      return CopyShape{*Bank, Class->SizeInBits};
+    }
+
+    const std::optional<PhysicalRegister> Physical = Reg.physicalRegister();
+    if (!Physical || !Target.registers().isKnownPhysicalRegister(*Physical))
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V COPY references an unknown physical register");
+    for (const RegisterBankDesc &Bank : Target.registers().registerBanks()) {
+      if (Target.registers().bankContainsRegister(Bank.ID, *Physical))
+        return CopyShape{Bank.ID, std::nullopt};
+    }
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V physical register is not assigned to a register bank");
+  }
 };
 
 } // namespace
 
-const TargetInstrInfo &branchInfo() noexcept {
-  static const RISCVBranchInfo Value;
+const TargetInstrInfo &instrInfo() noexcept {
+  static const RISCVInstrInfo Value;
   return Value;
 }
 

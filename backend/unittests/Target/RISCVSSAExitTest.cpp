@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "RISCVInstrInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
@@ -196,11 +197,11 @@ void testBehaviorAndCopyLegality(TestContext &Context, const rcc::TargetDescript
   if (!CFG.addSuccessor(**First, **Second, rcc::BranchProbability::one()))
     return;
 
-  auto Fallthrough = rcc::riscv::ssaInfo().isFallthroughEdge(**First, **Second, **Function, Target);
+  auto Fallthrough =
+      rcc::riscv::instrInfo().isFallthroughEdge(**First, **Second, **Function, Target);
   Context.expect(Fallthrough && *Fallthrough,
                  "RV64GC SSA behavior must recognize an empty layout fallthrough edge");
-  auto Inserted =
-      rcc::riscv::ssaInfo().insertUnconditionalBranch(**First, **Second, **Function, Target);
+  auto Inserted = rcc::riscv::instrInfo().insertBranch(**First, **Second, **Function, Target);
   Context.expect(Inserted.has_value(), "RV64GC SSA behavior must insert an unconditional branch");
   if (!Inserted)
     return;
@@ -212,10 +213,10 @@ void testBehaviorAndCopyLegality(TestContext &Context, const rcc::TargetDescript
                      blockOperand(*Jump, 1) != nullptr && blockOperand(*Jump, 1)->Block == *Second,
                  "RV64GC unconditional branches must use JAL with x0 as the link destination");
   auto NoFallthrough =
-      rcc::riscv::ssaInfo().isFallthroughEdge(**First, **Second, **Function, Target);
+      rcc::riscv::instrInfo().isFallthroughEdge(**First, **Second, **Function, Target);
   Context.expect(NoFallthrough && !*NoFallthrough, "JAL must terminate RV64GC layout fallthrough");
   auto Rewritten =
-      rcc::riscv::ssaInfo().rewriteBranchTarget(**First, **Second, **Third, **Function, Target);
+      rcc::riscv::instrInfo().rewriteBranchTarget(**First, **Second, **Third, **Function, Target);
   Context.expect(Rewritten && *Rewritten && blockOperand(*Jump, 1)->Block == *Third,
                  "RV64GC branch target rewriting must update direct JAL operands");
 
@@ -237,19 +238,73 @@ void testBehaviorAndCopyLegality(TestContext &Context, const rcc::TargetDescript
     return;
 
   Context.expect(
-      rcc::riscv::ssaInfo().validateCopy(*GPR, {}, *OtherGPR, {}, **Function, Target).has_value(),
+      rcc::riscv::instrInfo().validateCopy(*GPR, {}, *OtherGPR, {}, **Function, Target).has_value(),
       "RV64GC must allow a compatible GPR COPY");
   Context.expect(
-      rcc::riscv::ssaInfo().validateCopy(*GPR, {}, *FPR64, {}, **Function, Target).has_value(),
+      rcc::riscv::instrInfo().validateCopy(*GPR, {}, *FPR64, {}, **Function, Target).has_value(),
       "RV64GC must allow supported 64-bit GPR/FPR bit moves");
-  Context.expect(!rcc::riscv::ssaInfo().validateCopy(*FPR64, {}, *FPR32, {}, **Function, Target),
+  Context.expect(!rcc::riscv::instrInfo().validateCopy(*FPR64, {}, *FPR32, {}, **Function, Target),
                  "RV64GC must reject incompatible same-bank COPY widths");
-  Context.expect(!rcc::riscv::ssaInfo().validateCopy(*GPR, rcc::SubRegIndex::fromValue(1),
-                                                     *OtherGPR, {}, **Function, Target),
+  Context.expect(!rcc::riscv::instrInfo().validateCopy(*GPR, rcc::SubRegIndex::fromValue(1),
+                                                       *OtherGPR, {}, **Function, Target),
                  "RV64GC must reject unmodeled subregister COPYs");
   Context.expect(
-      !rcc::riscv::ssaInfo().validateCopy(*GPR, {}, *Unclassified, {}, **Function, Target),
+      !rcc::riscv::instrInfo().validateCopy(*GPR, {}, *Unclassified, {}, **Function, Target),
       "RV64GC must reject COPYs involving an unconstrained virtual register");
+}
+
+void testCompressedConditionalBranchBehavior(TestContext &Context,
+                                             const rcc::TargetDescription &Target) {
+  auto Function = rcc::MachineFunction::create("riscv_compressed_branch",
+                                               rcc::MachineFunctionStableID::fromValue(3));
+  if (!Function)
+    return;
+  auto Source = appendBlock(**Function);
+  auto LayoutSuccessor = appendBlock(**Function);
+  auto BranchTarget = appendBlock(**Function);
+  auto ReplacementTarget = appendBlock(**Function);
+  if (!Source || !LayoutSuccessor || !BranchTarget || !ReplacementTarget)
+    return;
+  auto Half = rcc::BranchProbability::fromFraction(1, 2);
+  auto CFG = (*Function)->cfgUpdater();
+  if (!Half || !CFG.addSuccessor(**Source, **BranchTarget, *Half) ||
+      !CFG.addSuccessor(**Source, **LayoutSuccessor, *Half)) {
+    Context.expect(false, "compressed-branch CFG construction must succeed");
+    return;
+  }
+
+  auto X8 = rcc::riscv::physicalRegister(rcc::riscv::PhysicalRegisterID::X8);
+  rcc::MachineIRBuilder Builder(**Function, Target);
+  auto Point = Builder.setInsertPoint(**Source);
+  if (!Point) {
+    Context.expect(false, "compressed conditional branch insertion point must be established");
+    return;
+  }
+  auto Pending = Builder.buildInstr(targetOpcode(rcc::riscv::InstructionOpcode::C_BEQZ));
+  if (!X8 || !Pending || !Pending->addUse(rcc::Register::fromPhysical(*X8)) ||
+      !Pending->addBasicBlock(**BranchTarget)) {
+    Context.expect(false, "compressed conditional branch construction must succeed");
+    return;
+  }
+  auto Branch = Pending->build();
+  if (!Branch) {
+    Context.expect(false, "compressed conditional branch insertion must succeed");
+    return;
+  }
+
+  auto Fallthrough =
+      rcc::riscv::instrInfo().isFallthroughEdge(**Source, **LayoutSuccessor, **Function, Target);
+  auto Analysis = rcc::riscv::instrInfo().analyzeBranch(**Source, **Function, Target);
+  Context.expect(Fallthrough && *Fallthrough && Analysis && Analysis->Conditional == *Branch &&
+                     Analysis->TrueTarget == *BranchTarget &&
+                     Analysis->FalseTarget == *LayoutSuccessor,
+                 "RV64GC instruction information must recognize compressed conditional branches");
+
+  auto Rewritten = rcc::riscv::instrInfo().rewriteBranchTarget(
+      **Source, **BranchTarget, **ReplacementTarget, **Function, Target);
+  Context.expect(Rewritten && *Rewritten && blockOperand(**Branch, 1) != nullptr &&
+                     blockOperand(**Branch, 1)->Block == *ReplacementTarget,
+                 "RV64GC instruction information must rewrite compressed branch targets");
 }
 
 void testRV64GCCriticalEdge(TestContext &Context, const rcc::TargetDescription &Target) {
@@ -298,9 +353,10 @@ void testRV64GCCriticalEdge(TestContext &Context, const rcc::TargetDescription &
     return;
 
   rcc::MachinePassManager Pipeline;
-  Context.expect(Pipeline.addPass(std::make_unique<rcc::PHIEliminationPass>(rcc::riscv::ssaInfo()))
-                     .has_value(),
-                 "RV64GC PHI-elimination pass must be registered");
+  Context.expect(
+      Pipeline.addPass(std::make_unique<rcc::PHIEliminationPass>(rcc::riscv::instrInfo()))
+          .has_value(),
+      "RV64GC PHI-elimination pass must be registered");
   rcc::MachineAnalysisManager Analyses;
   auto Run = Pipeline.run(**Function, Target, Analyses);
   Context.expect(Run.has_value(), "RV64GC critical-edge PHI elimination must succeed");
@@ -350,6 +406,7 @@ int main() {
   if (!Target)
     return Context.result();
   testBehaviorAndCopyLegality(Context, *Target);
+  testCompressedConditionalBranchBehavior(Context, *Target);
   testRV64GCCriticalEdge(Context, *Target);
   return Context.result();
 }

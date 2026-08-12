@@ -7,7 +7,6 @@
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
 #include "rcc/CodeGen/TargetCodeGen.h"
 #include "rcc/CodeGen/TargetFrameLowering.h"
-#include "rcc/CodeGen/TargetInstrInfo.h"
 #include "rcc/CodeGen/TargetMemoryFolding.h"
 #include "rcc/CodeGen/TargetPseudoExpansion.h"
 #include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
@@ -23,13 +22,11 @@ namespace rcc::riscv {
 createLegalizerInfo(RISCVSubtargetFeatures Features);
 [[nodiscard]] const TargetRegisterBankInfo &registerBankInfo() noexcept;
 [[nodiscard]] const TargetInstructionSelector &instructionSelector() noexcept;
-[[nodiscard]] const TargetSSAInfo &ssaInfo() noexcept;
 [[nodiscard]] const TargetRegisterAllocationInfo &registerAllocationInfo() noexcept;
 [[nodiscard]] const TargetFrameLowering &frameLowering() noexcept;
 [[nodiscard]] const TargetSchedulingModel &schedulingModel() noexcept;
 [[nodiscard]] const TargetMachineCombinerInfo &machineCombinerInfo() noexcept;
 [[nodiscard]] const TargetMemoryFoldingInfo &memoryFoldingInfo() noexcept;
-[[nodiscard]] const TargetInstrInfo &branchInfo() noexcept;
 [[nodiscard]] const TargetPseudoExpansionInfo &pseudoExpansionInfo() noexcept;
 [[nodiscard]] MachineOptimizationPipelineTargetInfo optimizationPipelineInfo() noexcept;
 

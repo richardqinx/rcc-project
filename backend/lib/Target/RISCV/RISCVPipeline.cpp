@@ -2,6 +2,7 @@
 
 #include "rcc/Target/RISCV/RISCVPipeline.h"
 
+#include "RISCVInstrInfo.h"
 #include "rcc/CodeGen/MachineCombiner.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
@@ -45,10 +46,10 @@ template <typename PassT, typename... ArgumentT>
   auto Added = addSelectedSSAOptimizationPipeline(Pipeline, optimizationPipelineInfo());
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<PHIEliminationPass>(Pipeline, ssaInfo());
+  Added = addPass<PHIEliminationPass>(Pipeline, instrInfo());
   if (!Added)
     return std::unexpected(Added.error());
-  return addPass<TwoAddressRewritePass>(Pipeline, ssaInfo());
+  return addPass<TwoAddressRewritePass>(Pipeline, instrInfo());
 }
 
 [[nodiscard]] Expected<void> addRegisterAllocationPipeline(MachinePassManager &Pipeline) {
@@ -104,13 +105,13 @@ Expected<void> addCanonicalPipeline(MachinePassManager &Pipeline, const MachineF
     if (!Added)
       return std::unexpected(Added.error());
     if (!Function.properties().has(MachineFunctionProperty::NoPHIs)) {
-      Added = addPass<PHIEliminationPass>(Pipeline, ssaInfo());
+      Added = addPass<PHIEliminationPass>(Pipeline, instrInfo());
       if (!Added)
         return std::unexpected(Added.error());
     }
   }
   if (!Function.properties().has(MachineFunctionProperty::TiedOpsRewritten)) {
-    auto Added = addPass<TwoAddressRewritePass>(Pipeline, ssaInfo());
+    auto Added = addPass<TwoAddressRewritePass>(Pipeline, instrInfo());
     if (!Added)
       return std::unexpected(Added.error());
   }

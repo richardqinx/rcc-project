@@ -10,7 +10,7 @@
 
 namespace rcc {
 
-class TargetSSAInfo;
+class TargetInstrInfo;
 
 enum class MachineCopyPropagationStage : std::uint8_t {
   PreRegisterAllocation,
@@ -23,7 +23,7 @@ struct MachineCopyPropagationOptions final {
 
 class MachineCopyPropagationPass final : public MachineFunctionPass {
 public:
-  MachineCopyPropagationPass(const TargetSSAInfo &Info, MachineCopyPropagationStage Stage,
+  MachineCopyPropagationPass(const TargetInstrInfo &Info, MachineCopyPropagationStage Stage,
                              MachineCopyPropagationOptions Options = {}) noexcept
       : Info(&Info), Stage(Stage), Options(Options) {}
 
@@ -37,7 +37,7 @@ private:
                                                               const TargetDescription &Target,
                                                               MachineActionReplay &Actions) const;
 
-  const TargetSSAInfo *Info;
+  const TargetInstrInfo *Info;
   MachineCopyPropagationStage Stage;
   MachineCopyPropagationOptions Options;
 };

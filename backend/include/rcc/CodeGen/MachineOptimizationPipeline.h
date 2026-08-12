@@ -13,16 +13,14 @@ class TargetMachineCombinerInfo;
 class TargetMemoryFoldingInfo;
 class TargetPseudoExpansionInfo;
 class TargetSchedulingModel;
-class TargetSSAInfo;
 
 struct MachineOptimizationPipelineTargetInfo final {
-  const TargetSSAInfo &SSA;
+  const TargetInstrInfo &InstrInfo;
   const TargetMachineCombinerInfo &Combiner;
   const TargetMemoryFoldingInfo &MemoryFolding;
   const TargetFrameLowering &FrameLowering;
   const TargetPseudoExpansionInfo &PseudoExpansion;
   const TargetSchedulingModel &SchedulingModel;
-  const TargetInstrInfo &BranchInfo;
 };
 
 [[nodiscard]] Expected<void> registerMachineOptimizationAnalyses(MachineAnalysisManager &Analyses);

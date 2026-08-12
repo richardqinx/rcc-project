@@ -83,8 +83,7 @@ normalizeFallthroughs(MachineFunction &Function, const TargetDescription &Target
       Changed = true;
     } else if (Analysis->Conditional != nullptr && Analysis->Unconditional == nullptr &&
                Analysis->FalseTarget != nullptr) {
-      auto Inserted =
-          Info.insertUnconditionalBranch(*Block, *Analysis->FalseTarget, Function, Target);
+      auto Inserted = Info.insertBranch(*Block, *Analysis->FalseTarget, Function, Target);
       if (!Inserted)
         return std::unexpected(Inserted.error());
       Changed = true;
@@ -102,7 +101,7 @@ normalizeFallthroughs(MachineFunction &Function, const TargetDescription &Target
         return makeUnexpected(ErrorCode::VerificationError,
                               "fallthrough normalization encountered a null successor");
       }
-      auto Inserted = Info.insertUnconditionalBranch(*Block, *Successor, Function, Target);
+      auto Inserted = Info.insertBranch(*Block, *Successor, Function, Target);
       if (!Inserted)
         return std::unexpected(Inserted.error());
       Changed = true;

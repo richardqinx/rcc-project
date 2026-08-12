@@ -167,7 +167,7 @@ struct PhiPlan final {
 
 [[nodiscard]] Expected<MachineInstr *>
 buildCopy(MachineFunction &Function, const TargetDescription &Target,
-          const TargetSSAInfo &TargetInfo, MachineBasicBlock &Block, MachineInstr *Before,
+          const TargetInstrInfo &TargetInfo, MachineBasicBlock &Block, MachineInstr *Before,
           RegisterValue Destination, RegisterValue Source, const MachineInstr *DebugSource) {
   auto Legality = TargetInfo.validateCopy(Destination.Reg, Destination.SubReg, Source.Reg,
                                           Source.SubReg, Function, Target);
@@ -388,7 +388,7 @@ buildImplicitDef(MachineFunction &Function, const TargetDescription &Target,
 
 [[nodiscard]] Expected<MachineBasicBlock *>
 placePhiCopiesOnEdge(MachineFunction &Function, const TargetDescription &Target,
-                     const TargetSSAInfo &TargetInfo, MachineBasicBlock &From,
+                     const TargetInstrInfo &TargetInfo, MachineBasicBlock &From,
                      MachineBasicBlock &To,
                      std::unordered_map<EdgeKey, MachineBasicBlock *, EdgeKeyHash> &Cache,
                      MachinePassResult &PassResult) {
@@ -415,7 +415,7 @@ placePhiCopiesOnEdge(MachineFunction &Function, const TargetDescription &Target,
     if (!OtherFallthrough)
       return std::unexpected(OtherFallthrough.error());
     if (*OtherFallthrough) {
-      auto Branch = TargetInfo.insertUnconditionalBranch(*LayoutPredecessor, To, Function, Target);
+      auto Branch = TargetInfo.insertBranch(*LayoutPredecessor, To, Function, Target);
       if (!Branch)
         return std::unexpected(Branch.error());
       PassResult.Changed = true;
@@ -445,7 +445,7 @@ placePhiCopiesOnEdge(MachineFunction &Function, const TargetDescription &Target,
   auto LiveIns = copyLiveIns(To, *EdgeBlock);
   if (!LiveIns)
     return std::unexpected(LiveIns.error());
-  auto Branch = TargetInfo.insertUnconditionalBranch(*EdgeBlock, To, Function, Target);
+  auto Branch = TargetInfo.insertBranch(*EdgeBlock, To, Function, Target);
   if (!Branch)
     return std::unexpected(Branch.error());
 
@@ -526,7 +526,7 @@ placePhiCopiesOnEdge(MachineFunction &Function, const TargetDescription &Target,
 
 [[nodiscard]] Expected<void> expandRegSequence(MachineInstr &Instruction, MachineFunction &Function,
                                                const TargetDescription &Target,
-                                               const TargetSSAInfo &TargetInfo) {
+                                               const TargetInstrInfo &TargetInfo) {
   if (Instruction.operandCount() < 3 || (Instruction.operandCount() - 1U) % 2U != 0) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "REG_SEQUENCE requires a destination and source/subregister pairs");
@@ -588,7 +588,7 @@ placePhiCopiesOnEdge(MachineFunction &Function, const TargetDescription &Target,
 [[nodiscard]] Expected<void> expandInsertSubreg(MachineInstr &Instruction,
                                                 MachineFunction &Function,
                                                 const TargetDescription &Target,
-                                                const TargetSSAInfo &TargetInfo) {
+                                                const TargetInstrInfo &TargetInfo) {
   if (Instruction.operandCount() != 4) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "INSERT_SUBREG requires destination, base, inserted value, and index");
@@ -792,7 +792,7 @@ Expected<MachinePassResult> PHIEliminationPass::run(MachineFunction &Function,
                                                     MachineAnalysisManager &Analyses) {
   if (Info == nullptr) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "PHI elimination has no target SSA behavior interface");
+                          "PHI elimination has no target instruction information");
   }
   auto Required = requireProperties(Function, contract());
   if (!Required)
@@ -927,7 +927,7 @@ Expected<MachinePassResult> TwoAddressRewritePass::run(MachineFunction &Function
                                                        MachineAnalysisManager &Analyses) {
   if (Info == nullptr) {
     return makeUnexpected(ErrorCode::InvalidArgument,
-                          "two-address rewrite has no target SSA behavior interface");
+                          "two-address rewrite has no target instruction information");
   }
   auto Required = requireProperties(Function, contract());
   if (!Required)

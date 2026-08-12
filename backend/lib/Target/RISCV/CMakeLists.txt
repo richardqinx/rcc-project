@@ -47,7 +47,7 @@ set_source_files_properties(
 
 add_library(
   RCCBackendRISCV
-  RISCVBranchInfo.cpp
+  RISCVInstrInfo.cpp
   RISCVCodeGen.cpp
   RISCVCallLowering.cpp
   RISCVAssemblyPrinter.cpp
@@ -84,7 +84,9 @@ target_include_directories(
     "$<BUILD_INTERFACE:${RCC_BACKEND_SOURCE_DIR}/include>"
     "$<BUILD_INTERFACE:${RCC_BACKEND_BINARY_DIR}/generated/include>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-  PRIVATE "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV"
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV"
 )
 target_link_libraries(
   RCCBackendRISCV
@@ -116,7 +118,7 @@ install(
 )
 
 rcc_backend_register_format_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVBranchInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"
@@ -140,6 +142,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetConstant.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCodeGen.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVAssemblyPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVCallLowering.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVInstPrinter.h"
@@ -156,7 +159,7 @@ rcc_backend_register_format_files(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVTargetRelocationKinds.h"
 )
 rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVBranchInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCodeGen.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLowering.cpp"

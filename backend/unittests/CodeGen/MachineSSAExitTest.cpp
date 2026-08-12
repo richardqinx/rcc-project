@@ -15,6 +15,7 @@
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 
 #include <algorithm>
 #include <array>
@@ -158,9 +159,26 @@ private:
   return rcc::test::createTestTargetDescription(std::move(*Instructions));
 }
 
-class TestSSAInfo final : public rcc::TargetSSAInfo {
+class TestInstrInfo final : public rcc::TargetInstrInfo {
 public:
-  explicit TestSSAInfo(bool RejectCopies = false) : RejectCopies(RejectCopies) {}
+  explicit TestInstrInfo(bool RejectCopies = false) : RejectCopies(RejectCopies) {}
+
+  [[nodiscard]] rcc::Expected<rcc::MachineBranchAnalysis>
+  analyzeBranch(rcc::MachineBasicBlock &, rcc::MachineFunction &,
+                const rcc::TargetDescription &) const override {
+    return rcc::MachineBranchAnalysis{};
+  }
+
+  [[nodiscard]] rcc::Expected<void>
+  reverseBranchCondition(rcc::MachineInstr &, rcc::MachineBasicBlock &, rcc::MachineFunction &,
+                         const rcc::TargetDescription &) const override {
+    return rcc::makeUnexpected(rcc::ErrorCode::Unsupported, "test target has no branch reversal");
+  }
+
+  [[nodiscard]] rcc::Expected<void> removeBranch(rcc::MachineInstr &, rcc::MachineFunction &,
+                                                 const rcc::TargetDescription &) const override {
+    return rcc::makeUnexpected(rcc::ErrorCode::Unsupported, "test target has no branch removal");
+  }
 
   [[nodiscard]] rcc::Expected<bool>
   isFallthroughEdge(const rcc::MachineBasicBlock &From, const rcc::MachineBasicBlock &To,
@@ -225,10 +243,10 @@ public:
     return Changed;
   }
 
-  [[nodiscard]] rcc::Expected<void>
-  insertUnconditionalBranch(rcc::MachineBasicBlock &Block, rcc::MachineBasicBlock &TargetBlock,
-                            rcc::MachineFunction &Function,
-                            const rcc::TargetDescription &Target) const override {
+  [[nodiscard]] rcc::Expected<rcc::MachineInstr *>
+  insertBranch(rcc::MachineBasicBlock &Block, rcc::MachineBasicBlock &TargetBlock,
+               rcc::MachineFunction &Function,
+               const rcc::TargetDescription &Target) const override {
     rcc::MachineIRBuilder Builder(Function, Target);
     auto Point = Builder.setInsertPoint(Block);
     if (!Point)
@@ -242,7 +260,7 @@ public:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
-    return {};
+    return *Built;
   }
 
   [[nodiscard]] rcc::Expected<void>
@@ -287,6 +305,29 @@ public:
     if (!Opcode)
       return std::unexpected(Opcode.error());
     return true;
+  }
+
+  [[nodiscard]] rcc::Expected<std::uint32_t>
+  instructionSize(const rcc::MachineInstr &, const rcc::MachineFunction &,
+                  const rcc::TargetDescription &) const override {
+    return 4;
+  }
+
+  [[nodiscard]] rcc::Expected<rcc::MachineBasicBlock *>
+  branchTarget(rcc::MachineInstr &, rcc::MachineFunction &,
+               const rcc::TargetDescription &) const override {
+    return static_cast<rcc::MachineBasicBlock *>(nullptr);
+  }
+
+  [[nodiscard]] bool isBranchOffsetInRange(const rcc::MachineInstr &,
+                                           std::int64_t) const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] rcc::Expected<bool> relaxBranch(rcc::MachineInstr &, std::int64_t,
+                                                rcc::MachineFunction &,
+                                                const rcc::TargetDescription &) const override {
+    return false;
   }
 
 private:
@@ -430,7 +471,7 @@ buildPhi(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
 
 [[nodiscard]] rcc::Expected<void> runPHIElimination(rcc::MachineFunction &Function,
                                                     const rcc::TargetDescription &Target,
-                                                    const rcc::TargetSSAInfo &Info) {
+                                                    const rcc::TargetInstrInfo &Info) {
   rcc::MachinePassManager Pipeline;
   auto Added = Pipeline.addPass(std::make_unique<rcc::PHIEliminationPass>(Info));
   if (!Added)
@@ -469,7 +510,7 @@ instructionsWithOpcode(rcc::MachineFunction &Function, rcc::Opcode Opcode) {
 }
 
 void testParallelPHIsAndPlacement(TestContext &Context, const rcc::TargetDescription &Target,
-                                  const TestSSAInfo &Info) {
+                                  const TestInstrInfo &Info) {
   auto Fixture = createFunction(Context, "parallel_phis", 1, 3);
   if (!Fixture.Function || Fixture.Blocks.size() != 3)
     return;
@@ -620,7 +661,7 @@ void testParallelPHIsAndPlacement(TestContext &Context, const rcc::TargetDescrip
 }
 
 void testCriticalEdgeAndPhysicalLiveIn(TestContext &Context, const rcc::TargetDescription &Target,
-                                       const TestSSAInfo &Info) {
+                                       const TestInstrInfo &Info) {
   auto Fixture = createFunction(Context, "critical_edge", 2, 4);
   if (!Fixture.Function || Fixture.Blocks.size() != 4)
     return;
@@ -721,7 +762,7 @@ void testCriticalEdgeAndPhysicalLiveIn(TestContext &Context, const rcc::TargetDe
 }
 
 void testUndefAndFailureAtomicity(TestContext &Context, const rcc::TargetDescription &Target,
-                                  const TestSSAInfo &Info) {
+                                  const TestInstrInfo &Info) {
   auto BuildFixture = [&](std::uint64_t ID) {
     auto Fixture = createFunction(Context, "undef_phi", ID, 2);
     if (!Fixture.Function || Fixture.Blocks.size() != 2)
@@ -773,7 +814,7 @@ void testUndefAndFailureAtomicity(TestContext &Context, const rcc::TargetDescrip
       instructionsWithOpcode(*Atomic.Function, rcc::opcode(rcc::GenericOpcode::PHI)).size();
   const std::size_t RegistersBefore = Atomic.Function->registerInfo().virtualRegisters().size();
   const std::uint64_t PropertiesBefore = Atomic.Function->properties().rawValue();
-  TestSSAInfo RejectingInfo(true);
+  TestInstrInfo RejectingInfo(true);
   rcc::MachineAnalysisManager Analyses;
   rcc::PHIEliminationPass FailingPass(RejectingInfo);
   auto Failed = FailingPass.run(*Atomic.Function, Target, Analyses);
@@ -794,7 +835,7 @@ void testUndefAndFailureAtomicity(TestContext &Context, const rcc::TargetDescrip
 }
 
 void testTwoAddressAndSubregisterPseudos(TestContext &Context, const rcc::TargetDescription &Target,
-                                         const TestSSAInfo &Info) {
+                                         const TestInstrInfo &Info) {
   auto Fixture = createFunction(Context, "two_address", 5, 1);
   if (!Fixture.Function || Fixture.Blocks.empty())
     return;
@@ -1015,7 +1056,7 @@ void testTwoAddressAndSubregisterPseudos(TestContext &Context, const rcc::Target
       AtomicFixture.Function->registerInfo().virtualRegisters().size();
   const std::uint64_t AtomicPropertiesBefore = AtomicFixture.Function->properties().rawValue();
 
-  TestSSAInfo RejectingInfo(true);
+  TestInstrInfo RejectingInfo(true);
   rcc::MachineAnalysisManager AtomicAnalyses;
   rcc::TwoAddressRewritePass FailingPass(RejectingInfo);
   auto Failed = FailingPass.run(*AtomicFixture.Function, Target, AtomicAnalyses);
@@ -1128,7 +1169,7 @@ int main() {
   Context.expect(Target.has_value(), "SSA-exit TestTarget must be created");
   if (!Target)
     return Context.result();
-  TestSSAInfo Info;
+  TestInstrInfo Info;
   testParallelPHIsAndPlacement(Context, *Target, Info);
   testCriticalEdgeAndPhysicalLiveIn(Context, *Target, Info);
   testUndefAndFailureAtomicity(Context, *Target, Info);

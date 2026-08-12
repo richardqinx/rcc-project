@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "RISCVInstrInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineBlockPlacement.h"
@@ -102,7 +103,7 @@ public:
   }
 };
 
-class FixedSizeBranchInfo final : public rcc::TargetInstrInfo {
+class FixedSizeInstrInfo final : public rcc::TargetInstrInfo {
 public:
   [[nodiscard]] rcc::Expected<rcc::MachineBranchAnalysis>
   analyzeBranch(rcc::MachineBasicBlock &, rcc::MachineFunction &,
@@ -128,9 +129,21 @@ public:
   }
 
   [[nodiscard]] rcc::Expected<rcc::MachineInstr *>
-  insertUnconditionalBranch(rcc::MachineBasicBlock &, rcc::MachineBasicBlock &,
-                            rcc::MachineFunction &, const rcc::TargetDescription &) const override {
+  insertBranch(rcc::MachineBasicBlock &, rcc::MachineBasicBlock &, rcc::MachineFunction &,
+               const rcc::TargetDescription &) const override {
     return rcc::makeUnexpected(rcc::ErrorCode::Unsupported, "test target has no branches");
+  }
+
+  [[nodiscard]] rcc::Expected<bool>
+  isFallthroughEdge(const rcc::MachineBasicBlock &, const rcc::MachineBasicBlock &,
+                    const rcc::MachineFunction &, const rcc::TargetDescription &) const override {
+    return false;
+  }
+
+  [[nodiscard]] rcc::Expected<void> validateCopy(rcc::Register, rcc::SubRegIndex, rcc::Register,
+                                                 rcc::SubRegIndex, const rcc::MachineFunction &,
+                                                 const rcc::TargetDescription &) const override {
+    return rcc::makeUnexpected(rcc::ErrorCode::Unsupported, "test target has no COPY support");
   }
 
   [[nodiscard]] rcc::Expected<std::uint32_t>
@@ -398,7 +411,7 @@ void testFallthroughNormalization(TestContext &Context, const rcc::TargetDescrip
   auto Liveness = rcc::rebuildMachineLiveness(*Function, Target);
   Context.expect(Liveness.has_value(), "fallthrough fixture liveness must be rebuilt");
   rcc::MachineAnalysisManager Analyses;
-  rcc::MachineFallthroughPass Pass(rcc::riscv::branchInfo());
+  rcc::MachineFallthroughPass Pass(rcc::riscv::instrInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
     std::cerr << "fallthrough normalization failure: " << Result.error().message() << '\n';
@@ -433,7 +446,7 @@ void testFallthroughMaterialization(TestContext &Context, const rcc::TargetDescr
   Context.expect(rcc::rebuildMachineLiveness(*Function, Target).has_value(),
                  "materialized fallthrough liveness must be rebuilt");
   rcc::MachineAnalysisManager Analyses;
-  rcc::MachineFallthroughPass Pass(rcc::riscv::branchInfo());
+  rcc::MachineFallthroughPass Pass(rcc::riscv::instrInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
     std::cerr << "fallthrough materialization failure: " << Result.error().message() << '\n';
@@ -474,7 +487,7 @@ void testBranchOptimization(TestContext &Context, const rcc::TargetDescription &
   }
   setSelectedProperties(*Function);
   rcc::MachineAnalysisManager Analyses;
-  rcc::MachineBranchOptimizationPass Pass(rcc::riscv::branchInfo());
+  rcc::MachineBranchOptimizationPass Pass(rcc::riscv::instrInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
     std::cerr << "branch optimization failure: " << Result.error().message() << '\n';
@@ -554,7 +567,7 @@ void testTailDuplication(TestContext &Context, const rcc::TargetDescription &Tar
   }
   setRelaxationProperties(Context, *Function, Target);
   rcc::MachineAnalysisManager Analyses;
-  rcc::MachineTailDuplicationPass Pass(rcc::riscv::branchInfo());
+  rcc::MachineTailDuplicationPass Pass(rcc::riscv::instrInfo());
   Tail->attributes().set(rcc::MachineBasicBlockAttribute::MachineBlockAddressTaken);
   auto Protected = Pass.run(*Function, Target, Analyses);
   Context.expect(Protected && !Protected->Changed && Tail->isLinked(),
@@ -605,7 +618,7 @@ void testTailMerge(TestContext &Context, const rcc::TargetDescription &Target) {
   }
   setRelaxationProperties(Context, *Function, Target);
   rcc::MachineAnalysisManager Analyses;
-  rcc::MachineTailMergePass Pass(rcc::riscv::branchInfo());
+  rcc::MachineTailMergePass Pass(rcc::riscv::instrInfo());
   Second->attributes().set(rcc::MachineBasicBlockAttribute::MachineBlockAddressTaken);
   auto Protected = Pass.run(*Function, Target, Analyses);
   Context.expect(Protected && !Protected->Changed && Second->isLinked(),
@@ -650,7 +663,7 @@ void testCopyPropagation(TestContext &Context, const rcc::TargetDescription &Tar
     return;
   setSelectedProperties(*Function);
   rcc::MachineAnalysisManager Analyses;
-  rcc::MachineCopyPropagationPass PreRA(rcc::riscv::ssaInfo(),
+  rcc::MachineCopyPropagationPass PreRA(rcc::riscv::instrInfo(),
                                         rcc::MachineCopyPropagationStage::PreRegisterAllocation);
   auto PreResult = PreRA.run(*Function, Target, Analyses);
   if (!PreResult)
@@ -690,7 +703,7 @@ void testCopyPropagation(TestContext &Context, const rcc::TargetDescription &Tar
   Context.expect(rcc::rebuildMachineLiveness(*PostFunction, Target).has_value(),
                  "post-RA COPY propagation liveness must be rebuilt");
   rcc::MachineAnalysisManager PostAnalyses;
-  rcc::MachineCopyPropagationPass PostRA(rcc::riscv::ssaInfo(),
+  rcc::MachineCopyPropagationPass PostRA(rcc::riscv::instrInfo(),
                                          rcc::MachineCopyPropagationStage::PostRegisterAllocation);
   auto PostResult = PostRA.run(*PostFunction, Target, PostAnalyses);
   if (!PostResult)
@@ -963,7 +976,7 @@ void testCompressedAndConditionalRelaxation(TestContext &Context,
     return;
   setRelaxationProperties(Context, *Function, Target);
   rcc::MachineAnalysisManager Analyses;
-  rcc::MachineBranchRelaxationPass Pass(rcc::riscv::branchInfo());
+  rcc::MachineBranchRelaxationPass Pass(rcc::riscv::instrInfo());
   auto Result = Pass.run(*Function, Target, Analyses);
   if (!Result)
     std::cerr << "conditional relaxation failure: " << Result.error().message() << '\n';
@@ -998,7 +1011,7 @@ void testCompressedAndConditionalRelaxation(TestContext &Context,
   if (!Compressed)
     return;
   auto Expanded =
-      rcc::riscv::branchInfo().relaxBranch(**Compressed, 4096, *CompressedFunction, Target);
+      rcc::riscv::instrInfo().relaxBranch(**Compressed, 4096, *CompressedFunction, Target);
   Context.expect(Expanded && *Expanded && CompressedEntry->firstInstruction() != nullptr &&
                      CompressedEntry->firstInstruction()->opcode() ==
                          opcode(rcc::riscv::InstructionOpcode::JAL) &&
@@ -1029,13 +1042,13 @@ void testLongJALRelaxation(TestContext &Context, const rcc::TargetDescription &T
                  "long JAL live-in and annotation fixture must be valid");
   if (!X5 || !X6)
     return;
-  auto TooFar = rcc::riscv::branchInfo().relaxBranch(*JAL, std::numeric_limits<std::int64_t>::max(),
-                                                     *Function, Target);
+  auto TooFar = rcc::riscv::instrInfo().relaxBranch(*JAL, std::numeric_limits<std::int64_t>::max(),
+                                                    *Function, Target);
   Context.expect(!TooFar && TooFar.error().code() == rcc::ErrorCode::BranchRelaxationFailed &&
                      JAL->parent() == Entry,
                  "long JAL relaxation must reject an unencodable PC-relative distance atomically");
   auto Relaxed =
-      rcc::riscv::branchInfo().relaxBranch(*JAL, std::int64_t{2} * 1024 * 1024, *Function, Target);
+      rcc::riscv::instrInfo().relaxBranch(*JAL, std::int64_t{2} * 1024 * 1024, *Function, Target);
   if (!Relaxed)
     std::cerr << "long JAL relaxation failure: " << Relaxed.error().message() << '\n';
   rcc::MachineInstr *High = Entry->firstInstruction();
@@ -1186,7 +1199,7 @@ void testPostRAPseudoExpansionAndFinalization(TestContext &Context,
   rcc::MachinePassManager Pipeline;
   Context.expect(Pipeline.addPass(std::make_unique<rcc::FinalizeEmissionPseudosPass>()) &&
                      Pipeline.addPass(std::make_unique<rcc::FinalEncodabilityVerifierPass>(
-                         rcc::riscv::branchInfo())),
+                         rcc::riscv::instrInfo())),
                  "finalization passes must register");
   auto Finalized = Pipeline.run(*Function, Target, Analyses);
   if (!Finalized)
@@ -1310,8 +1323,8 @@ void testTargetLateExpansionRejectsSizeGrowth(TestContext &Context) {
     return;
 
   GrowingLatePseudoInfo ExpansionInfo;
-  FixedSizeBranchInfo BranchInfo;
-  rcc::TargetLatePseudoExpansionPass Pass(ExpansionInfo, BranchInfo);
+  FixedSizeInstrInfo InstrInfo;
+  rcc::TargetLatePseudoExpansionPass Pass(ExpansionInfo, InstrInfo);
   rcc::MachineAnalysisManager Analyses;
   auto Result = Pass.run(*Function, *Target, Analyses);
   Context.expect(!Result && Result.error().code() == rcc::ErrorCode::PseudoExpansionFailed &&
@@ -1358,8 +1371,8 @@ void testTargetLateExpansionRejectsCompensatedGrowth(TestContext &Context) {
     return;
 
   GrowingLatePseudoInfo ExpansionInfo;
-  FixedSizeBranchInfo BranchInfo;
-  rcc::TargetLatePseudoExpansionPass Pass(ExpansionInfo, BranchInfo);
+  FixedSizeInstrInfo InstrInfo;
+  rcc::TargetLatePseudoExpansionPass Pass(ExpansionInfo, InstrInfo);
   rcc::MachineAnalysisManager Analyses;
   auto Result = Pass.run(*Function, *Target, Analyses);
   Context.expect(
@@ -1391,7 +1404,7 @@ void testFinalEncodabilityRejectsInvalidInstruction(TestContext &Context,
   }
   setRelaxationProperties(Context, *ImmediateFunction, Target);
   rcc::MachineAnalysisManager Analyses;
-  rcc::FinalEncodabilityVerifierPass Verifier(rcc::riscv::branchInfo());
+  rcc::FinalEncodabilityVerifierPass Verifier(rcc::riscv::instrInfo());
   auto ImmediateResult = Verifier.run(*ImmediateFunction, Target, Analyses);
   Context.expect(!ImmediateResult &&
                      ImmediateResult.error().code() == rcc::ErrorCode::FinalEncodabilityFailed,

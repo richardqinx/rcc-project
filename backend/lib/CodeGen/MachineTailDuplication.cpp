@@ -230,8 +230,7 @@ duplicateTailIntoPredecessor(const TailCandidate &Candidate, MachineBasicBlock &
     if (!Removed)
       return std::unexpected(Removed.error());
   }
-  auto NewBranch =
-      Info.insertUnconditionalBranch(Predecessor, *Candidate.Successor, Function, Target);
+  auto NewBranch = Info.insertBranch(Predecessor, *Candidate.Successor, Function, Target);
   if (!NewBranch)
     return std::unexpected(NewBranch.error());
   MachineCFGUpdater CFG = Function.cfgUpdater();

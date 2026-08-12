@@ -279,7 +279,7 @@ redirectPredecessor(MachineBasicBlock &Predecessor, MachineBasicBlock &Duplicate
          Analysis->FalseTarget == &Duplicate);
     if (!IsImplicitEdge)
       return false;
-    auto Inserted = Info.insertUnconditionalBranch(Predecessor, Canonical, Function, Target);
+    auto Inserted = Info.insertBranch(Predecessor, Canonical, Function, Target);
     if (!Inserted)
       return std::unexpected(Inserted.error());
   }

@@ -12,8 +12,8 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/RegisterMask.h"
-#include "rcc/CodeGen/TargetCodeGen.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetInstrInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 
 #include <algorithm>
@@ -127,7 +127,7 @@ struct CopyOperands final {
 [[nodiscard]] Expected<bool> propagateVirtualCopy(MachineInstr &Copy, const CopyOperands &Operands,
                                                   MachineFunction &Function,
                                                   const TargetDescription &Target,
-                                                  const TargetSSAInfo &Info) {
+                                                  const TargetInstrInfo &Info) {
   if (!Operands.Destination.isVirtual() || !Operands.Source.isVirtual())
     return false;
   if (Function.registerInfo().getUniqueVRegDef(Operands.Destination) !=
@@ -231,7 +231,7 @@ struct CopyOperands final {
 [[nodiscard]] Expected<bool> propagatePhysicalCopy(MachineInstr &Copy, const CopyOperands &Operands,
                                                    MachineFunction &Function,
                                                    const TargetDescription &Target,
-                                                   const TargetSSAInfo &Info) {
+                                                   const TargetInstrInfo &Info) {
   const std::optional<PhysicalRegister> Destination = Operands.Destination.physicalRegister();
   const std::optional<PhysicalRegister> Source = Operands.Source.physicalRegister();
   if (!Destination || !Source || Operands.DestinationOperand->subReg().value() != 0 ||
