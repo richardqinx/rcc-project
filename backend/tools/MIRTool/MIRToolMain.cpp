@@ -144,6 +144,34 @@ void printUsage(std::ostream &Output) {
   return std::nullopt;
 }
 
+[[nodiscard]] Expected<std::optional<bool>> parseBooleanOption(std::string_view Argument,
+                                                               std::string_view Name) {
+  const std::string LongName =
+      Name.starts_with('-') && !Name.starts_with("--") ? "-" + std::string(Name) : std::string();
+  if (Argument == Name || (!LongName.empty() && Argument == LongName))
+    return true;
+  const auto ParseValue = [Name](std::string_view Value) -> Expected<std::optional<bool>> {
+    if (Value == "true" || Value == "1")
+      return std::optional<bool>{true};
+    if (Value == "false" || Value == "0")
+      return std::optional<bool>{false};
+    return rcc::makeUnexpected(ErrorCode::InvalidInvocation, "command-line option '" +
+                                                                 std::string(Name) +
+                                                                 "' requires true or false");
+  };
+  std::string Prefix(Name);
+  Prefix.push_back('=');
+  if (Argument.starts_with(Prefix))
+    return ParseValue(Argument.substr(Prefix.size()));
+  if (!LongName.empty()) {
+    std::string LongPrefix(LongName);
+    LongPrefix.push_back('=');
+    if (Argument.starts_with(LongPrefix))
+      return ParseValue(Argument.substr(LongPrefix.size()));
+  }
+  return std::nullopt;
+}
+
 template <typename IntegerT>
 [[nodiscard]] Expected<IntegerT> parseInteger(std::string_view Text, std::string_view Description) {
   IntegerT Value = 0;
@@ -201,6 +229,15 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
   }
   return rcc::tooling::BackendOption{std::string(Text.substr(0, Equal)),
                                      std::string(Text.substr(Equal + 1U))};
+}
+
+void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::string Name,
+                      std::string Value) {
+  const auto Existing = std::ranges::find(Options, Name, &rcc::tooling::BackendOption::Name);
+  if (Existing == Options.end())
+    Options.push_back({std::move(Name), std::move(Value)});
+  else
+    Existing->Value = std::move(Value);
 }
 
 [[nodiscard]] Expected<void> setOperation(CommandLine &Command, Operation Action) {
@@ -303,6 +340,54 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
       return std::unexpected(CodeGenFlag.error());
     if (*CodeGenFlag) {
       Index = static_cast<int>(CodeGenIndex);
+      continue;
+    }
+
+    bool ParsedCompatibilityOption = false;
+    for (const std::string_view Name : {
+             std::string_view{"-disable-gisel-legality-check"},
+             std::string_view{"-debugify-and-strip-all-safe"},
+             std::string_view{"-mcp-use-is-copy-instr"},
+             std::string_view{"-riscv-enable-cfi-instr-inserter"},
+             std::string_view{"-riscv-outliner-regsave"},
+             std::string_view{"-outliner-leaf-descendants"},
+             std::string_view{"-function-sections"},
+         }) {
+      auto Value = parseBooleanOption(Argument, Name);
+      if (!Value)
+        return std::unexpected(Value.error());
+      if (!*Value)
+        continue;
+      setBackendOption(Command.Invocation.TargetOptions, std::string(Name.substr(1)),
+                       **Value ? "true" : "false");
+      ParsedCompatibilityOption = true;
+      break;
+    }
+    if (ParsedCompatibilityOption)
+      continue;
+
+    auto GlobalISelAbort =
+        takeOption(Argument, "-global-isel-abort", Index, ArgumentCount, Arguments);
+    if (!GlobalISelAbort)
+      return std::unexpected(GlobalISelAbort.error());
+    if (*GlobalISelAbort) {
+      if (**GlobalISelAbort != "0" && **GlobalISelAbort != "1" && **GlobalISelAbort != "2") {
+        return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
+                                   "-global-isel-abort requires 0, 1, or 2");
+      }
+      setBackendOption(Command.Invocation.TargetOptions, "global-isel-abort",
+                       std::string(**GlobalISelAbort));
+      continue;
+    }
+    auto DebugOnly = takeOption(Argument, "-debug-only", Index, ArgumentCount, Arguments);
+    if (!DebugOnly)
+      return std::unexpected(DebugOnly.error());
+    if (*DebugOnly) {
+      if ((**DebugOnly).empty()) {
+        return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
+                                   "-debug-only requires a nonempty debug type");
+      }
+      setBackendOption(Command.Invocation.TargetOptions, "debug-only", std::string(**DebugOnly));
       continue;
     }
 
