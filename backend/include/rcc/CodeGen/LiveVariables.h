@@ -99,8 +99,6 @@ public:
                                                           const TargetDescription &Target);
 [[nodiscard]] Expected<bool> rebuildMachineLiveness(MachineFunction &Function,
                                                     const TargetDescription &Target);
-[[nodiscard]] Expected<void>
-registerStage11MachineAnalyses(MachineFunctionAnalysisManager &Analyses);
 
 } // namespace rcc
 

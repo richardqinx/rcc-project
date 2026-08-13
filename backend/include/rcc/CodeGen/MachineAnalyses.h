@@ -243,9 +243,6 @@ public:
                                             MachineFunctionAnalysisManager &Analyses);
 };
 
-[[nodiscard]] Expected<void>
-registerStage8MachineAnalyses(MachineFunctionAnalysisManager &Analyses);
-
 } // namespace rcc
 
 #endif // RCC_CODEGEN_MACHINEANALYSES_H
