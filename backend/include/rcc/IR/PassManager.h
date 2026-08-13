@@ -416,8 +416,9 @@ private:
           return Entry.second.Info.Name == Registration.Name;
         }))
       return makeUnexpected(ErrorCode::InvalidArgument, "analysis name is already registered");
-    Registry.emplace(Registration.ID, RegisteredAnalysis{std::move(Registration), std::move(Runner),
-                                                         std::move(Invalidator)});
+    const AnalysisID ID = Registration.ID;
+    Registry.emplace(
+        ID, RegisteredAnalysis{std::move(Registration), std::move(Runner), std::move(Invalidator)});
     return {};
   }
 
