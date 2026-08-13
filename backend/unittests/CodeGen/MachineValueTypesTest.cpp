@@ -184,9 +184,9 @@ void testMachineMemOperand(TestContext &Context) {
                  "failure ordering stronger than success must be rejected");
 
   auto BadAddressSpace = makeBasicLoadDescription();
-  BadAddressSpace.AddressSpace = rcc::LLT::MaxAddressSpace + 1;
+  BadAddressSpace.AddressSpace = rcc::LowLevelType::MaxAddressSpace + 1;
   Context.expect(!rcc::MachineMemOperand::create(BadAddressSpace),
-                 "MMO address space wider than LLT encoding must be rejected");
+                 "MMO address space wider than LowLevelType encoding must be rejected");
 
   auto EmptySymbol = makeBasicLoadDescription();
   EmptySymbol.Base = rcc::MemoryBase::externalSymbol("");

@@ -33,6 +33,14 @@ enum class ABIExtensionKind : std::uint8_t {
   Count,
 };
 
+enum class ABIValueCategory : std::uint8_t {
+  Invalid,
+  Integer,
+  FloatingPoint,
+  Pointer,
+  Count,
+};
+
 enum class ABIValueFlag : std::uint8_t {
   ByVal,
   StructReturn,
@@ -71,7 +79,8 @@ private:
 
 struct ABIValue final {
   Register Value;
-  LLT Type;
+  LowLevelType Type;
+  ABIValueCategory Category = ABIValueCategory::Invalid;
   std::uint32_t OriginalValue = 0;
   std::uint16_t FragmentIndex = 0;
   std::uint16_t FragmentCount = 1;
@@ -222,8 +231,8 @@ struct CCAssignment final {
   std::uint32_t OriginalValueIndex = 0;
   std::uint16_t FragmentIndex = 0;
   std::uint16_t FragmentCount = 1;
-  LLT ValueType;
-  LLT LocationType;
+  LowLevelType ValueType;
+  LowLevelType LocationType;
   CCLocationKind LocationKind = CCLocationKind::Register;
   std::optional<PhysicalRegister> LocationRegister;
   std::optional<std::uint64_t> StackOffsetBytes;
@@ -279,7 +288,7 @@ struct VarArgLoweringState final {
 struct ByValCopyAssignment final {
   std::size_t ArgumentAssignmentIndex = 0;
   Register Source;
-  LLT PointerType;
+  LowLevelType PointerType;
   std::uint64_t StackOffsetBytes = 0;
   std::uint64_t SizeBytes = 0;
   Alignment Align;

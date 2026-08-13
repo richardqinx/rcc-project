@@ -19,8 +19,8 @@ void testTwoAddressAndSubregisterPseudos(TestContext &Context, const rcc::Target
   auto Fixture = createFunction(Context, "two_address", 5, 1);
   if (!Fixture.Function || Fixture.Blocks.empty())
     return;
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto I32 = rcc::LLT::makeInteger(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
   if (!I64 || !I32)
     return;
   auto &Function = *Fixture.Function;

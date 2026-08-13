@@ -116,7 +116,8 @@ void testOperandKinds(TestContext &Context) {
   Context.expect(!rcc::APFloat::create(rcc::FloatSemantics::IEEEHalf, TooManyHalfWords),
                  "floating immediate word-count mismatch must be rejected");
 
-  auto Virtual = Function->registerInfo().createVirtualRegister(*rcc::LLT::makeInteger(32));
+  auto Virtual = Function->registerInfo().createVirtualRegister(
+      *rcc::LowLevelType::makeCategoryNeutralScalar(32));
   Context.expect(Virtual.has_value(), "operand test virtual register must be created");
   if (!Virtual)
     return;
@@ -205,7 +206,7 @@ void testRegisterInfoAndOperandMovement(TestContext &Context) {
   if (Block == nullptr)
     return;
 
-  auto I32 = rcc::LLT::makeInteger(32);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
   Context.expect(I32.has_value(), "i32 construction for MRI test must succeed");
   if (!I32)
     return;
@@ -317,7 +318,7 @@ void testRegisterInfoAndOperandMovement(TestContext &Context) {
   Context.expect(V0Info && V0Info->get().Type == I32 &&
                      V0Info->get().Bank == rcc::RegisterBankID::fromValue(3) &&
                      V0Info->get().RegClass == rcc::RegisterClassID::fromValue(4),
-                 "MRI virtual register properties must evolve without losing LLT");
+                 "MRI virtual register properties must evolve without losing LowLevelType");
 
   Context.expect(MRI.addLiveIn(*PhysReg, *V0).has_value(),
                  "MRI must record function physical live-ins");

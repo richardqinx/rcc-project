@@ -257,7 +257,7 @@ Expected<MachineMemOperand> MachineMemOperand::create(MachineMemOperandDesc Desc
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine memory operand must describe a load or store");
   }
-  if (Description.AddressSpace > LLT::MaxAddressSpace) {
+  if (Description.AddressSpace > LowLevelType::MaxAddressSpace) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine memory operand address space must fit in 24 bits");
   }

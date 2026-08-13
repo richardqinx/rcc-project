@@ -68,9 +68,10 @@ Expected<Register> MachineRegisterInfo::createVirtualRegister() {
   return *Reg;
 }
 
-Expected<Register> MachineRegisterInfo::createVirtualRegister(LLT Type) {
+Expected<Register> MachineRegisterInfo::createVirtualRegister(LowLevelType Type) {
   if (!Type.isValid()) {
-    return makeUnexpected(ErrorCode::InvalidArgument, "virtual register type must be a valid LLT");
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "virtual register type must be a valid LowLevelType");
   }
 
   auto Reg = createVirtualRegister();
@@ -124,9 +125,10 @@ MachineRegisterInfo::virtualRegisterInfo(Register Reg) const {
   return std::cref(VirtualRegisters[*Index]);
 }
 
-Expected<void> MachineRegisterInfo::setType(Register Reg, LLT Type) {
+Expected<void> MachineRegisterInfo::setType(Register Reg, LowLevelType Type) {
   if (!Type.isValid()) {
-    return makeUnexpected(ErrorCode::InvalidArgument, "virtual register type must be a valid LLT");
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "virtual register type must be a valid LowLevelType");
   }
   auto Info = virtualRegisterInfo(Reg);
   if (!Info)

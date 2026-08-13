@@ -849,7 +849,7 @@ private:
       MissingVirtualBank |= !Info.Bank;
       MissingVirtualClass |= !Info.RegClass;
       if (Info.Type && !Info.Type->isValid())
-        return fail("virtual register has an invalid LLT");
+        return fail("virtual register has an invalid LowLevelType");
 
       std::unordered_set<PhysicalRegister> Hints;
       for (const PhysicalRegister Hint : Info.AllocationHints) {
@@ -924,7 +924,7 @@ private:
                             Has(MachineFunctionProperty::Legalized) ||
                             Has(MachineFunctionProperty::RegBankSelected);
     if (NeedsTypes && MissingVirtualType)
-      return fail("typed pipeline stage has a virtual register without LLT");
+      return fail("typed pipeline stage has a virtual register without LowLevelType");
 
     if (Options.Mode == MachineVerifierMode::PreLegalizer) {
       if (!Has(MachineFunctionProperty::IsSSA) || !Has(MachineFunctionProperty::TracksLiveness)) {

@@ -54,7 +54,8 @@ private:
   return rcc::RegisterClassID::fromValue(static_cast<std::uint32_t>(Class));
 }
 
-[[nodiscard]] rcc::Expected<rcc::Register> createVReg(rcc::MachineFunction &Function, rcc::LLT Type,
+[[nodiscard]] rcc::Expected<rcc::Register> createVReg(rcc::MachineFunction &Function,
+                                                      rcc::LowLevelType Type,
                                                       rcc::riscv::RegisterBank Bank,
                                                       rcc::riscv::RegisterClass Class) {
   auto Reg = Function.registerInfo().createVirtualRegister(Type);
@@ -219,9 +220,9 @@ void testBehaviorAndCopyLegality(TestContext &Context, const rcc::TargetDescript
   Context.expect(Rewritten && *Rewritten && blockOperand(*Jump, 1)->Block == *Third,
                  "RV64GC branch target rewriting must update direct JAL operands");
 
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto F64 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
-  auto F32 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEESingle);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto F64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto F32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
   if (!I64 || !F64 || !F32)
     return;
   auto GPR =
@@ -318,7 +319,7 @@ void testRV64GCCriticalEdge(TestContext &Context, const rcc::TargetDescription &
   auto Merge = appendBlock(**Function);
   if (!From || !Side || !Other || !Merge)
     return;
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto X0 = rcc::riscv::physicalRegister(rcc::riscv::PhysicalRegisterID::X0);
   if (!I64 || !X0)
     return;

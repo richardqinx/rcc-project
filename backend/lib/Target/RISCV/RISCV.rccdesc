@@ -1923,7 +1923,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R4
     assembly_format: FRD_FRS1_FRS2_FRS3_RM
@@ -1941,7 +1941,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R4
     assembly_format: FRD_FRS1_FRS2_FRS3_RM
@@ -1959,7 +1959,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R4
     assembly_format: FRD_FRS1_FRS2_FRS3_RM
@@ -1977,7 +1977,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R4
     assembly_format: FRD_FRS1_FRS2_FRS3_RM
@@ -1994,7 +1994,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2_RM
@@ -2011,7 +2011,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2_RM
@@ -2028,7 +2028,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2_RM
@@ -2045,7 +2045,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_DIV
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2_RM
@@ -2061,7 +2061,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_SQRT
     encoding_category: R
     assembly_format: FRD_FRS1_RM
@@ -2121,7 +2121,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2
@@ -2136,7 +2136,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2
@@ -2152,7 +2152,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: RD_FRS1_RM
@@ -2168,7 +2168,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: RD_FRS1_RM
@@ -2184,7 +2184,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: RD_FRS1_RM
@@ -2200,7 +2200,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: RD_FRS1_RM
@@ -2229,7 +2229,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: RD_FRS1_FRS2
@@ -2244,7 +2244,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: RD_FRS1_FRS2
@@ -2259,7 +2259,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: RD_FRS1_FRS2
@@ -2289,7 +2289,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: FRD_RS1_RM
@@ -2305,7 +2305,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: FRD_RS1_RM
@@ -2321,7 +2321,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: FRD_RS1_RM
@@ -2337,7 +2337,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: FRD_RS1_RM
@@ -2399,7 +2399,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R4
     assembly_format: FRD_FRS1_FRS2_FRS3_RM
@@ -2417,7 +2417,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R4
     assembly_format: FRD_FRS1_FRS2_FRS3_RM
@@ -2435,7 +2435,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R4
     assembly_format: FRD_FRS1_FRS2_FRS3_RM
@@ -2453,7 +2453,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R4
     assembly_format: FRD_FRS1_FRS2_FRS3_RM
@@ -2470,7 +2470,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2_RM
@@ -2487,7 +2487,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2_RM
@@ -2504,7 +2504,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_MUL
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2_RM
@@ -2521,7 +2521,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_DIV
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2_RM
@@ -2537,7 +2537,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_SQRT
     encoding_category: R
     assembly_format: FRD_FRS1_RM
@@ -2597,7 +2597,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2
@@ -2612,7 +2612,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: FRD_FRS1_FRS2
@@ -2628,7 +2628,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: RD_FRS1_RM
@@ -2644,7 +2644,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: RD_FRS1_RM
@@ -2660,7 +2660,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: RD_FRS1_RM
@@ -2676,7 +2676,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: RD_FRS1_RM
@@ -2705,7 +2705,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: RD_FRS1_FRS2
@@ -2720,7 +2720,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: RD_FRS1_FRS2
@@ -2735,7 +2735,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_ADD
     encoding_category: R
     assembly_format: RD_FRS1_FRS2
@@ -2797,7 +2797,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: FRD_RS1_RM
@@ -2813,7 +2813,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: FRD_RS1_RM
@@ -2843,7 +2843,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: FRD_FRS1_RM
@@ -3373,7 +3373,7 @@ instructions:
       - { kinds: [immediate], immediate_predicate: RM, name: RM }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
-    flags: [produces_code]
+    flags: [may_raise_fp_exception, produces_code]
     scheduling_class: FP_CONVERT
     encoding_category: R
     assembly_format: FRD_FRS1_RM

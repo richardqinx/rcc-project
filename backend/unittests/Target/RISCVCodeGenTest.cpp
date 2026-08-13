@@ -66,7 +66,7 @@ struct InstructionFixture final {
   auto Block = (*Function)->createBasicBlock();
   if (!Block || !(*Function)->appendBlock(**Block))
     return {};
-  auto Type = rcc::LLT::makeInteger(Bits);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(Bits);
   if (!Type)
     return {};
   auto Left = (*Function)->registerInfo().createVirtualRegister(*Type);
@@ -87,29 +87,28 @@ struct InstructionFixture final {
 }
 
 [[nodiscard]] bool constrainRegister(rcc::MachineFunction &Function, rcc::Register Reg,
-                                     rcc::LLT Type) {
-  const auto Bank = Type.isFloat() ? rcc::RegisterBankID::fromValue(
-                                         static_cast<std::uint32_t>(rcc::riscv::RegisterBank::FPR))
-                                   : rcc::RegisterBankID::fromValue(
-                                         static_cast<std::uint32_t>(rcc::riscv::RegisterBank::GPR));
-  const auto Class = Type.isFloat()
-                         ? rcc::RegisterClassID::fromValue(static_cast<std::uint32_t>(
-                               Type.scalarBitWidth() == 32 ? rcc::riscv::RegisterClass::FPR32
-                                                           : rcc::riscv::RegisterClass::FPR64))
-                         : rcc::RegisterClassID::fromValue(
-                               static_cast<std::uint32_t>(rcc::riscv::RegisterClass::GPR));
+                                     rcc::LowLevelType Type, bool Floating = false) {
+  const auto Bank = rcc::RegisterBankID::fromValue(static_cast<std::uint32_t>(
+      Floating ? rcc::riscv::RegisterBank::FPR : rcc::riscv::RegisterBank::GPR));
+  const auto Class = rcc::RegisterClassID::fromValue(static_cast<std::uint32_t>(
+      Floating ? (Type.scalarBitWidth() == 32 ? rcc::riscv::RegisterClass::FPR32
+                                              : rcc::riscv::RegisterClass::FPR64)
+               : rcc::riscv::RegisterClass::GPR));
   return Function.registerInfo().setRegisterBank(Reg, Bank).has_value() &&
          Function.registerInfo().setRegisterClass(Reg, Class).has_value();
 }
 
-[[nodiscard]] bool constrainVirtualRegisters(rcc::MachineFunction &Function) {
+[[nodiscard]] bool constrainVirtualRegisters(rcc::MachineFunction &Function,
+                                             bool FloatingValues = false) {
   const auto Registers = Function.registerInfo().virtualRegisters();
   for (std::size_t Index = 0; Index < Registers.size(); ++Index) {
     const rcc::VirtualRegisterInfo &Info = Registers[Index];
     if (Info.IsTombstone)
       continue;
     auto Reg = rcc::Register::makeVirtual(Index);
-    if (!Reg || !Info.Type || !constrainRegister(Function, *Reg, *Info.Type))
+    if (!Reg || !Info.Type ||
+        !constrainRegister(Function, *Reg, *Info.Type,
+                           FloatingValues && Info.Type->scalarBitWidth() != 1))
       return false;
   }
   return true;
@@ -128,8 +127,10 @@ struct InstructionFixture final {
 
 [[nodiscard]] std::unique_ptr<rcc::MachineFunction>
 createUnaryFunction(TestContext &Context, const rcc::TargetDescription &Target,
-                    rcc::GenericOpcode Generic, rcc::LLT DestinationType, rcc::LLT SourceType,
-                    rcc::Register *DestinationOut = nullptr, rcc::Register *SourceOut = nullptr) {
+                    rcc::GenericOpcode Generic, rcc::LowLevelType DestinationType,
+                    rcc::LowLevelType SourceType, bool FloatingDestination = false,
+                    bool FloatingSource = false, rcc::Register *DestinationOut = nullptr,
+                    rcc::Register *SourceOut = nullptr) {
   auto Function = rcc::MachineFunction::create(
       "riscv_unary",
       rcc::MachineFunctionStableID::fromValue(200 + static_cast<std::uint32_t>(Generic)));
@@ -143,8 +144,8 @@ createUnaryFunction(TestContext &Context, const rcc::TargetDescription &Target,
   auto Source = (*Function)->registerInfo().createVirtualRegister(SourceType);
   if (!Destination || !Source)
     return nullptr;
-  if (!constrainRegister(**Function, *Destination, DestinationType) ||
-      !constrainRegister(**Function, *Source, SourceType))
+  if (!constrainRegister(**Function, *Destination, DestinationType, FloatingDestination) ||
+      !constrainRegister(**Function, *Source, SourceType, FloatingSource))
     return nullptr;
   rcc::MachineIRBuilder Builder(**Function, Target);
   if (!Builder.setInsertPoint(**Block))
@@ -161,7 +162,7 @@ createUnaryFunction(TestContext &Context, const rcc::TargetDescription &Target,
 
 [[nodiscard]] std::unique_ptr<rcc::MachineFunction>
 createCompareFunction(TestContext &Context, const rcc::TargetDescription &Target,
-                      rcc::GenericOpcode Generic, rcc::LLT ValueType, bool Floating,
+                      rcc::GenericOpcode Generic, rcc::LowLevelType ValueType, bool Floating,
                       rcc::IntegerPredicate IntegerCondition,
                       rcc::FloatingPredicate FloatingCondition) {
   auto Function = rcc::MachineFunction::create(
@@ -173,15 +174,15 @@ createCompareFunction(TestContext &Context, const rcc::TargetDescription &Target
   auto Block = (*Function)->createBasicBlock();
   if (!Block || !(*Function)->appendBlock(**Block))
     return nullptr;
-  auto ResultType = rcc::LLT::makeInteger(1);
+  auto ResultType = rcc::LowLevelType::makeCategoryNeutralScalar(1);
   if (!ResultType)
     return nullptr;
   auto Result = (*Function)->registerInfo().createVirtualRegister(*ResultType);
   auto Left = (*Function)->registerInfo().createVirtualRegister(ValueType);
   auto Right = (*Function)->registerInfo().createVirtualRegister(ValueType);
   if (!Result || !Left || !Right || !constrainRegister(**Function, *Result, *ResultType) ||
-      !constrainRegister(**Function, *Left, ValueType) ||
-      !constrainRegister(**Function, *Right, ValueType))
+      !constrainRegister(**Function, *Left, ValueType, Floating) ||
+      !constrainRegister(**Function, *Right, ValueType, Floating))
     return nullptr;
   rcc::MachineIRBuilder Builder(**Function, Target);
   if (!Builder.setInsertPoint(**Block))
@@ -202,7 +203,7 @@ createCompareFunction(TestContext &Context, const rcc::TargetDescription &Target
 
 [[nodiscard]] std::unique_ptr<rcc::MachineFunction>
 createFloatBinaryFunction(TestContext &Context, const rcc::TargetDescription &Target,
-                          rcc::GenericOpcode Generic, rcc::LLT Type) {
+                          rcc::GenericOpcode Generic, rcc::LowLevelType Type) {
   auto Function = rcc::MachineFunction::create(
       "riscv_float_binary",
       rcc::MachineFunctionStableID::fromValue(700 + static_cast<std::uint32_t>(Generic)));
@@ -215,8 +216,9 @@ createFloatBinaryFunction(TestContext &Context, const rcc::TargetDescription &Ta
   auto Left = (*Function)->registerInfo().createVirtualRegister(Type);
   auto Right = (*Function)->registerInfo().createVirtualRegister(Type);
   auto Result = (*Function)->registerInfo().createVirtualRegister(Type);
-  if (!Left || !Right || !Result || !constrainRegister(**Function, *Left, Type) ||
-      !constrainRegister(**Function, *Right, Type) || !constrainRegister(**Function, *Result, Type))
+  if (!Left || !Right || !Result || !constrainRegister(**Function, *Left, Type, true) ||
+      !constrainRegister(**Function, *Right, Type, true) ||
+      !constrainRegister(**Function, *Result, Type, true))
     return nullptr;
   rcc::MachineIRBuilder Builder(**Function, Target);
   if (!Builder.setInsertPoint(**Block))
@@ -230,7 +232,8 @@ createFloatBinaryFunction(TestContext &Context, const rcc::TargetDescription &Ta
 
 [[nodiscard]] std::unique_ptr<rcc::MachineFunction> createRegisterOnlyFunction(
     TestContext &Context, const rcc::TargetDescription &Target, rcc::GenericOpcode Generic,
-    std::initializer_list<rcc::LLT> DefinitionTypes, std::initializer_list<rcc::LLT> UseTypes) {
+    std::initializer_list<rcc::LowLevelType> DefinitionTypes,
+    std::initializer_list<rcc::LowLevelType> UseTypes, bool FloatingValues = false) {
   auto Function = rcc::MachineFunction::create(
       "riscv_register_only",
       rcc::MachineFunctionStableID::fromValue(1000 + static_cast<std::uint32_t>(Generic)));
@@ -246,17 +249,17 @@ createFloatBinaryFunction(TestContext &Context, const rcc::TargetDescription &Ta
   auto Pending = Builder.buildInstr(rcc::opcode(Generic));
   if (!Pending)
     return nullptr;
-  for (rcc::LLT Type : DefinitionTypes) {
+  for (rcc::LowLevelType Type : DefinitionTypes) {
     auto Reg = (*Function)->registerInfo().createVirtualRegister(Type);
     if (!Reg || !Pending->addDef(*Reg))
       return nullptr;
   }
-  for (rcc::LLT Type : UseTypes) {
+  for (rcc::LowLevelType Type : UseTypes) {
     auto Reg = (*Function)->registerInfo().createVirtualRegister(Type);
     if (!Reg || !Pending->addUse(*Reg))
       return nullptr;
   }
-  if (!Pending->build() || !constrainVirtualRegisters(**Function))
+  if (!Pending->build() || !constrainVirtualRegisters(**Function, FloatingValues))
     return nullptr;
   return std::move(*Function);
 }
@@ -304,8 +307,8 @@ void testClassification(TestContext &Context) {
   Context.expect(FloatBlock.has_value(), "floating constant block creation must succeed");
   if (!FloatBlock || !(*FloatFunction)->appendBlock(**FloatBlock))
     return;
-  auto F32 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEESingle);
-  auto F64 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
+  auto F32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto F64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   Context.expect(F32.has_value() && F64.has_value(),
                  "RV64GC floating constant types must be constructible");
   if (!F32 || !F64)
@@ -442,8 +445,8 @@ void testNarrowIntegerSelection(TestContext &Context) {
                    "narrow integer selection must satisfy target descriptors");
   }
 
-  auto I7 = rcc::LLT::makeInteger(7);
-  auto I24 = rcc::LLT::makeInteger(24);
+  auto I7 = rcc::LowLevelType::makeCategoryNeutralScalar(7);
+  auto I24 = rcc::LowLevelType::makeCategoryNeutralScalar(24);
   if (!I7 || !I24)
     return;
   auto Compare = createCompareFunction(Context, *Target, rcc::GenericOpcode::G_ICMP, *I7, false,
@@ -494,11 +497,11 @@ void testScalarSelection(TestContext &Context) {
   if (!Target)
     return;
 
-  auto I32 = rcc::LLT::makeInteger(32);
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto F32 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEESingle);
-  auto F64 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
-  auto I1 = rcc::LLT::makeInteger(1);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto F32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto F64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto I1 = rcc::LowLevelType::makeCategoryNeutralScalar(1);
   Context.expect(I32 && I64 && F32 && F64 && I1, "scalar test types must be constructible");
   if (!I32 || !I64 || !F32 || !F64 || !I1)
     return;
@@ -546,11 +549,14 @@ void testScalarSelection(TestContext &Context) {
     }
   }
 
-  auto FPExt = createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_FPEXT, *F64, *F32);
-  auto FPTrunc = createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_FPTRUNC, *F32, *F64);
-  auto FPToSI = createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_FPTOSI, *I64, *F32);
-  auto SIToFP = createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_SITOFP, *F64, *I32);
-  auto Bitcast = createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_BITCAST, *I32, *F32);
+  auto FPExt =
+      createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_FPEXT, *F64, *F32, true, true);
+  auto FPTrunc =
+      createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_FPTRUNC, *F32, *F64, true, true);
+  auto FPToSI =
+      createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_FPTOSI, *I64, *F32, false, true);
+  auto SIToFP =
+      createUnaryFunction(Context, *Target, rcc::GenericOpcode::G_SITOFP, *F64, *I32, true, false);
   if (FPExt) {
     auto *Instruction = FPExt->firstBlock()->firstInstruction();
     Context.expect((*GISel.Selector).select(*Instruction, *FPExt, *Target).has_value(),
@@ -583,14 +589,6 @@ void testScalarSelection(TestContext &Context) {
                                                 rcc::riscv::InstructionOpcode::FCVT_D_W)),
                    "sitofp must select FCVT.D.W");
   }
-  if (Bitcast) {
-    auto *Instruction = Bitcast->firstBlock()->firstInstruction();
-    Context.expect((*GISel.Selector).select(*Instruction, *Bitcast, *Target).has_value(),
-                   "float-to-integer bitcast must select");
-    Context.expect(Instruction->opcode() == rcc::Opcode::fromValue(static_cast<std::uint32_t>(
-                                                rcc::riscv::InstructionOpcode::FMV_X_W)),
-                   "float-to-integer bitcast must select FMV.X.W");
-  }
 }
 
 void testComparisonsAndControl(TestContext &Context) {
@@ -598,9 +596,9 @@ void testComparisonsAndControl(TestContext &Context) {
   Context.expect(Target.has_value(), "RV64GC target must be available for comparison selection");
   if (!Target)
     return;
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto F32 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEESingle);
-  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto F32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
   if (!I64 || !F32 || !Pointer)
     return;
 
@@ -739,10 +737,10 @@ void testCompositeScalarSelection(TestContext &Context) {
   Context.expect(Target.has_value(), "RV64GC target must be available for composite selection");
   if (!Target)
     return;
-  auto I1 = rcc::LLT::makeInteger(1);
-  auto I32 = rcc::LLT::makeInteger(32);
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto F64 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
+  auto I1 = rcc::LowLevelType::makeCategoryNeutralScalar(1);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto F64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!I1 || !I32 || !I64 || !F64)
     return;
 
@@ -757,9 +755,9 @@ void testCompositeScalarSelection(TestContext &Context) {
   auto IntegerSelect = createRegisterOnlyFunction(Context, *Target, rcc::GenericOpcode::G_SELECT,
                                                   {*I64}, {*I1, *I64, *I64});
   auto FloatSelect = createRegisterOnlyFunction(Context, *Target, rcc::GenericOpcode::G_SELECT,
-                                                {*F64}, {*I1, *F64, *F64});
+                                                {*F64}, {*I1, *F64, *F64}, true);
   auto CopySign = createRegisterOnlyFunction(Context, *Target, rcc::GenericOpcode::G_FCOPYSIGN,
-                                             {*F64}, {*F64, *F64});
+                                             {*F64}, {*F64, *F64}, true);
   const std::array Functions{DivRem.get(),        MultiplyHigh.get(), Minimum.get(), Absolute.get(),
                              IntegerSelect.get(), FloatSelect.get(),  CopySign.get()};
   for (rcc::MachineFunction *Function : Functions) {
@@ -805,16 +803,16 @@ void testOverflowSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   if (!Target)
     return;
-  auto I1 = rcc::LLT::makeInteger(1);
-  auto I32 = rcc::LLT::makeInteger(32);
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I1 = rcc::LowLevelType::makeCategoryNeutralScalar(1);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!I1 || !I32 || !I64)
     return;
   const std::array Opcodes{rcc::GenericOpcode::G_UADDO, rcc::GenericOpcode::G_USUBO,
                            rcc::GenericOpcode::G_SADDO, rcc::GenericOpcode::G_SSUBO,
                            rcc::GenericOpcode::G_UMULO, rcc::GenericOpcode::G_SMULO};
   for (rcc::GenericOpcode Generic : Opcodes) {
-    const rcc::LLT Type = Generic == rcc::GenericOpcode::G_UMULO ? *I32 : *I64;
+    const rcc::LowLevelType Type = Generic == rcc::GenericOpcode::G_UMULO ? *I32 : *I64;
     auto Function =
         createRegisterOnlyFunction(Context, *Target, Generic, {Type, *I1}, {Type, Type});
     Context.expect(Function != nullptr, "overflow fixture must be complete");
@@ -851,10 +849,10 @@ void testAtomicCompareExchangeLegalization(TestContext &Context) {
   if (!Target || !Function)
     return;
   auto Block = (*Function)->createBasicBlock();
-  auto I1 = rcc::LLT::makeAnyScalar(1);
-  auto I8 = rcc::LLT::makeAnyScalar(8);
-  auto I64 = rcc::LLT::makeAnyScalar(64);
-  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto I1 = rcc::LowLevelType::makeCategoryNeutralScalar(1);
+  auto I8 = rcc::LowLevelType::makeCategoryNeutralScalar(8);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
   auto Size = rcc::MemorySize::fixed(1);
   auto Align = rcc::Alignment::create(1);
   if (!Block || !(*Function)->appendBlock(**Block) || !I1 || !I8 || !I64 || !Pointer || !Size ||
@@ -1003,8 +1001,8 @@ void testConstantExtensionPreservesLiveSource(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   auto Function = rcc::MachineFunction::create("riscv_live_constant_extension",
                                                rcc::MachineFunctionStableID::fromValue(1300));
-  auto I32 = rcc::LLT::makeAnyScalar(32);
-  auto I64 = rcc::LLT::makeAnyScalar(64);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Target || !Function || !I32 || !I64)
     return;
   auto Block = (*Function)->createBasicBlock();
@@ -1048,8 +1046,8 @@ void testConstantExtensionPreservesLiveSource(TestContext &Context) {
 
 void testIntegerCompareReusesConstantExtension(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
-  auto I32 = rcc::LLT::makeAnyScalar(32);
-  auto I64 = rcc::LLT::makeAnyScalar(64);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Target || !I32 || !I64)
     return;
   auto Function =
@@ -1109,9 +1107,9 @@ void testNarrowAnyExtBinaryArtifacts(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   auto Function = rcc::MachineFunction::create("riscv_narrow_binary_artifacts",
                                                rcc::MachineFunctionStableID::fromValue(1301));
-  auto I1 = rcc::LLT::makeAnyScalar(1);
-  auto I32 = rcc::LLT::makeAnyScalar(32);
-  auto I64 = rcc::LLT::makeAnyScalar(64);
+  auto I1 = rcc::LowLevelType::makeCategoryNeutralScalar(1);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Target || !Function || !I1 || !I32 || !I64)
     return;
   auto Block = (*Function)->createBasicBlock();
@@ -1240,8 +1238,8 @@ void testAtomicSelection(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   if (!Target)
     return;
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
   auto Size = rcc::MemorySize::fixed(8);
   auto Align = rcc::Alignment::create(8);
   if (!I64 || !Pointer || !Size || !Align)
@@ -1397,8 +1395,8 @@ void testUnsupportedTypes(TestContext &Context) {
         (*GISel.Selector).canSelect(*WideInteger.Instruction, *WideInteger.Function, *Target);
     Context.expect(!Selection && Selection.error().code() == rcc::ErrorCode::Unsupported,
                    "i128 arithmetic must produce an Unsupported diagnostic");
-    Context.expect(!Selection && Selection.error().message().find("i128") != std::string::npos,
-                   "unsupported type diagnostics must name the rejected LLT");
+    Context.expect(!Selection && Selection.error().message().find("s128") != std::string::npos,
+                   "unsupported type diagnostics must name the rejected LowLevelType");
   }
   auto Function = rcc::MachineFunction::create("unsupported_type",
                                                rcc::MachineFunctionStableID::fromValue(100));
@@ -1407,7 +1405,7 @@ void testUnsupportedTypes(TestContext &Context) {
   auto Block = (*Function)->createBasicBlock();
   if (!Block || !(*Function)->appendBlock(**Block))
     return;
-  auto F64 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
+  auto F64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!F64)
     return;
   auto Result = (*Function)->registerInfo().createVirtualRegister(*F64);
@@ -1447,7 +1445,7 @@ void testVACopyLegalization(TestContext &Context) {
   if (!Function)
     return;
   auto Block = (*Function)->createBasicBlock();
-  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
   if (!Block || !Pointer || !(*Function)->appendBlock(**Block))
     return;
   auto Destination = (*Function)->registerInfo().createVirtualRegister(*Pointer);
@@ -1522,8 +1520,8 @@ void testVAArgLegalization(TestContext &Context) {
   if (!Function)
     return;
   auto Block = (*Function)->createBasicBlock();
-  auto Pointer = rcc::LLT::makePointer(0, 64);
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Block || !Pointer || !I64 || !(*Function)->appendBlock(**Block))
     return;
   auto Destination = (*Function)->registerInfo().createVirtualRegister(*I64);
@@ -1611,8 +1609,8 @@ void testFrameIndexLegalization(TestContext &Context) {
   if (!Function)
     return;
   auto Block = (*Function)->createBasicBlock();
-  auto Pointer = rcc::LLT::makePointer(0, 64);
-  auto OtherAddressSpace = rcc::LLT::makePointer(1, 64);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
+  auto OtherAddressSpace = rcc::LowLevelType::makePointer(1, 64);
   rcc::StackObjectDesc StackSlot;
   StackSlot.Size = 8;
   StackSlot.Align = *rcc::Alignment::create(8);
@@ -1653,9 +1651,9 @@ void testPointerArithmeticLegalization(TestContext &Context) {
   Context.expect(Target.has_value(), "RV64GC target must be available for pointer legalization");
   if (!Target)
     return;
-  auto Pointer = rcc::LLT::makePointer(0, 64);
-  auto S64 = rcc::LLT::makeAnyScalar(64);
-  auto S32 = rcc::LLT::makeAnyScalar(32);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
+  auto S64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto S32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
   if (!Pointer || !S64 || !S32)
     return;
   auto Legal = createRegisterOnlyFunction(Context, *Target, rcc::GenericOpcode::G_PTR_ADD,
@@ -1686,8 +1684,8 @@ void testMemoryOffsetSelection(TestContext &Context) {
   auto Block = (*Function)->createBasicBlock();
   if (!Block || !(*Function)->appendBlock(**Block))
     return;
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
   if (!I64 || !Pointer)
     return;
   auto Result = (*Function)->registerInfo().createVirtualRegister(*I64);

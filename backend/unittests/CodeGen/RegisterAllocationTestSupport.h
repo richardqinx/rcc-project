@@ -201,7 +201,7 @@ struct FunctionFixture final {
 
 [[nodiscard]] inline Expected<Register>
 createVReg(MachineFunction &Function, RegisterClassID Class = TestRegisterClass::GPR64) {
-  auto Type = LLT::makeInteger(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   auto Reg = Function.registerInfo().createVirtualRegister(*Type);

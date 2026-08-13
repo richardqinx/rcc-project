@@ -159,7 +159,7 @@ namespace {
   return APInt::create(BitWidth, Words);
 }
 
-[[nodiscard]] std::optional<std::uint64_t> minimumTypeSizeInBits(LLT Type) noexcept {
+[[nodiscard]] std::optional<std::uint64_t> minimumTypeSizeInBits(LowLevelType Type) noexcept {
   if (!Type.isValid() || Type.isToken())
     return std::nullopt;
   const std::uint64_t ScalarSize = Type.scalarBitWidth();
@@ -377,8 +377,8 @@ private:
   [[nodiscard]] bool parseSigned64(const MIToken &Token, std::int64_t &Value);
   [[nodiscard]] bool parseOptionalOffset(std::int64_t &Offset);
   [[nodiscard]] bool parseAlignment(Alignment &Result);
-  [[nodiscard]] bool parseLowLevelType(LLT &Result);
-  [[nodiscard]] bool parseScalarLowLevelType(const MIToken &Token, LLT &Result);
+  [[nodiscard]] bool parseLowLevelType(LowLevelType &Result);
+  [[nodiscard]] bool parseScalarLowLevelType(const MIToken &Token, LowLevelType &Result);
 
   [[nodiscard]] bool parseFirstPass();
   [[nodiscard]] bool parseSecondPass();
@@ -553,30 +553,20 @@ bool MIParser::Impl::parseAlignment(Alignment &Result) {
   return false;
 }
 
-bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Result) {
+bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LowLevelType &Result) {
   if (TypeToken.kind() != MITokenKind::Identifier)
     return fail(TypeToken, "expected a scalar low-level type");
   std::string_view Spelling = TypeToken.stringValue();
-  enum class ScalarKind : std::uint8_t {
-    Any,
-    Integer,
-    Float,
-    BFloat,
-    Pointer,
-  };
-  ScalarKind Kind = ScalarKind::Any;
+  enum class ScalarKind : std::uint8_t { CategoryNeutral, Pointer };
+  ScalarKind Kind = ScalarKind::CategoryNeutral;
   std::string_view Digits;
   if (Spelling.starts_with("bf")) {
-    Kind = ScalarKind::BFloat;
     Digits = Spelling.substr(2);
   } else if (Spelling.starts_with('s')) {
-    Kind = ScalarKind::Any;
     Digits = Spelling.substr(1);
   } else if (Spelling.starts_with('i')) {
-    Kind = ScalarKind::Integer;
     Digits = Spelling.substr(1);
   } else if (Spelling.starts_with('f')) {
-    Kind = ScalarKind::Float;
     Digits = Spelling.substr(1);
   } else if (Spelling.starts_with('p')) {
     Kind = ScalarKind::Pointer;
@@ -589,43 +579,20 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Resu
   if (!parseUnsignedDigits(Digits, Value))
     return fail(TypeToken, "expected integers after 's'/'i'/'f'/'bf'/'p' type identifier");
 
-  Expected<LLT> Created = makeUnexpected(ErrorCode::ParseError, "invalid low-level type");
+  Expected<LowLevelType> Created = makeUnexpected(ErrorCode::ParseError, "invalid low-level type");
   switch (Kind) {
-  case ScalarKind::Any:
+  case ScalarKind::CategoryNeutral:
     if (Value == 0) {
-      Result = LLT::token();
+      Result = LowLevelType::token();
       return false;
     }
-    Created = LLT::makeAnyScalar(Value);
-    break;
-  case ScalarKind::Integer:
-    Created = LLT::makeInteger(Value);
-    break;
-  case ScalarKind::Float: {
-    std::optional<FloatSemantics> Semantics;
-    if (Value == 16)
-      Semantics = FloatSemantics::IEEEHalf;
-    else if (Value == 32)
-      Semantics = FloatSemantics::IEEESingle;
-    else if (Value == 64)
-      Semantics = FloatSemantics::IEEEDouble;
-    else if (Value == 128)
-      Semantics = FloatSemantics::IEEEQuad;
-    if (!Semantics)
-      return fail(TypeToken, "unsupported IEEE floating low-level type width");
-    Created = LLT::makeFloat(*Semantics);
-    break;
-  }
-  case ScalarKind::BFloat:
-    if (Value != 16)
-      return fail(TypeToken, "bfloat low-level type must have width 16");
-    Created = LLT::makeFloat(FloatSemantics::BFloat);
+    Created = LowLevelType::makeCategoryNeutralScalar(Value);
     break;
   case ScalarKind::Pointer:
     if (!Context.PointerSizeInBits)
       return fail(TypeToken, "pointer low-level type requires an explicit pointer size");
     if (auto PointerSize = Context.PointerSizeInBits(static_cast<std::uint32_t>(Value)))
-      Created = LLT::makePointer(Value, *PointerSize);
+      Created = LowLevelType::makePointer(Value, *PointerSize);
     else
       return importError(TypeToken, PointerSize.error());
     break;
@@ -636,7 +603,7 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LLT &Resu
   return false;
 }
 
-bool MIParser::Impl::parseLowLevelType(LLT &Result) {
+bool MIParser::Impl::parseLowLevelType(LowLevelType &Result) {
   const MIToken Begin = token();
   const auto HasScalarPrefix = [](std::string_view Spelling) {
     return Spelling.starts_with('s') || Spelling.starts_with('i') || Spelling.starts_with('f') ||
@@ -685,7 +652,7 @@ bool MIParser::Impl::parseLowLevelType(LLT &Result) {
 
   if (!at(MITokenKind::Identifier) || !HasScalarPrefix(token().stringValue()))
     return VectorError();
-  LLT ElementType;
+  LowLevelType ElementType;
   if (parseScalarLowLevelType(token(), ElementType))
     return true;
   if (ElementType.isToken())
@@ -694,8 +661,9 @@ bool MIParser::Impl::parseLowLevelType(LLT &Result) {
   if (!consume(MITokenKind::Greater))
     return VectorError();
 
-  Expected<LLT> Created = Scalable ? LLT::makeScalableVector(ElementCount, ElementType)
-                                   : LLT::makeFixedVector(ElementCount, ElementType);
+  Expected<LowLevelType> Created = Scalable
+                                       ? LowLevelType::makeScalableVector(ElementCount, ElementType)
+                                       : LowLevelType::makeFixedVector(ElementCount, ElementType);
   if (!Created)
     return importError(Begin, Created.error());
   Result = *Created;
@@ -1078,7 +1046,7 @@ bool MIParser::Impl::parseRegisterOperand(bool IsDef, ParsedOperand &Result) {
     } else {
       if (!Reg.isVirtual())
         return fail("low-level type is only valid on a virtual register");
-      LLT Type;
+      LowLevelType Type;
       if (parseLowLevelType(Type))
         return true;
       if (expect(MITokenKind::RightParen, "')' after the low-level type"))
@@ -1883,7 +1851,7 @@ bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result,
   } else if (atKeyword("unknown-size")) {
     advance();
   } else if (consume(MITokenKind::LeftParen)) {
-    LLT Type;
+    LowLevelType Type;
     if (parseLowLevelType(Type))
       return true;
     if (expect(MITokenKind::RightParen, "')' after the memory low-level type"))
@@ -1945,7 +1913,7 @@ bool MIParser::Impl::parseMemoryOperand(const MachineMemOperand *&Result,
     } else if (atKeyword("addrspace")) {
       advance();
       if (!at(MITokenKind::IntegerLiteral) || parseUnsigned32(token(), Description.AddressSpace) ||
-          Description.AddressSpace > LLT::MaxAddressSpace) {
+          Description.AddressSpace > LowLevelType::MaxAddressSpace) {
         return fail("invalid machine memory operand address space");
       }
       advance();

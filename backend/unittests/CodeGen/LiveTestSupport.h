@@ -152,7 +152,7 @@ createFunction(std::string Name, std::uint64_t ID, std::size_t BlockCount) {
 }
 
 [[nodiscard]] inline rcc::Expected<rcc::Register> createVReg(rcc::MachineFunction &Function) {
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   auto Reg = Function.registerInfo().createVirtualRegister(*Type);

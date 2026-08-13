@@ -58,8 +58,8 @@ struct FunctionFixture final {
 
 [[nodiscard]] inline rcc::Register
 createRegister(TestContext &Context, rcc::MachineFunction &Function, std::uint32_t Bits) {
-  auto Type = rcc::LLT::makeInteger(Bits);
-  Context.expect(Type.has_value(), "integer LLT construction must succeed");
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(Bits);
+  Context.expect(Type.has_value(), "integer LowLevelType construction must succeed");
   if (!Type)
     return {};
   auto Reg = Function.registerInfo().createVirtualRegister(*Type);
@@ -69,8 +69,8 @@ createRegister(TestContext &Context, rcc::MachineFunction &Function, std::uint32
 
 [[nodiscard]] inline rcc::Register createFloatRegister(TestContext &Context,
                                                        rcc::MachineFunction &Function) {
-  auto Type = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
-  Context.expect(Type.has_value(), "floating LLT construction must succeed");
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  Context.expect(Type.has_value(), "floating LowLevelType construction must succeed");
   if (!Type)
     return {};
   auto Reg = Function.registerInfo().createVirtualRegister(*Type);

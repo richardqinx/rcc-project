@@ -113,6 +113,9 @@ namespace {
       hasProtectedAttachment(Instruction) || !Instruction.memOperands().empty()) {
     return false;
   }
+  if (Flags.has(InstructionFlag::MayRaiseFPException) &&
+      !Instruction.flags().has(MachineInstrFlag::NoFPExcept))
+    return false;
 
   bool HasDefinition = false;
   for (const MachineOperand &Operand : Instruction.operands()) {
@@ -141,14 +144,6 @@ namespace {
     auto Info = Function.registerInfo().virtualRegisterInfo(*Reg);
     if (!Info)
       return std::unexpected(Info.error());
-    const auto &Type = Info->get().Type;
-    if (Type && Type->isFloat() && !Instruction.flags().has(MachineInstrFlag::NoFPExcept)) {
-      return false;
-    }
-  }
-  if (Stage == MachineCodeMotionStage::PostRegisterAllocation &&
-      !Instruction.flags().has(MachineInstrFlag::NoFPExcept)) {
-    return false;
   }
   return HasDefinition;
 }

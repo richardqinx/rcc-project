@@ -252,9 +252,9 @@ void testExtendedRV64GCPipeline(TestContext &Context) {
                  "extended pipeline fixture must be complete");
   if (!Target || !Fixture.Function || Fixture.Entry == nullptr)
     return;
-  auto I1 = rcc::LLT::makeInteger(1);
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto I1 = rcc::LowLevelType::makeCategoryNeutralScalar(1);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
   if (!I1 || !I64 || !Pointer)
     return;
   const rcc::Register Left = createRegister(Context, *Fixture.Function, 64);

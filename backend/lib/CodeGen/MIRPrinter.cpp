@@ -1647,13 +1647,11 @@ namespace {
   return {};
 }
 
-[[nodiscard]] Expected<std::string> llvmMIRScalarLowLevelType(LLT Type) {
+[[nodiscard]] Expected<std::string> llvmMIRScalarLowLevelType(LowLevelType Type) {
   if (Type.isToken())
     return "s0";
-  if (Type.isAnyScalar())
+  if (Type.isCategoryNeutralScalar())
     return "s" + std::to_string(Type.scalarBitWidth());
-  if (Type.isInteger())
-    return "i" + std::to_string(Type.scalarBitWidth());
   if (Type.isPointer()) {
     const auto AddressSpace = Type.addressSpace();
     if (!AddressSpace) {
@@ -1662,49 +1660,11 @@ namespace {
     }
     return "p" + std::to_string(*AddressSpace);
   }
-  if (!Type.isFloat()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "invalid scalar low-level type cannot be printed as LLVM MIR");
-  }
-
-  const auto Semantics = Type.floatSemantics();
-  if (!Semantics) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "floating low-level type has no floating-point semantics");
-  }
-  switch (*Semantics) {
-  case FloatSemantics::IEEEHalf:
-    return "f16";
-  case FloatSemantics::BFloat:
-    return "bf16";
-  case FloatSemantics::IEEESingle:
-    return "f32";
-  case FloatSemantics::IEEEDouble:
-    return "f64";
-  case FloatSemantics::IEEEQuad:
-    return "f128";
-  case FloatSemantics::PPCDoubleDouble:
-  case FloatSemantics::Float8E5M2:
-  case FloatSemantics::Float8E5M2FNUZ:
-  case FloatSemantics::Float8E4M3:
-  case FloatSemantics::Float8E4M3FN:
-  case FloatSemantics::Float8E4M3FNUZ:
-  case FloatSemantics::Float8E4M3B11FNUZ:
-  case FloatSemantics::Float8E3M4:
-  case FloatSemantics::FloatTF32:
-  case FloatSemantics::Float8E8M0FNU:
-  case FloatSemantics::Float6E3M2FN:
-  case FloatSemantics::Float6E2M3FN:
-  case FloatSemantics::Float4E2M1FN:
-  case FloatSemantics::X87DoubleExtended:
-  case FloatSemantics::Count:
-    return makeUnexpected(ErrorCode::Unsupported,
-                          "fixed LLVM MIR cannot spell this floating low-level type");
-  }
-  return makeUnexpected(ErrorCode::InternalError, "floating low-level type is unhandled");
+  return makeUnexpected(ErrorCode::VerificationError,
+                        "invalid scalar low-level type cannot be printed as LLVM MIR");
 }
 
-[[nodiscard]] Expected<std::string> llvmMIRLowLevelType(LLT Type) {
+[[nodiscard]] Expected<std::string> llvmMIRLowLevelType(LowLevelType Type) {
   if (!Type.isValid()) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "invalid low-level type cannot be printed as LLVM MIR");

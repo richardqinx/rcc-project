@@ -90,7 +90,7 @@ void testParallelPHIsAndPlacement(TestContext &Context, const rcc::TargetDescrip
   auto Fixture = createFunction(Context, "parallel_phis", 1, 3);
   if (!Fixture.Function || Fixture.Blocks.size() != 3)
     return;
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!I64)
     return;
   auto &Function = *Fixture.Function;
@@ -209,7 +209,7 @@ void testParallelPHIsAndPlacement(TestContext &Context, const rcc::TargetDescrip
   Context.expect(FreshInfo.has_value(), "fresh PHI vreg must remain registered");
   if (!FreshInfo)
     return;
-  Context.expect(FreshInfo->get().Type == I64, "fresh PHI vreg must clone its LLT");
+  Context.expect(FreshInfo->get().Type == I64, "fresh PHI vreg must clone its LowLevelType");
   Context.expect(FreshInfo->get().Bank == rcc::test::TestRegisterBank::GPR,
                  "fresh PHI vreg must clone its register bank");
   Context.expect(FreshInfo->get().RegClass == rcc::test::TestRegisterClass::GPR64,
@@ -241,7 +241,7 @@ void testCriticalEdgeAndPhysicalLiveIn(TestContext &Context, const rcc::TargetDe
   auto Fixture = createFunction(Context, "critical_edge", 2, 4);
   if (!Fixture.Function || Fixture.Blocks.size() != 4)
     return;
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!I64)
     return;
   auto &Function = *Fixture.Function;
@@ -343,7 +343,7 @@ void testUndefAndFailureAtomicity(TestContext &Context, const rcc::TargetDescrip
     auto Fixture = createFunction(Context, "undef_phi", ID, 2);
     if (!Fixture.Function || Fixture.Blocks.size() != 2)
       return Fixture;
-    auto I64 = rcc::LLT::makeInteger(64);
+    auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
     if (!I64)
       return Fixture;
     auto Source = createVReg(*Fixture.Function, *I64, rcc::test::TestRegisterBank::GPR,
@@ -406,9 +406,9 @@ void testUndefAndFailureAtomicity(TestContext &Context, const rcc::TargetDescrip
 }
 
 void testMalformedPHIs(TestContext &Context, const rcc::TargetDescription &Target) {
-  auto BuildBadPhi = [&](std::uint64_t ID, rcc::LLT DestinationType,
+  auto BuildBadPhi = [&](std::uint64_t ID, rcc::LowLevelType DestinationType,
                          rcc::RegisterBankID DestinationBank, rcc::RegisterClassID DestinationClass,
-                         rcc::LLT SourceType, rcc::RegisterBankID SourceBank,
+                         rcc::LowLevelType SourceType, rcc::RegisterBankID SourceBank,
                          rcc::RegisterClassID SourceClass, rcc::SubRegIndex SourceSubReg = {}) {
     auto Fixture = createFunction(Context, "bad_phi", ID, 2);
     if (!Fixture.Function || Fixture.Blocks.size() != 2)
@@ -438,8 +438,8 @@ void testMalformedPHIs(TestContext &Context, const rcc::TargetDescription &Targe
     return Fixture;
   };
 
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto I32 = rcc::LLT::makeInteger(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
   if (!I64 || !I32)
     return;
   auto BadType =

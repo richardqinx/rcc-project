@@ -67,24 +67,24 @@ private:
   std::uint32_t Mask = 0;
 };
 
-class LLTKindSet final {
+class LowLevelTypeKindSet final {
 public:
-  static_assert(static_cast<std::uint32_t>(LLT::Kind::VectorPointer) < 16);
+  static_assert(static_cast<std::uint32_t>(LowLevelType::Kind::VectorPointer) < 16);
 
-  constexpr LLTKindSet() noexcept = default;
+  constexpr LowLevelTypeKindSet() noexcept = default;
 
-  LLTKindSet(std::initializer_list<LLT::Kind> Kinds) noexcept;
+  LowLevelTypeKindSet(std::initializer_list<LowLevelType::Kind> Kinds) noexcept;
 
   [[nodiscard]] constexpr bool empty() const noexcept {
     return Mask == 0;
   }
 
-  [[nodiscard]] constexpr bool contains(LLT::Kind Kind) const noexcept {
+  [[nodiscard]] constexpr bool contains(LowLevelType::Kind Kind) const noexcept {
     const auto Index = static_cast<std::uint32_t>(Kind);
     return Index < 16 && (Mask & (std::uint16_t{1} << Index)) != 0;
   }
 
-  constexpr void add(LLT::Kind Kind) noexcept {
+  constexpr void add(LowLevelType::Kind Kind) noexcept {
     const auto Index = static_cast<std::uint32_t>(Kind);
     if (Index < 16)
       Mask |= std::uint16_t{1} << Index;
@@ -94,7 +94,8 @@ public:
     return Mask;
   }
 
-  friend constexpr bool operator==(LLTKindSet Left, LLTKindSet Right) noexcept = default;
+  friend constexpr bool operator==(LowLevelTypeKindSet Left,
+                                   LowLevelTypeKindSet Right) noexcept = default;
 
 private:
   std::uint16_t Mask = 0;
@@ -117,7 +118,7 @@ enum class MemoryOperandRole : std::uint8_t {
 };
 
 struct OperandTypeConstraint final {
-  LLTKindSet Kinds;
+  LowLevelTypeKindSet Kinds;
   std::optional<std::uint16_t> EqualityGroup;
 };
 
@@ -141,6 +142,7 @@ enum class InstructionFlag : std::uint8_t {
   NotDuplicable,
   Convergent,
   UnmodeledSideEffects,
+  MayRaiseFPException,
   Phi,
   FakeUse,
   Generic,

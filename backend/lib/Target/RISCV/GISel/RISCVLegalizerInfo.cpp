@@ -31,7 +31,8 @@
 namespace rcc::riscv {
 namespace {
 
-[[nodiscard]] std::optional<LLT> registerType(const MachineFunction &Function, Register Reg) {
+[[nodiscard]] std::optional<LowLevelType> registerType(const MachineFunction &Function,
+                                                       Register Reg) {
   if (!Reg.isVirtual())
     return std::nullopt;
   auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
@@ -40,62 +41,60 @@ namespace {
   return Info->get().Type;
 }
 
-[[nodiscard]] std::optional<LLT> registerType(const MachineFunction &Function,
-                                              const MachineOperand &Operand) {
+[[nodiscard]] std::optional<LowLevelType> registerType(const MachineFunction &Function,
+                                                       const MachineOperand &Operand) {
   const Register *Reg = Operand.getIf<Register>();
   return Reg == nullptr ? std::nullopt : registerType(Function, *Reg);
 }
 
-[[nodiscard]] std::optional<LLT> resultType(const MachineFunction &Function,
-                                            const MachineInstr &Instruction) {
+[[nodiscard]] std::optional<LowLevelType> resultType(const MachineFunction &Function,
+                                                     const MachineInstr &Instruction) {
   const MachineOperand *Result = Instruction.operandAt(0);
   return Result == nullptr ? std::nullopt : registerType(Function, *Result);
 }
 
-[[nodiscard]] std::optional<LLT> operandType(const MachineFunction &Function,
-                                             const MachineInstr &Instruction, std::size_t Index) {
+[[nodiscard]] std::optional<LowLevelType>
+operandType(const MachineFunction &Function, const MachineInstr &Instruction, std::size_t Index) {
   const MachineOperand *Operand = Instruction.operandAt(Index);
   return Operand == nullptr ? std::nullopt : registerType(Function, *Operand);
 }
 
-[[nodiscard]] bool isRVFloatType(LLT Type) noexcept {
-  if (!Type.isFloat())
-    return false;
-  const std::optional<FloatSemantics> Semantics = Type.floatSemantics();
-  return Semantics &&
-         (*Semantics == FloatSemantics::IEEESingle || *Semantics == FloatSemantics::IEEEDouble);
-}
-
-[[nodiscard]] bool isSupportedIntegerType(LLT Type) noexcept {
-  return ((Type.isInteger() || Type.isAnyScalar()) && Type.scalarBitWidth() != 0 &&
-          Type.scalarBitWidth() <= 64) ||
-         (Type.isPointer() && Type.scalarBitWidth() == 64);
-}
-
-[[nodiscard]] bool isSupportedIntegerScalar(LLT Type) noexcept {
-  return (Type.isInteger() || Type.isAnyScalar()) && Type.scalarBitWidth() != 0 &&
-         Type.scalarBitWidth() <= 64;
-}
-
-[[nodiscard]] bool isNativeIntegerScalar(LLT Type) noexcept {
-  return (Type.isInteger() || Type.isAnyScalar()) &&
+[[nodiscard]] bool isSupportedFloatingScalar(LowLevelType Type) noexcept {
+  return Type.isCategoryNeutralScalar() &&
          (Type.scalarBitWidth() == 32 || Type.scalarBitWidth() == 64);
 }
 
-[[nodiscard]] bool isScalarGPRType(LLT Type) noexcept {
-  return ((Type.isInteger() || Type.isAnyScalar()) && Type.scalarBitWidth() != 0 &&
+[[nodiscard]] bool isSupportedIntegerType(LowLevelType Type) noexcept {
+  return (Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
           Type.scalarBitWidth() <= 64) ||
          (Type.isPointer() && Type.scalarBitWidth() == 64);
 }
 
-[[nodiscard]] bool isI1Type(LLT Type) noexcept {
-  return (Type.isInteger() || Type.isAnyScalar()) && Type.scalarBitWidth() == 1;
+[[nodiscard]] bool isSupportedIntegerScalar(LowLevelType Type) noexcept {
+  return Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
+         Type.scalarBitWidth() <= 64;
 }
 
-[[nodiscard]] bool isScalarIntegerExtension(LLT Destination, LLT Source) noexcept {
-  return (Destination.isInteger() || Destination.isAnyScalar()) &&
-         (Source.isInteger() || Source.isAnyScalar()) && Destination.scalarBitWidth() != 0 &&
-         Source.scalarBitWidth() != 0 && Source.scalarBitWidth() < Destination.scalarBitWidth() &&
+[[nodiscard]] bool isNativeIntegerScalar(LowLevelType Type) noexcept {
+  return Type.isCategoryNeutralScalar() &&
+         (Type.scalarBitWidth() == 32 || Type.scalarBitWidth() == 64);
+}
+
+[[nodiscard]] bool isScalarGPRType(LowLevelType Type) noexcept {
+  return (Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
+          Type.scalarBitWidth() <= 64) ||
+         (Type.isPointer() && Type.scalarBitWidth() == 64);
+}
+
+[[nodiscard]] bool isI1Type(LowLevelType Type) noexcept {
+  return Type.isCategoryNeutralScalar() && Type.scalarBitWidth() == 1;
+}
+
+[[nodiscard]] bool isScalarIntegerExtension(LowLevelType Destination,
+                                            LowLevelType Source) noexcept {
+  return Destination.isCategoryNeutralScalar() && Source.isCategoryNeutralScalar() &&
+         Destination.scalarBitWidth() != 0 && Source.scalarBitWidth() != 0 &&
+         Source.scalarBitWidth() < Destination.scalarBitWidth() &&
          Destination.scalarBitWidth() <= 64;
 }
 
@@ -394,11 +393,12 @@ wideConstantUnmergePlan(const MachineInstr &Constant, const MachineFunction &Fun
                                                             std::uint64_t Value);
 
 [[nodiscard]] Expected<Register> buildBinaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
-                                                   GenericOpcode Generic, LLT Type, Register Left,
-                                                   Register Right);
+                                                   GenericOpcode Generic, LowLevelType Type,
+                                                   Register Left, Register Right);
 
 [[nodiscard]] Expected<Register> buildUnaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
-                                                  GenericOpcode Generic, LLT Type, Register Source);
+                                                  GenericOpcode Generic, LowLevelType Type,
+                                                  Register Source);
 
 [[nodiscard]] Expected<void> eraseInstruction(MachineInstr &Instruction);
 
@@ -462,7 +462,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
     const Register *Narrow = NarrowOperand == nullptr ? nullptr : NarrowOperand->getIf<Register>();
     const MachineOperand *WideOperand = Truncation->operandAt(1);
     const Register *Wide = WideOperand == nullptr ? nullptr : WideOperand->getIf<Register>();
-    const std::optional<LLT> WideType =
+    const std::optional<LowLevelType> WideType =
         WideOperand == nullptr ? std::nullopt : registerType(Function, *WideOperand);
     if (Narrow == nullptr || Wide == nullptr || !Wide->isVirtual() || !WideType ||
         *WideType != *DestinationType || singleRegisterUse(Function, *Narrow) != OnlyUse)
@@ -533,7 +533,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
   if (Destination == nullptr || !Destination->isVirtual() || Immediate == nullptr)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V narrow constant legalization has invalid operands");
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   auto SetType = Function.registerInfo().setType(*Destination, *Type);
@@ -554,7 +554,8 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
 [[nodiscard]] Expected<Register> widenAtomicCompareExchangeSource(MachineInstr &Instruction,
                                                                   MachineFunction &Function,
                                                                   MachineIRBuilder &Builder,
-                                                                  Register Source, LLT WideType) {
+                                                                  Register Source,
+                                                                  LowLevelType WideType) {
   const auto SourceType = registerType(Function, Source);
   if (!SourceType)
     return makeUnexpected(ErrorCode::VerificationError,
@@ -578,7 +579,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
 [[nodiscard]] Expected<void> lowerAtomicCompareExchange(MachineInstr &Instruction,
                                                         MachineFunction &Function,
                                                         const TargetDescription &Target) {
-  const std::optional<LLT> OriginalType = resultType(Function, Instruction);
+  const std::optional<LowLevelType> OriginalType = resultType(Function, Instruction);
   const MachineOperand *DestinationOperand = Instruction.operandAt(0);
   const MachineOperand *CompareOperand = Instruction.operandAt(2);
   const MachineOperand *NewValueOperand = Instruction.operandAt(3);
@@ -593,7 +594,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
                           "RISC-V narrow compare-exchange has invalid operands");
   const Register OriginalDestination = *Destination;
 
-  auto WideType = LLT::makeAnyScalar(64);
+  auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
   if (!WideType)
     return std::unexpected(WideType.error());
   MachineIRBuilder Builder(Function, Target);
@@ -610,7 +611,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
   MachineInstr *FoldedExtension = singleRegisterUse(Function, OriginalDestination);
   if (FoldedExtension != nullptr && FoldedExtension->opcode() == opcode(GenericOpcode::G_ANYEXT) &&
       operandType(Function, *FoldedExtension, 0)
-          .transform([](LLT Type) { return Type.scalarBitWidth() == 64; })
+          .transform([](LowLevelType Type) { return Type.scalarBitWidth() == 64; })
           .value_or(false)) {
     const MachineOperand *WideDestinationOperand = FoldedExtension->operandAt(0);
     const Register *FoldedDestination =
@@ -668,7 +669,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   const Register *Compare = CompareOperand == nullptr ? nullptr : CompareOperand->getIf<Register>();
   const Register *NewValue =
       NewValueOperand == nullptr ? nullptr : NewValueOperand->getIf<Register>();
-  const std::optional<LLT> ValueType = resultType(Function, Instruction);
+  const std::optional<LowLevelType> ValueType = resultType(Function, Instruction);
   if (OldValue == nullptr || Success == nullptr || Address == nullptr || Compare == nullptr ||
       NewValue == nullptr || !ValueType || Instruction.memOperands().size() != 1)
     return makeUnexpected(ErrorCode::VerificationError,
@@ -727,7 +728,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
 [[nodiscard]] Expected<Register> widenIntegerCompareSource(MachineInstr &Instruction,
                                                            MachineFunction &Function,
                                                            MachineIRBuilder &Builder,
-                                                           Register Source, LLT WideType) {
+                                                           Register Source, LowLevelType WideType) {
   const auto SourceType = registerType(Function, Source);
   if (!SourceType)
     return makeUnexpected(ErrorCode::VerificationError,
@@ -751,7 +752,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
     const MachineOperand *ExtendedOperand = User->operandAt(0);
     const Register *Extended =
         ExtendedOperand == nullptr ? nullptr : ExtendedOperand->getIf<Register>();
-    const std::optional<LLT> ExtendedType =
+    const std::optional<LowLevelType> ExtendedType =
         ExtendedOperand == nullptr ? std::nullopt : registerType(Function, *ExtendedOperand);
     if (Extended == nullptr || !ExtendedType || *ExtendedType != WideType ||
         (Def == nullptr || (Def->opcode() != opcode(GenericOpcode::G_CONSTANT) &&
@@ -778,7 +779,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
       Def->operandCount() == 2) {
     const MachineOperand *WideOperand = Def->operandAt(1);
     const Register *WideSource = WideOperand == nullptr ? nullptr : WideOperand->getIf<Register>();
-    const std::optional<LLT> ExistingWideType =
+    const std::optional<LowLevelType> ExistingWideType =
         WideOperand == nullptr ? std::nullopt : registerType(Function, *WideOperand);
     if (WideSource != nullptr && ExistingWideType && *ExistingWideType == WideType) {
       auto Result = Function.registerInfo().createVirtualRegister(WideType);
@@ -825,7 +826,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   const Register OriginalLeft = *Left;
   const Register OriginalRight = *Right;
 
-  auto WideType = LLT::makeAnyScalar(64);
+  auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
   if (!WideType)
     return std::unexpected(WideType.error());
   MachineIRBuilder Builder(Function, Target);
@@ -855,7 +856,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
        FoldedExtension->opcode() == opcode(GenericOpcode::G_SEXT) ||
        FoldedExtension->opcode() == opcode(GenericOpcode::G_ZEXT)) &&
       operandType(Function, *FoldedExtension, 0)
-          .transform([](LLT Type) { return Type.scalarBitWidth() == 64; })
+          .transform([](LowLevelType Type) { return Type.scalarBitWidth() == 64; })
           .value_or(false)) {
     const MachineOperand *ExtendedOperand = FoldedExtension->operandAt(0);
     const Register *Extended =
@@ -923,7 +924,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
       const std::uint64_t Mask = Plan->SourceWidth == 64
                                      ? std::numeric_limits<std::uint64_t>::max()
                                      : (std::uint64_t{1} << Plan->SourceWidth) - 1U;
-      auto WideType = LLT::makeAnyScalar(64);
+      auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
       if (!WideType)
         return std::unexpected(WideType.error());
       MachineIRBuilder Builder(Function, Target);
@@ -964,7 +965,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
 
   if (Plan->SourceWidth == 32 &&
       (Plan->Generic == GenericOpcode::G_ADD || Plan->Generic == GenericOpcode::G_SUB)) {
-    auto WideType = LLT::makeAnyScalar(64);
+    auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
     if (!WideType)
       return std::unexpected(WideType.error());
     auto Temporary = Function.registerInfo().createVirtualRegister(*WideType);
@@ -1043,7 +1044,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   if (!PoolIndex)
     return std::unexpected(PoolIndex.error());
 
-  auto PointerType = LLT::makePointer(0, 64);
+  auto PointerType = LowLevelType::makePointer(0, 64);
   if (!PointerType)
     return std::unexpected(PointerType.error());
   auto Address = Function.registerInfo().createVirtualRegister(*PointerType);
@@ -1143,11 +1144,11 @@ memoryAccessBytes(const MachineInstr &Instruction) noexcept {
   return Description.Size.minimumBytes();
 }
 
-[[nodiscard]] bool memoryMatchesType(const MachineInstr &Instruction, LLT Type) noexcept {
+[[nodiscard]] bool memoryMatchesType(const MachineInstr &Instruction, LowLevelType Type) noexcept {
   const auto Bytes = memoryAccessBytes(Instruction);
-  if (!Bytes || (!isSupportedIntegerType(Type) && !isRVFloatType(Type)))
+  if (!Bytes || (!isSupportedIntegerType(Type) && !isSupportedFloatingScalar(Type)))
     return false;
-  if (isRVFloatType(Type))
+  if (isSupportedFloatingScalar(Type))
     return Type.scalarBitWidth() == 32 ? *Bytes == 4 : *Bytes == 8;
   const std::uint64_t ValueBytes = (Type.scalarBitWidth() + 7U) / 8U;
   return (*Bytes == 1 || *Bytes == 2 || *Bytes == 4 || *Bytes == 8) && *Bytes <= ValueBytes;
@@ -1224,7 +1225,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
                                                             MachineInstr &Anchor,
                                                             std::uint32_t Width,
                                                             std::uint64_t Value) {
-  auto Type = LLT::makeAnyScalar(Width);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(Width);
   if (!Type)
     return std::unexpected(Type.error());
   auto Result = Builder.function().registerInfo().createVirtualRegister(*Type);
@@ -1250,7 +1251,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
 }
 
 [[nodiscard]] Expected<Register> buildUnaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
-                                                  GenericOpcode Generic, LLT Type,
+                                                  GenericOpcode Generic, LowLevelType Type,
                                                   Register Source) {
   auto Result = Builder.function().registerInfo().createVirtualRegister(Type);
   if (!Result)
@@ -1272,8 +1273,8 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
 }
 
 [[nodiscard]] Expected<Register> buildBinaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
-                                                   GenericOpcode Generic, LLT Type, Register Left,
-                                                   Register Right) {
+                                                   GenericOpcode Generic, LowLevelType Type,
+                                                   Register Left, Register Right) {
   auto Result = Builder.function().registerInfo().createVirtualRegister(Type);
   if (!Result)
     return std::unexpected(Result.error());
@@ -1321,7 +1322,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
 [[nodiscard]] Expected<void> widenNarrowMultiply(MachineInstr &Instruction,
                                                  MachineFunction &Function,
                                                  const TargetDescription &Target) {
-  const std::optional<LLT> Type = resultType(Function, Instruction);
+  const std::optional<LowLevelType> Type = resultType(Function, Instruction);
   const MachineOperand *DestinationOperand = Instruction.operandAt(0);
   const MachineOperand *LeftOperand = Instruction.operandAt(1);
   const MachineOperand *RightOperand = Instruction.operandAt(2);
@@ -1342,7 +1343,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
       return foldNarrowAnyExtBinary(*Extension, Function, Target);
   }
 
-  auto WideType = LLT::makeAnyScalar(64);
+  auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
   if (!WideType)
     return std::unexpected(WideType.error());
   MachineIRBuilder Builder(Function, Target);
@@ -1365,7 +1366,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
                                                   const TargetDescription &Target,
                                                   CallingConvention Convention,
                                                   const TargetCallLowering &CallLowering) {
-  const std::optional<LLT> Type = resultType(Function, Instruction);
+  const std::optional<LowLevelType> Type = resultType(Function, Instruction);
   const MachineOperand *DestinationOperand = Instruction.operandAt(0);
   const MachineOperand *LeftOperand = Instruction.operandAt(1);
   const MachineOperand *RightOperand = Instruction.operandAt(2);
@@ -1387,6 +1388,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     return ABIValue{
         .Value = Reg,
         .Type = Type,
+        .Category = ABIValueCategory::Integer,
         .OriginalValue = Number,
         .FragmentIndex = 0,
         .FragmentCount = 1,
@@ -1488,7 +1490,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
       }
     }
   }
-  auto WideType = LLT::makeAnyScalar(64);
+  auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
   if (!WideType)
     return std::unexpected(WideType.error());
   return buildUnaryBefore(Builder, Anchor, GenericOpcode::G_ZEXT, *WideType, Source);
@@ -1562,7 +1564,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
 
 [[nodiscard]] Expected<void> lowerMergeValues(MachineInstr &Instruction, MachineFunction &Function,
                                               const TargetDescription &Target) {
-  const std::optional<LLT> DestinationType = resultType(Function, Instruction);
+  const std::optional<LowLevelType> DestinationType = resultType(Function, Instruction);
   if (!DestinationType || DestinationType->scalarBitWidth() == 0)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V merge destination has no scalar type");
@@ -1582,7 +1584,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     MachineInstr *Use = singleUseInstruction(Function, *Destination);
     if (Use != nullptr && Use->opcode() == opcode(GenericOpcode::G_ZEXT) &&
         operandType(Function, *Use, 0)
-            .transform([](LLT Type) { return Type.scalarBitWidth() == 64; })
+            .transform([](LowLevelType Type) { return Type.scalarBitWidth() == 64; })
             .value_or(false)) {
       const MachineOperand *ExtendedOperand = Use->operandAt(0);
       const Register *Extended =
@@ -1594,7 +1596,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     }
   }
 
-  auto WideType = LLT::makeAnyScalar(64);
+  auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
   if (!WideType)
     return std::unexpected(WideType.error());
   MachineIRBuilder Builder(Function, Target);
@@ -1613,7 +1615,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
       Terms.push_back(*WideSource);
       continue;
     }
-    const std::optional<LLT> SourceType = registerType(Function, *Operand);
+    const std::optional<LowLevelType> SourceType = registerType(Function, *Operand);
     if (!SourceType)
       return makeUnexpected(ErrorCode::VerificationError, "RISC-V merge source has no scalar type");
     const std::uint64_t Shift =
@@ -1758,8 +1760,8 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V unmerge has invalid register operands");
   const std::size_t OutputCount = Instruction.operandCount() - 1U;
-  const std::optional<LLT> OutputType = operandType(Function, Instruction, 0);
-  const std::optional<LLT> SourceType = operandType(Function, Instruction, OutputCount);
+  const std::optional<LowLevelType> OutputType = operandType(Function, Instruction, 0);
+  const std::optional<LowLevelType> SourceType = operandType(Function, Instruction, OutputCount);
   if (!OutputType || !SourceType)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V unmerge operands have no scalar types");
@@ -1770,7 +1772,7 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
   const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
   if (Source == nullptr)
     return makeUnexpected(ErrorCode::VerificationError, "RISC-V unmerge source is not a register");
-  auto WideType = LLT::makeAnyScalar(64);
+  auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
   if (!WideType)
     return std::unexpected(WideType.error());
   MachineIRBuilder Builder(Function, Target);
@@ -1794,11 +1796,11 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     }
 
     MachineInstr *Extension = singleUseInstruction(Function, *Output);
-    const bool FoldZExt = Extension != nullptr &&
-                          Extension->opcode() == opcode(GenericOpcode::G_ZEXT) &&
-                          operandType(Function, *Extension, 0)
-                              .transform([](LLT Type) { return Type.scalarBitWidth() == 64; })
-                              .value_or(false);
+    const bool FoldZExt =
+        Extension != nullptr && Extension->opcode() == opcode(GenericOpcode::G_ZEXT) &&
+        operandType(Function, *Extension, 0)
+            .transform([](LowLevelType Type) { return Type.scalarBitWidth() == 64; })
+            .value_or(false);
     if (FoldZExt) {
       const MachineOperand *ExtendedOperand = Extension->operandAt(0);
       const Register *Extended =
@@ -1851,7 +1853,7 @@ collectWideValueParts(Register Value, MachineFunction &Function, unsigned Depth 
   const auto Type = registerType(Function, Value);
   if (!Type)
     return makeUnexpected(ErrorCode::VerificationError, "RISC-V wide value has no scalar type");
-  if ((!Type->isInteger() && !Type->isAnyScalar()) || Type->scalarBitWidth() == 0)
+  if (!Type->isCategoryNeutralScalar() || Type->scalarBitWidth() == 0)
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V wide-value decomposition requires an integer scalar");
   if (Type->scalarBitWidth() <= 64)
@@ -1869,7 +1871,7 @@ collectWideValueParts(Register Value, MachineFunction &Function, unsigned Depth 
     for (std::size_t Index = 1; Index < Def->operandCount(); ++Index) {
       const MachineOperand *Operand = Def->operandAt(Index);
       const Register *Part = Operand == nullptr ? nullptr : Operand->getIf<Register>();
-      const std::optional<LLT> PartType =
+      const std::optional<LowLevelType> PartType =
           Operand == nullptr ? std::nullopt : registerType(Function, *Operand);
       if (Part == nullptr || !PartType || PartType->scalarBitWidth() != 64)
         return makeUnexpected(ErrorCode::Unsupported,
@@ -1932,7 +1934,7 @@ struct WideResultPlan final {
   for (std::size_t Index = 0; Index < RequiredParts; ++Index) {
     const MachineOperand *Operand = Use->operandAt(Index);
     const Register *Output = Operand == nullptr ? nullptr : Operand->getIf<Register>();
-    const std::optional<LLT> Type =
+    const std::optional<LowLevelType> Type =
         Operand == nullptr ? std::nullopt : registerType(Function, *Operand);
     if (Output == nullptr || !Type || Type->scalarBitWidth() != 64)
       return makeUnexpected(ErrorCode::Unsupported,
@@ -1946,7 +1948,7 @@ struct WideResultPlan final {
                                                            MachineInstr &Anchor,
                                                            IntegerPredicate Predicate,
                                                            Register Left, Register Right) {
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   auto Result = Builder.function().registerInfo().createVirtualRegister(*Type);
@@ -1973,8 +1975,8 @@ struct WideResultPlan final {
 }
 
 [[nodiscard]] Expected<Register> buildSelectBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
-                                                   LLT Type, Register Condition, Register TrueValue,
-                                                   Register FalseValue) {
+                                                   LowLevelType Type, Register Condition,
+                                                   Register TrueValue, Register FalseValue) {
   auto Result = Builder.function().registerInfo().createVirtualRegister(Type);
   if (!Result)
     return std::unexpected(Result.error());
@@ -2007,7 +2009,7 @@ struct TwoLimbShiftResult final {
 emitTwoLimbLeftShiftBody(MachineIRBuilder &Builder, MachineInstr &Anchor, Register Low,
                          Register High, Register Amount, Register AmountExcess, Register AmountLack,
                          Register Zero, Register IsShort, Register IsZero) {
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   auto LowShort = buildBinaryBefore(Builder, Anchor, GenericOpcode::G_SHL, *Type, Low, Amount);
@@ -2042,7 +2044,7 @@ emitTwoLimbLeftShiftBody(MachineIRBuilder &Builder, MachineInstr &Anchor, Regist
 [[nodiscard]] Expected<TwoLimbShiftResult> emitTwoLimbLeftShift(MachineIRBuilder &Builder,
                                                                 MachineInstr &Anchor, Register Low,
                                                                 Register High, Register Amount) {
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   auto Boundary = buildIntegerConstantBefore(Builder, Anchor, 64, 64);
@@ -2074,7 +2076,7 @@ emitTwoLimbLeftShiftBody(MachineIRBuilder &Builder, MachineInstr &Anchor, Regist
 emitLowLimbOfTwoLimbLogicalRightShift(MachineIRBuilder &Builder, MachineInstr &Anchor, Register Low,
                                       Register High, Register Amount, Register Boundary,
                                       Register Zero) {
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   auto AmountExcess =
@@ -2119,7 +2121,7 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
   if (Parts.size() != 3)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V three-limb shift requires exactly three limbs");
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
 
@@ -2291,7 +2293,7 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
   if (Left.size() != Right.size() || Left.size() < 2)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V wide add requires matching multi-limb operands");
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   std::vector<Register> Results;
@@ -2356,7 +2358,7 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
   if (Left.size() != Right.size() || Left.size() < 2)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V wide sub requires matching multi-limb operands");
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   std::vector<Register> Results;
@@ -2415,7 +2417,7 @@ emitWideBitwise(MachineIRBuilder &Builder, MachineInstr &Anchor, GenericOpcode G
   if (Left.size() != Right.size() || Left.size() < 2)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V wide bitwise operation requires matching multi-limb operands");
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   std::vector<Register> Results;
@@ -2500,7 +2502,8 @@ emitWideBitwise(MachineIRBuilder &Builder, MachineInstr &Anchor, GenericOpcode G
       Truncation->opcode() != opcode(GenericOpcode::G_TRUNC) || Truncation->operandCount() != 2)
     return false;
   return operandType(Function, *Truncation, 1)
-      .transform([](LLT Type) { return isScalarGPRType(Type) && Type.scalarBitWidth() == 64; })
+      .transform(
+          [](LowLevelType Type) { return isScalarGPRType(Type) && Type.scalarBitWidth() == 64; })
       .value_or(false);
 }
 
@@ -2515,7 +2518,7 @@ emitWideBitwise(MachineIRBuilder &Builder, MachineInstr &Anchor, GenericOpcode G
   const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Condition);
   MachineInstr *Truncation = const_cast<MachineInstr *>(Definition->parent());
   const Register Source = *Truncation->operandAt(1)->getIf<Register>();
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   MachineIRBuilder Builder(Function, Target);
@@ -2549,7 +2552,7 @@ struct NarrowPhiIncoming final {
 [[nodiscard]] Expected<Register>
 buildIncomingConversion(MachineFunction &Function, const TargetDescription &Target,
                         MachineBasicBlock &Block, MachineInstr *Anchor, GenericOpcode Generic,
-                        LLT Type, Register Source) {
+                        LowLevelType Type, Register Source) {
   auto Result = Function.registerInfo().createVirtualRegister(Type);
   if (!Result)
     return std::unexpected(Result.error());
@@ -2573,14 +2576,14 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
 
 [[nodiscard]] Expected<void> lowerNarrowPhi(MachineInstr &Instruction, MachineFunction &Function,
                                             const TargetDescription &Target) {
-  const std::optional<LLT> OriginalType = resultType(Function, Instruction);
+  const std::optional<LowLevelType> OriginalType = resultType(Function, Instruction);
   const MachineOperand *DestinationOperand = Instruction.operandAt(0);
   const Register *Destination =
       DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
   if (!OriginalType || Destination == nullptr || OriginalType->scalarBitWidth() >= 32 ||
       Instruction.operandCount() < 3 || (Instruction.operandCount() % 2U) == 0)
     return makeUnexpected(ErrorCode::VerificationError, "RISC-V narrow PHI has invalid operands");
-  auto LegalType = LLT::makeAnyScalar(32);
+  auto LegalType = LowLevelType::makeCategoryNeutralScalar(32);
   if (!LegalType)
     return std::unexpected(LegalType.error());
 
@@ -2603,7 +2606,7 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
     if (Def != nullptr && Def->opcode() == opcode(GenericOpcode::G_TRUNC) &&
         Def->operandCount() == 2 && singleRegisterUse(Function, *Value) == &Instruction &&
         operandType(Function, *Def, 1)
-            .transform([](LLT Type) { return Type.scalarBitWidth() >= 32; })
+            .transform([](LowLevelType Type) { return Type.scalarBitWidth() >= 32; })
             .value_or(false)) {
       Reusable = Def;
     }
@@ -2731,7 +2734,7 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
   auto ResultPlan = wideResultPlan(*Destination, Function, PartCount);
   if (!ResultPlan)
     return std::unexpected(ResultPlan.error());
-  auto Type = LLT::makeAnyScalar(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   MachineIRBuilder Builder(Function, Target);
@@ -2800,7 +2803,7 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
     if (Trunc == nullptr || Trunc->opcode() != opcode(GenericOpcode::G_TRUNC) ||
         Trunc->operandAt(1) != &Use)
       return false;
-    const std::optional<LLT> Result = resultType(Function, *Trunc);
+    const std::optional<LowLevelType> Result = resultType(Function, *Trunc);
     if (!Result || Result->scalarBitWidth() > LowType->scalarBitWidth())
       return false;
   }
@@ -2813,13 +2816,14 @@ struct RV64ScalarLayout final {
   std::uint64_t ABIAlignment = 0;
 };
 
-[[nodiscard]] std::optional<RV64ScalarLayout> rv64ScalarLayout(LLT Type) noexcept {
+[[nodiscard]] std::optional<RV64ScalarLayout> rv64ScalarLayout(LowLevelType Type) noexcept {
   if (Type.isPointer()) {
     return Type.addressSpace() == 0 && Type.scalarBitWidth() == 64
                ? std::optional<RV64ScalarLayout>{{8, 8, 8}}
                : std::nullopt;
   }
-  if ((!isSupportedIntegerType(Type) && !isRVFloatType(Type)) || Type.scalarBitWidth() == 0) {
+  if ((!isSupportedIntegerType(Type) && !isSupportedFloatingScalar(Type)) ||
+      Type.scalarBitWidth() == 0) {
     return std::nullopt;
   }
   const std::uint64_t StoreBytes = (Type.scalarBitWidth() + 7U) / 8U;
@@ -2828,7 +2832,7 @@ struct RV64ScalarLayout final {
 }
 
 [[nodiscard]] Expected<const MachineMemOperand *>
-createMemoryAccess(MachineFunction &Function, MemoryAccessFlag Access, LLT Type,
+createMemoryAccess(MachineFunction &Function, MemoryAccessFlag Access, LowLevelType Type,
                    std::uint64_t SizeBytes, std::uint64_t AlignmentBytes) {
   auto Size = MemorySize::fixed(SizeBytes);
   auto Align = Alignment::create(AlignmentBytes);
@@ -2845,8 +2849,8 @@ createMemoryAccess(MachineFunction &Function, MemoryAccessFlag Access, LLT Type,
 struct VAArgPlan final {
   Register Destination;
   Register ListPointer;
-  LLT DestinationType;
-  LLT PointerType;
+  LowLevelType DestinationType;
+  LowLevelType PointerType;
   std::uint64_t Alignment = 0;
   RV64ScalarLayout ValueLayout;
 };
@@ -2863,8 +2867,8 @@ struct VAArgPlan final {
   const Register *Destination =
       DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
   const Register *ListPointer = ListOperand == nullptr ? nullptr : ListOperand->getIf<Register>();
-  const std::optional<LLT> DestinationType = resultType(Function, Instruction);
-  const std::optional<LLT> PointerType = operandType(Function, Instruction, 1);
+  const std::optional<LowLevelType> DestinationType = resultType(Function, Instruction);
+  const std::optional<LowLevelType> PointerType = operandType(Function, Instruction, 1);
   const auto AlignmentValue = AlignmentOperand == nullptr
                                   ? Expected<std::int64_t>(std::unexpected(
                                         Error(ErrorCode::InvalidArgument, "missing alignment")))
@@ -2989,7 +2993,7 @@ struct VAArgPlan final {
 struct VACopyPlan final {
   Register Destination;
   Register Source;
-  LLT PointerType;
+  LowLevelType PointerType;
 };
 
 [[nodiscard]] std::optional<VACopyPlan> vacopyPlan(const MachineInstr &Instruction,
@@ -3006,8 +3010,8 @@ struct VACopyPlan final {
   const Register *Destination =
       DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
   const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
-  const std::optional<LLT> DestinationType = operandType(Function, Instruction, 1);
-  const std::optional<LLT> SourceType = operandType(Function, Instruction, 2);
+  const std::optional<LowLevelType> DestinationType = operandType(Function, Instruction, 1);
+  const std::optional<LowLevelType> SourceType = operandType(Function, Instruction, 2);
   if (Intrinsic == nullptr || Intrinsic->ID != intrinsicID(GenericIntrinsic::VACopy) ||
       Destination == nullptr || Source == nullptr || !Destination->isVirtual() ||
       !Source->isVirtual() || !DestinationOperand->isUse() || !SourceOperand->isUse() ||
@@ -3095,7 +3099,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
     return LegalizationAction::Legal;
 
   const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
-  const std::optional<LLT> Type = resultType(Function, Instruction);
+  const std::optional<LowLevelType> Type = resultType(Function, Instruction);
   switch (Generic) {
   case GenericOpcode::G_INTRINSIC_W_SIDE_EFFECTS:
     return vacopyPlan(Instruction, Function) ? LegalizationAction::Custom
@@ -3110,7 +3114,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   case GenericOpcode::G_BR:
     return LegalizationAction::Legal;
   case GenericOpcode::G_BRCOND: {
-    const std::optional<LLT> Condition = operandType(Function, Instruction, 0);
+    const std::optional<LowLevelType> Condition = operandType(Function, Instruction, 0);
     if (!Condition || !isScalarGPRType(*Condition))
       return LegalizationAction::Unsupported;
     return canLowerNarrowBranchCondition(Instruction, Function) ? LegalizationAction::Custom
@@ -3120,28 +3124,28 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
     if (!Type)
       return LegalizationAction::Unsupported;
     for (std::size_t Index = 1; Index < Instruction.operandCount(); Index += 2) {
-      const std::optional<LLT> Incoming = operandType(Function, Instruction, Index);
+      const std::optional<LowLevelType> Incoming = operandType(Function, Instruction, Index);
       if (!Incoming || *Incoming != *Type)
         return LegalizationAction::Unsupported;
     }
-    if ((Type->isInteger() || Type->isAnyScalar()) && Type->scalarBitWidth() > 64)
+    if (Type->isCategoryNeutralScalar() && Type->scalarBitWidth() > 64)
       return LegalizationAction::Custom;
-    if ((Type->isInteger() || Type->isAnyScalar()) && Type->scalarBitWidth() < 32)
+    if (Type->isCategoryNeutralScalar() && Type->scalarBitWidth() < 32)
       return LegalizationAction::Custom;
-    if (!isSupportedIntegerType(*Type) && !isRVFloatType(*Type))
+    if (!isSupportedIntegerType(*Type))
       return LegalizationAction::Unsupported;
     return LegalizationAction::Legal;
   }
   case GenericOpcode::G_IMPLICIT_DEF:
-    return Type && (isSupportedIntegerType(*Type) || isRVFloatType(*Type))
-               ? LegalizationAction::Legal
-               : LegalizationAction::Unsupported;
+    return Type && isSupportedIntegerType(*Type) ? LegalizationAction::Legal
+                                                 : LegalizationAction::Unsupported;
   case GenericOpcode::G_STORE:
     if (Instruction.operandCount() == 0)
       return LegalizationAction::Unsupported;
-    if (const std::optional<LLT> ValueType = registerType(Function, *Instruction.operandAt(0));
+    if (const std::optional<LowLevelType> ValueType =
+            registerType(Function, *Instruction.operandAt(0));
         ValueType) {
-      const std::optional<LLT> AddressType = operandType(Function, Instruction, 1);
+      const std::optional<LowLevelType> AddressType = operandType(Function, Instruction, 1);
       if (!AddressType || !AddressType->isPointer() || AddressType->addressSpace() != 0 ||
           AddressType->scalarBitWidth() != 64) {
         return LegalizationAction::Unsupported;
@@ -3153,8 +3157,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
                    ? LegalizationAction::Legal
                    : LegalizationAction::Unsupported;
       }
-      if ((isSupportedIntegerType(*ValueType) || isRVFloatType(*ValueType)) &&
-          isSupportedNonAtomicMemoryAccess(Instruction) &&
+      if (isSupportedIntegerType(*ValueType) && isSupportedNonAtomicMemoryAccess(Instruction) &&
           memoryMatchesType(Instruction, *ValueType)) {
         return LegalizationAction::Legal;
       }
@@ -3163,7 +3166,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   case GenericOpcode::G_SEXTLOAD:
   case GenericOpcode::G_ZEXTLOAD: {
     const auto Bytes = memoryAccessBytes(Instruction);
-    const std::optional<LLT> AddressType = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> AddressType = operandType(Function, Instruction, 1);
     return Type && Bytes && AddressType && isSupportedIntegerType(*Type) &&
                    AddressType->isPointer() && AddressType->addressSpace() == 0 &&
                    AddressType->scalarBitWidth() == 64 &&
@@ -3175,19 +3178,19 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   }
   case GenericOpcode::G_FPEXTLOAD: {
     const auto Bytes = memoryAccessBytes(Instruction);
-    const std::optional<LLT> AddressType = operandType(Function, Instruction, 1);
-    return Type && Bytes && AddressType && Type->isFloat() && Type->scalarBitWidth() == 64 &&
-                   AddressType->isPointer() && AddressType->addressSpace() == 0 &&
-                   AddressType->scalarBitWidth() == 64 && *Bytes == 4 &&
-                   isSupportedNonAtomicMemoryAccess(Instruction)
+    const std::optional<LowLevelType> AddressType = operandType(Function, Instruction, 1);
+    return Type && Bytes && AddressType && Type->isCategoryNeutralScalar() &&
+                   Type->scalarBitWidth() == 64 && AddressType->isPointer() &&
+                   AddressType->addressSpace() == 0 && AddressType->scalarBitWidth() == 64 &&
+                   *Bytes == 4 && isSupportedNonAtomicMemoryAccess(Instruction)
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_FPTRUNCSTORE: {
-    const std::optional<LLT> ValueType = operandType(Function, Instruction, 0);
-    const std::optional<LLT> AddressType = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> ValueType = operandType(Function, Instruction, 0);
+    const std::optional<LowLevelType> AddressType = operandType(Function, Instruction, 1);
     const auto Bytes = memoryAccessBytes(Instruction);
-    return ValueType && AddressType && Bytes && ValueType->isFloat() &&
+    return ValueType && AddressType && Bytes && ValueType->isCategoryNeutralScalar() &&
                    ValueType->scalarBitWidth() == 64 && AddressType->isPointer() &&
                    AddressType->addressSpace() == 0 && AddressType->scalarBitWidth() == 64 &&
                    *Bytes == 4 && isSupportedNonAtomicMemoryAccess(Instruction)
@@ -3196,7 +3199,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   }
   case GenericOpcode::G_LOAD:
     if (Type) {
-      const std::optional<LLT> AddressType = operandType(Function, Instruction, 1);
+      const std::optional<LowLevelType> AddressType = operandType(Function, Instruction, 1);
       if (!AddressType || !AddressType->isPointer() || AddressType->addressSpace() != 0 ||
           AddressType->scalarBitWidth() != 64) {
         return LegalizationAction::Unsupported;
@@ -3208,8 +3211,8 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
                    ? LegalizationAction::Legal
                    : LegalizationAction::Unsupported;
       }
-      if ((isSupportedIntegerType(*Type) || isRVFloatType(*Type)) &&
-          isSupportedNonAtomicMemoryAccess(Instruction) && memoryMatchesType(Instruction, *Type)) {
+      if (isSupportedIntegerType(*Type) && isSupportedNonAtomicMemoryAccess(Instruction) &&
+          memoryMatchesType(Instruction, *Type)) {
         return LegalizationAction::Legal;
       }
     }
@@ -3218,33 +3221,35 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   case GenericOpcode::G_FSUB:
   case GenericOpcode::G_FMUL:
   case GenericOpcode::G_FDIV: {
-    const std::optional<LLT> Left = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 2);
-    return Type && Left && Right && isRVFloatType(*Type) && *Left == *Type && *Right == *Type
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
+    return Type && Left && Right && isSupportedFloatingScalar(*Type) && *Left == *Type &&
+                   *Right == *Type
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_FMA: {
-    const std::optional<LLT> First = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Second = operandType(Function, Instruction, 2);
-    const std::optional<LLT> Third = operandType(Function, Instruction, 3);
-    return Type && First && Second && Third && isRVFloatType(*Type) && *First == *Type &&
-                   *Second == *Type && *Third == *Type
+    const std::optional<LowLevelType> First = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Second = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Third = operandType(Function, Instruction, 3);
+    return Type && First && Second && Third && isSupportedFloatingScalar(*Type) &&
+                   *First == *Type && *Second == *Type && *Third == *Type
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_FNEG:
   case GenericOpcode::G_FABS:
   case GenericOpcode::G_FSQRT: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
-    return Type && Source && isRVFloatType(*Type) && *Source == *Type
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
+    return Type && Source && isSupportedFloatingScalar(*Type) && *Source == *Type
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_FCOPYSIGN: {
-    const std::optional<LLT> Left = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 2);
-    return Type && Left && Right && isRVFloatType(*Type) && *Left == *Type && *Right == *Type
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
+    return Type && Left && Right && isSupportedFloatingScalar(*Type) && *Left == *Type &&
+                   *Right == *Type
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
@@ -3252,16 +3257,15 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
     const MachineOperand *Immediate = Instruction.operandAt(1);
     const auto *Floating =
         Immediate == nullptr ? nullptr : Immediate->getIf<FloatingImmediateOperand>();
-    const std::optional<FloatSemantics> Semantics = Type ? Type->floatSemantics() : std::nullopt;
-    return Type && isRVFloatType(*Type) && Floating != nullptr && Semantics &&
-                   Floating->Bits.semantics() == *Semantics
+    return Type && isSupportedFloatingScalar(*Type) && Floating != nullptr &&
+                   Floating->Bits.bitWidth() == Type->scalarBitWidth()
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_ASSERT_SEXT:
   case GenericOpcode::G_ASSERT_ZEXT:
   case GenericOpcode::G_ASSERT_ALIGN: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
     return Type && Source && *Type == *Source && isScalarGPRType(*Type) &&
                    Instruction.operandCount() == 3
                ? LegalizationAction::Legal
@@ -3269,38 +3273,35 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   }
   case GenericOpcode::G_FREEZE:
   case GenericOpcode::G_CONSTANT_FOLD_BARRIER: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
-    return Type && Source && *Type == *Source &&
-                   (isSupportedIntegerType(*Type) || isRVFloatType(*Type))
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
+    return Type && Source && *Type == *Source && isSupportedIntegerType(*Type)
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_PTRTOINT: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
-    return Type && Source && Type->isInteger() && Type->scalarBitWidth() == 64 &&
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
+    return Type && Source && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 64 &&
                    Source->isPointer() && Source->scalarBitWidth() == 64
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_INTTOPTR: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
     return Type && Source && Type->isPointer() && Type->scalarBitWidth() == 64 &&
-                   Source->isInteger() && Source->scalarBitWidth() == 64
+                   Source->isCategoryNeutralScalar() && Source->scalarBitWidth() == 64
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_BITCAST: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
-    const bool IntegerFloatPair =
-        Type && Source && Type->scalarBitWidth() == Source->scalarBitWidth() &&
-        ((Type->isFloat() && Source->isInteger()) || (Type->isInteger() && Source->isFloat())) &&
-        (Type->scalarBitWidth() == 32 || Type->scalarBitWidth() == 64);
-    return IntegerFloatPair ? LegalizationAction::Legal : LegalizationAction::Unsupported;
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
+    return Type && Source && *Type != *Source && Type->scalarBitWidth() == Source->scalarBitWidth()
+               ? LegalizationAction::Legal
+               : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_ANYEXT:
   case GenericOpcode::G_SEXT:
   case GenericOpcode::G_ZEXT: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
     if (!Type || !Source)
       return LegalizationAction::Unsupported;
     if (!isScalarIntegerExtension(*Type, *Source)) {
@@ -3309,8 +3310,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
           DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
       MachineInstr *OnlyUse =
           Destination == nullptr ? nullptr : singleUseInstruction(Function, *Destination);
-      return (Type->isInteger() || Type->isAnyScalar()) &&
-                     (Source->isInteger() || Source->isAnyScalar()) &&
+      return Type->isCategoryNeutralScalar() && Source->isCategoryNeutralScalar() &&
                      Type->scalarBitWidth() > 64 &&
                      Source->scalarBitWidth() < Type->scalarBitWidth() && OnlyUse != nullptr &&
                      OnlyUse->opcode() == opcode(GenericOpcode::G_UNMERGE_VALUES)
@@ -3334,10 +3334,9 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
     return LegalizationAction::Legal;
   }
   case GenericOpcode::G_TRUNC: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
-    if (Type && Source && (Type->isInteger() || Type->isAnyScalar()) &&
-        (Source->isInteger() || Source->isAnyScalar()) && Type->scalarBitWidth() > 64 &&
-        Source->scalarBitWidth() > Type->scalarBitWidth())
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
+    if (Type && Source && Type->isCategoryNeutralScalar() && Source->isCategoryNeutralScalar() &&
+        Type->scalarBitWidth() > 64 && Source->scalarBitWidth() > Type->scalarBitWidth())
       return LegalizationAction::Legal;
     return Type && Source && isSupportedIntegerScalar(*Type) && isSupportedIntegerScalar(*Source) &&
                    Type->scalarBitWidth() != 0 && Source->scalarBitWidth() >= Type->scalarBitWidth()
@@ -3351,19 +3350,20 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
     const std::size_t SmallTypeIndex = Generic == GenericOpcode::G_MERGE_VALUES ? 1 : 0;
     const std::size_t BigTypeIndex =
         Generic == GenericOpcode::G_MERGE_VALUES ? 0 : Instruction.operandCount() - 1U;
-    const std::optional<LLT> SmallType = operandType(Function, Instruction, SmallTypeIndex);
-    const std::optional<LLT> BigType = operandType(Function, Instruction, BigTypeIndex);
+    const std::optional<LowLevelType> SmallType =
+        operandType(Function, Instruction, SmallTypeIndex);
+    const std::optional<LowLevelType> BigType = operandType(Function, Instruction, BigTypeIndex);
     if (SmallType && BigType && Generic == GenericOpcode::G_MERGE_VALUES &&
         BigType->scalarBitWidth() > 64 && !canFoldWideMergeImmediately(Instruction, Function))
       return LegalizationAction::Legal;
-    return SmallType && BigType && (SmallType->isInteger() || SmallType->isAnyScalar()) &&
-                   (BigType->isInteger() || BigType->isAnyScalar()) &&
-                   SmallType->scalarBitWidth() != 0 && BigType->scalarBitWidth() != 0
+    return SmallType && BigType && SmallType->isCategoryNeutralScalar() &&
+                   BigType->isCategoryNeutralScalar() && SmallType->scalarBitWidth() != 0 &&
+                   BigType->scalarBitWidth() != 0
                ? LegalizationAction::Custom
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_SEXT_INREG: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
     const MachineOperand *WidthOperand = Instruction.operandAt(2);
     const auto Width =
         WidthOperand == nullptr
@@ -3379,8 +3379,8 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
     const MachineOperand *Predicate = Instruction.operandAt(1);
     const auto *IntegerPredicate =
         Predicate == nullptr ? nullptr : Predicate->getIf<PredicateOperand>();
-    const std::optional<LLT> Left = operandType(Function, Instruction, 2);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 3);
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 3);
     if (!Type || !isSupportedIntegerScalar(*Type) || IntegerPredicate == nullptr ||
         IntegerPredicate->integerPredicate() == nullptr || !Left || !Right || *Left != *Right ||
         !isSupportedIntegerType(*Left)) {
@@ -3394,19 +3394,20 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
     const MachineOperand *Predicate = Instruction.operandAt(1);
     const auto *FloatingPredicate =
         Predicate == nullptr ? nullptr : Predicate->getIf<PredicateOperand>();
-    const std::optional<LLT> Left = operandType(Function, Instruction, 2);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 3);
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 3);
     return Type && isI1Type(*Type) && FloatingPredicate != nullptr &&
                    FloatingPredicate->floatingPredicate() != nullptr && Left && Right &&
-                   *Left == *Right && isRVFloatType(*Left)
+                   *Left == *Right && isSupportedFloatingScalar(*Left)
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_FPEXT:
   case GenericOpcode::G_FPTRUNC: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
     const bool IsExtension = Generic == GenericOpcode::G_FPEXT;
-    return Type && Source && isRVFloatType(*Type) && isRVFloatType(*Source) &&
+    return Type && Source && isSupportedFloatingScalar(*Type) &&
+                   isSupportedFloatingScalar(*Source) &&
                    ((IsExtension && Source->scalarBitWidth() == 32 &&
                      Type->scalarBitWidth() == 64) ||
                     (!IsExtension && Source->scalarBitWidth() == 64 &&
@@ -3416,39 +3417,39 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   }
   case GenericOpcode::G_FPTOSI:
   case GenericOpcode::G_FPTOUI: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
-    return Type && Source && isSupportedIntegerType(*Type) && isRVFloatType(*Source)
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
+    return Type && Source && isSupportedIntegerType(*Type) && isSupportedFloatingScalar(*Source)
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_SITOFP:
   case GenericOpcode::G_UITOFP: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
-    return Type && Source && isRVFloatType(*Type) && isSupportedIntegerType(*Source)
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
+    return Type && Source && isSupportedFloatingScalar(*Type) && isSupportedIntegerType(*Source)
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_FMINNUM:
   case GenericOpcode::G_FMAXNUM: {
-    const std::optional<LLT> Left = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 2);
-    return Type && Left && Right && isRVFloatType(*Type) && *Left == *Type && *Right == *Type
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
+    return Type && Left && Right && isSupportedFloatingScalar(*Type) && *Left == *Type &&
+                   *Right == *Type
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_SELECT: {
-    const std::optional<LLT> Condition = operandType(Function, Instruction, 1);
-    const std::optional<LLT> TrueValue = operandType(Function, Instruction, 2);
-    const std::optional<LLT> FalseValue = operandType(Function, Instruction, 3);
+    const std::optional<LowLevelType> Condition = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> TrueValue = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> FalseValue = operandType(Function, Instruction, 3);
     return Type && Condition && TrueValue && FalseValue && isScalarGPRType(*Condition) &&
-                   *TrueValue == *Type && *FalseValue == *Type &&
-                   (isSupportedIntegerType(*Type) || isRVFloatType(*Type))
+                   *TrueValue == *Type && *FalseValue == *Type && isSupportedIntegerType(*Type)
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_PTRMASK: {
-    const std::optional<LLT> Pointer = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Mask = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Pointer = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Mask = operandType(Function, Instruction, 2);
     return Type && Pointer && Mask && Type->isPointer() && Type->addressSpace() == 0 &&
                    Type->scalarBitWidth() == 64 && *Pointer == *Type &&
                    isSupportedIntegerScalar(*Mask) && Mask->scalarBitWidth() == 64
@@ -3456,16 +3457,16 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_ABS: {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
     return Type && Source && *Source == *Type && isSupportedIntegerScalar(*Type)
                ? LegalizationAction::Legal
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_SDIVREM:
   case GenericOpcode::G_UDIVREM: {
-    const std::optional<LLT> Remainder = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Left = operandType(Function, Instruction, 2);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 3);
+    const std::optional<LowLevelType> Remainder = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 3);
     return Type && Remainder && Left && Right && isSupportedIntegerScalar(*Type) &&
                    *Remainder == *Type && *Left == *Type && *Right == *Type
                ? LegalizationAction::Legal
@@ -3473,8 +3474,8 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   }
   case GenericOpcode::G_SMULH:
   case GenericOpcode::G_UMULH: {
-    const std::optional<LLT> Left = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
     return Type && Left && Right && isNativeIntegerScalar(*Type) && *Left == *Type &&
                    *Right == *Type
                ? LegalizationAction::Legal
@@ -3484,8 +3485,8 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   case GenericOpcode::G_SMAX:
   case GenericOpcode::G_UMIN:
   case GenericOpcode::G_UMAX: {
-    const std::optional<LLT> Left = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
     return Type && Left && Right && isSupportedIntegerScalar(*Type) && *Left == *Type &&
                    *Right == *Type
                ? LegalizationAction::Legal
@@ -3497,9 +3498,9 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   case GenericOpcode::G_SSUBO:
   case GenericOpcode::G_UMULO:
   case GenericOpcode::G_SMULO: {
-    const std::optional<LLT> Overflow = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Left = operandType(Function, Instruction, 2);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 3);
+    const std::optional<LowLevelType> Overflow = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 3);
     return Type && Overflow && Left && Right && isNativeIntegerScalar(*Type) &&
                    isI1Type(*Overflow) && *Left == *Type && *Right == *Type
                ? LegalizationAction::Legal
@@ -3509,10 +3510,10 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   case GenericOpcode::G_USUBE:
   case GenericOpcode::G_SADDE:
   case GenericOpcode::G_SSUBE: {
-    const std::optional<LLT> CarryOut = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Left = operandType(Function, Instruction, 2);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 3);
-    const std::optional<LLT> CarryIn = operandType(Function, Instruction, 4);
+    const std::optional<LowLevelType> CarryOut = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 3);
+    const std::optional<LowLevelType> CarryIn = operandType(Function, Instruction, 4);
     return Type && CarryOut && Left && Right && CarryIn && isNativeIntegerScalar(*Type) &&
                    isI1Type(*CarryOut) && isI1Type(*CarryIn) && *Left == *Type && *Right == *Type
                ? LegalizationAction::Legal
@@ -3528,8 +3529,8 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   case GenericOpcode::G_ATOMICRMW_MIN:
   case GenericOpcode::G_ATOMICRMW_UMAX:
   case GenericOpcode::G_ATOMICRMW_UMIN: {
-    const std::optional<LLT> Address = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Value = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Address = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Value = operandType(Function, Instruction, 2);
     const std::uint64_t Bytes = Type ? Type->scalarBitWidth() / 8U : 0;
     return Type && Address && Value && isNativeIntegerScalar(*Type) && *Value == *Type &&
                    Address->isPointer() && Address->addressSpace() == 0 &&
@@ -3540,11 +3541,11 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
                : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_ATOMIC_CMPXCHG: {
-    const std::optional<LLT> Address = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Compare = operandType(Function, Instruction, 2);
-    const std::optional<LLT> NewValue = operandType(Function, Instruction, 3);
+    const std::optional<LowLevelType> Address = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Compare = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> NewValue = operandType(Function, Instruction, 3);
     if (!Type || !Address || !Compare || !NewValue || *Compare != *Type || *NewValue != *Type ||
-        (!Type->isInteger() && !Type->isAnyScalar()) ||
+        !Type->isCategoryNeutralScalar() ||
         (Type->scalarBitWidth() != 8 && Type->scalarBitWidth() != 16 &&
          Type->scalarBitWidth() != 32 && Type->scalarBitWidth() != 64) ||
         !Address->isPointer() || Address->addressSpace() != 0 || Address->scalarBitWidth() != 64 ||
@@ -3555,13 +3556,12 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
     return Type->scalarBitWidth() == 64 ? LegalizationAction::Legal : LegalizationAction::Custom;
   }
   case GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS: {
-    const std::optional<LLT> Success = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Address = operandType(Function, Instruction, 2);
-    const std::optional<LLT> Compare = operandType(Function, Instruction, 3);
-    const std::optional<LLT> NewValue = operandType(Function, Instruction, 4);
+    const std::optional<LowLevelType> Success = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Address = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Compare = operandType(Function, Instruction, 3);
+    const std::optional<LowLevelType> NewValue = operandType(Function, Instruction, 4);
     return Type && Success && Address && Compare && NewValue && isI1Type(*Success) &&
-                   *Compare == *Type && *NewValue == *Type &&
-                   (Type->isInteger() || Type->isAnyScalar()) &&
+                   *Compare == *Type && *NewValue == *Type && Type->isCategoryNeutralScalar() &&
                    (Type->scalarBitWidth() == 8 || Type->scalarBitWidth() == 16 ||
                     Type->scalarBitWidth() == 32 || Type->scalarBitWidth() == 64) &&
                    Address->isPointer() && Address->addressSpace() == 0 &&
@@ -3605,7 +3605,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   }
   case GenericOpcode::G_BRINDIRECT:
     return operandType(Function, Instruction, 0)
-                   .transform([](LLT Value) {
+                   .transform([](LowLevelType Value) {
                      return Value.isPointer() && Value.addressSpace() == 0 &&
                             Value.scalarBitWidth() == 64;
                    })
@@ -3629,7 +3629,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
       return wideConstantUnmergePlan(Instruction, Function).has_value()
                  ? LegalizationAction::Custom
                  : LegalizationAction::Unsupported;
-    if ((Type->isInteger() || Type->isAnyScalar()) && Type->scalarBitWidth() == 64) {
+    if (Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 64) {
       auto Value = signedImmediate(*Immediate);
       if (Value && shouldUseRV64IntegerConstantPool(*Value))
         return LegalizationAction::Custom;
@@ -3650,10 +3650,10 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
   case GenericOpcode::G_SHL:
   case GenericOpcode::G_LSHR:
   case GenericOpcode::G_ASHR: {
-    const std::optional<LLT> Left = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Right = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
     if (!Type || !Left || !Right || *Left != *Type || *Right != *Type ||
-        (!Type->isInteger() && !Type->isAnyScalar()))
+        !Type->isCategoryNeutralScalar())
       return LegalizationAction::Unsupported;
     if (Type->scalarBitWidth() > 64) {
       return Generic == GenericOpcode::G_ADD || Generic == GenericOpcode::G_SUB ||
@@ -3670,7 +3670,7 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
           DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
       MachineInstr *Extension =
           Destination == nullptr ? nullptr : singleRegisterUse(Function, *Destination);
-      const std::optional<LLT> ExtensionType =
+      const std::optional<LowLevelType> ExtensionType =
           Extension == nullptr ? std::nullopt : resultType(Function, *Extension);
       if (Extension != nullptr && Extension->opcode() == opcode(GenericOpcode::G_ANYEXT) &&
           ExtensionType && ExtensionType->scalarBitWidth() == 64) {
@@ -3682,8 +3682,8 @@ Expected<LegalizationAction> RISCVLegalizerInfo::classify(const MachineInstr &In
                                            : LegalizationAction::Unsupported;
   }
   case GenericOpcode::G_PTR_ADD: {
-    const std::optional<LLT> Pointer = operandType(Function, Instruction, 1);
-    const std::optional<LLT> Offset = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> Pointer = operandType(Function, Instruction, 1);
+    const std::optional<LowLevelType> Offset = operandType(Function, Instruction, 2);
     return Type && Pointer && Offset && Type->isPointer() && Type->addressSpace() == 0 &&
                    Type->scalarBitWidth() == 64 && *Pointer == *Type &&
                    isSupportedIntegerScalar(*Offset) && Offset->scalarBitWidth() == 64
@@ -3737,7 +3737,7 @@ Expected<void> RISCVLegalizerInfo::lower(MachineInstr &Instruction, MachineFunct
   }
   if (Action == LegalizationAction::Custom &&
       resultType(Function, Instruction)
-          .transform([](LLT Type) { return Type.scalarBitWidth() > 64; })
+          .transform([](LowLevelType Type) { return Type.scalarBitWidth() > 64; })
           .value_or(false)) {
     const Opcode Value = Instruction.opcode();
     if (Value == opcode(GenericOpcode::G_ADD) || Value == opcode(GenericOpcode::G_SUB) ||
@@ -3783,8 +3783,8 @@ Expected<void> RISCVLegalizerInfo::lower(MachineInstr &Instruction, MachineFunct
   if (Action == LegalizationAction::Custom &&
       Instruction.opcode() == opcode(GenericOpcode::G_CONSTANT)) {
     const MachineOperand *Immediate = Instruction.operandAt(1);
-    const std::optional<LLT> Type = resultType(Function, Instruction);
-    if (Immediate != nullptr && Type && (Type->isInteger() || Type->isAnyScalar()) &&
+    const std::optional<LowLevelType> Type = resultType(Function, Instruction);
+    if (Immediate != nullptr && Type && Type->isCategoryNeutralScalar() &&
         Type->scalarBitWidth() == 64) {
       auto Value = signedImmediate(*Immediate);
       if (Value && shouldUseRV64IntegerConstantPool(*Value))

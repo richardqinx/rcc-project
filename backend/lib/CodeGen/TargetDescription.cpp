@@ -30,7 +30,7 @@ namespace {
   return Descriptor.Operands.back();
 }
 
-[[nodiscard]] std::uint64_t minimumTypeSizeInBits(LLT Type) noexcept {
+[[nodiscard]] std::uint64_t minimumTypeSizeInBits(LowLevelType Type) noexcept {
   if (Type.isToken())
     return 0;
   const std::uint64_t ScalarSize = Type.scalarBitWidth();

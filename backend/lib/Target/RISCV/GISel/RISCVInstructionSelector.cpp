@@ -31,8 +31,8 @@
 namespace rcc::riscv {
 namespace {
 
-[[nodiscard]] std::optional<LLT> registerType(const MachineFunction &Function,
-                                              const MachineOperand &Operand) {
+[[nodiscard]] std::optional<LowLevelType> registerType(const MachineFunction &Function,
+                                                       const MachineOperand &Operand) {
   const Register *Reg = Operand.getIf<Register>();
   if (Reg == nullptr || !Reg->isVirtual())
     return std::nullopt;
@@ -42,41 +42,57 @@ namespace {
   return Info->get().Type;
 }
 
-[[nodiscard]] std::optional<LLT> resultType(const MachineFunction &Function,
-                                            const MachineInstr &Instruction) {
+[[nodiscard]] std::optional<LowLevelType> resultType(const MachineFunction &Function,
+                                                     const MachineInstr &Instruction) {
   const MachineOperand *Result = Instruction.operandAt(0);
   return Result == nullptr ? std::nullopt : registerType(Function, *Result);
 }
 
-[[nodiscard]] std::optional<LLT> operandType(const MachineFunction &Function,
-                                             const MachineInstr &Instruction, std::size_t Index) {
+[[nodiscard]] std::optional<LowLevelType>
+operandType(const MachineFunction &Function, const MachineInstr &Instruction, std::size_t Index) {
   const MachineOperand *Operand = Instruction.operandAt(Index);
   return Operand == nullptr ? std::nullopt : registerType(Function, *Operand);
 }
 
-[[nodiscard]] bool isRVFloatType(LLT Type) noexcept {
-  if (!Type.isFloat())
-    return false;
-  const std::optional<FloatSemantics> Semantics = Type.floatSemantics();
-  return Semantics &&
-         (*Semantics == FloatSemantics::IEEESingle || *Semantics == FloatSemantics::IEEEDouble);
+[[nodiscard]] bool isSupportedFloatingScalar(LowLevelType Type) noexcept {
+  return Type.isCategoryNeutralScalar() &&
+         (Type.scalarBitWidth() == 32 || Type.scalarBitWidth() == 64);
 }
 
-[[nodiscard]] bool isSupportedIntegerType(LLT Type) noexcept {
-  return ((Type.isInteger() || Type.isAnyScalar()) && Type.scalarBitWidth() != 0 &&
+[[nodiscard]] bool isSupportedIntegerType(LowLevelType Type) noexcept {
+  return (Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
           Type.scalarBitWidth() <= 64) ||
          (Type.isPointer() && Type.scalarBitWidth() == 64);
 }
 
-[[nodiscard]] bool isSupportedIntegerScalar(LLT Type) noexcept {
-  return (Type.isInteger() || Type.isAnyScalar()) && Type.scalarBitWidth() != 0 &&
+[[nodiscard]] bool isSupportedIntegerScalar(LowLevelType Type) noexcept {
+  return Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
          Type.scalarBitWidth() <= 64;
 }
 
-[[nodiscard]] bool isScalarGPRType(LLT Type) noexcept {
-  return ((Type.isInteger() || Type.isAnyScalar()) && Type.scalarBitWidth() != 0 &&
+[[nodiscard]] bool isScalarGPRType(LowLevelType Type) noexcept {
+  return (Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
           Type.scalarBitWidth() <= 64) ||
          (Type.isPointer() && Type.scalarBitWidth() == 64);
+}
+
+[[nodiscard]] constexpr RegisterBankID fprBank() noexcept {
+  return RegisterBankID::fromValue(static_cast<std::uint32_t>(RegisterBank::FPR));
+}
+
+[[nodiscard]] Expected<RegisterBankID> registerBank(const MachineFunction &Function, Register Reg) {
+  if (!Reg.isVirtual()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V generic instruction requires a virtual register");
+  }
+  auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
+  if (!Info)
+    return std::unexpected(Info.error());
+  if (!Info->get().Bank) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V instruction selection requires an assigned register bank");
+  }
+  return *Info->get().Bank;
 }
 
 [[nodiscard]] bool fitsSigned(std::int64_t Value, std::uint32_t Bits) noexcept {
@@ -146,9 +162,9 @@ public:
                                          const MachineFunction &Function,
                                          const TargetDescription &Target) const override {
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW)) {
-      const std::optional<LLT> Type = resultType(Function, Instruction);
-      const std::optional<LLT> Left = operandType(Function, Instruction, 1);
-      const std::optional<LLT> Right = operandType(Function, Instruction, 2);
+      const std::optional<LowLevelType> Type = resultType(Function, Instruction);
+      const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
+      const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
       return Type && Left && Right && isScalarGPRType(*Type) && Type->scalarBitWidth() == 64 &&
                      *Left == *Type && *Right == *Type
                  ? Expected<void>{}
@@ -158,9 +174,9 @@ public:
     if (!isGenericOpcode(Instruction.opcode()))
       return {};
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
-    const std::optional<LLT> Type = resultType(Function, Instruction);
+    const std::optional<LowLevelType> Type = resultType(Function, Instruction);
     const auto Integer = [Type] { return Type && isSupportedIntegerType(*Type); };
-    const auto Float = [Type] { return Type && isRVFloatType(*Type); };
+    const auto Float = [Type] { return Type && isSupportedFloatingScalar(*Type); };
     auto Classification = Subtarget.getLegalizerInfo()->classify(Instruction, Function, Target);
     if (!Classification)
       return std::unexpected(Classification.error());
@@ -226,8 +242,7 @@ public:
       const MachineOperand *Immediate = Instruction.operandAt(1);
       const auto *Floating =
           Immediate == nullptr ? nullptr : Immediate->getIf<FloatingImmediateOperand>();
-      const std::optional<FloatSemantics> Semantics = Type ? Type->floatSemantics() : std::nullopt;
-      if (!Float() || Floating == nullptr || !Semantics || Floating->Bits.semantics() != *Semantics)
+      if (!Float() || Floating == nullptr || Floating->Bits.bitWidth() != Type->scalarBitWidth())
         return makeUnexpected(ErrorCode::Unsupported,
                               "RISC-V selector requires a matching floating constant");
       return {};
@@ -240,7 +255,6 @@ public:
     case GenericOpcode::G_CONSTANT_FOLD_BARRIER:
     case GenericOpcode::G_PTRTOINT:
     case GenericOpcode::G_INTTOPTR:
-    case GenericOpcode::G_BITCAST:
     case GenericOpcode::G_TRUNC:
     case GenericOpcode::G_SEXT:
     case GenericOpcode::G_SEXT_INREG:
@@ -307,7 +321,7 @@ public:
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW))
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SLLW));
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
-    const std::optional<LLT> Type = resultType(Function, Instruction);
+    const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 
     const auto SelectDirect = [&Instruction](InstructionOpcode Selected) {
       return Instruction.setOpcode(instructionOpcode(Selected));
@@ -364,7 +378,7 @@ public:
     case GenericOpcode::G_PTRMASK:
       return SelectDirect(InstructionOpcode::AND);
     case GenericOpcode::G_LOAD:
-      return selectLoad(Instruction, Type);
+      return selectLoad(Instruction, Function, Type);
     case GenericOpcode::G_SEXTLOAD:
       return selectExtLoad(Instruction, Type, true);
     case GenericOpcode::G_ZEXTLOAD:
@@ -397,8 +411,6 @@ public:
     case GenericOpcode::G_PTRTOINT:
     case GenericOpcode::G_INTTOPTR:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
-    case GenericOpcode::G_BITCAST:
-      return selectBitcast(Instruction, Function);
     case GenericOpcode::G_FADD:
       return selectRoundingBinary(Instruction, Type, InstructionOpcode::FADD_S,
                                   InstructionOpcode::FADD_D);
@@ -526,11 +538,17 @@ public:
   }
 
 private:
-  [[nodiscard]] Expected<Register> createTemporary(MachineFunction &Function, LLT Type,
-                                                   const TargetDescription &Target) const {
+  [[nodiscard]] Expected<Register>
+  createTemporary(MachineFunction &Function, LowLevelType Type, const TargetDescription &Target,
+                  std::optional<RegisterBankID> Bank = std::nullopt) const {
     auto Temporary = Function.registerInfo().createVirtualRegister(Type);
     if (!Temporary)
       return std::unexpected(Temporary.error());
+    if (Bank) {
+      auto SetBank = Function.registerInfo().setRegisterBank(*Temporary, *Bank);
+      if (!SetBank)
+        return std::unexpected(SetBank.error());
+    }
     auto Constraint = RegisterBanks.constrainRegister(Function, *Temporary, Target);
     if (!Constraint)
       return std::unexpected(Constraint.error());
@@ -624,7 +642,7 @@ private:
   [[nodiscard]] Expected<Register> normalizeIntegerBefore(MachineInstr &Anchor,
                                                           MachineFunction &Function,
                                                           const TargetDescription &Target,
-                                                          Register Source, LLT Type,
+                                                          Register Source, LowLevelType Type,
                                                           bool Signed) const {
     if (!isSupportedIntegerScalar(Type))
       return makeUnexpected(ErrorCode::Unsupported,
@@ -689,9 +707,9 @@ private:
 
   [[nodiscard]] Expected<MachineInstr *>
   buildGPRSelectAfter(MachineIRBuilder &Builder, MachineInstr &Anchor, MachineFunction &Function,
-                      const TargetDescription &Target, LLT ValueType, Register Destination,
+                      const TargetDescription &Target, LowLevelType ValueType, Register Destination,
                       Register Condition, Register TrueValue, Register FalseValue) const {
-    auto IntegerType = LLT::makeInteger(ValueType.scalarBitWidth());
+    auto IntegerType = LowLevelType::makeCategoryNeutralScalar(ValueType.scalarBitWidth());
     if (!IntegerType)
       return std::unexpected(IntegerType.error());
     auto Mask = createTemporary(Function, *IntegerType, Target);
@@ -725,7 +743,7 @@ private:
 
   [[nodiscard]] Expected<void> selectDivRem(MachineInstr &Instruction, MachineFunction &Function,
                                             const TargetDescription &Target,
-                                            std::optional<LLT> Type, bool Signed) const {
+                                            std::optional<LowLevelType> Type, bool Signed) const {
     const MachineOperand *RemainderOperand = Instruction.operandAt(1);
     const MachineOperand *LeftOperand = Instruction.operandAt(2);
     const MachineOperand *RightOperand = Instruction.operandAt(3);
@@ -772,7 +790,8 @@ private:
   [[nodiscard]] Expected<void> selectMultiplyHigh(MachineInstr &Instruction,
                                                   MachineFunction &Function,
                                                   const TargetDescription &Target,
-                                                  std::optional<LLT> Type, bool Signed) const {
+                                                  std::optional<LowLevelType> Type,
+                                                  bool Signed) const {
     if (!Type)
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V high multiplication has no result type");
@@ -793,7 +812,7 @@ private:
                             "RISC-V high multiplication has invalid register operands");
     const Register DestinationRegister = *Destination;
     const Register RightRegister = *Right;
-    auto I64 = LLT::makeInteger(64);
+    auto I64 = LowLevelType::makeCategoryNeutralScalar(64);
     if (!I64)
       return std::unexpected(I64.error());
     auto ExtendedLeft = createTemporary(Function, *I64, Target);
@@ -868,7 +887,7 @@ private:
   [[nodiscard]] Expected<void> selectIntegerMinMax(MachineInstr &Instruction,
                                                    MachineFunction &Function,
                                                    const TargetDescription &Target,
-                                                   std::optional<LLT> Type,
+                                                   std::optional<LowLevelType> Type,
                                                    GenericOpcode Generic) const {
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);
     const MachineOperand *LeftOperand = Instruction.operandAt(1);
@@ -880,7 +899,7 @@ private:
     if (!Type || Destination == nullptr || Left == nullptr || Right == nullptr)
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V integer min/max has invalid operands");
-    auto I1 = LLT::makeInteger(1);
+    auto I1 = LowLevelType::makeCategoryNeutralScalar(1);
     if (!I1)
       return std::unexpected(I1.error());
     auto Condition = createTemporary(Function, *I1, Target);
@@ -922,7 +941,7 @@ private:
 
   [[nodiscard]] Expected<void> selectValue(MachineInstr &Instruction, MachineFunction &Function,
                                            const TargetDescription &Target,
-                                           std::optional<LLT> Type) const {
+                                           std::optional<LowLevelType> Type) const {
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);
     const MachineOperand *ConditionOperand = Instruction.operandAt(1);
     const MachineOperand *TrueOperand = Instruction.operandAt(2);
@@ -942,7 +961,7 @@ private:
     const Register DestinationRegister = *Destination;
     const Register TrueRegister = *TrueValue;
     const Register FalseRegister = *FalseValue;
-    auto I1 = LLT::makeInteger(1);
+    auto I1 = LowLevelType::makeCategoryNeutralScalar(1);
     if (!I1)
       return std::unexpected(I1.error());
     auto NormalizedCondition = createTemporary(Function, *I1, Target);
@@ -964,8 +983,12 @@ private:
     if (!SetNormalize)
       return std::unexpected(SetNormalize.error());
 
+    auto DestinationBank = registerBank(Function, DestinationRegister);
+    if (!DestinationBank)
+      return std::unexpected(DestinationBank.error());
+
     MachineIRBuilder Builder(Function, Target);
-    if (!Type->isFloat()) {
+    if (*DestinationBank != fprBank()) {
       auto Selected =
           buildGPRSelectAfter(Builder, Instruction, Function, Target, *Type, DestinationRegister,
                               *NormalizedCondition, TrueRegister, FalseRegister);
@@ -974,7 +997,7 @@ private:
       return {};
     }
 
-    auto IntegerType = LLT::makeInteger(Type->scalarBitWidth());
+    auto IntegerType = LowLevelType::makeCategoryNeutralScalar(Type->scalarBitWidth());
     if (!IntegerType)
       return std::unexpected(IntegerType.error());
     auto IntegerTrue = createTemporary(Function, *IntegerType, Target);
@@ -1010,7 +1033,7 @@ private:
   [[nodiscard]] Expected<void> selectAbsoluteValue(MachineInstr &Instruction,
                                                    MachineFunction &Function,
                                                    const TargetDescription &Target,
-                                                   std::optional<LLT> Type) const {
+                                                   std::optional<LowLevelType> Type) const {
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);
     const MachineOperand *SourceOperand = Instruction.operandAt(1);
     const Register *Destination =
@@ -1059,12 +1082,13 @@ private:
 
   [[nodiscard]] Expected<std::pair<Register, MachineInstr *>>
   buildSignedOverflowAfter(MachineIRBuilder &Builder, MachineInstr &Anchor,
-                           MachineFunction &Function, const TargetDescription &Target, LLT Type,
-                           Register Result, Register Left, Register Right, bool IsAdd) const {
+                           MachineFunction &Function, const TargetDescription &Target,
+                           LowLevelType Type, Register Result, Register Left, Register Right,
+                           bool IsAdd) const {
     auto FirstDifference = createTemporary(Function, Type, Target);
     auto SecondDifference = createTemporary(Function, Type, Target);
     auto SignBits = createTemporary(Function, Type, Target);
-    auto I1 = LLT::makeInteger(1);
+    auto I1 = LowLevelType::makeCategoryNeutralScalar(1);
     if (!I1)
       return std::unexpected(I1.error());
     auto Overflow = createTemporary(Function, *I1, Target);
@@ -1101,7 +1125,7 @@ private:
 
   [[nodiscard]] Expected<void> selectOverflow(MachineInstr &Instruction, MachineFunction &Function,
                                               const TargetDescription &Target,
-                                              std::optional<LLT> Type,
+                                              std::optional<LowLevelType> Type,
                                               GenericOpcode Generic) const {
     const MachineOperand *ResultOperand = Instruction.operandAt(0);
     const MachineOperand *OverflowOperand = Instruction.operandAt(1);
@@ -1183,7 +1207,7 @@ private:
       return {};
     }
 
-    auto I64 = LLT::makeInteger(64);
+    auto I64 = LowLevelType::makeCategoryNeutralScalar(64);
     if (!I64)
       return std::unexpected(I64.error());
     auto Zero = physicalRegister(PhysicalRegisterID::X0);
@@ -1305,7 +1329,7 @@ private:
   [[nodiscard]] Expected<void> selectExtendedOverflow(MachineInstr &Instruction,
                                                       MachineFunction &Function,
                                                       const TargetDescription &Target,
-                                                      std::optional<LLT> Type,
+                                                      std::optional<LowLevelType> Type,
                                                       GenericOpcode Generic) const {
     const MachineOperand *ResultOperand = Instruction.operandAt(0);
     const MachineOperand *CarryOutOperand = Instruction.operandAt(1);
@@ -1336,7 +1360,7 @@ private:
         IsAdd ? (IsWord ? InstructionOpcode::ADDW : InstructionOpcode::ADD)
               : (IsWord ? InstructionOpcode::SUBW : InstructionOpcode::SUB);
     auto Partial = createTemporary(Function, *Type, Target);
-    auto I1 = LLT::makeInteger(1);
+    auto I1 = LowLevelType::makeCategoryNeutralScalar(1);
     if (!Partial || !I1)
       return std::unexpected(!Partial ? Partial.error() : I1.error());
     auto NormalizedCarry = createTemporary(Function, *I1, Target);
@@ -1404,7 +1428,7 @@ private:
 
   [[nodiscard]] Expected<void> selectAtomicRMW(MachineInstr &Instruction, MachineFunction &Function,
                                                const TargetDescription &Target,
-                                               std::optional<LLT> Type,
+                                               std::optional<LowLevelType> Type,
                                                GenericOpcode Generic) const {
     const MachineOperand *AddressOperand = Instruction.operandAt(1);
     const MachineOperand *ValueOperand = Instruction.operandAt(2);
@@ -1484,8 +1508,8 @@ private:
                                                       MachineFunction &Function,
                                                       const TargetDescription &Target,
                                                       GenericOpcode Generic,
-                                                      std::optional<LLT> Type) const {
-    const std::optional<LLT> SourceType = operandType(Function, Instruction, 1);
+                                                      std::optional<LowLevelType> Type) const {
+    const std::optional<LowLevelType> SourceType = operandType(Function, Instruction, 1);
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);
     const MachineOperand *SourceOperand = Instruction.operandAt(1);
     const Register *Destination =
@@ -1539,7 +1563,7 @@ private:
   [[nodiscard]] Expected<void> selectSignExtendInRegister(MachineInstr &Instruction,
                                                           MachineFunction &Function,
                                                           const TargetDescription &Target,
-                                                          std::optional<LLT> Type) const {
+                                                          std::optional<LowLevelType> Type) const {
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);
     const MachineOperand *SourceOperand = Instruction.operandAt(1);
     const Register *Destination =
@@ -1610,7 +1634,7 @@ private:
         DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
     const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
     const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    const std::optional<LLT> LeftType = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> LeftType = operandType(Function, Instruction, 2);
     if (Predicate == nullptr || Predicate->integerPredicate() == nullptr ||
         Destination == nullptr || Left == nullptr || Right == nullptr || !LeftType)
       return makeUnexpected(ErrorCode::VerificationError,
@@ -1779,8 +1803,8 @@ private:
         DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
     const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
     const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    const std::optional<LLT> FloatType = operandType(Function, Instruction, 2);
-    const std::optional<LLT> ResultType = resultType(Function, Instruction);
+    const std::optional<LowLevelType> FloatType = operandType(Function, Instruction, 2);
+    const std::optional<LowLevelType> ResultType = resultType(Function, Instruction);
     if (Predicate == nullptr || Predicate->floatingPredicate() == nullptr ||
         Destination == nullptr || Left == nullptr || Right == nullptr || !FloatType || !ResultType)
       return makeUnexpected(ErrorCode::VerificationError,
@@ -1951,8 +1975,9 @@ private:
 
   [[nodiscard]] Expected<void> selectFloatToInteger(MachineInstr &Instruction,
                                                     MachineFunction &Function,
-                                                    std::optional<LLT> Type, bool Unsigned) const {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
+                                                    std::optional<LowLevelType> Type,
+                                                    bool Unsigned) const {
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
     if (!Type || !Source)
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V floating-to-integer conversion has invalid types");
@@ -1973,8 +1998,9 @@ private:
   [[nodiscard]] Expected<void> selectIntegerToFloat(MachineInstr &Instruction,
                                                     MachineFunction &Function,
                                                     const TargetDescription &Target,
-                                                    std::optional<LLT> Type, bool Unsigned) const {
-    const std::optional<LLT> Source = operandType(Function, Instruction, 1);
+                                                    std::optional<LowLevelType> Type,
+                                                    bool Unsigned) const {
+    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
     const MachineOperand *SourceOperand = Instruction.operandAt(1);
     const Register *SourceRegister =
         SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
@@ -2003,12 +2029,12 @@ private:
   }
 
   [[nodiscard]] Expected<void> selectFloatingMinMax(MachineInstr &Instruction,
-                                                    std::optional<LLT> Type,
+                                                    std::optional<LowLevelType> Type,
                                                     InstructionOpcode Single,
                                                     InstructionOpcode Double) const {
-    if (Type && Type->isFloat() && Type->scalarBitWidth() == 32)
+    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 32)
       return Instruction.setOpcode(instructionOpcode(Single));
-    if (Type && Type->isFloat() && Type->scalarBitWidth() == 64)
+    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 64)
       return Instruction.setOpcode(instructionOpcode(Double));
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V cannot select this floating min/max type");
@@ -2068,40 +2094,20 @@ private:
     return Instruction.setOpcode(instructionOpcode(InstructionOpcode::EBREAK));
   }
 
-  [[nodiscard]] Expected<void> selectBitcast(MachineInstr &Instruction,
-                                             MachineFunction &Function) const {
-    const std::optional<LLT> DestinationType = resultType(Function, Instruction);
-    const std::optional<LLT> SourceType = operandType(Function, Instruction, 1);
-    if (!DestinationType || !SourceType)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V bitcast has invalid register types");
-    if (DestinationType->isInteger() && SourceType->isFloat()) {
-      return Instruction.setOpcode(instructionOpcode(SourceType->scalarBitWidth() == 32
-                                                         ? InstructionOpcode::FMV_X_W
-                                                         : InstructionOpcode::FMV_X_D));
-    }
-    if (DestinationType->isFloat() && SourceType->isInteger()) {
-      return Instruction.setOpcode(instructionOpcode(DestinationType->scalarBitWidth() == 32
-                                                         ? InstructionOpcode::FMV_W_X
-                                                         : InstructionOpcode::FMV_D_X));
-    }
-    return makeUnexpected(ErrorCode::Unsupported, "RISC-V bitcast pair is unsupported");
-  }
-
   [[nodiscard]] Expected<void> selectIntegerBinary(MachineInstr &Instruction,
-                                                   std::optional<LLT> Type,
+                                                   std::optional<LowLevelType> Type,
                                                    InstructionOpcode DoubleWord,
                                                    InstructionOpcode Word) const {
     if (!Type || !isSupportedIntegerType(*Type))
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V integer instruction requires a supported scalar integer");
-    const bool IsWord = Type->isInteger() && Type->scalarBitWidth() <= 32;
+    const bool IsWord = Type->isCategoryNeutralScalar() && Type->scalarBitWidth() <= 32;
     return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
   [[nodiscard]] Expected<void>
   selectNormalizedIntegerBinary(MachineInstr &Instruction, MachineFunction &Function,
-                                const TargetDescription &Target, std::optional<LLT> Type,
+                                const TargetDescription &Target, std::optional<LowLevelType> Type,
                                 InstructionOpcode DoubleWord, InstructionOpcode Word, bool Signed,
                                 bool NormalizeRight) const {
     const MachineOperand *LeftOperand = Instruction.operandAt(1);
@@ -2134,8 +2140,8 @@ private:
     return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
-  [[nodiscard]] Expected<void> selectLoad(MachineInstr &Instruction,
-                                          std::optional<LLT> Type) const {
+  [[nodiscard]] Expected<void> selectLoad(MachineInstr &Instruction, MachineFunction &Function,
+                                          std::optional<LowLevelType> Type) const {
     if (!Type)
       return makeUnexpected(ErrorCode::VerificationError,
                             "load result has no virtual-register type");
@@ -2143,8 +2149,16 @@ private:
     if (!Bytes)
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V load size does not match its result type");
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    if (Destination == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError, "RISC-V load has no destination");
+    auto Bank = registerBank(Function, *Destination);
+    if (!Bank)
+      return std::unexpected(Bank.error());
     if (Instruction.memOperands().front()->isAtomic()) {
-      if (!isSupportedIntegerType(*Type) || (*Bytes != 4 && *Bytes != 8))
+      if (*Bank == fprBank() || !isSupportedIntegerType(*Type) || (*Bytes != 4 && *Bytes != 8))
         return makeUnexpected(ErrorCode::Unsupported,
                               "RISC-V atomic load requires a 32-bit or 64-bit GPR value");
       return Instruction.setOpcode(
@@ -2153,7 +2167,7 @@ private:
     auto AppendOffset = appendImmediate(Instruction, 0);
     if (!AppendOffset)
       return std::unexpected(AppendOffset.error());
-    if (isSupportedIntegerType(*Type)) {
+    if (*Bank != fprBank() && isSupportedIntegerType(*Type)) {
       const InstructionOpcode Selected = *Bytes == 1   ? InstructionOpcode::LB
                                          : *Bytes == 2 ? InstructionOpcode::LH
                                          : *Bytes == 4 ? InstructionOpcode::LW
@@ -2163,15 +2177,15 @@ private:
         return makeUnexpected(ErrorCode::Unsupported, "RISC-V integer load width is unsupported");
       return Instruction.setOpcode(instructionOpcode(Selected));
     }
-    if (Type->isFloat() && Type->scalarBitWidth() == 32)
+    if (*Bank == fprBank() && Type->scalarBitWidth() == 32 && *Bytes == 4)
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FLW));
-    if (Type->isFloat() && Type->scalarBitWidth() == 64)
+    if (*Bank == fprBank() && Type->scalarBitWidth() == 64 && *Bytes == 8)
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FLD));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this generic load type");
   }
 
-  [[nodiscard]] Expected<void> selectExtLoad(MachineInstr &Instruction, std::optional<LLT> Type,
-                                             bool Signed) const {
+  [[nodiscard]] Expected<void> selectExtLoad(MachineInstr &Instruction,
+                                             std::optional<LowLevelType> Type, bool Signed) const {
     if (!Type || !isSupportedIntegerType(*Type))
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V extension load requires an integer result");
@@ -2201,10 +2215,10 @@ private:
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V floating extension load has no destination register");
     const Register DestinationRegister = *Destination;
-    auto F32 = LLT::makeFloat(FloatSemantics::IEEESingle);
+    auto F32 = LowLevelType::makeCategoryNeutralScalar(32);
     if (!F32)
       return std::unexpected(F32.error());
-    auto Temporary = createTemporary(Function, *F32, Target);
+    auto Temporary = createTemporary(Function, *F32, Target, fprBank());
     if (!Temporary)
       return std::unexpected(Temporary.error());
     auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
@@ -2233,10 +2247,10 @@ private:
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V floating truncation store has no value register");
     const Register ValueRegister = *Value;
-    auto F32 = LLT::makeFloat(FloatSemantics::IEEESingle);
+    auto F32 = LowLevelType::makeCategoryNeutralScalar(32);
     if (!F32)
       return std::unexpected(F32.error());
-    auto Temporary = createTemporary(Function, *F32, Target);
+    auto Temporary = createTemporary(Function, *F32, Target, fprBank());
     if (!Temporary)
       return std::unexpected(Temporary.error());
     MachineIRBuilder Builder(Function, Target);
@@ -2270,7 +2284,7 @@ private:
   [[nodiscard]] Expected<void> selectStore(MachineInstr &Instruction,
                                            MachineFunction &Function) const {
     const MachineOperand *Value = Instruction.operandAt(0);
-    const std::optional<LLT> Type =
+    const std::optional<LowLevelType> Type =
         Value == nullptr ? std::nullopt : registerType(Function, *Value);
     if (!Type)
       return makeUnexpected(ErrorCode::VerificationError,
@@ -2279,8 +2293,14 @@ private:
     if (!Bytes)
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V store size does not match its value type");
+    const Register *ValueRegister = Value->getIf<Register>();
+    if (ValueRegister == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError, "RISC-V store has no value register");
+    auto Bank = registerBank(Function, *ValueRegister);
+    if (!Bank)
+      return std::unexpected(Bank.error());
     if (Instruction.memOperands().front()->isAtomic()) {
-      if (!isSupportedIntegerType(*Type) || (*Bytes != 4 && *Bytes != 8))
+      if (*Bank == fprBank() || !isSupportedIntegerType(*Type) || (*Bytes != 4 && *Bytes != 8))
         return makeUnexpected(ErrorCode::Unsupported,
                               "RISC-V atomic store requires a 32-bit or 64-bit GPR value");
       auto Zero = physicalRegister(PhysicalRegisterID::X0);
@@ -2295,7 +2315,7 @@ private:
     auto AppendOffset = appendImmediate(Instruction, 0);
     if (!AppendOffset)
       return std::unexpected(AppendOffset.error());
-    if (isSupportedIntegerType(*Type)) {
+    if (*Bank != fprBank() && isSupportedIntegerType(*Type)) {
       const InstructionOpcode Selected = *Bytes == 1   ? InstructionOpcode::SB
                                          : *Bytes == 2 ? InstructionOpcode::SH
                                          : *Bytes == 4 ? InstructionOpcode::SW
@@ -2305,9 +2325,9 @@ private:
         return makeUnexpected(ErrorCode::Unsupported, "RISC-V integer store width is unsupported");
       return Instruction.setOpcode(instructionOpcode(Selected));
     }
-    if (Type->isFloat() && Type->scalarBitWidth() == 32)
+    if (*Bank == fprBank() && Type->scalarBitWidth() == 32 && *Bytes == 4)
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSW));
-    if (Type->isFloat() && Type->scalarBitWidth() == 64)
+    if (*Bank == fprBank() && Type->scalarBitWidth() == 64 && *Bytes == 8)
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSD));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this generic store type");
   }
@@ -2335,7 +2355,7 @@ private:
   [[nodiscard]] Expected<void> selectIntegerConstant(MachineInstr &Instruction,
                                                      MachineFunction &Function,
                                                      const TargetDescription &Target,
-                                                     std::optional<LLT> Type) const {
+                                                     std::optional<LowLevelType> Type) const {
     if (!Type || !isSupportedIntegerType(*Type)) {
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V constant selection requires an i1-i64 or pointer result");
@@ -2357,7 +2377,7 @@ private:
     const Register Destination = *DestinationValue;
     const std::int64_t Value = *ImmediateValue;
     const std::uint32_t ImmediateTargetFlags = ImmediateOperand->targetFlags();
-    const bool IsWord = Type->isInteger() && Type->scalarBitWidth() <= 32;
+    const bool IsWord = Type->isCategoryNeutralScalar() && Type->scalarBitWidth() <= 32;
     const InstructionOpcode AddImmediate =
         IsWord ? InstructionOpcode::ADDIW : InstructionOpcode::ADDI;
     const InstructionOpcode ShiftLeftImmediate =
@@ -2488,14 +2508,13 @@ private:
   [[nodiscard]] Expected<void> selectFloatingConstant(MachineInstr &Instruction,
                                                       MachineFunction &Function,
                                                       const TargetDescription &Target,
-                                                      std::optional<LLT> Type) const {
-    if (!Type || !isRVFloatType(*Type))
+                                                      std::optional<LowLevelType> Type) const {
+    if (!Type || !isSupportedFloatingScalar(*Type))
       return makeUnexpected(ErrorCode::Unsupported, "RISC-V floating constant requires f32 or f64");
     const MachineOperand *Immediate = Instruction.operandAt(1);
     const auto *Floating =
         Immediate == nullptr ? nullptr : Immediate->getIf<FloatingImmediateOperand>();
-    const std::optional<FloatSemantics> Semantics = Type->floatSemantics();
-    if (Floating == nullptr || !Semantics || Floating->Bits.semantics() != *Semantics)
+    if (Floating == nullptr || Floating->Bits.bitWidth() != Type->scalarBitWidth())
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V floating constant has mismatched bit semantics");
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);
@@ -2511,7 +2530,7 @@ private:
     auto Integer = APInt::fromUnsigned(64, Bits);
     if (!Integer)
       return std::unexpected(Integer.error());
-    auto IntegerType = LLT::makeInteger(64);
+    auto IntegerType = LowLevelType::makeCategoryNeutralScalar(64);
     if (!IntegerType)
       return std::unexpected(IntegerType.error());
     auto Temporary = createTemporary(Function, *IntegerType, Target);
@@ -2564,35 +2583,35 @@ private:
   }
 
   [[nodiscard]] Expected<void> selectRoundingBinary(MachineInstr &Instruction,
-                                                    std::optional<LLT> Type,
+                                                    std::optional<LowLevelType> Type,
                                                     InstructionOpcode Single,
                                                     InstructionOpcode Double) const {
     auto RoundingMode = appendImmediate(Instruction, 0);
     if (!RoundingMode)
       return std::unexpected(RoundingMode.error());
-    if (Type && Type->isFloat() && Type->scalarBitWidth() == 32)
+    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 32)
       return Instruction.setOpcode(instructionOpcode(Single));
-    if (Type && Type->isFloat() && Type->scalarBitWidth() == 64)
+    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 64)
       return Instruction.setOpcode(instructionOpcode(Double));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this floating binary type");
   }
 
   [[nodiscard]] Expected<void> selectRoundingTernary(MachineInstr &Instruction,
-                                                     std::optional<LLT> Type,
+                                                     std::optional<LowLevelType> Type,
                                                      InstructionOpcode Single,
                                                      InstructionOpcode Double) const {
     return selectRoundingBinary(Instruction, Type, Single, Double);
   }
 
   [[nodiscard]] Expected<void> selectRoundingUnary(MachineInstr &Instruction,
-                                                   std::optional<LLT> Type,
+                                                   std::optional<LowLevelType> Type,
                                                    InstructionOpcode Single,
                                                    InstructionOpcode Double) const {
     return selectRoundingBinary(Instruction, Type, Single, Double);
   }
 
   [[nodiscard]] Expected<void> selectSignInjection(MachineInstr &Instruction,
-                                                   std::optional<LLT> Type,
+                                                   std::optional<LowLevelType> Type,
                                                    InstructionOpcode Single,
                                                    InstructionOpcode Double) const {
     const MachineOperand *Source = Instruction.operandAt(1);
@@ -2603,9 +2622,9 @@ private:
     auto Duplicate = insertVirtualUse(Instruction, 2, *SourceReg);
     if (!Duplicate)
       return std::unexpected(Duplicate.error());
-    if (Type && Type->isFloat() && Type->scalarBitWidth() == 32)
+    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 32)
       return Instruction.setOpcode(instructionOpcode(Single));
-    if (Type && Type->isFloat() && Type->scalarBitWidth() == 64)
+    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 64)
       return Instruction.setOpcode(instructionOpcode(Double));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this floating unary type");
   }

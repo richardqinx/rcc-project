@@ -197,7 +197,7 @@ void testOperandValidation(TestContext &Context) {
   if (!Function)
     return;
 
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Destination = (*Function)->registerInfo().createVirtualRegister(*I64);
   auto Source = (*Function)->registerInfo().createVirtualRegister(*I64);
   Context.expect(Destination && Source, "descriptor test virtual registers must be allocated");
@@ -261,7 +261,7 @@ void testInstructionValidation(TestContext &Context) {
   if (!InstructionSet || !Function)
     return;
 
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Reg = (*Function)->registerInfo().createVirtualRegister(*I64);
   Context.expect(Reg.has_value(), "instruction validation register must be allocated");
   if (!Reg)

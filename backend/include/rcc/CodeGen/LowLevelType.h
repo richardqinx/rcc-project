@@ -3,7 +3,6 @@
 #ifndef RCC_CODEGEN_LOWLEVELTYPE_H
 #define RCC_CODEGEN_LOWLEVELTYPE_H
 
-#include "rcc/ADT/APFloat.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
@@ -16,18 +15,14 @@
 
 namespace rcc {
 
-class LLT final {
+class LowLevelType final {
 public:
   enum class Kind : std::uint8_t {
     Invalid,
     Token,
-    AnyScalar,
-    Integer,
-    Float,
+    CategoryNeutralScalar,
     Pointer,
-    VectorAny,
-    VectorInteger,
-    VectorFloat,
+    Vector,
     VectorPointer,
   };
 
@@ -35,20 +30,19 @@ public:
   static constexpr std::uint32_t MaxElementCount = (std::uint32_t{1} << 16) - 1;
   static constexpr std::uint32_t MaxAddressSpace = (std::uint32_t{1} << 24) - 1;
 
-  constexpr LLT() noexcept = default;
+  constexpr LowLevelType() noexcept = default;
 
-  [[nodiscard]] static constexpr LLT token() noexcept {
-    return LLT(encode(Kind::Token, 0, 0, 0, false));
+  [[nodiscard]] static constexpr LowLevelType token() noexcept {
+    return LowLevelType(encode(Kind::Token, 0, 0, 0, false));
   }
 
-  [[nodiscard]] static Expected<LLT> makeAnyScalar(std::uint64_t BitWidth);
-  [[nodiscard]] static Expected<LLT> makeInteger(std::uint64_t BitWidth);
-  [[nodiscard]] static Expected<LLT> makeFloat(FloatSemantics Semantics);
-  [[nodiscard]] static Expected<LLT> makePointer(std::uint64_t AddressSpace,
-                                                 std::uint64_t BitWidth);
-  [[nodiscard]] static Expected<LLT> makeFixedVector(std::uint64_t ElementCount, LLT ElementType);
-  [[nodiscard]] static Expected<LLT> makeScalableVector(std::uint64_t MinimumElementCount,
-                                                        LLT ElementType);
+  [[nodiscard]] static Expected<LowLevelType> makeCategoryNeutralScalar(std::uint64_t BitWidth);
+  [[nodiscard]] static Expected<LowLevelType> makePointer(std::uint64_t AddressSpace,
+                                                          std::uint64_t BitWidth);
+  [[nodiscard]] static Expected<LowLevelType> makeFixedVector(std::uint64_t ElementCount,
+                                                              LowLevelType ElementType);
+  [[nodiscard]] static Expected<LowLevelType> makeScalableVector(std::uint64_t MinimumElementCount,
+                                                                 LowLevelType ElementType);
 
   [[nodiscard]] constexpr Kind kind() const noexcept {
     return static_cast<Kind>((RawValue >> KindShift) & KindMask);
@@ -62,44 +56,20 @@ public:
     return kind() == Kind::Token;
   }
 
-  [[nodiscard]] constexpr bool isAnyScalar() const noexcept {
-    return kind() == Kind::AnyScalar;
-  }
-
-  [[nodiscard]] constexpr bool isInteger() const noexcept {
-    return kind() == Kind::Integer;
-  }
-
-  [[nodiscard]] constexpr bool isFloat() const noexcept {
-    return kind() == Kind::Float;
+  [[nodiscard]] constexpr bool isCategoryNeutralScalar() const noexcept {
+    return kind() == Kind::CategoryNeutralScalar;
   }
 
   [[nodiscard]] constexpr bool isPointer() const noexcept {
     return kind() == Kind::Pointer;
   }
 
-  [[nodiscard]] constexpr bool isAnyVector() const noexcept {
-    return kind() == Kind::VectorAny;
-  }
-
-  [[nodiscard]] constexpr bool isIntegerVector() const noexcept {
-    return kind() == Kind::VectorInteger;
-  }
-
-  [[nodiscard]] constexpr bool isFloatVector() const noexcept {
-    return kind() == Kind::VectorFloat;
+  [[nodiscard]] constexpr bool isVectorValue() const noexcept {
+    return kind() == Kind::Vector;
   }
 
   [[nodiscard]] constexpr bool isPointerVector() const noexcept {
     return kind() == Kind::VectorPointer;
-  }
-
-  [[nodiscard]] constexpr bool isIntegerOrIntegerVector() const noexcept {
-    return isInteger() || isIntegerVector();
-  }
-
-  [[nodiscard]] constexpr bool isFloatOrFloatVector() const noexcept {
-    return isFloat() || isFloatVector();
   }
 
   [[nodiscard]] constexpr bool isPointerOrPointerVector() const noexcept {
@@ -107,8 +77,7 @@ public:
   }
 
   [[nodiscard]] constexpr bool isVector() const noexcept {
-    return kind() == Kind::VectorAny || kind() == Kind::VectorInteger ||
-           kind() == Kind::VectorFloat || kind() == Kind::VectorPointer;
+    return kind() == Kind::Vector || kind() == Kind::VectorPointer;
   }
 
   [[nodiscard]] constexpr bool isScalableVector() const noexcept {
@@ -116,7 +85,7 @@ public:
   }
 
   [[nodiscard]] constexpr bool isScalarValue() const noexcept {
-    return isAnyScalar() || isInteger() || isFloat() || isPointer();
+    return isCategoryNeutralScalar() || isPointer();
   }
 
   [[nodiscard]] constexpr std::uint32_t scalarBitWidth() const noexcept {
@@ -130,8 +99,7 @@ public:
   }
 
   [[nodiscard]] std::optional<std::uint32_t> addressSpace() const noexcept;
-  [[nodiscard]] std::optional<FloatSemantics> floatSemantics() const noexcept;
-  [[nodiscard]] std::optional<LLT> scalarElementType() const noexcept;
+  [[nodiscard]] std::optional<LowLevelType> scalarElementType() const noexcept;
 
   [[nodiscard]] constexpr std::uint64_t rawValue() const noexcept {
     return RawValue;
@@ -139,7 +107,7 @@ public:
 
   [[nodiscard]] std::string toString() const;
 
-  friend constexpr bool operator==(LLT Left, LLT Right) noexcept = default;
+  friend constexpr bool operator==(LowLevelType Left, LowLevelType Right) noexcept = default;
 
 private:
   static constexpr unsigned BitWidthShift = 0;
@@ -153,7 +121,7 @@ private:
   static constexpr std::uint64_t AuxiliaryMask = (std::uint64_t{1} << 24) - 1;
   static constexpr std::uint64_t KindMask = (std::uint64_t{1} << 4) - 1;
 
-  explicit constexpr LLT(std::uint64_t RawValue) noexcept : RawValue(RawValue) {}
+  explicit constexpr LowLevelType(std::uint64_t RawValue) noexcept : RawValue(RawValue) {}
 
   [[nodiscard]] static constexpr std::uint64_t encode(Kind TypeKind, std::uint32_t BitWidth,
                                                       std::uint32_t ElementCount,
@@ -166,9 +134,8 @@ private:
            (static_cast<std::uint64_t>(BitWidth) << BitWidthShift);
   }
 
-  [[nodiscard]] static Expected<LLT> makeScalar(Kind TypeKind, std::uint64_t BitWidth);
-  [[nodiscard]] static Expected<LLT> makeVector(std::uint64_t ElementCount, bool IsScalable,
-                                                LLT ElementType);
+  [[nodiscard]] static Expected<LowLevelType> makeVector(std::uint64_t ElementCount,
+                                                         bool IsScalable, LowLevelType ElementType);
 
   [[nodiscard]] constexpr std::uint32_t auxiliaryValue() const noexcept {
     return static_cast<std::uint32_t>((RawValue >> AuxiliaryShift) & AuxiliaryMask);
@@ -177,13 +144,13 @@ private:
   std::uint64_t RawValue = 0;
 };
 
-static_assert(sizeof(LLT) == sizeof(std::uint64_t));
-static_assert(std::is_trivially_copyable_v<LLT>);
+static_assert(sizeof(LowLevelType) == sizeof(std::uint64_t));
+static_assert(std::is_trivially_copyable_v<LowLevelType>);
 
 } // namespace rcc
 
-template <> struct std::hash<rcc::LLT> {
-  [[nodiscard]] std::size_t operator()(rcc::LLT Type) const noexcept {
+template <> struct std::hash<rcc::LowLevelType> {
+  [[nodiscard]] std::size_t operator()(rcc::LowLevelType Type) const noexcept {
     return std::hash<std::uint64_t>{}(Type.rawValue());
   }
 };

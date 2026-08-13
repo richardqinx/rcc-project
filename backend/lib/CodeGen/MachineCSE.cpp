@@ -149,24 +149,7 @@ template <typename ValueT>
   return true;
 }
 
-[[nodiscard]] bool hasFloatingRegister(const MachineInstr &Instruction,
-                                       const MachineRegisterInfo &Registers) {
-  for (const MachineOperand &Operand : Instruction.operands()) {
-    const Register *Reg = Operand.getIf<Register>();
-    if (Reg == nullptr || !Reg->isVirtual())
-      continue;
-    auto Info = Registers.virtualRegisterInfo(*Reg);
-    if (Info) {
-      const auto &Type = Info->get().Type;
-      if (Type && Type->isFloat())
-        return true;
-    }
-  }
-  return false;
-}
-
 [[nodiscard]] Expected<bool> isCandidate(const MachineInstr &Instruction,
-                                         const MachineFunction &Function,
                                          const TargetDescription &Target) {
   const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
   if (Descriptor == nullptr) {
@@ -187,8 +170,8 @@ template <typename ValueT>
     return false;
   if (!Flags.has(InstructionFlag::MayLoad) && !Instruction.memOperands().empty())
     return false;
-  if (!Instruction.flags().has(MachineInstrFlag::NoFPExcept) &&
-      hasFloatingRegister(Instruction, Function.registerInfo())) {
+  if (Flags.has(InstructionFlag::MayRaiseFPException) &&
+      !Instruction.flags().has(MachineInstrFlag::NoFPExcept)) {
     return false;
   }
 
@@ -351,7 +334,7 @@ MachineCSEPass::runImplementation(MachineFunction &Function, const TargetDescrip
        Block = Block->next()) {
     for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;) {
       MachineInstr *Next = Instruction->next();
-      auto Candidate = isCandidate(*Instruction, Function, Target);
+      auto Candidate = isCandidate(*Instruction, Target);
       if (!Candidate)
         return std::unexpected(Candidate.error());
       if (!*Candidate) {

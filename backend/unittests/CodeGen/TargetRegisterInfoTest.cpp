@@ -250,7 +250,7 @@ void testTargetDescriptionConstraints(TestContext &Context) {
                                                             rcc::test::TestRegisterBank::GPR));
   auto Function =
       rcc::MachineFunction::create("constraints", rcc::MachineFunctionStableID::fromValue(1));
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!SubclassTarget || !Function || !Type)
     return;
 
@@ -301,7 +301,7 @@ void testTargetDescriptionConstraints(TestContext &Context) {
                                        (*Function)->registerInfo()),
                  "physical register operands must reject nonzero subregister indices");
 
-  auto WideType = rcc::LLT::makeInteger(128);
+  auto WideType = rcc::LowLevelType::makeCategoryNeutralScalar(128);
   if (!WideType)
     return;
   auto WideReg = (*Function)->registerInfo().createVirtualRegister(*WideType);

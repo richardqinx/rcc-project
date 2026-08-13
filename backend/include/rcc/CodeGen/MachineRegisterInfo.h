@@ -81,7 +81,7 @@ private:
 
 struct VirtualRegisterInfo final {
   std::optional<std::string> Name;
-  std::optional<LLT> Type;
+  std::optional<LowLevelType> Type;
   std::optional<RegisterBankID> Bank;
   std::optional<RegisterClassID> RegClass;
   std::vector<PhysicalRegister> AllocationHints;
@@ -107,7 +107,7 @@ public:
   ~MachineRegisterInfo();
 
   [[nodiscard]] Expected<Register> createVirtualRegister();
-  [[nodiscard]] Expected<Register> createVirtualRegister(LLT Type);
+  [[nodiscard]] Expected<Register> createVirtualRegister(LowLevelType Type);
   [[nodiscard]] Expected<void> eraseVirtualRegister(Register Reg);
 
   [[nodiscard]] bool isKnownVirtualRegister(Register Reg) const noexcept;
@@ -119,7 +119,7 @@ public:
   [[nodiscard]] Expected<std::reference_wrapper<const VirtualRegisterInfo>>
   virtualRegisterInfo(Register Reg) const;
 
-  [[nodiscard]] Expected<void> setType(Register Reg, LLT Type);
+  [[nodiscard]] Expected<void> setType(Register Reg, LowLevelType Type);
   [[nodiscard]] Expected<void> clearType(Register Reg);
   [[nodiscard]] Expected<void> setRegisterBank(Register Reg, RegisterBankID Bank);
   [[nodiscard]] Expected<void> clearRegisterBank(Register Reg);

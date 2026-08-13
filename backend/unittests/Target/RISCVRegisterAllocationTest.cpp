@@ -84,7 +84,8 @@ struct FunctionFixture final {
   return FunctionFixture{std::move(*Function), *Block};
 }
 
-[[nodiscard]] rcc::Expected<rcc::Register> createVReg(rcc::MachineFunction &Function, rcc::LLT Type,
+[[nodiscard]] rcc::Expected<rcc::Register> createVReg(rcc::MachineFunction &Function,
+                                                      rcc::LowLevelType Type,
                                                       rcc::riscv::RegisterBank Bank,
                                                       rcc::riscv::RegisterClass Class) {
   auto Reg = Function.registerInfo().createVirtualRegister(Type);
@@ -304,7 +305,7 @@ void testTargetHooks(TestContext &Context, const rcc::TargetDescription &Target)
 
 void testRematerialization(TestContext &Context, const rcc::TargetDescription &Target) {
   auto Fixture = createFunction("riscv-rematerialization", 2);
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Fixture || !I64)
     return;
   auto Original = createVReg(*Fixture->Function, *I64, rcc::riscv::RegisterBank::GPR,
@@ -335,7 +336,7 @@ void testRematerialization(TestContext &Context, const rcc::TargetDescription &T
 [[nodiscard]] rcc::Expected<FunctionFixture>
 createSimpleAllocationFunction(const rcc::TargetDescription &Target, std::uint64_t ID) {
   auto Fixture = createFunction("riscv-ra-" + std::to_string(ID), ID);
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Fixture)
     return std::unexpected(Fixture.error());
   if (!I64)
@@ -448,7 +449,7 @@ void testFunctionReservedRegisters(TestContext &Context, const rcc::TargetDescri
 [[nodiscard]] rcc::Expected<FunctionFixture>
 createPressureFunction(const rcc::TargetDescription &Target, std::uint64_t ID) {
   auto Fixture = createFunction("riscv-pressure-" + std::to_string(ID), ID);
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Fixture)
     return std::unexpected(Fixture.error());
   if (!I64)

@@ -186,7 +186,7 @@ void testValidTargetFacts(TestContext &Context, const rcc::TargetDescription &Ta
   if (!Fixture.Function)
     return;
 
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Reg = Fixture.Function->registerInfo().createVirtualRegister(*Type);
   if (!Reg)
     return;
@@ -233,7 +233,7 @@ void testSubRegisterProjection(TestContext &Context, const rcc::TargetDescriptio
   if (!Fixture.Function)
     return;
 
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Reg = Fixture.Function->registerInfo().createVirtualRegister(*Type);
   if (!Reg)
     return;
@@ -282,7 +282,7 @@ void testUnknownAndMalformedTargetFacts(TestContext &Context,
   }
   {
     auto Fixture = createFunction(Context, "unknown_bank", 5);
-    auto Type = rcc::LLT::makeInteger(64);
+    auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
     if (!Fixture.Function || !Type)
       return;
     auto Reg = Fixture.Function->registerInfo().createVirtualRegister(*Type);
@@ -295,7 +295,7 @@ void testUnknownAndMalformedTargetFacts(TestContext &Context,
   }
   {
     auto Fixture = createFunction(Context, "wide_bank_value", 6);
-    auto Type = rcc::LLT::makeInteger(128);
+    auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(128);
     if (!Fixture.Function || !Type)
       return;
     auto Reg = Fixture.Function->registerInfo().createVirtualRegister(*Type);
@@ -325,7 +325,7 @@ void testUnknownAndMalformedTargetFacts(TestContext &Context,
   }
   {
     auto Fixture = createFunction(Context, "bad_allocation_hint", 9);
-    auto Type = rcc::LLT::makeInteger(64);
+    auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
     auto Reg = Fixture.Function->registerInfo().createVirtualRegister(*Type);
     Context.expect(Reg &&
                        classify(Fixture.Function->registerInfo(), *Reg,
@@ -340,7 +340,7 @@ void testUnknownAndMalformedTargetFacts(TestContext &Context,
   }
   {
     auto Fixture = createFunction(Context, "reserved_allocation_hint", 14);
-    auto Type = rcc::LLT::makeInteger(64);
+    auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
     auto Reg = Fixture.Function->registerInfo().createVirtualRegister(*Type);
     const auto G0 = phys(rcc::test::TestRegister::G0);
     Context.expect(Reg &&
@@ -355,7 +355,7 @@ void testUnknownAndMalformedTargetFacts(TestContext &Context,
   }
   {
     auto Fixture = createFunction(Context, "incompatible_function_livein", 15);
-    auto Type = rcc::LLT::makeInteger(64);
+    auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
     auto Reg = Fixture.Function->registerInfo().createVirtualRegister(*Type);
     Context.expect(
         Reg &&
@@ -416,7 +416,7 @@ void testRegMaskEarlyClobberAndTies(TestContext &Context, const rcc::TargetDescr
   }
   {
     auto Fixture = createFunction(Context, "incompatible_tie", 12);
-    auto Type = rcc::LLT::makeInteger(64);
+    auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
     auto GPR = Fixture.Function->registerInfo().createVirtualRegister(*Type);
     auto FPR = Fixture.Function->registerInfo().createVirtualRegister(*Type);
     if (!GPR || !FPR)

@@ -76,7 +76,7 @@ memoryRoleEnumerator(std::string_view Value) noexcept {
 
 [[nodiscard]] std::optional<std::string_view>
 instructionFlagEnumerator(std::string_view Value) noexcept {
-  static constexpr std::array<std::pair<std::string_view, std::string_view>, 23> Flags = {{
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 24> Flags = {{
       {"terminator", "Terminator"},
       {"branch", "Branch"},
       {"indirect_branch", "IndirectBranch"},
@@ -96,6 +96,7 @@ instructionFlagEnumerator(std::string_view Value) noexcept {
       {"not_duplicable", "NotDuplicable"},
       {"convergent", "Convergent"},
       {"unmodeled_side_effects", "UnmodeledSideEffects"},
+      {"may_raise_fp_exception", "MayRaiseFPException"},
       {"phi", "Phi"},
       {"fake_use", "FakeUse"},
       {"generic", "Generic"},

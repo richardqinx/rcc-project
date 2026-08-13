@@ -558,7 +558,7 @@ void testHeterogeneousPointerLayout(TestContext &Context) {
   }
 
   const rcc::MachineFunction *Function = Parsed.document()->unit().function("pointer_layout");
-  auto PointerType = rcc::LLT::makePointer(1, 32);
+  auto PointerType = rcc::LowLevelType::makePointer(1, 32);
   const rcc::MachineConstantPoolEntry *Constant =
       Function == nullptr ? nullptr
                           : Function->constantPool().entry(rcc::ConstantPoolIndex::fromValue(0));
@@ -584,7 +584,7 @@ void testHeterogeneousPointerLayout(TestContext &Context) {
           : OverriddenFunction->constantPool().entry(rcc::ConstantPoolIndex::fromValue(0));
   const rcc::MachineConstantPoolEntryDesc *OverriddenConstantDescription =
       OverriddenConstant == nullptr ? nullptr : OverriddenConstant->description();
-  const auto OverriddenPointerType = rcc::LLT::makePointer(1, 64);
+  const auto OverriddenPointerType = rcc::LowLevelType::makePointer(1, 64);
   Context.expect(Overridden.succeeded() && OverriddenFunction != nullptr &&
                      OverriddenPointerType.has_value() &&
                      OverriddenFunction->registerInfo().virtualRegisters().size() == 1 &&

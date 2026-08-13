@@ -197,7 +197,7 @@ struct MachineMemOperandDesc final {
   AtomicOrdering FailureOrdering = AtomicOrdering::NotAtomic;
   SyncScopeID SyncScope;
   MemorySize Size;
-  std::optional<LLT> MemoryType;
+  std::optional<LowLevelType> MemoryType;
   Alignment Align;
   std::optional<Alignment> BaseAlign;
   std::uint32_t AddressSpace = 0;

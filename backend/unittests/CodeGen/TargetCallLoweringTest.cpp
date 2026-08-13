@@ -42,8 +42,8 @@ private:
   return *Value;
 }
 
-[[nodiscard]] rcc::LLT integer(std::uint32_t Bits) {
-  const auto Type = rcc::LLT::makeInteger(Bits);
+[[nodiscard]] rcc::LowLevelType integer(std::uint32_t Bits) {
+  const auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(Bits);
   if (!Type)
     std::terminate();
   return *Type;
@@ -207,7 +207,7 @@ void testPlanValidation(TestContext &Context) {
 
   auto BadByVal = emptyPlanDescription(rcc::CallLoweringPlanKind::Call);
   auto ByValAssignment = registerAssignment();
-  ByValAssignment.ValueType = *rcc::LLT::makePointer(0, 64);
+  ByValAssignment.ValueType = *rcc::LowLevelType::makePointer(0, 64);
   ByValAssignment.LocationType = ByValAssignment.ValueType;
   ByValAssignment.CustomFlags.set(rcc::CCAssignmentFlag::ByVal);
   BadByVal.ArgumentAssignments.push_back(ByValAssignment);
@@ -219,7 +219,7 @@ void testPlanValidation(TestContext &Context) {
   auto OverlappingByVal = emptyPlanDescription(rcc::CallLoweringPlanKind::Call);
   OverlappingByVal.CallFrame.SizeBytes = 32;
   auto FirstByVal = registerAssignment();
-  FirstByVal.ValueType = *rcc::LLT::makePointer(0, 64);
+  FirstByVal.ValueType = *rcc::LowLevelType::makePointer(0, 64);
   FirstByVal.LocationType = FirstByVal.ValueType;
   FirstByVal.CustomFlags.set(rcc::CCAssignmentFlag::ByVal);
   auto SecondByVal = FirstByVal;

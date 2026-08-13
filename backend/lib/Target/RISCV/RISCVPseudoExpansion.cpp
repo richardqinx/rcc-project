@@ -45,7 +45,8 @@ registerBank(Register Reg, const MachineFunction &Function, const TargetDescript
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<LLT> registerType(Register Reg, const MachineFunction &Function) {
+[[nodiscard]] std::optional<LowLevelType> registerType(Register Reg,
+                                                       const MachineFunction &Function) {
   if (!Reg.isVirtual())
     return std::nullopt;
   auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
@@ -156,7 +157,7 @@ copyRegisters(const MachineInstr &Instruction) {
 
   const auto DestinationType = registerType(Registers->first, Function);
   const auto SourceType = registerType(Registers->second, Function);
-  const std::optional<LLT> Type = DestinationType ? DestinationType : SourceType;
+  const std::optional<LowLevelType> Type = DestinationType ? DestinationType : SourceType;
   if (!Type || Type->isVector() || (Type->scalarBitWidth() != 32 && Type->scalarBitWidth() != 64)) {
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V cross-bank COPY requires a scalar 32-bit or 64-bit type");

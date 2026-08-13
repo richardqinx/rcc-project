@@ -228,8 +228,8 @@ void testMemoryDependence(TestContext &Context, const rcc::TargetDescription &Ta
   }
   auto Block = appendBlock(**Function);
   auto OtherBlock = appendBlock(**Function);
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto Pointer = rcc::LLT::makePointer(0, 64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto Pointer = rcc::LowLevelType::makePointer(0, 64);
   auto Value = I64 ? (*Function)->registerInfo().createVirtualRegister(*I64)
                    : rcc::Expected<rcc::Register>{std::unexpected(I64.error())};
   auto Address = Pointer ? (*Function)->registerInfo().createVirtualRegister(*Pointer)
@@ -397,7 +397,7 @@ void testCFGUpdaterPHIs(TestContext &Context, const rcc::TargetDescription &Targ
     return;
   }
 
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Destination = I64 ? (*Function)->registerInfo().createVirtualRegister(*I64)
                          : rcc::Expected<rcc::Register>{std::unexpected(I64.error())};
   auto SourceValue = I64 ? (*Function)->registerInfo().createVirtualRegister(*I64)
@@ -475,7 +475,7 @@ void testCFGUpdaterFailureAtomicity(TestContext &Context, const rcc::TargetDescr
   if (!SplitUpdater.addSuccessor(**Source, **Merge, rcc::BranchProbability::one()))
     return;
 
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Destination = I64 ? (*SplitFunction)->registerInfo().createVirtualRegister(*I64)
                          : rcc::Expected<rcc::Register>{std::unexpected(I64.error())};
   auto Value = I64 ? (*SplitFunction)->registerInfo().createVirtualRegister(*I64)

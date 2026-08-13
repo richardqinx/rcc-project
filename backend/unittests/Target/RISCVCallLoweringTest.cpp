@@ -61,29 +61,30 @@ private:
   return *Value;
 }
 
-[[nodiscard]] rcc::LLT integer(std::uint32_t Bits) {
-  const auto Type = rcc::LLT::makeInteger(Bits);
+[[nodiscard]] rcc::LowLevelType integer(std::uint32_t Bits) {
+  const auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(Bits);
   if (!Type)
     std::terminate();
   return *Type;
 }
 
-[[nodiscard]] rcc::LLT anyScalar(std::uint32_t Bits) {
-  const auto Type = rcc::LLT::makeAnyScalar(Bits);
+[[nodiscard]] rcc::LowLevelType anyScalar(std::uint32_t Bits) {
+  const auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(Bits);
   if (!Type)
     std::terminate();
   return *Type;
 }
 
-[[nodiscard]] rcc::LLT floating(rcc::FloatSemantics Semantics) {
-  const auto Type = rcc::LLT::makeFloat(Semantics);
+[[nodiscard]] rcc::LowLevelType floating(rcc::FloatSemantics Semantics) {
+  const std::uint32_t Bits = Semantics == rcc::FloatSemantics::IEEESingle ? 32 : 64;
+  const auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(Bits);
   if (!Type)
     std::terminate();
   return *Type;
 }
 
-[[nodiscard]] rcc::LLT pointer() {
-  const auto Type = rcc::LLT::makePointer(0, 64);
+[[nodiscard]] rcc::LowLevelType pointer() {
+  const auto Type = rcc::LowLevelType::makePointer(0, 64);
   if (!Type)
     std::terminate();
   return *Type;
@@ -128,13 +129,16 @@ private:
   return rcc::Register::fromPhysical(physical(rcc::riscv::PhysicalRegisterID::X5));
 }
 
-[[nodiscard]] rcc::ABIValue
-abiValue(rcc::LLT Type, std::uint32_t OriginalValue, rcc::Register Value = planningRegister(),
-         rcc::ABIExtensionKind Extension = rcc::ABIExtensionKind::None) {
+[[nodiscard]] rcc::ABIValue abiValue(rcc::LowLevelType Type, std::uint32_t OriginalValue,
+                                     rcc::Register Value = planningRegister(),
+                                     rcc::ABIExtensionKind Extension = rcc::ABIExtensionKind::None,
+                                     std::optional<rcc::ABIValueCategory> Category = std::nullopt) {
   const std::uint64_t Size = std::max<std::uint64_t>(1, (Type.scalarBitWidth() + 7U) / 8U);
   return {
       .Value = Value,
       .Type = Type,
+      .Category = Category.value_or(Type.isPointer() ? rcc::ABIValueCategory::Pointer
+                                                     : rcc::ABIValueCategory::Integer),
       .OriginalValue = OriginalValue,
       .FragmentIndex = 0,
       .FragmentCount = 1,
@@ -145,6 +149,13 @@ abiValue(rcc::LLT Type, std::uint32_t OriginalValue, rcc::Register Value = plann
       .ByValSizeBytes = 0,
       .ByValAlignment = align(1),
   };
+}
+
+[[nodiscard]] rcc::ABIValue floatingABIValue(rcc::FloatSemantics Semantics,
+                                             std::uint32_t OriginalValue,
+                                             rcc::Register Value = planningRegister()) {
+  return abiValue(floating(Semantics), OriginalValue, Value, rcc::ABIExtensionKind::None,
+                  rcc::ABIValueCategory::FloatingPoint);
 }
 
 [[nodiscard]] std::vector<rcc::ABIValue> integerValues(std::size_t Count) {
@@ -160,7 +171,7 @@ abiValue(rcc::LLT Type, std::uint32_t OriginalValue, rcc::Register Value = plann
   Values.reserve(Count);
   for (std::size_t Index = 0; Index < Count; ++Index) {
     Values.push_back(
-        abiValue(floating(rcc::FloatSemantics::IEEEDouble), static_cast<std::uint32_t>(Index)));
+        floatingABIValue(rcc::FloatSemantics::IEEEDouble, static_cast<std::uint32_t>(Index)));
   }
   return Values;
 }
@@ -230,8 +241,8 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
                      FloatAssignments[16].StackOffsetBytes == 0,
                  "LP64D floating arguments must fall back from fa0-fa7 to a0-a7 and then stack");
 
-  auto Single = callRequest({abiValue(floating(rcc::FloatSemantics::IEEESingle), 0)}, 1);
-  Single.Results = {abiValue(floating(rcc::FloatSemantics::IEEESingle), 0)};
+  auto Single = callRequest({floatingABIValue(rcc::FloatSemantics::IEEESingle, 0)}, 1);
+  Single.Results = {floatingABIValue(rcc::FloatSemantics::IEEESingle, 0)};
   auto SinglePlan = CallLowering.planCall(Single);
   Context.expect(SinglePlan && SinglePlan->argumentAssignments().size() == 1 &&
                      SinglePlan->returnAssignments().size() == 1 &&
@@ -241,7 +252,7 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
                                 physical(rcc::riscv::PhysicalRegisterID::F10_F)),
                  "LP64D f32 arguments and returns must use the FPR32 physical-register view");
 
-  auto FloatFragment = abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0);
+  auto FloatFragment = floatingABIValue(rcc::FloatSemantics::IEEEDouble, 0);
   FloatFragment.FragmentCount = 2;
   FloatFragment.OriginalAlignment = align(16);
   auto IntegerFragment = abiValue(integer(64), 0);
@@ -265,9 +276,9 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
                      GenericScalarPlan->returnAssignments()[0].ValueType == anyScalar(64),
                  "LLVM generic scalar LLTs must use integer ABI transport without type loss");
 
-  auto LP64Float = callRequest({abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0)}, 1);
+  auto LP64Float = callRequest({floatingABIValue(rcc::FloatSemantics::IEEEDouble, 0)}, 1);
   LP64Float.Convention = rcc::riscv::callingConventionID(rcc::riscv::CallingConvention::LP64);
-  LP64Float.Results = {abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0)};
+  LP64Float.Results = {floatingABIValue(rcc::FloatSemantics::IEEEDouble, 0)};
   auto LP64Plan = CallLowering.planCall(LP64Float);
   const auto LP64Mask = rcc::riscv::createCallPreservedMask(rcc::riscv::CallingConvention::LP64);
   Context.expect(
@@ -295,8 +306,8 @@ void testIntegerAndFloatingAssignments(TestContext &Context) {
 }
 
 void testVariadicAssignments(TestContext &Context) {
-  auto FixedFloat = abiValue(floating(rcc::FloatSemantics::IEEEDouble), 0);
-  auto VariableFloat = abiValue(floating(rcc::FloatSemantics::IEEEDouble), 1);
+  auto FixedFloat = floatingABIValue(rcc::FloatSemantics::IEEEDouble, 0);
+  auto VariableFloat = floatingABIValue(rcc::FloatSemantics::IEEEDouble, 1);
   auto Request = callRequest({FixedFloat, VariableFloat}, 1, true);
   auto Plan = CallLowering.planCall(Request);
   Context.expect(
@@ -385,8 +396,7 @@ void testSpecialArgumentsAndReturns(TestContext &Context) {
 
   rcc::ReturnLoweringRequest Return;
   Return.Convention = convention();
-  Return.Values = {abiValue(integer(64), 0),
-                   abiValue(floating(rcc::FloatSemantics::IEEEDouble), 1)};
+  Return.Values = {abiValue(integer(64), 0), floatingABIValue(rcc::FloatSemantics::IEEEDouble, 1)};
   auto ReturnPlan = CallLowering.planReturn(Return);
   Context.expect(ReturnPlan && ReturnPlan->returnAssignments().size() == 2 &&
                      isLocation(ReturnPlan->returnAssignments()[0], returnGPR(0)) &&
@@ -455,7 +465,8 @@ void testTailCalls(TestContext &Context) {
   return std::move(*Function);
 }
 
-[[nodiscard]] rcc::Register virtualRegister(rcc::MachineFunction &Function, rcc::LLT Type) {
+[[nodiscard]] rcc::Register virtualRegister(rcc::MachineFunction &Function,
+                                            rcc::LowLevelType Type) {
   auto Register = Function.registerInfo().createVirtualRegister(Type);
   if (!Register)
     std::terminate();
@@ -500,12 +511,12 @@ void testOrdinaryAndIndirectEmission(TestContext &Context) {
   if (!Target || !Function || Block == nullptr)
     return;
 
-  const rcc::LLT I64 = integer(64);
-  const rcc::LLT F64 = floating(rcc::FloatSemantics::IEEEDouble);
+  const rcc::LowLevelType I64 = integer(64);
+  const rcc::LowLevelType F64 = floating(rcc::FloatSemantics::IEEEDouble);
   const rcc::Register Argument = virtualRegister(*Function, I64);
   const rcc::Register Result = virtualRegister(*Function, F64);
   auto Request = callRequest({abiValue(I64, 0, Argument)}, 1);
-  Request.Results = {abiValue(F64, 0, Result)};
+  Request.Results = {floatingABIValue(rcc::FloatSemantics::IEEEDouble, 0, Result)};
 
   rcc::MachineIRBuilder Builder(*Function, *Target);
   Context.expect(Builder.setInsertPoint(*Block).has_value(),

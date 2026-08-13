@@ -305,7 +305,7 @@ struct SourceFixture final {
   auto HistoricalInstruction = Function.createInstruction(rcc::Opcode::fromValue(NopOpcode));
   Context.expect(HistoricalBlock && HistoricalInstruction, "source arena history must be created");
 
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Tombstone = Function.registerInfo().createVirtualRegister(*Type);
   Context.expect(Tombstone && Function.registerInfo().eraseVirtualRegister(*Tombstone).has_value(),
                  "source vreg history must contain a tombstone");

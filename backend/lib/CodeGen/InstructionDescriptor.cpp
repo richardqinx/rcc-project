@@ -80,7 +80,7 @@ namespace {
     }
     if (Operand.TypeConstraint) {
       if (!isRegisterOnly(Operand.Kinds) || Operand.TypeConstraint->Kinds.empty() ||
-          Operand.TypeConstraint->Kinds.contains(LLT::Kind::Invalid)) {
+          Operand.TypeConstraint->Kinds.contains(LowLevelType::Kind::Invalid)) {
         return makeUnexpected(ErrorCode::InvalidArgument,
                               "typed operand descriptor requires a nonempty register type set");
       }
@@ -307,8 +307,8 @@ OperandKindSet::OperandKindSet(std::initializer_list<MachineOperand::Kind> Kinds
     add(Kind);
 }
 
-LLTKindSet::LLTKindSet(std::initializer_list<LLT::Kind> Kinds) noexcept {
-  for (const LLT::Kind Kind : Kinds)
+LowLevelTypeKindSet::LowLevelTypeKindSet(std::initializer_list<LowLevelType::Kind> Kinds) noexcept {
+  for (const LowLevelType::Kind Kind : Kinds)
     add(Kind);
 }
 
@@ -386,7 +386,7 @@ Expected<void> InstructionSet::validateExplicitOperands(const InstructionDescrip
     return std::unexpected(Shape.error());
 
   bool SawUse = false;
-  std::unordered_map<std::uint16_t, LLT> EqualityGroups;
+  std::unordered_map<std::uint16_t, LowLevelType> EqualityGroups;
   for (std::size_t Index = 0; Index < Operands.size(); ++Index) {
     const MachineOperand &Operand = Operands[Index];
     if (Operand.isImplicit()) {
@@ -423,22 +423,24 @@ Expected<void> InstructionSet::validateExplicitOperands(const InstructionDescrip
     auto Info = RegInfo.virtualRegisterInfo(*Reg);
     if (!Info)
       return std::unexpected(Info.error());
-    const std::optional<LLT> &RegisterType = Info->get().Type;
+    const std::optional<LowLevelType> &RegisterType = Info->get().Type;
     if (!RegisterType) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "typed instruction operand virtual register has no LLT");
+                            "typed instruction operand virtual register has no LowLevelType");
     }
-    const LLT Type = RegisterType.value();
+    const LowLevelType Type = RegisterType.value();
     if (!OperandDesc.TypeConstraint->Kinds.contains(Type.kind())) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "instruction operand LLT kind is not permitted by its descriptor");
+      return makeUnexpected(
+          ErrorCode::VerificationError,
+          "instruction operand LowLevelType kind is not permitted by its descriptor");
     }
     if (OperandDesc.TypeConstraint->EqualityGroup) {
       const auto [Position, Inserted] =
           EqualityGroups.emplace(*OperandDesc.TypeConstraint->EqualityGroup, Type);
       if (!Inserted && Position->second != Type) {
-        return makeUnexpected(ErrorCode::VerificationError,
-                              "instruction operands in one LLT group have different types");
+        return makeUnexpected(
+            ErrorCode::VerificationError,
+            "instruction operands in one LowLevelType group have different types");
       }
     }
   }

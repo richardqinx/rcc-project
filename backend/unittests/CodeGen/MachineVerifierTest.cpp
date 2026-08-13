@@ -196,7 +196,7 @@ buildNoOperand(TestContext &Context, rcc::MachineIRBuilder &Builder, std::uint32
   if (Entry == nullptr || Exit == nullptr)
     return false;
 
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Value = Function.registerInfo().createVirtualRegister(*Type);
   Context.expect(Value.has_value(), "typed verifier virtual register must be allocated");
   if (!Value)
@@ -338,7 +338,7 @@ createPhiTestFunction(TestContext &Context, const rcc::TargetDescription &Target
     return nullptr;
   }
 
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Destination = Type ? Function->registerInfo().createVirtualRegister(*Type)
                           : rcc::Expected<rcc::Register>{std::unexpected(Type.error())};
   auto LeftValue = Type ? Function->registerInfo().createVirtualRegister(*Type)
@@ -411,7 +411,7 @@ void testPropertyFailures(TestContext &Context) {
   auto Target = createTarget();
   if (!Target)
     return;
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
 
   auto SSA = createFunction(Context, "ssa", 6);
   rcc::MachineBasicBlock *SSABlock = SSA ? createBlock(Context, *SSA) : nullptr;
@@ -503,7 +503,7 @@ void testPropertyFailures(TestContext &Context) {
 
 void testSelectedStateAndPseudoDeadline(TestContext &Context) {
   auto Target = createTarget();
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (!Target)
     return;
 

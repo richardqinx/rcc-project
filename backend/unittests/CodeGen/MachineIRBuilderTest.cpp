@@ -186,7 +186,7 @@ void testTransactionalBuild(TestContext &Context) {
   if (Block == nullptr)
     return;
 
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Destination = Function->registerInfo().createVirtualRegister(*Type);
   auto Source = Function->registerInfo().createVirtualRegister(*Type);
   Context.expect(Destination && Source, "builder virtual registers must be allocated");
@@ -331,7 +331,7 @@ void testImplicitAndMemoryValidation(TestContext &Context) {
   if (Block == nullptr || OtherBlock == nullptr)
     return;
 
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Destination = Function->registerInfo().createVirtualRegister(*Type);
   auto Source = Function->registerInfo().createVirtualRegister(*Type);
   Context.expect(Destination && Source, "implicit test virtual registers must be allocated");
@@ -497,7 +497,7 @@ void testStaleCursorsAndOwnedOperands(TestContext &Context) {
   if (Block == nullptr)
     return;
 
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Destination = Function->registerInfo().createVirtualRegister(*Type);
   auto Source = Function->registerInfo().createVirtualRegister(*Type);
   if (!Destination || !Source)

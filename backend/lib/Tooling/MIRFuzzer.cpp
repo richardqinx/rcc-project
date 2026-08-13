@@ -186,7 +186,7 @@ private:
   MachineBasicBlock *Block = Function->firstBlock();
   if (Block == nullptr)
     return false;
-  auto Type = LLT::makeInteger(64);
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
   if (!Type)
     return std::unexpected(Type.error());
   auto Register = Function->registerInfo().createVirtualRegister(*Type);

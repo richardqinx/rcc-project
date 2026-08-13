@@ -169,10 +169,10 @@ void setPostRAProperties(rcc::MachineFunction &Function) {
 }
 
 [[nodiscard]] rcc::Register makeGPR(TestContext &Context, rcc::MachineFunction &Function) {
-  auto Type = rcc::LLT::makeInteger(64);
+  auto Type = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Reg = Type ? Function.registerInfo().createVirtualRegister(*Type)
-                  : rcc::Expected<rcc::Register>(std::unexpected(
-                        rcc::Error(rcc::ErrorCode::InternalError, "test LLT creation failed")));
+                  : rcc::Expected<rcc::Register>(std::unexpected(rcc::Error(
+                        rcc::ErrorCode::InternalError, "test LowLevelType creation failed")));
   Context.expect(Reg.has_value(), "optimization virtual register creation must succeed");
   if (!Reg)
     return {};

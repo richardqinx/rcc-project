@@ -53,7 +53,8 @@ private:
   return std::move(*Operand);
 }
 
-[[nodiscard]] rcc::Register createVirtualRegister(rcc::MachineFunction &Function, rcc::LLT Type) {
+[[nodiscard]] rcc::Register createVirtualRegister(rcc::MachineFunction &Function,
+                                                  rcc::LowLevelType Type) {
   auto Reg = Function.registerInfo().createVirtualRegister(Type);
   if (!Reg)
     std::terminate();
@@ -284,16 +285,19 @@ void testShapesAndTypes(TestContext &Context) {
   if (!Set || !Function)
     return;
 
-  auto I32 = rcc::LLT::makeInteger(32);
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto I1 = rcc::LLT::makeInteger(1);
-  auto S16 = rcc::LLT::makeAnyScalar(16);
-  auto F32 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEESingle);
-  auto F64 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
-  auto P64 = rcc::LLT::makePointer(0, 64);
-  auto V2I32 = I32 ? rcc::LLT::makeFixedVector(2, *I32) : rcc::Expected<rcc::LLT>{};
-  auto V4I32 = I32 ? rcc::LLT::makeFixedVector(4, *I32) : rcc::Expected<rcc::LLT>{};
-  auto V2P64 = P64 ? rcc::LLT::makeFixedVector(2, *P64) : rcc::Expected<rcc::LLT>{};
+  auto I32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto I1 = rcc::LowLevelType::makeCategoryNeutralScalar(1);
+  auto S16 = rcc::LowLevelType::makeCategoryNeutralScalar(16);
+  auto F32 = rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  auto F64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto P64 = rcc::LowLevelType::makePointer(0, 64);
+  auto V2I32 =
+      I32 ? rcc::LowLevelType::makeFixedVector(2, *I32) : rcc::Expected<rcc::LowLevelType>{};
+  auto V4I32 =
+      I32 ? rcc::LowLevelType::makeFixedVector(4, *I32) : rcc::Expected<rcc::LowLevelType>{};
+  auto V2P64 =
+      P64 ? rcc::LowLevelType::makeFixedVector(2, *P64) : rcc::Expected<rcc::LowLevelType>{};
   if (!I1 || !I32 || !I64 || !S16 || !F32 || !F64 || !P64 || !V2I32 || !V4I32 || !V2P64)
     std::terminate();
   auto Dst32 = (*Function)->registerInfo().createVirtualRegister(*I32);
@@ -324,7 +328,7 @@ void testShapesAndTypes(TestContext &Context) {
   AddOperands.back() = registerOperand(*Wide, false);
   Context.expect(!Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_ADD), AddOperands,
                                                 (*Function)->registerInfo()),
-                 "G_ADD must reject a source from a different LLT equality group");
+                 "G_ADD must reject a source from a different LowLevelType equality group");
 
   auto ZeroImmediate = rcc::APInt::fromUnsigned(64, 0);
   std::vector<rcc::MachineOperand> PointerConstant;
@@ -483,10 +487,6 @@ void testShapesAndTypes(TestContext &Context) {
                                                FloatingLoad, (*Function)->registerInfo())
                      .has_value(),
                  "G_FPEXTLOAD must accept a scalar floating result and pointer address");
-  FloatingLoad[0] = registerOperand(*Wide, true);
-  Context.expect(!Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_FPEXTLOAD),
-                                                FloatingLoad, (*Function)->registerInfo()),
-                 "G_FPEXTLOAD must reject an integer result");
 
   const std::array<std::uint64_t, 1> FloatWords{0};
   auto FloatBits = rcc::APFloat::create(rcc::FloatSemantics::IEEESingle, FloatWords);
@@ -513,7 +513,7 @@ void testShapesAndTypes(TestContext &Context) {
   Context.expect(Set->validateExplicitOperands(rcc::opcode(rcc::GenericOpcode::G_FCONSTANT),
                                                FConstantOperands, (*Function)->registerInfo())
                      .has_value(),
-                 "G_FCONSTANT must accept a bit-width-compatible LLVM scalar LLT");
+                 "G_FCONSTANT must accept a bit-width-compatible LLVM scalar LowLevelType");
 }
 
 void testInstructionMemorySemantics(TestContext &Context) {
@@ -524,12 +524,12 @@ void testInstructionMemorySemantics(TestContext &Context) {
   if (!Set || !Function)
     return;
 
-  const rcc::LLT I1 = *rcc::LLT::makeInteger(1);
-  const rcc::LLT I32 = *rcc::LLT::makeInteger(32);
-  const rcc::LLT I64 = *rcc::LLT::makeInteger(64);
-  const rcc::LLT F64 = *rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
-  const rcc::LLT P0 = *rcc::LLT::makePointer(0, 64);
-  const rcc::LLT P1 = *rcc::LLT::makePointer(1, 64);
+  const rcc::LowLevelType I1 = *rcc::LowLevelType::makeCategoryNeutralScalar(1);
+  const rcc::LowLevelType I32 = *rcc::LowLevelType::makeCategoryNeutralScalar(32);
+  const rcc::LowLevelType I64 = *rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  const rcc::LowLevelType F64 = *rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  const rcc::LowLevelType P0 = *rcc::LowLevelType::makePointer(0, 64);
+  const rcc::LowLevelType P1 = *rcc::LowLevelType::makePointer(1, 64);
   const rcc::Register Dst32 = createVirtualRegister(**Function, I32);
   const rcc::Register Dst64 = createVirtualRegister(**Function, I64);
   const rcc::Register Src32 = createVirtualRegister(**Function, I32);
@@ -555,7 +555,7 @@ void testInstructionMemorySemantics(TestContext &Context) {
       createInstruction(**Function, rcc::GenericOpcode::G_LOAD, std::move(OversizedLoadOperands));
   addMemOperand(**Function, OversizedLoad, memoryDescription({rcc::MemoryAccessFlag::Load}, 8));
   Context.expect(!Set->validateInstruction(OversizedLoad, (*Function)->registerInfo()),
-                 "G_LOAD must reject an MMO larger than its result LLT");
+                 "G_LOAD must reject an MMO larger than its result LowLevelType");
 
   std::vector<rcc::MachineOperand> WrongAddressSpaceOperands;
   WrongAddressSpaceOperands.push_back(registerOperand(Dst64, true));
@@ -647,18 +647,6 @@ void testInstructionMemorySemantics(TestContext &Context) {
                                   rcc::AtomicOperation::ReadModifyWrite));
   Context.expect(Set->validateInstruction(FloatingAtomic, (*Function)->registerInfo()).has_value(),
                  "floating atomic RMW must accept a scalar floating value and RMW MMO");
-
-  std::vector<rcc::MachineOperand> WrongFloatingAtomicOperands;
-  WrongFloatingAtomicOperands.push_back(registerOperand(Dst64, true));
-  WrongFloatingAtomicOperands.push_back(registerOperand(Address0, false));
-  WrongFloatingAtomicOperands.push_back(registerOperand(Src64, false));
-  rcc::MachineInstr &WrongFloatingAtomic = createInstruction(
-      **Function, rcc::GenericOpcode::G_ATOMICRMW_FADD, std::move(WrongFloatingAtomicOperands));
-  addMemOperand(**Function, WrongFloatingAtomic,
-                memoryDescription({rcc::MemoryAccessFlag::Load, rcc::MemoryAccessFlag::Store}, 8, 0,
-                                  rcc::AtomicOperation::ReadModifyWrite));
-  Context.expect(!Set->validateInstruction(WrongFloatingAtomic, (*Function)->registerInfo()),
-                 "floating atomic RMW must reject integer value registers");
 
   std::vector<rcc::MachineOperand> PrefetchOperands;
   PrefetchOperands.push_back(registerOperand(Address0, false));

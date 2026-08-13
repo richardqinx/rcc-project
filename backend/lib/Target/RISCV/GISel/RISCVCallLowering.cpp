@@ -54,25 +54,22 @@ constexpr std::uint32_t AllowedDirectCallFlags =
   return Value + Increment;
 }
 
-[[nodiscard]] std::uint64_t valueSizeBytes(LLT Type) noexcept {
+[[nodiscard]] std::uint64_t valueSizeBytes(LowLevelType Type) noexcept {
   return (static_cast<std::uint64_t>(Type.scalarBitWidth()) + 7U) / 8U;
 }
 
-[[nodiscard]] bool isSupportedFloat(LLT Type) noexcept {
-  if (!Type.isFloat())
-    return false;
-  const auto Semantics = Type.floatSemantics();
-  return Semantics &&
-         (*Semantics == FloatSemantics::IEEESingle || *Semantics == FloatSemantics::IEEEDouble);
+[[nodiscard]] bool isSupportedFloat(const ABIValue &Value) noexcept {
+  return Value.Category == ABIValueCategory::FloatingPoint &&
+         (Value.Type.scalarBitWidth() == 32 || Value.Type.scalarBitWidth() == 64);
 }
 
 [[nodiscard]] Expected<PhysicalRegister> floatingRegisterView(PhysicalRegister DoubleView,
-                                                              LLT Type) {
-  if (!isSupportedFloat(Type)) {
+                                                              const ABIValue &Value) {
+  if (!isSupportedFloat(Value)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "RISC-V floating-register view requires f32 or f64");
   }
-  if (Type.scalarBitWidth() == 64)
+  if (Value.Type.scalarBitWidth() == 64)
     return DoubleView;
 
   constexpr std::uint32_t FirstDouble = static_cast<std::uint32_t>(PhysicalRegisterID::F0_D);
@@ -87,7 +84,7 @@ constexpr std::uint32_t AllowedDirectCallFlags =
 }
 
 [[nodiscard]] bool requiresIntegerTransport(const ABIValue &Value) noexcept {
-  return !isSupportedFloat(Value.Type) || Value.Flags.has(ABIValueFlag::ByVal) ||
+  return !isSupportedFloat(Value) || Value.Flags.has(ABIValueFlag::ByVal) ||
          Value.Flags.has(ABIValueFlag::StructReturn) || Value.Flags.has(ABIValueFlag::Indirect);
 }
 
@@ -101,14 +98,21 @@ constexpr std::uint32_t AllowedDirectCallFlags =
         ErrorCode::Unsupported,
         "RISC-V ABI accepts explicitly classified integer, pointer, f32, and f64 scalar fragments");
   }
-  if (Value.Type.isFloat() && !isSupportedFloat(Value.Type)) {
+  if (Value.Category == ABIValueCategory::Invalid || Value.Category >= ABIValueCategory::Count) {
+    return makeUnexpected(ErrorCode::InvalidArgument, "RISC-V ABI value category is invalid");
+  }
+  if (Value.Category == ABIValueCategory::FloatingPoint && !isSupportedFloat(Value)) {
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V LP64 ABIs only support f32 and f64 floating fragments");
+  }
+  if ((Value.Category == ABIValueCategory::Pointer) != Value.Type.isPointer()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "RISC-V ABI pointer category must match its pointer LowLevelType");
   }
   if (Value.Type.isPointer() && Value.Type.scalarBitWidth() != 64) {
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V LP64 ABIs require 64-bit pointers");
   }
-  if ((Value.Type.isInteger() || Value.Type.isAnyScalar()) && Value.Type.scalarBitWidth() < 64) {
+  if (Value.Category == ABIValueCategory::Integer && Value.Type.scalarBitWidth() < 64) {
     if (Value.Extension == ABIExtensionKind::None) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "narrow RISC-V ABI integers require an explicit extension kind");
@@ -226,10 +230,9 @@ struct AssignmentState final {
   bool VariadicStackOnly = false;
 };
 
-[[nodiscard]] Expected<CCAssignment> registerAssignment(const ABIValue &Value,
-                                                        std::size_t ValueIndex,
-                                                        PhysicalRegister Location, LLT LocationType,
-                                                        bool IsVariadic, bool IsBitcast) {
+[[nodiscard]] Expected<CCAssignment>
+registerAssignment(const ABIValue &Value, std::size_t ValueIndex, PhysicalRegister Location,
+                   LowLevelType LocationType, bool IsVariadic, bool IsBitcast) {
   auto Align =
       alignment(std::min<std::uint64_t>(Value.OriginalAlignment.bytes(), ABIStackAlignmentBytes));
   if (!Align)
@@ -254,8 +257,8 @@ struct AssignmentState final {
 }
 
 [[nodiscard]] Expected<CCAssignment> stackAssignment(const ABIValue &Value, std::size_t ValueIndex,
-                                                     std::uint64_t StackOffset, LLT LocationType,
-                                                     bool IsVariadic,
+                                                     std::uint64_t StackOffset,
+                                                     LowLevelType LocationType, bool IsVariadic,
                                                      std::uint64_t StackAlignment) {
   auto Align = alignment(StackAlignment);
   if (!Align)
@@ -282,7 +285,7 @@ struct AssignmentState final {
 [[nodiscard]] Expected<ArgumentAssignmentResult>
 assignArguments(std::span<const ABIValue> Values, std::size_t FixedArgumentCount, bool IsVariadic,
                 const CallingConventionInfo &Convention) {
-  auto I64 = LLT::makeInteger(64);
+  auto I64 = LowLevelType::makeCategoryNeutralScalar(64);
   auto StackAlign = alignment(Convention.StackArgumentAlignmentBytes);
   if (!I64 || !StackAlign)
     return makeUnexpected(ErrorCode::InternalError, "RISC-V ABI primitive type facts are invalid");
@@ -325,7 +328,7 @@ assignArguments(std::span<const ABIValue> Values, std::size_t FixedArgumentCount
                                           false, false);
         } else {
           auto View =
-              floatingRegisterView(Convention.FloatingArgumentRegisters[State.FPR++], Value.Type);
+              floatingRegisterView(Convention.FloatingArgumentRegisters[State.FPR++], Value);
           if (!View)
             return std::unexpected(View.error());
           Assignment = registerAssignment(Value, Index + Fragment, *View, Value.Type, false, false);
@@ -356,7 +359,7 @@ assignArguments(std::span<const ABIValue> Values, std::size_t FixedArgumentCount
       const bool HasGPR =
           !ForceEntireGroupToStack && State.GPR < Convention.IntegerArgumentRegisters.size();
       if (HasGPR) {
-        const bool Bitcast = isSupportedFloat(Value.Type);
+        const bool Bitcast = isSupportedFloat(Value);
         auto Assignment = registerAssignment(Value, Index + Fragment,
                                              Convention.IntegerArgumentRegisters[State.GPR++], *I64,
                                              VariadicArgument, Bitcast);
@@ -380,7 +383,7 @@ assignArguments(std::span<const ABIValue> Values, std::size_t FixedArgumentCount
       if (!AlignedOffset)
         return std::unexpected(AlignedOffset.error());
       State.StackOffset = *AlignedOffset;
-      const LLT LocationType = isSupportedFloat(Value.Type) ? Value.Type : *I64;
+      const LowLevelType LocationType = isSupportedFloat(Value) ? Value.Type : *I64;
       auto Assignment = stackAssignment(Value, Index + Fragment, State.StackOffset, LocationType,
                                         VariadicArgument, RequiredAlignment);
       if (!Assignment)
@@ -415,7 +418,7 @@ assignReturns(std::span<const ABIValue> Values, bool RequireRegisters,
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V direct returns are limited to two explicit fragments");
   }
-  auto I64 = LLT::makeInteger(64);
+  auto I64 = LowLevelType::makeCategoryNeutralScalar(64);
   if (!I64)
     return std::unexpected(I64.error());
 
@@ -430,17 +433,17 @@ assignReturns(std::span<const ABIValue> Values, bool RequireRegisters,
                             "return fragments cannot carry argument-only ABI flags");
     }
     const bool UseFloatingRegister =
-        isSupportedFloat(Value.Type) && FPR < Convention.FloatingReturnRegisters.size();
+        isSupportedFloat(Value) && FPR < Convention.FloatingReturnRegisters.size();
     Expected<CCAssignment> Assignment = makeUnexpected(
         ErrorCode::Unsupported, "RISC-V calling convention has no return register available");
     if (UseFloatingRegister) {
-      auto View = floatingRegisterView(Convention.FloatingReturnRegisters[FPR++], Value.Type);
+      auto View = floatingRegisterView(Convention.FloatingReturnRegisters[FPR++], Value);
       if (!View)
         return std::unexpected(View.error());
       Assignment = registerAssignment(Value, Index, *View, Value.Type, false, false);
     } else if (GPR < Convention.IntegerReturnRegisters.size()) {
       Assignment = registerAssignment(Value, Index, Convention.IntegerReturnRegisters[GPR++], *I64,
-                                      false, isSupportedFloat(Value.Type));
+                                      false, isSupportedFloat(Value));
     }
     if (!Assignment)
       return std::unexpected(Assignment.error());
@@ -924,8 +927,9 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
     if (!Info)
       return std::unexpected(Info.error());
     if (!Info->get().Type || *Info->get().Type != Assignment.ValueType) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "call-lowering plan register LLT differs from MachineRegisterInfo");
+      return makeUnexpected(
+          ErrorCode::VerificationError,
+          "call-lowering plan register LowLevelType differs from MachineRegisterInfo");
     }
     return {};
   };
@@ -952,10 +956,12 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
       auto Info = Registers.virtualRegisterInfo(CalleeReg);
       if (!Info)
         return std::unexpected(Info.error());
-      const std::optional<LLT> Type = Info->get().Type;
-      if (!Type || ((!Type->isPointer() && !Type->isInteger()) || Type->scalarBitWidth() != 64)) {
-        return makeUnexpected(ErrorCode::VerificationError,
-                              "indirect RISC-V callee requires a 64-bit pointer or integer LLT");
+      const std::optional<LowLevelType> Type = Info->get().Type;
+      if (!Type || ((!Type->isPointer() && !Type->isCategoryNeutralScalar()) ||
+                    Type->scalarBitWidth() != 64)) {
+        return makeUnexpected(
+            ErrorCode::VerificationError,
+            "indirect RISC-V callee requires a 64-bit pointer or integer LowLevelType");
       }
     }
   }

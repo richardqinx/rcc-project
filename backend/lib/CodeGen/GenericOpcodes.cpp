@@ -33,52 +33,50 @@ using GO = GenericOpcode;
 [[nodiscard]] Expected<void> verifyGenericInstructionSemantics(const MachineInstr &Instruction,
                                                                const MachineRegisterInfo &RegInfo);
 
-[[nodiscard]] LLTKindSet anyValueKinds() {
-  return {LLT::Kind::AnyScalar,   LLT::Kind::Integer,      LLT::Kind::Float,
-          LLT::Kind::Pointer,     LLT::Kind::VectorAny,    LLT::Kind::VectorInteger,
-          LLT::Kind::VectorFloat, LLT::Kind::VectorPointer};
+[[nodiscard]] LowLevelTypeKindSet anyValueKinds() {
+  return {LowLevelType::Kind::CategoryNeutralScalar, LowLevelType::Kind::Pointer,
+          LowLevelType::Kind::Vector, LowLevelType::Kind::VectorPointer};
 }
 
-[[nodiscard]] LLTKindSet integerKinds() {
-  return {LLT::Kind::AnyScalar, LLT::Kind::Integer, LLT::Kind::VectorAny, LLT::Kind::VectorInteger};
+[[nodiscard]] LowLevelTypeKindSet integerKinds() {
+  return {LowLevelType::Kind::CategoryNeutralScalar, LowLevelType::Kind::Vector};
 }
 
-[[nodiscard]] LLTKindSet integerOrPointerKinds() {
-  return {LLT::Kind::AnyScalar, LLT::Kind::Integer,       LLT::Kind::Pointer,
-          LLT::Kind::VectorAny, LLT::Kind::VectorInteger, LLT::Kind::VectorPointer};
+[[nodiscard]] LowLevelTypeKindSet integerOrPointerKinds() {
+  return {LowLevelType::Kind::CategoryNeutralScalar, LowLevelType::Kind::Pointer,
+          LowLevelType::Kind::Vector, LowLevelType::Kind::VectorPointer};
 }
 
-[[nodiscard]] LLTKindSet scalarIntegerKinds() {
-  return {LLT::Kind::AnyScalar, LLT::Kind::Integer};
+[[nodiscard]] LowLevelTypeKindSet scalarIntegerKinds() {
+  return {LowLevelType::Kind::CategoryNeutralScalar};
 }
 
-[[nodiscard]] LLTKindSet scalarIntegerOrPointerKinds() {
-  return {LLT::Kind::AnyScalar, LLT::Kind::Integer, LLT::Kind::Pointer};
+[[nodiscard]] LowLevelTypeKindSet scalarIntegerOrPointerKinds() {
+  return {LowLevelType::Kind::CategoryNeutralScalar, LowLevelType::Kind::Pointer};
 }
 
-[[nodiscard]] LLTKindSet scalarValueKinds() {
-  return {LLT::Kind::AnyScalar, LLT::Kind::Integer, LLT::Kind::Float, LLT::Kind::Pointer};
+[[nodiscard]] LowLevelTypeKindSet scalarValueKinds() {
+  return {LowLevelType::Kind::CategoryNeutralScalar, LowLevelType::Kind::Pointer};
 }
 
-[[nodiscard]] LLTKindSet floatingKinds() {
-  return {LLT::Kind::AnyScalar, LLT::Kind::Float, LLT::Kind::VectorAny, LLT::Kind::VectorFloat};
+[[nodiscard]] LowLevelTypeKindSet floatingKinds() {
+  return {LowLevelType::Kind::CategoryNeutralScalar, LowLevelType::Kind::Vector};
 }
 
-[[nodiscard]] LLTKindSet scalarFloatingKinds() {
-  return {LLT::Kind::AnyScalar, LLT::Kind::Float};
+[[nodiscard]] LowLevelTypeKindSet scalarFloatingKinds() {
+  return {LowLevelType::Kind::CategoryNeutralScalar};
 }
 
-[[nodiscard]] LLTKindSet pointerKinds() {
-  return {LLT::Kind::Pointer, LLT::Kind::VectorPointer};
+[[nodiscard]] LowLevelTypeKindSet pointerKinds() {
+  return {LowLevelType::Kind::Pointer, LowLevelType::Kind::VectorPointer};
 }
 
-[[nodiscard]] LLTKindSet scalarPointerKinds() {
-  return {LLT::Kind::Pointer};
+[[nodiscard]] LowLevelTypeKindSet scalarPointerKinds() {
+  return {LowLevelType::Kind::Pointer};
 }
 
-[[nodiscard]] LLTKindSet vectorKinds() {
-  return {LLT::Kind::VectorAny, LLT::Kind::VectorInteger, LLT::Kind::VectorFloat,
-          LLT::Kind::VectorPointer};
+[[nodiscard]] LowLevelTypeKindSet vectorKinds() {
+  return {LowLevelType::Kind::Vector, LowLevelType::Kind::VectorPointer};
 }
 
 [[nodiscard]] OperandKindSet allOperandKinds() {
@@ -106,7 +104,7 @@ using GO = GenericOpcode;
           MachineOperand::Kind::LaneMask};
 }
 
-[[nodiscard]] OperandDescriptor typedRegister(RegisterOperandRole Role, LLTKindSet Kinds,
+[[nodiscard]] OperandDescriptor typedRegister(RegisterOperandRole Role, LowLevelTypeKindSet Kinds,
                                               std::uint16_t Group) {
   OperandDescriptor Result;
   Result.Kinds = {MachineOperand::Kind::Register};
@@ -263,22 +261,22 @@ private:
   return *Value;
 }
 
-[[nodiscard]] std::uint64_t minimumBitWidth(LLT Type) noexcept {
+[[nodiscard]] std::uint64_t minimumBitWidth(LowLevelType Type) noexcept {
   const std::uint64_t Elements = Type.isVector() ? Type.minimumElementCount() : 1;
   return Elements * Type.scalarBitWidth();
 }
 
-[[nodiscard]] std::uint64_t minimumStoreBytes(LLT Type) noexcept {
+[[nodiscard]] std::uint64_t minimumStoreBytes(LowLevelType Type) noexcept {
   return (minimumBitWidth(Type) + 7) / 8;
 }
 
-[[nodiscard]] LLT scalarElementType(LLT Type) noexcept {
+[[nodiscard]] LowLevelType scalarElementType(LowLevelType Type) noexcept {
   if (const auto Element = Type.scalarElementType())
     return *Element;
   return Type;
 }
 
-[[nodiscard]] bool hasSameShape(LLT Left, LLT Right) noexcept {
+[[nodiscard]] bool hasSameShape(LowLevelType Left, LowLevelType Right) noexcept {
   if (Left.isVector() != Right.isVector())
     return false;
   if (!Left.isVector())
@@ -287,18 +285,18 @@ private:
          Left.minimumElementCount() == Right.minimumElementCount();
 }
 
-[[nodiscard]] Expected<void> requireSameShape(LLT Left, LLT Right, std::string_view Message) {
+[[nodiscard]] Expected<void> requireSameShape(LowLevelType Left, LowLevelType Right,
+                                              std::string_view Message) {
   if (!hasSameShape(Left, Right))
     return semanticError(Message);
   return {};
 }
 
-[[nodiscard]] Expected<void> requireI1WithShape(LLT Condition, LLT Value,
+[[nodiscard]] Expected<void> requireI1WithShape(LowLevelType Condition, LowLevelType Value,
                                                 bool AllowScalarCondition) {
-  const bool IsScalarInteger = Condition.isAnyScalar() || Condition.isInteger();
-  const bool IsVectorInteger = Condition.isAnyVector() || Condition.isIntegerVector();
-  if ((!IsScalarInteger && !IsVectorInteger) || Condition.scalarBitWidth() == 0)
-    return semanticError("generic condition or status result must use an integer LLT");
+  if ((!Condition.isCategoryNeutralScalar() && !Condition.isVectorValue()) ||
+      Condition.scalarBitWidth() == 0)
+    return semanticError("generic condition or status result must use an integer LowLevelType");
   if (AllowScalarCondition && !Condition.isVector())
     return {};
   return requireSameShape(Condition, Value,
@@ -308,7 +306,7 @@ private:
 [[nodiscard]] Expected<void> verifyGenericExplicitOperands(Opcode InstructionOpcode,
                                                            std::span<const MachineOperand> Operands,
                                                            const MachineRegisterInfo &RegInfo) {
-  std::vector<std::optional<LLT>> Types(Operands.size());
+  std::vector<std::optional<LowLevelType>> Types(Operands.size());
   bool SawNonDefinition = false;
   for (std::size_t Index = 0; Index < Operands.size(); ++Index) {
     const MachineOperand &Operand = Operands[Index];
@@ -334,18 +332,18 @@ private:
     auto Info = RegInfo.virtualRegisterInfo(*Reg);
     if (!Info)
       return std::unexpected(Info.error());
-    const std::optional<LLT> &Type = Info->get().Type;
+    const std::optional<LowLevelType> &Type = Info->get().Type;
     if (!Type)
-      return semanticError("generic virtual register is missing its LLT");
+      return semanticError("generic virtual register is missing its LowLevelType");
     Types[Index] = Type.value();
   }
 
-  const auto TypeAt = [&Types](std::size_t Index) -> LLT { return *Types[Index]; };
+  const auto TypeAt = [&Types](std::size_t Index) -> LowLevelType { return *Types[Index]; };
   const GO Generic = static_cast<GO>(InstructionOpcode.value());
 
   const auto VerifyWidthChange = [&](bool IsExtension) -> Expected<void> {
-    const LLT Dst = TypeAt(0);
-    const LLT Src = TypeAt(1);
+    const LowLevelType Dst = TypeAt(0);
+    const LowLevelType Src = TypeAt(1);
     if (auto Shape =
             requireSameShape(Dst, Src, "generic width conversion must preserve vector shape");
         !Shape) {
@@ -389,7 +387,7 @@ private:
   case GO::G_CONSTANT: {
     if (const auto *Payload = Operands[1].getIf<IntegerImmediateOperand>();
         Payload != nullptr && Payload->Value.bitWidth() != TypeAt(0).scalarBitWidth()) {
-      return semanticError("G_CONSTANT integer width must match its destination LLT");
+      return semanticError("G_CONSTANT integer width must match its destination LowLevelType");
     }
     return {};
   }
@@ -397,17 +395,14 @@ private:
     const auto *Payload = Operands[1].getIf<FloatingImmediateOperand>();
     if (Payload == nullptr)
       return semanticError("G_FCONSTANT requires a floating-point immediate");
-    const LLT DestinationType = TypeAt(0);
-    const std::optional<FloatSemantics> DestinationSemantics = DestinationType.floatSemantics();
-    if ((DestinationSemantics && Payload->Bits.semantics() != *DestinationSemantics) ||
-        (!DestinationSemantics && Payload->Bits.bitWidth() != DestinationType.scalarBitWidth())) {
-      return semanticError("G_FCONSTANT semantics must match its destination LLT");
-    }
+    const LowLevelType DestinationType = TypeAt(0);
+    if (Payload->Bits.bitWidth() != DestinationType.scalarBitWidth())
+      return semanticError("G_FCONSTANT width must match its destination LowLevelType");
     return {};
   }
   case GO::G_BITCAST: {
-    const LLT Dst = TypeAt(0);
-    const LLT Src = TypeAt(1);
+    const LowLevelType Dst = TypeAt(0);
+    const LowLevelType Src = TypeAt(1);
     if (Dst.isPointerOrPointerVector() != Src.isPointerOrPointerVector())
       return semanticError("G_BITCAST cannot cross the pointer/non-pointer boundary");
     if (minimumBitWidth(Dst) != minimumBitWidth(Src) ||
@@ -415,7 +410,7 @@ private:
       return semanticError("G_BITCAST source and destination sizes must match");
     }
     if (Dst == Src)
-      return semanticError("G_BITCAST must change the LLT");
+      return semanticError("G_BITCAST must change the LowLevelType");
     return {};
   }
   case GO::G_INTTOPTR:
@@ -423,8 +418,8 @@ private:
     return requireSameShape(TypeAt(0), TypeAt(1),
                             "pointer/integer conversion must preserve vector shape");
   case GO::G_ADDRSPACE_CAST: {
-    const LLT Dst = TypeAt(0);
-    const LLT Src = TypeAt(1);
+    const LowLevelType Dst = TypeAt(0);
+    const LowLevelType Src = TypeAt(1);
     if (auto Shape = requireSameShape(Dst, Src, "G_ADDRSPACE_CAST must preserve vector shape");
         !Shape) {
       return Shape;
@@ -527,8 +522,8 @@ private:
   }
   case GO::G_UNMERGE_VALUES: {
     const std::size_t DestinationCount = Operands.size() - 1;
-    const LLT Dst = TypeAt(0);
-    const LLT Src = TypeAt(DestinationCount);
+    const LowLevelType Dst = TypeAt(0);
+    const LowLevelType Src = TypeAt(DestinationCount);
     if (minimumBitWidth(Src) != minimumBitWidth(Dst) * DestinationCount)
       return semanticError("G_UNMERGE_VALUES destination widths do not cover the source");
     if (Dst.isVector() && (!Src.isVector() || Dst.isScalableVector() != Src.isScalableVector() ||
@@ -559,22 +554,23 @@ private:
   }
   case GO::G_BUILD_VECTOR:
   case GO::G_BUILD_VECTOR_TRUNC: {
-    const LLT Dst = TypeAt(0);
-    const LLT Src = TypeAt(1);
+    const LowLevelType Dst = TypeAt(0);
+    const LowLevelType Src = TypeAt(1);
     if (!Dst.isVector() || Dst.isScalableVector() || Src.isVector())
       return semanticError("G_BUILD_VECTOR requires a fixed vector result and scalar sources");
     if (Dst.minimumElementCount() != Operands.size() - 1)
       return semanticError("G_BUILD_VECTOR source count must equal the result lane count");
-    const LLT Element = scalarElementType(Dst);
+    const LowLevelType Element = scalarElementType(Dst);
     if (Generic == GO::G_BUILD_VECTOR && Element != Src)
-      return semanticError("G_BUILD_VECTOR source LLT must equal the result element LLT");
+      return semanticError(
+          "G_BUILD_VECTOR source LowLevelType must equal the result element LowLevelType");
     if (Generic == GO::G_BUILD_VECTOR_TRUNC && Src.scalarBitWidth() <= Element.scalarBitWidth())
       return semanticError("G_BUILD_VECTOR_TRUNC sources must be wider than result elements");
     return {};
   }
   case GO::G_CONCAT_VECTORS: {
-    const LLT Dst = TypeAt(0);
-    const LLT Src = TypeAt(1);
+    const LowLevelType Dst = TypeAt(0);
+    const LowLevelType Src = TypeAt(1);
     if (!Dst.isVector() || !Src.isVector() || Dst.isScalableVector() != Src.isScalableVector() ||
         scalarElementType(Dst) != scalarElementType(Src) ||
         Dst.minimumElementCount() != Src.minimumElementCount() * (Operands.size() - 1)) {
@@ -604,8 +600,8 @@ private:
   case GO::G_INSERT_SUBVECTOR:
   case GO::G_EXTRACT_SUBVECTOR: {
     const bool IsInsert = Generic == GO::G_INSERT_SUBVECTOR;
-    const LLT Outer = TypeAt(IsInsert ? 0 : 1);
-    const LLT Inner = TypeAt(IsInsert ? 2 : 0);
+    const LowLevelType Outer = TypeAt(IsInsert ? 0 : 1);
+    const LowLevelType Inner = TypeAt(IsInsert ? 2 : 0);
     const auto Index = plainImmediate(Operands[IsInsert ? 3 : 2]);
     if (!Outer.isVector() || !Inner.isVector() ||
         scalarElementType(Outer) != scalarElementType(Inner) || !Index || *Index < 0) {
@@ -626,8 +622,8 @@ private:
     return {};
   }
   case GO::G_SHUFFLE_VECTOR: {
-    const LLT Dst = TypeAt(0);
-    const LLT Src = TypeAt(1);
+    const LowLevelType Dst = TypeAt(0);
+    const LowLevelType Src = TypeAt(1);
     const auto *Mask = Operands[3].getIf<ShuffleMaskOperand>();
     if (!Dst.isVector() || !Src.isVector() || Dst.isScalableVector() || Src.isScalableVector() ||
         scalarElementType(Dst) != scalarElementType(Src) || Mask == nullptr ||
@@ -644,8 +640,8 @@ private:
     return {};
   }
   case GO::G_SPLAT_VECTOR: {
-    const LLT Dst = TypeAt(0);
-    const LLT Src = TypeAt(1);
+    const LowLevelType Dst = TypeAt(0);
+    const LowLevelType Src = TypeAt(1);
     if (!Dst.isScalableVector() || Src.isVector() ||
         scalarElementType(Dst).scalarBitWidth() > Src.scalarBitWidth()) {
       return semanticError("G_SPLAT_VECTOR requires a scalable result with no wider elements");
@@ -653,7 +649,7 @@ private:
     return {};
   }
   case GO::G_STEP_VECTOR: {
-    const LLT Dst = TypeAt(0);
+    const LowLevelType Dst = TypeAt(0);
     const auto *Step = Operands[1].getIf<IntegerImmediateOperand>();
     if (!Dst.isScalableVector() || Step == nullptr || Step->Value.isZero() ||
         Step->Value.isNegative() || Step->Value.bitWidth() != Dst.scalarBitWidth()) {
@@ -662,15 +658,15 @@ private:
     return {};
   }
   case GO::G_INSERT_VECTOR_ELT: {
-    const LLT Vector = TypeAt(0);
+    const LowLevelType Vector = TypeAt(0);
     if (scalarElementType(Vector) != TypeAt(2) || TypeAt(3).isVector())
-      return semanticError("G_INSERT_VECTOR_ELT element or index LLT is incompatible");
+      return semanticError("G_INSERT_VECTOR_ELT element or index LowLevelType is incompatible");
     return {};
   }
   case GO::G_EXTRACT_VECTOR_ELT: {
-    const LLT Vector = TypeAt(1);
+    const LowLevelType Vector = TypeAt(1);
     if (scalarElementType(Vector) != TypeAt(0) || TypeAt(2).isVector())
-      return semanticError("G_EXTRACT_VECTOR_ELT result or index LLT is incompatible");
+      return semanticError("G_EXTRACT_VECTOR_ELT result or index LowLevelType is incompatible");
     return {};
   }
   case GO::G_VECTOR_COMPRESS:
@@ -699,7 +695,7 @@ private:
   case GO::G_VECREDUCE_UMIN:
     if (TypeAt(0).isVector() || !TypeAt(1).isVector() ||
         scalarElementType(TypeAt(1)) != TypeAt(0)) {
-      return semanticError("vector reduction result must equal the source element LLT");
+      return semanticError("vector reduction result must equal the source element LowLevelType");
     }
     return {};
   case GO::G_SBFX:
@@ -807,7 +803,7 @@ private:
   const auto MemoryOperands = Instruction.memOperands();
   const GO Generic = static_cast<GO>(Instruction.opcode().value());
 
-  const auto TypeAt = [&](std::size_t Index) -> Expected<LLT> {
+  const auto TypeAt = [&](std::size_t Index) -> Expected<LowLevelType> {
     if (Index >= Operands.size())
       return makeUnexpected(ErrorCode::InternalError,
                             "generic semantic verifier operand index is out of range");
@@ -820,7 +816,7 @@ private:
       return std::unexpected(Info.error());
     if (!Info->get().Type)
       return makeUnexpected(ErrorCode::InternalError,
-                            "generic semantic verifier found a register without an LLT");
+                            "generic semantic verifier found a register without an LowLevelType");
     return *Info->get().Type;
   };
 
@@ -830,7 +826,8 @@ private:
     if (!Type)
       return std::unexpected(Type.error());
     if (!Type->isPointer() || Type->addressSpace() != Memory.description().AddressSpace)
-      return semanticError("generic memory address LLT and MMO address space do not match");
+      return semanticError(
+          "generic memory address LowLevelType and MMO address space do not match");
     return {};
   };
 
@@ -839,7 +836,7 @@ private:
     NoLarger,
     StrictlySmaller,
   };
-  const auto VerifySize = [&](LLT ValueType, const MachineMemOperand &Memory,
+  const auto VerifySize = [&](LowLevelType ValueType, const MachineMemOperand &Memory,
                               SizeRelation Relation) -> Expected<void> {
     const MemorySize Size = Memory.description().Size;
     if (!Size.isKnown())
@@ -853,7 +850,8 @@ private:
                            : (Relation == SizeRelation::NoLarger ? MemoryBytes <= ValueBytes
                                                                  : MemoryBytes < ValueBytes);
     if (!Valid)
-      return semanticError("generic memory access size is incompatible with its value LLT");
+      return semanticError(
+          "generic memory access size is incompatible with its value LowLevelType");
     return {};
   };
 
@@ -1121,17 +1119,17 @@ void configureCoreOpcodes(DescriptorRegistry &Registry) {
 }
 
 void configureGenericOpcodes(DescriptorRegistry &Registry) {
-  const LLTKindSet AnyTypes = anyValueKinds();
-  const LLTKindSet IntTypes = integerKinds();
-  const LLTKindSet IntegerOrPointers = integerOrPointerKinds();
-  const LLTKindSet ScalarValues = scalarValueKinds();
-  const LLTKindSet ScalarInts = scalarIntegerKinds();
-  const LLTKindSet ScalarIntegerOrPointers = scalarIntegerOrPointerKinds();
-  const LLTKindSet FloatTypes = floatingKinds();
-  const LLTKindSet ScalarFloats = scalarFloatingKinds();
-  const LLTKindSet PointerTypes = pointerKinds();
-  const LLTKindSet ScalarPointers = scalarPointerKinds();
-  const LLTKindSet VectorTypes = vectorKinds();
+  const LowLevelTypeKindSet AnyTypes = anyValueKinds();
+  const LowLevelTypeKindSet IntTypes = integerKinds();
+  const LowLevelTypeKindSet IntegerOrPointers = integerOrPointerKinds();
+  const LowLevelTypeKindSet ScalarValues = scalarValueKinds();
+  const LowLevelTypeKindSet ScalarInts = scalarIntegerKinds();
+  const LowLevelTypeKindSet ScalarIntegerOrPointers = scalarIntegerOrPointerKinds();
+  const LowLevelTypeKindSet FloatTypes = floatingKinds();
+  const LowLevelTypeKindSet ScalarFloats = scalarFloatingKinds();
+  const LowLevelTypeKindSet PointerTypes = pointerKinds();
+  const LowLevelTypeKindSet ScalarPointers = scalarPointerKinds();
+  const LowLevelTypeKindSet VectorTypes = vectorKinds();
 
   const auto AnyDef0 = typedRegister(RegisterOperandRole::Def, AnyTypes, 0);
   const auto AnyUse0 = typedRegister(RegisterOperandRole::Use, AnyTypes, 0);
@@ -1414,16 +1412,17 @@ void configureGenericOpcodes(DescriptorRegistry &Registry) {
 
   Registry.configure({GO::G_STRICT_FADD, GO::G_STRICT_FSUB, GO::G_STRICT_FMUL, GO::G_STRICT_FDIV,
                       GO::G_STRICT_FREM},
-                     {FloatDef0, FloatUse0, FloatUse0}, 1, {InstructionFlag::HasSideEffects});
+                     {FloatDef0, FloatUse0, FloatUse0}, 1,
+                     {InstructionFlag::HasSideEffects, InstructionFlag::MayRaiseFPException});
   Registry.configure({GO::G_STRICT_FMA}, {FloatDef0, FloatUse0, FloatUse0, FloatUse0}, 1,
-                     {InstructionFlag::HasSideEffects});
+                     {InstructionFlag::HasSideEffects, InstructionFlag::MayRaiseFPException});
   Registry.configure({GO::G_STRICT_FSQRT}, {FloatDef0, FloatUse0}, 1,
-                     {InstructionFlag::HasSideEffects});
+                     {InstructionFlag::HasSideEffects, InstructionFlag::MayRaiseFPException});
   Registry.configure({GO::G_STRICT_FLDEXP}, {FloatDef0, FloatUse0, IntUse1}, 1,
-                     {InstructionFlag::HasSideEffects});
+                     {InstructionFlag::HasSideEffects, InstructionFlag::MayRaiseFPException});
   Registry.configure({GO::G_STRICT_FCMP, GO::G_STRICT_FCMPS},
                      {IntDef0, kind(MachineOperand::Kind::Predicate), FloatUse1, FloatUse1}, 1,
-                     {InstructionFlag::HasSideEffects});
+                     {InstructionFlag::HasSideEffects, InstructionFlag::MayRaiseFPException});
   Registry.configure({GO::G_READ_REGISTER}, {AnyDef0, kind(MachineOperand::Kind::Metadata)}, 1,
                      {InstructionFlag::HasSideEffects, InstructionFlag::Convergent});
   Registry.configure({GO::G_WRITE_REGISTER}, {kind(MachineOperand::Kind::Metadata), AnyUse0}, 0,

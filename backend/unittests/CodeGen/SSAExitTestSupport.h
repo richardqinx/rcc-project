@@ -360,7 +360,7 @@ struct FunctionFixture final {
 }
 
 [[nodiscard]] inline rcc::Expected<rcc::Register>
-createVReg(rcc::MachineFunction &Function, rcc::LLT Type, rcc::RegisterBankID Bank,
+createVReg(rcc::MachineFunction &Function, rcc::LowLevelType Type, rcc::RegisterBankID Bank,
            rcc::RegisterClassID Class, std::uint8_t TargetFlags = 0,
            std::optional<rcc::PhysicalRegister> Hint = std::nullopt) {
   auto Reg = Function.registerInfo().createVirtualRegister(Type);

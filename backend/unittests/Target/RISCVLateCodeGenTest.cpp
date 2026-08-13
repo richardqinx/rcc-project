@@ -727,7 +727,7 @@ void testRISCVMemoryFoldingBoundary(TestContext &Context, const rcc::TargetDescr
   if (!Function)
     return;
   rcc::MachineBasicBlock *Block = appendBlock(Context, *Function);
-  auto I64 = rcc::LLT::makeInteger(64);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   auto Align = rcc::Alignment::create(8);
   if (Block == nullptr || !I64 || !Align)
     return;
@@ -995,8 +995,8 @@ void testPseudoPreparation(TestContext &Context, const rcc::TargetDescription &T
   if (!Function)
     return;
   rcc::MachineBasicBlock *Block = appendBlock(Context, *Function);
-  auto I64 = rcc::LLT::makeInteger(64);
-  auto F64 = rcc::LLT::makeFloat(rcc::FloatSemantics::IEEEDouble);
+  auto I64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
+  auto F64 = rcc::LowLevelType::makeCategoryNeutralScalar(64);
   if (Block == nullptr || !I64 || !F64)
     return;
   auto Source = Function->registerInfo().createVirtualRegister(*I64);

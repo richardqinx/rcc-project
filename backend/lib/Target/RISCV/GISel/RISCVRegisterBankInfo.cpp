@@ -20,13 +20,9 @@
 namespace rcc::riscv {
 namespace {
 
-[[nodiscard]] bool isRVFloatType(LLT Type) noexcept {
-  return Type.isFloat() && (Type.scalarBitWidth() == 32 || Type.scalarBitWidth() == 64);
-}
-
-[[nodiscard]] bool isScalarGPRType(LLT Type) noexcept {
+[[nodiscard]] bool isScalarGPRType(LowLevelType Type) noexcept {
   return (Type.isPointer() && Type.addressSpace() == 0 && Type.scalarBitWidth() == 64) ||
-         ((Type.isInteger() || Type.isAnyScalar()) && Type.scalarBitWidth() >= 1 &&
+         (Type.isCategoryNeutralScalar() && Type.scalarBitWidth() >= 1 &&
           Type.scalarBitWidth() <= 64);
 }
 
@@ -219,9 +215,9 @@ requiredBankForRegister(const MachineFunction &Function, Register Reg,
                           "RISC-V selection requires a type for every virtual register");
   }
   const VirtualRegisterInfo &RegisterInfo = Info->get();
-  const LLT Type = RegisterInfo.Type.value_or(LLT{});
+  const LowLevelType Type = RegisterInfo.Type.value_or(LowLevelType{});
   RegisterClassID RequiredClass;
-  if ((RegisterInfo.Bank && *RegisterInfo.Bank == fprBank()) || Type.isFloat()) {
+  if (RegisterInfo.Bank && *RegisterInfo.Bank == fprBank()) {
     if (Type.scalarBitWidth() != 32 && Type.scalarBitWidth() != 64) {
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V RV64GC has no floating register class for type '" +
@@ -269,8 +265,7 @@ RISCVRegisterBankInfo::selectBank(const MachineFunction &Function, Register Reg,
   if (!Required)
     return std::unexpected(Required.error());
   const bool IsConstrained = Required->has_value() || Info.Bank.has_value();
-  const RegisterBankID Selected =
-      Required->value_or(isRVFloatType(*Info.Type) ? fprBank() : gprBank());
+  const RegisterBankID Selected = Required->value_or(gprBank());
   if (Info.Bank && *Info.Bank != Selected) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V virtual register has a conflicting register bank");

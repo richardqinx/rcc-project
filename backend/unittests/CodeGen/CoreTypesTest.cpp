@@ -5,12 +5,10 @@
 #include "rcc/CodeGen/Register.h"
 #include "rcc/CodeGen/StableID.h"
 
-#include <array>
 #include <cstdint>
 #include <iostream>
 #include <string_view>
 #include <type_traits>
-#include <unordered_set>
 
 namespace {
 
@@ -32,126 +30,92 @@ private:
 };
 
 void testLowLevelTypes(TestContext &Context) {
-  const rcc::LLT Invalid;
-  Context.expect(!Invalid.isValid(), "default LLT must be invalid");
-  Context.expect(Invalid.toString() == "LLT_invalid", "invalid LLT spelling must be stable");
+  const rcc::LowLevelType Invalid;
+  Context.expect(!Invalid.isValid(), "default LowLevelType must be invalid");
+  Context.expect(Invalid.toString() == "LLT_invalid",
+                 "invalid LowLevelType spelling must be stable");
 
-  const rcc::LLT Token = rcc::LLT::token();
-  Context.expect(Token.isToken(), "token LLT must preserve its kind");
-  Context.expect(Token.scalarBitWidth() == 0, "token LLT must have no bit width");
-  Context.expect(Token.toString() == "s0", "token LLT must use the MIR token spelling");
+  const rcc::LowLevelType Token = rcc::LowLevelType::token();
+  Context.expect(Token.isToken(), "token LowLevelType must preserve its kind");
+  Context.expect(Token.scalarBitWidth() == 0, "token LowLevelType must have no bit width");
+  Context.expect(Token.toString() == "s0", "token LowLevelType must use the MIR token spelling");
 
-  auto Any = rcc::LLT::makeAnyScalar(3);
-  auto Integer = rcc::LLT::makeInteger(3);
-  Context.expect(Any && Integer, "arbitrary positive scalar widths must be accepted");
-  if (Any && Integer) {
-    Context.expect(Any->isAnyScalar(), "bag-of-bits LLT must preserve its kind");
-    Context.expect(Integer->isInteger(), "integer LLT must preserve its kind");
-    Context.expect(*Any != *Integer, "bag-of-bits and integer LLTs must remain distinct");
-    Context.expect(Any->toString() == "s3", "bag-of-bits LLT spelling must include its width");
-    Context.expect(Integer->toString() == "i3", "integer LLT spelling must include its width");
+  auto Scalar = rcc::LowLevelType::makeCategoryNeutralScalar(3);
+  auto SameScalar = rcc::LowLevelType::makeCategoryNeutralScalar(3);
+  Context.expect(Scalar && SameScalar, "arbitrary positive scalar widths must be accepted");
+  if (Scalar && SameScalar) {
+    Context.expect(Scalar->isCategoryNeutralScalar(),
+                   "scalar LowLevelType must preserve its category-neutral kind");
+    Context.expect(*Scalar == *SameScalar,
+                   "equal-width scalars must have one canonical low-level type");
+    Context.expect(Scalar->toString() == "s3",
+                   "scalar LowLevelType spelling must include its width");
   }
 
-  Context.expect(!rcc::LLT::makeInteger(0), "zero-width integer LLT must be rejected");
-  Context.expect(!rcc::LLT::makeInteger(std::uint64_t{1} << 16),
-                 "integer LLT wider than the encoding must be rejected");
+  Context.expect(!rcc::LowLevelType::makeCategoryNeutralScalar(0),
+                 "zero-width scalar LowLevelType must be rejected");
+  Context.expect(!rcc::LowLevelType::makeCategoryNeutralScalar(std::uint64_t{1} << 16),
+                 "scalar LowLevelType wider than the encoding must be rejected");
 
-  constexpr std::array FloatCases{
-      std::pair{rcc::FloatSemantics::IEEEHalf, std::uint32_t{16}},
-      std::pair{rcc::FloatSemantics::BFloat, std::uint32_t{16}},
-      std::pair{rcc::FloatSemantics::IEEESingle, std::uint32_t{32}},
-      std::pair{rcc::FloatSemantics::IEEEDouble, std::uint32_t{64}},
-      std::pair{rcc::FloatSemantics::IEEEQuad, std::uint32_t{128}},
-      std::pair{rcc::FloatSemantics::PPCDoubleDouble, std::uint32_t{128}},
-      std::pair{rcc::FloatSemantics::Float8E5M2, std::uint32_t{8}},
-      std::pair{rcc::FloatSemantics::Float8E5M2FNUZ, std::uint32_t{8}},
-      std::pair{rcc::FloatSemantics::Float8E4M3, std::uint32_t{8}},
-      std::pair{rcc::FloatSemantics::Float8E4M3FN, std::uint32_t{8}},
-      std::pair{rcc::FloatSemantics::Float8E4M3FNUZ, std::uint32_t{8}},
-      std::pair{rcc::FloatSemantics::Float8E4M3B11FNUZ, std::uint32_t{8}},
-      std::pair{rcc::FloatSemantics::Float8E3M4, std::uint32_t{8}},
-      std::pair{rcc::FloatSemantics::FloatTF32, std::uint32_t{19}},
-      std::pair{rcc::FloatSemantics::Float8E8M0FNU, std::uint32_t{8}},
-      std::pair{rcc::FloatSemantics::Float6E3M2FN, std::uint32_t{6}},
-      std::pair{rcc::FloatSemantics::Float6E2M3FN, std::uint32_t{6}},
-      std::pair{rcc::FloatSemantics::Float4E2M1FN, std::uint32_t{4}},
-      std::pair{rcc::FloatSemantics::X87DoubleExtended, std::uint32_t{80}},
-  };
-
-  std::unordered_set<rcc::LLT> FloatTypes;
-  for (const auto &[Semantics, BitWidth] : FloatCases) {
-    auto Type = rcc::LLT::makeFloat(Semantics);
-    Context.expect(Type.has_value(), "known floating-point semantics must be accepted");
-    if (!Type)
-      continue;
-    Context.expect(Type->scalarBitWidth() == BitWidth,
-                   "float LLT must preserve its semantics bit width");
-    Context.expect(Type->floatSemantics() == Semantics,
-                   "float LLT must preserve exact floating-point semantics");
-    FloatTypes.insert(*Type);
-  }
-  Context.expect(FloatTypes.size() == FloatCases.size(),
-                 "distinct floating-point semantics must produce distinct LLTs");
-  Context.expect(!rcc::LLT::makeFloat(rcc::FloatSemantics::Count),
-                 "unknown floating-point semantics must be rejected");
-
-  auto Pointer = rcc::LLT::makePointer(rcc::LLT::MaxAddressSpace, 64);
+  auto Pointer = rcc::LowLevelType::makePointer(rcc::LowLevelType::MaxAddressSpace, 64);
   Context.expect(Pointer.has_value(), "maximum encodable pointer address space must be accepted");
   if (Pointer) {
-    Context.expect(Pointer->isPointer(), "pointer LLT must preserve its kind");
-    Context.expect(Pointer->addressSpace() == rcc::LLT::MaxAddressSpace,
-                   "pointer LLT must preserve its address space");
+    Context.expect(Pointer->isPointer(), "pointer LowLevelType must preserve its kind");
+    Context.expect(Pointer->addressSpace() == rcc::LowLevelType::MaxAddressSpace,
+                   "pointer LowLevelType must preserve its address space");
     Context.expect(Pointer->toString() == "p16777215:64",
-                   "pointer LLT spelling must preserve address space and width");
+                   "pointer LowLevelType spelling must preserve address space and width");
   }
-  Context.expect(!rcc::LLT::makePointer(std::uint64_t{1} << 24, 64),
+  Context.expect(!rcc::LowLevelType::makePointer(std::uint64_t{1} << 24, 64),
                  "pointer address spaces wider than the encoding must be rejected");
 
-  auto I33 = rcc::LLT::makeInteger(33);
+  auto I33 = rcc::LowLevelType::makeCategoryNeutralScalar(33);
   if (!I33) {
     Context.expect(false, "i33 construction must succeed before vector tests");
     return;
   }
 
-  auto FixedVector = rcc::LLT::makeFixedVector(4, *I33);
-  Context.expect(FixedVector.has_value(), "fixed integer vector LLT must be accepted");
+  auto FixedVector = rcc::LowLevelType::makeFixedVector(4, *I33);
+  Context.expect(FixedVector.has_value(), "fixed integer vector LowLevelType must be accepted");
   if (FixedVector) {
-    Context.expect(FixedVector->isVector(), "fixed vector LLT must preserve vector kind");
+    Context.expect(FixedVector->isVector(), "fixed vector LowLevelType must preserve vector kind");
     Context.expect(!FixedVector->isScalableVector(),
-                   "fixed vector LLT must not be marked scalable");
+                   "fixed vector LowLevelType must not be marked scalable");
     Context.expect(FixedVector->minimumElementCount() == 4,
-                   "fixed vector LLT must preserve element count");
+                   "fixed vector LowLevelType must preserve element count");
     Context.expect(FixedVector->scalarElementType() == I33,
-                   "fixed vector LLT must preserve its scalar element type");
-    Context.expect(FixedVector->toString() == "<4 x i33>",
-                   "fixed vector LLT spelling must be stable");
+                   "fixed vector LowLevelType must preserve its scalar element type");
+    Context.expect(FixedVector->toString() == "<4 x s33>",
+                   "fixed vector LowLevelType spelling must be stable");
   }
 
-  auto BFloat = rcc::LLT::makeFloat(rcc::FloatSemantics::BFloat);
-  if (!BFloat) {
-    Context.expect(false, "bfloat construction must succeed before vector tests");
+  auto S16 = rcc::LowLevelType::makeCategoryNeutralScalar(16);
+  if (!S16) {
+    Context.expect(false, "s16 construction must succeed before vector tests");
     return;
   }
-  auto ScalableVector = rcc::LLT::makeScalableVector(1, *BFloat);
+  auto ScalableVector = rcc::LowLevelType::makeScalableVector(1, *S16);
   Context.expect(ScalableVector.has_value(), "scalable vector with one minimum lane must work");
   if (ScalableVector) {
     Context.expect(ScalableVector->isScalableVector(),
-                   "scalable vector LLT must preserve scalability");
-    Context.expect(ScalableVector->isFloatVector() && !ScalableVector->isFloat(),
-                   "float vectors must not be classified as scalar floats");
-    Context.expect(ScalableVector->floatSemantics() == rcc::FloatSemantics::BFloat,
-                   "float vectors must preserve exact floating-point semantics");
-    Context.expect(ScalableVector->toString() == "<vscale x 1 x bf16>",
-                   "scalable float vector spelling must preserve exact semantics");
+                   "scalable vector LowLevelType must preserve scalability");
+    Context.expect(ScalableVector->isVectorValue(),
+                   "category-neutral vectors must preserve their value kind");
+    Context.expect(ScalableVector->scalarElementType() == S16,
+                   "scalable vectors must preserve their element type");
+    Context.expect(ScalableVector->toString() == "<vscale x 1 x s16>",
+                   "scalable vector spelling must preserve its shape");
   }
 
-  Context.expect(!rcc::LLT::makeFixedVector(1, *I33), "single-lane fixed vectors must be rejected");
-  Context.expect(!rcc::LLT::makeScalableVector(0, *I33),
+  Context.expect(!rcc::LowLevelType::makeFixedVector(1, *I33),
+                 "single-lane fixed vectors must be rejected");
+  Context.expect(!rcc::LowLevelType::makeScalableVector(0, *I33),
                  "zero-lane scalable vectors must be rejected");
-  Context.expect(!rcc::LLT::makeFixedVector(4, Token), "token vector elements must be rejected");
+  Context.expect(!rcc::LowLevelType::makeFixedVector(4, Token),
+                 "token vector elements must be rejected");
   if (FixedVector) {
-    Context.expect(!rcc::LLT::makeFixedVector(4, *FixedVector),
-                   "nested LLT vectors must be rejected");
+    Context.expect(!rcc::LowLevelType::makeFixedVector(4, *FixedVector),
+                   "nested LowLevelType vectors must be rejected");
   }
 }
 
