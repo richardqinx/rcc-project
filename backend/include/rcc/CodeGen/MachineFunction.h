@@ -37,6 +37,13 @@ class Opcode;
 
 class MachineFunction final {
 public:
+  class Delegate {
+  public:
+    virtual ~Delegate() = default;
+    virtual void handleInsertion(MachineInstr &Instruction) = 0;
+    virtual void handleRemoval(MachineInstr &Instruction) = 0;
+  };
+
   [[nodiscard]] static Expected<std::unique_ptr<MachineFunction>>
   create(std::string Name, MachineFunctionStableID StableID);
 
@@ -154,6 +161,14 @@ public:
   [[nodiscard]] Expected<const MachineMemOperand *>
   createMemOperand(MachineMemOperandDesc Description);
 
+  void setDelegate(Delegate &NewDelegate) noexcept {
+    TheDelegate = &NewDelegate;
+  }
+  void resetDelegate(Delegate &CurrentDelegate) noexcept {
+    if (TheDelegate == &CurrentDelegate)
+      TheDelegate = nullptr;
+  }
+
   [[nodiscard]] Expected<void> appendBlock(MachineBasicBlock &Block);
   [[nodiscard]] Expected<void> insertBlockBefore(MachineBasicBlock &Position,
                                                  MachineBasicBlock &Block);
@@ -224,6 +239,7 @@ private:
   StableIDGenerator<MachineInstrStableID> InstrIDGenerator;
   std::uint32_t DebugInstrNumberingCount = 0;
   std::unique_ptr<MachineArena> Arena;
+  Delegate *TheDelegate = nullptr;
 
   friend class MachineBasicBlock;
   friend class MachineCFGUpdater;

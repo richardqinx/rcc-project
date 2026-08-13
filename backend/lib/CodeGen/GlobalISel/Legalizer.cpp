@@ -2,6 +2,11 @@
 
 #include "rcc/CodeGen/GlobalISel/Legalizer.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/CodeGen/GlobalISel/GISelChangeObserver.h"
+#include "rcc/CodeGen/GlobalISel/GISelWorkList.h"
+#include "rcc/CodeGen/GlobalISel/LegalizationArtifactCombiner.h"
+#include "rcc/CodeGen/GlobalISel/LegalizerHelper.h"
 #include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -10,8 +15,10 @@
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
 
-#include <cstdint>
+#include <algorithm>
+#include <cstddef>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -34,53 +41,6 @@ namespace {
   return Contract;
 }
 
-struct OpcodeState final {
-  MachineInstrStableID Instruction;
-  Opcode OpcodeValue;
-  std::uint64_t OperandFingerprint = 0;
-
-  friend bool operator==(const OpcodeState &Left, const OpcodeState &Right) noexcept = default;
-};
-
-struct OpcodeStateHash final {
-  [[nodiscard]] std::size_t operator()(const OpcodeState &State) const noexcept {
-    return std::hash<std::uint64_t>{}(State.Instruction.value()) ^
-           (std::hash<std::uint32_t>{}(State.OpcodeValue.value()) << 1U) ^
-           (std::hash<std::uint64_t>{}(State.OperandFingerprint) << 2U);
-  }
-};
-
-void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
-  State ^= Value + 0x9e3779b97f4a7c15ULL + (State << 6U) + (State >> 2U);
-}
-
-[[nodiscard]] std::uint64_t operandFingerprint(const MachineInstr &Instruction) noexcept {
-  std::uint64_t Result = 0xcbf29ce484222325ULL;
-  combineFingerprint(Result, Instruction.flags().rawValue());
-  combineFingerprint(Result, Instruction.operandCount());
-  for (const MachineOperand &Operand : Instruction.operands()) {
-    combineFingerprint(Result, static_cast<std::uint64_t>(Operand.kind()));
-    combineFingerprint(Result, Operand.targetFlags());
-    combineFingerprint(Result, Operand.registerFlags().rawValue());
-    combineFingerprint(Result, Operand.subReg().value());
-    if (const Register *Reg = Operand.getIf<Register>())
-      combineFingerprint(Result, Reg->opaqueValue());
-    else if (const std::int64_t *Immediate = Operand.getIf<std::int64_t>())
-      combineFingerprint(Result, static_cast<std::uint64_t>(*Immediate));
-    else if (const auto *Integer = Operand.getIf<IntegerImmediateOperand>())
-      combineFingerprint(Result, Integer->Value.bitWidth());
-    else if (const auto *Floating = Operand.getIf<FloatingImmediateOperand>())
-      combineFingerprint(Result, static_cast<std::uint64_t>(Floating->Bits.semantics()));
-    else if (const auto *Block = Operand.getIf<BasicBlockOperand>())
-      combineFingerprint(Result, Block->Block == nullptr ? 0 : Block->Block->stableID().value());
-  }
-  return Result;
-}
-
-[[nodiscard]] OpcodeState stateOf(const MachineInstr &Instruction) noexcept {
-  return {Instruction.stableID(), Instruction.opcode(), operandFingerprint(Instruction)};
-}
-
 [[nodiscard]] std::vector<MachineInstr *> layoutInstructions(MachineFunction &Function) {
   std::vector<MachineInstr *> Result;
   for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next())
@@ -88,6 +48,115 @@ void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
          Instruction = Instruction->next())
       Result.push_back(Instruction);
   return Result;
+}
+
+[[nodiscard]] bool isArtifact(const MachineInstr &Instruction) noexcept {
+  switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
+  default:
+    return false;
+  case GenericOpcode::G_TRUNC:
+  case GenericOpcode::G_ZEXT:
+  case GenericOpcode::G_ANYEXT:
+  case GenericOpcode::G_SEXT:
+  case GenericOpcode::G_MERGE_VALUES:
+  case GenericOpcode::G_UNMERGE_VALUES:
+  case GenericOpcode::G_CONCAT_VECTORS:
+  case GenericOpcode::G_BUILD_VECTOR:
+  case GenericOpcode::G_EXTRACT:
+  case GenericOpcode::G_INSERT:
+    return true;
+  }
+}
+
+using InstList = GISelWorkList<256>;
+using ArtifactList = GISelWorkList<128>;
+
+class LegalizerWorkListManager final : public GISelChangeObserver {
+public:
+  LegalizerWorkListManager(InstList &Instructions, ArtifactList &Artifacts)
+      : Instructions(Instructions), Artifacts(Artifacts) {}
+
+  void erasingInstr(MachineInstr &Instruction) override {
+    Instructions.remove(&Instruction);
+    Artifacts.remove(&Instruction);
+  }
+
+  void createdInstr(MachineInstr &Instruction) override {
+    createdOrChangedInstr(Instruction);
+  }
+
+  void changingInstr(MachineInstr &) override {}
+
+  void changedInstr(MachineInstr &Instruction) override {
+    createdOrChangedInstr(Instruction);
+  }
+
+private:
+  void createdOrChangedInstr(MachineInstr &Instruction) {
+    if (!isGenericOpcode(Instruction.opcode()))
+      return;
+    if (isArtifact(Instruction))
+      Artifacts.insert(&Instruction);
+    else
+      Instructions.insert(&Instruction);
+  }
+
+  InstList &Instructions;
+  ArtifactList &Artifacts;
+};
+
+[[nodiscard]] std::vector<MachineBasicBlock *> reversePostOrderBlocks(MachineFunction &Function) {
+  struct TraversalFrame final {
+    MachineBasicBlock *Block = nullptr;
+    std::vector<MachineBasicBlock *> Successors;
+    std::size_t NextSuccessor = 0;
+  };
+
+  const auto makeFrame = [](MachineBasicBlock &Block) {
+    TraversalFrame Frame;
+    Frame.Block = &Block;
+    for (const MachineSuccessor &Successor : Block.successors()) {
+      if (Successor.Block != nullptr)
+        Frame.Successors.push_back(Successor.Block);
+    }
+    std::ranges::sort(Frame.Successors, {}, [](const MachineBasicBlock *Successor) {
+      return Successor->stableID().value();
+    });
+    return Frame;
+  };
+
+  std::vector<MachineBasicBlock *> Roots;
+  for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next())
+    Roots.push_back(Block);
+  std::ranges::sort(Roots, {},
+                    [](const MachineBasicBlock *Block) { return Block->stableID().value(); });
+  if (MachineBasicBlock *Entry = Function.firstBlock(); Entry != nullptr) {
+    const auto Position = std::ranges::find(Roots, Entry);
+    if (Position != Roots.end())
+      std::rotate(Roots.begin(), Position, std::next(Position));
+  }
+
+  std::vector<MachineBasicBlock *> PostOrder;
+  std::unordered_set<MachineBasicBlock *> Visited;
+  std::vector<TraversalFrame> Stack;
+  for (MachineBasicBlock *Root : Roots) {
+    if (!Visited.insert(Root).second)
+      continue;
+    Stack.push_back(makeFrame(*Root));
+    while (!Stack.empty()) {
+      TraversalFrame &Frame = Stack.back();
+      if (Frame.NextSuccessor < Frame.Successors.size()) {
+        MachineBasicBlock *Successor = Frame.Successors[Frame.NextSuccessor++];
+        if (Visited.insert(Successor).second)
+          Stack.push_back(makeFrame(*Successor));
+        continue;
+      }
+      PostOrder.push_back(Frame.Block);
+      Stack.pop_back();
+    }
+  }
+  std::ranges::reverse(PostOrder);
+  return PostOrder;
 }
 
 [[nodiscard]] Expected<void> requireProperties(const MachineFunction &Function,
@@ -202,91 +271,136 @@ Expected<MachinePassResult> Legalizer::run(MachineFunction &Function,
 Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Function,
                                                          const TargetDescription &Target,
                                                          MachineActionReplay &Actions) {
-
   MachinePassResult Result;
-  std::unordered_set<OpcodeState, OpcodeStateHash> SeenStates;
+  InstList InstructionWorklist;
+  ArtifactList ArtifactWorklist;
+  std::vector<MachineInstr *> RetryList;
 
-  std::vector<MachineInstr *> Worklist = layoutInstructions(Function);
-  std::unordered_set<MachineInstrStableID> PendingInstructions;
-  for (const MachineInstr *Instruction : Worklist)
-    PendingInstructions.insert(Instruction->stableID());
-  for (std::size_t Index = 0; Index < Worklist.size(); ++Index) {
-    MachineInstr *Instruction = Worklist[Index];
-    if (Instruction != nullptr)
-      PendingInstructions.erase(Instruction->stableID());
-    if (Instruction == nullptr || Instruction->parent() == nullptr)
-      continue;
-
-    const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
-    if (Descriptor == nullptr)
-      return std::unexpected(
-          passFailure("legalizer encountered an unknown instruction descriptor"));
-    if (!Descriptor->Flags.has(InstructionFlag::Generic))
-      continue;
-
-    auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
-    if (!Validation)
-      return std::unexpected(withErrorContext(Validation.error(), "legalizer input is invalid: "));
-
-    auto Action = Info->classify(*Instruction, Function, Target);
-    if (!Action)
-      return std::unexpected(Action.error());
-    if (*Action == LegalizationAction::Legal)
-      continue;
-    if (*Action == LegalizationAction::Unsupported) {
-      return std::unexpected(
-          passFailure("target legalizer rejected generic instruction '" + Descriptor->Name + "'",
-                      ErrorCode::Unsupported));
-    }
-
-    const OpcodeState Before = stateOf(*Instruction);
-    if (!SeenStates.insert(Before).second)
-      return std::unexpected(
-          passFailure("target legalizer entered a repeated state for '" + Descriptor->Name + "'",
-                      ErrorCode::InternalError));
-
-    auto LoweringValidation = Info->validateLowering(*Instruction, Function, Target, *Action);
-    if (!LoweringValidation)
-      return std::unexpected(
-          withErrorContext(LoweringValidation.error(), "legalizer lowering precondition failed: "));
-    std::string Rule = "legalize.";
-    Rule.append(legalizationActionName(*Action));
-    Rule.push_back('.');
-    Rule.append(Descriptor->Name);
-    auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
-    if (!Accepted)
-      return std::unexpected(Accepted.error());
-    if (!*Accepted) {
-      return std::unexpected(
-          passFailure("required legalizer action was rejected for '" + Descriptor->Name + "'",
-                      ErrorCode::VerificationError));
-    }
-    auto Lowered = Info->lower(*Instruction, Function, Target, *Action);
-    if (!Lowered)
-      return std::unexpected(Lowered.error());
-    const bool InstructionWasErased = Instruction->parent() == nullptr;
-    if (!InstructionWasErased) {
-      const OpcodeState After = stateOf(*Instruction);
-      if (After == Before)
-        return std::unexpected(passFailure("target legalizer made no observable progress for '" +
-                                               Descriptor->Name + "'",
-                                           ErrorCode::InternalError));
-    }
-    Result.Changed = true;
-    Result.Changes.add(MachinePassChange::Instructions);
-
-    const std::vector<MachineInstr *> Current = layoutInstructions(Function);
-    for (MachineInstr *Candidate : Current) {
-      const InstructionDescriptor *CandidateDescriptor =
-          Target.instructionDescriptor(Candidate->opcode());
-      if (CandidateDescriptor == nullptr)
-        return std::unexpected(passFailure("legalizer produced an unknown instruction descriptor"));
-      if (CandidateDescriptor->Flags.has(InstructionFlag::Generic) &&
-          PendingInstructions.insert(Candidate->stableID()).second) {
-        Worklist.push_back(Candidate);
-      }
+  for (MachineBasicBlock *Block : reversePostOrderBlocks(Function)) {
+    for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
+         Instruction = Instruction->next()) {
+      if (!isGenericOpcode(Instruction->opcode()))
+        continue;
+      if (isArtifact(*Instruction))
+        ArtifactWorklist.deferredInsert(Instruction);
+      else
+        InstructionWorklist.deferredInsert(Instruction);
     }
   }
+  ArtifactWorklist.finalize();
+  InstructionWorklist.finalize();
+
+  LegalizerWorkListManager WorkListObserver(InstructionWorklist, ArtifactWorklist);
+  GISelObserverWrapper Observer(WorkListObserver);
+  MachineFunctionDelegateInstaller ObserverInstaller(Function, Observer);
+  MachineIRBuilder Builder(Function, Target);
+  LegalizerHelper Helper(Function, *Info, Observer, Builder);
+  LegalizationArtifactCombiner ArtifactCombiner(Builder, Function.registerInfo(), *Info);
+
+  do {
+    while (!InstructionWorklist.empty()) {
+      MachineInstr *Instruction = InstructionWorklist.popBack();
+      if (Instruction == nullptr || Instruction->parent() == nullptr)
+        continue;
+
+      const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
+      if (Descriptor == nullptr)
+        return std::unexpected(
+            passFailure("legalizer encountered an unknown instruction descriptor"));
+      if (!Descriptor->Flags.has(InstructionFlag::Generic))
+        continue;
+
+      auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
+      if (!Validation) {
+        return std::unexpected(
+            withErrorContext(Validation.error(), "legalizer input is invalid: "));
+      }
+
+      auto Decision = Info->getDecision(*Instruction, Function, Target);
+      if (!Decision)
+        return std::unexpected(Decision.error());
+      if (Decision->Action == LegalizationAction::Legal)
+        continue;
+      if (Decision->Action == LegalizationAction::Unsupported) {
+        if (isArtifact(*Instruction)) {
+          RetryList.push_back(Instruction);
+          continue;
+        }
+        return std::unexpected(
+            passFailure("target legalizer rejected generic instruction '" + Descriptor->Name + "'",
+                        ErrorCode::Unsupported));
+      }
+
+      auto LoweringValidation = Info->validateLowering(*Instruction, Function, Target, *Decision);
+      if (!LoweringValidation) {
+        return std::unexpected(withErrorContext(LoweringValidation.error(),
+                                                "legalizer lowering precondition failed: "));
+      }
+      std::string Rule = "legalize.";
+      Rule.append(legalizationActionName(Decision->Action));
+      Rule.push_back('.');
+      Rule.append(Descriptor->Name);
+      auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+      if (!Accepted)
+        return std::unexpected(Accepted.error());
+      if (!*Accepted) {
+        return std::unexpected(
+            passFailure("required legalizer action was rejected for '" + Descriptor->Name + "'",
+                        ErrorCode::VerificationError));
+      }
+      Expected<void> Lowered = Helper.legalize(*Instruction, *Decision);
+      if (!Lowered) {
+        if (Lowered.error().code() == ErrorCode::Unsupported && Instruction->parent() != nullptr &&
+            isArtifact(*Instruction)) {
+          RetryList.push_back(Instruction);
+          continue;
+        }
+        return std::unexpected(Lowered.error());
+      }
+      Result.Changed = true;
+      Result.Changes.add(MachinePassChange::Instructions);
+    }
+
+    if (!RetryList.empty()) {
+      if (!ArtifactWorklist.empty()) {
+        for (MachineInstr *Instruction : RetryList)
+          ArtifactWorklist.insert(Instruction);
+        RetryList.clear();
+      } else {
+        MachineInstr *Instruction = RetryList.front();
+        const InstructionDescriptor *Descriptor =
+            Instruction == nullptr ? nullptr : Target.instructionDescriptor(Instruction->opcode());
+        return std::unexpected(passFailure(
+            "target legalizer rejected generic artifact '" +
+                std::string(Descriptor == nullptr ? "<unknown>" : Descriptor->Name) + "'",
+            ErrorCode::Unsupported));
+      }
+    }
+
+    while (!ArtifactWorklist.empty()) {
+      MachineInstr *Instruction = ArtifactWorklist.popBack();
+      if (Instruction == nullptr || Instruction->parent() == nullptr)
+        continue;
+      std::vector<MachineInstr *> DeadInstructions;
+      auto Combined =
+          ArtifactCombiner.tryCombineInstruction(*Instruction, DeadInstructions, Observer);
+      if (!Combined)
+        return std::unexpected(Combined.error());
+      if (*Combined) {
+        for (MachineInstr *Dead : DeadInstructions) {
+          if (Dead == nullptr || Dead->parent() == nullptr)
+            continue;
+          auto Removed = Dead->parent()->removeInstruction(*Dead);
+          if (!Removed)
+            return std::unexpected(Removed.error());
+        }
+        Result.Changed = true;
+        Result.Changes.add(MachinePassChange::Instructions);
+        continue;
+      }
+      InstructionWorklist.insert(Instruction);
+    }
+  } while (!InstructionWorklist.empty());
 
   for (MachineInstr *Instruction : layoutInstructions(Function)) {
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
@@ -294,15 +408,16 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
       return std::unexpected(passFailure("legalizer produced an unknown instruction descriptor"));
     if (!Descriptor->Flags.has(InstructionFlag::Generic))
       continue;
-    auto Action = Info->classify(*Instruction, Function, Target);
-    if (!Action)
-      return std::unexpected(Action.error());
-    if (*Action != LegalizationAction::Legal)
-      return std::unexpected(
-          passFailure("legalizer reached a fixed point with an illegal generic instruction '" +
-                          Descriptor->Name + "'",
-                      *Action == LegalizationAction::Unsupported ? ErrorCode::Unsupported
-                                                                 : ErrorCode::InternalError));
+    auto Decision = Info->getDecision(*Instruction, Function, Target);
+    if (!Decision)
+      return std::unexpected(Decision.error());
+    if (Decision->Action != LegalizationAction::Legal &&
+        Decision->Action != LegalizationAction::Custom)
+      return std::unexpected(passFailure(
+          "legalizer reached a fixed point with an illegal generic instruction '" +
+              Descriptor->Name + "'",
+          Decision->Action == LegalizationAction::Unsupported ? ErrorCode::Unsupported
+                                                              : ErrorCode::InternalError));
     auto FinalValidation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!FinalValidation)
       return std::unexpected(

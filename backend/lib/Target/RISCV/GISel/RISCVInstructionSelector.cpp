@@ -177,10 +177,10 @@ public:
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
     const auto Integer = [Type] { return Type && isSupportedIntegerType(*Type); };
     const auto Float = [Type] { return Type && isSupportedFloatingScalar(*Type); };
-    auto Classification = Subtarget.getLegalizerInfo()->classify(Instruction, Function, Target);
+    auto Classification = Subtarget.getLegalizerInfo()->getDecision(Instruction, Function, Target);
     if (!Classification)
       return std::unexpected(Classification.error());
-    if (*Classification != LegalizationAction::Legal) {
+    if (Classification->Action != LegalizationAction::Legal) {
       std::string Message = "RISC-V selector cannot select opcode '" +
                             std::string(getGenericOpcodeName(Generic)) + "'";
       if (Type)

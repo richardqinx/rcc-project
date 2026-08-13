@@ -40,6 +40,8 @@ Expected<void> MachineBasicBlock::appendInstruction(MachineInstr &Instruction) {
   else
     FirstInstruction = &Instruction;
   LastInstruction = &Instruction;
+  if (OwnerFunction->TheDelegate != nullptr)
+    OwnerFunction->TheDelegate->handleInsertion(Instruction);
   return {};
 }
 
@@ -65,6 +67,8 @@ Expected<void> MachineBasicBlock::insertInstructionBefore(MachineInstr &Position
   else
     FirstInstruction = &Instruction;
   Position.PreviousInstruction = &Instruction;
+  if (OwnerFunction->TheDelegate != nullptr)
+    OwnerFunction->TheDelegate->handleInsertion(Instruction);
   return {};
 }
 
@@ -90,6 +94,8 @@ Expected<void> MachineBasicBlock::insertInstructionAfter(MachineInstr &Position,
   else
     LastInstruction = &Instruction;
   Position.NextInstruction = &Instruction;
+  if (OwnerFunction->TheDelegate != nullptr)
+    OwnerFunction->TheDelegate->handleInsertion(Instruction);
   return {};
 }
 
@@ -97,6 +103,9 @@ Expected<void> MachineBasicBlock::removeInstruction(MachineInstr &Instruction) {
   if (Instruction.parent() != this) {
     return makeUnexpected(ErrorCode::InvalidArgument, "instruction does not belong to this block");
   }
+
+  if (OwnerFunction->TheDelegate != nullptr)
+    OwnerFunction->TheDelegate->handleRemoval(Instruction);
 
   if (Instruction.PreviousInstruction != nullptr)
     Instruction.PreviousInstruction->NextInstruction = Instruction.NextInstruction;

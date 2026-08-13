@@ -25,7 +25,7 @@ class MachineFunction;
 class MachineMemOperand;
 class MachineRegisterInfo;
 
-class MachineInstr final {
+class MachineInstr {
 public:
   MachineInstr(const MachineInstr &) = delete;
   MachineInstr &operator=(const MachineInstr &) = delete;

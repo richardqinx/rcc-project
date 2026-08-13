@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/MachineIRBuilder.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -705,6 +706,198 @@ Expected<MachineInstrBuilder> MachineIRBuilder::buildInstr(Opcode InstructionOpc
                           "machine IR builder insertion cursor is stale");
   }
   return MachineInstrBuilder(*Function, *Target, *Descriptor, *InsertBlock, InsertBefore);
+}
+
+Expected<LowLevelType> MachineIRBuilder::registerType(Register Reg) const {
+  if (!Reg.isVirtual())
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "generic builder operand is not a virtual register");
+  auto Info = Function->registerInfo().virtualRegisterInfo(Reg);
+  if (!Info)
+    return std::unexpected(Info.error());
+  if (!Info->get().Type)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "generic builder operand has no LowLevelType");
+  return *Info->get().Type;
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildUnary(Opcode InstructionOpcode,
+                                                      Register Destination,
+                                                      Register Source) const {
+  auto Pending = buildInstr(InstructionOpcode);
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Source); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildBinary(Opcode InstructionOpcode,
+                                                       Register Destination, Register Left,
+                                                       Register Right) const {
+  auto Pending = buildInstr(InstructionOpcode);
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Left); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Right); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildTrunc(Register Destination,
+                                                      Register Source) const {
+  return buildUnary(opcode(GenericOpcode::G_TRUNC), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildCopy(Register Destination,
+                                                     Register Source) const {
+  return buildUnary(opcode(GenericOpcode::COPY), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildImplicitDef(Register Destination) const {
+  auto Pending = buildInstr(opcode(GenericOpcode::G_IMPLICIT_DEF));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildAnyExt(Register Destination,
+                                                       Register Source) const {
+  return buildUnary(opcode(GenericOpcode::G_ANYEXT), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildZExt(Register Destination,
+                                                     Register Source) const {
+  return buildUnary(opcode(GenericOpcode::G_ZEXT), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildSExt(Register Destination,
+                                                     Register Source) const {
+  return buildUnary(opcode(GenericOpcode::G_SEXT), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildExtOrTrunc(Opcode ExtensionOpcode,
+                                                           Register Destination,
+                                                           Register Source) const {
+  auto DestinationType = registerType(Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  auto SourceType = registerType(Source);
+  if (!SourceType)
+    return std::unexpected(SourceType.error());
+  const std::uint64_t DestinationWidth = DestinationType->minimumBitWidth();
+  const std::uint64_t SourceWidth = SourceType->minimumBitWidth();
+  if (DestinationWidth > SourceWidth)
+    return buildUnary(ExtensionOpcode, Destination, Source);
+  if (DestinationWidth < SourceWidth)
+    return buildTrunc(Destination, Source);
+  return buildUnary(opcode(GenericOpcode::COPY), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildAnyExtOrTrunc(Register Destination,
+                                                              Register Source) const {
+  return buildExtOrTrunc(opcode(GenericOpcode::G_ANYEXT), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildSExtOrTrunc(Register Destination,
+                                                           Register Source) const {
+  return buildExtOrTrunc(opcode(GenericOpcode::G_SEXT), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildConstant(Register Destination,
+                                                         APInt Value) const {
+  auto Pending = buildInstr(opcode(GenericOpcode::G_CONSTANT));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addIntegerImmediate(std::move(Value)); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildConstant(Register Destination,
+                                                         std::int64_t Value) const {
+  auto Type = registerType(Destination);
+  if (!Type)
+    return std::unexpected(Type.error());
+  auto Immediate = APInt::fromSigned(Type->scalarBitWidth(), Value);
+  if (!Immediate)
+    return std::unexpected(Immediate.error());
+  return buildConstant(Destination, std::move(*Immediate));
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildSExtInReg(Register Destination,
+                                                          Register Source,
+                                                          std::uint32_t Width) const {
+  auto Pending = buildInstr(opcode(GenericOpcode::G_SEXT_INREG));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Source); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addImmediate(static_cast<std::int64_t>(Width)); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildAnd(Register Destination, Register Left,
+                                                    Register Right) const {
+  return buildBinary(opcode(GenericOpcode::G_AND), Destination, Left, Right);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildMergeValues(
+    Register Destination, const std::vector<Register> &Sources) const {
+  auto Pending = buildInstr(opcode(GenericOpcode::G_MERGE_VALUES));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  for (Register Source : Sources) {
+    if (auto Added = Pending->addUse(Source); !Added)
+      return std::unexpected(Added.error());
+  }
+  return Pending->build();
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildUnmergeValues(
+    const std::vector<Register> &Destinations, Register Source) const {
+  auto Pending = buildInstr(opcode(GenericOpcode::G_UNMERGE_VALUES));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  for (Register Destination : Destinations) {
+    if (auto Added = Pending->addDef(Destination); !Added)
+      return std::unexpected(Added.error());
+  }
+  if (auto Added = Pending->addUse(Source); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildExtract(Register Destination,
+                                                        Register Source,
+                                                        std::uint64_t Offset) const {
+  if (Offset > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "generic extract offset does not fit a machine immediate");
+  auto Pending = buildInstr(opcode(GenericOpcode::G_EXTRACT));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Source); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addImmediate(static_cast<std::int64_t>(Offset)); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
 }
 
 } // namespace rcc

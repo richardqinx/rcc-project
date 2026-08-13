@@ -267,6 +267,10 @@ struct InstructionDescriptor final {
   InstructionSemanticVerifier VerifyInstructionSemantics = nullptr;
 };
 
+[[nodiscard]] Expected<std::vector<const OperandDescriptor *>>
+resolveExplicitOperandDescriptors(const InstructionDescriptor &Descriptor,
+                                  std::size_t OperandCount);
+
 struct ImmediatePredicate final {
   ImmediatePredicateID ID;
   std::string Name;

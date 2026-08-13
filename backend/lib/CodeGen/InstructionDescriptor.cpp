@@ -302,6 +302,19 @@ struct OperandShape final {
 
 } // namespace
 
+Expected<std::vector<const OperandDescriptor *>>
+resolveExplicitOperandDescriptors(const InstructionDescriptor &Descriptor,
+                                  std::size_t OperandCount) {
+  auto Shape = resolveOperandShape(Descriptor, OperandCount);
+  if (!Shape)
+    return std::unexpected(Shape.error());
+  std::vector<const OperandDescriptor *> Result;
+  Result.reserve(OperandCount);
+  for (std::size_t Index = 0; Index < OperandCount; ++Index)
+    Result.push_back(&descriptorForOperand(Descriptor, *Shape, Index));
+  return Result;
+}
+
 OperandKindSet::OperandKindSet(std::initializer_list<MachineOperand::Kind> Kinds) noexcept {
   for (const MachineOperand::Kind Kind : Kinds)
     add(Kind);

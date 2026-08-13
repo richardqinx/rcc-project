@@ -2,16 +2,24 @@
 
 set(
   RCCBackendGlobalISelSources
+  GISelChangeObserver.cpp
   InstructionSelect.cpp
   Legalizer.cpp
+  LegalizerHelper.cpp
+  LegalizerInfo.cpp
   RegBankSelect.cpp
 )
 
 set(
   RCCBackendGlobalISelHeaders
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/GISelChangeObserver.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/GISelWorkList.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/GenericMachineInstrs.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/InstructionSelect.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/InstructionSelector.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/LegalizationArtifactCombiner.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/Legalizer.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/LegalizerHelper.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/LegalizerInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/RegBankSelect.h"
 )
@@ -19,14 +27,20 @@ set(
 target_sources(RCCBackendCodeGen PRIVATE ${RCCBackendGlobalISelSources})
 
 rcc_backend_register_format_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISelChangeObserver.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionSelect.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Legalizer.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LegalizerHelper.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LegalizerInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegBankSelect.cpp"
   ${RCCBackendGlobalISelHeaders}
 )
 
 rcc_backend_register_tidy_files(
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISelChangeObserver.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionSelect.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/Legalizer.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LegalizerHelper.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/LegalizerInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegBankSelect.cpp"
 )

@@ -311,6 +311,27 @@ const MachineOperand *MachineRegisterInfo::getUniqueVRegDef(Register Reg) const 
   return UniqueDef;
 }
 
+MachineInstr *MachineRegisterInfo::getVRegDef(Register Reg) noexcept {
+  const MachineOperand *Definition = getUniqueVRegDef(Reg);
+  return Definition == nullptr ? nullptr
+                               : const_cast<MachineInstr *>(Definition->parent());
+}
+
+const MachineInstr *MachineRegisterInfo::getVRegDef(Register Reg) const noexcept {
+  const MachineOperand *Definition = getUniqueVRegDef(Reg);
+  return Definition == nullptr ? nullptr : Definition->parent();
+}
+
+Expected<LowLevelType> MachineRegisterInfo::getType(Register Reg) const {
+  auto Info = virtualRegisterInfo(Reg);
+  if (!Info)
+    return std::unexpected(Info.error());
+  if (!Info->get().Type)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "virtual register has no LowLevelType");
+  return *Info->get().Type;
+}
+
 Expected<std::size_t> MachineRegisterInfo::replaceRegWith(Register OldReg, Register NewReg) {
   if (OldReg.isNoRegister() || NewReg.isNoRegister()) {
     return makeUnexpected(ErrorCode::InvalidArgument,

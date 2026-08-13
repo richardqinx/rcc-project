@@ -178,8 +178,42 @@ public:
   }
 
   [[nodiscard]] Expected<MachineInstrBuilder> buildInstr(Opcode InstructionOpcode) const;
+  [[nodiscard]] Expected<MachineInstr *> buildTrunc(Register Destination, Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildCopy(Register Destination, Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildImplicitDef(Register Destination) const;
+  [[nodiscard]] Expected<MachineInstr *> buildAnyExt(Register Destination,
+                                                     Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildZExt(Register Destination, Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildSExt(Register Destination, Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildAnyExtOrTrunc(Register Destination,
+                                                            Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildSExtOrTrunc(Register Destination,
+                                                         Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildConstant(Register Destination, APInt Value) const;
+  [[nodiscard]] Expected<MachineInstr *> buildConstant(Register Destination,
+                                                       std::int64_t Value) const;
+  [[nodiscard]] Expected<MachineInstr *> buildSExtInReg(Register Destination, Register Source,
+                                                        std::uint32_t Width) const;
+  [[nodiscard]] Expected<MachineInstr *> buildAnd(Register Destination, Register Left,
+                                                  Register Right) const;
+  [[nodiscard]] Expected<MachineInstr *> buildMergeValues(
+      Register Destination, const std::vector<Register> &Sources) const;
+  [[nodiscard]] Expected<MachineInstr *> buildUnmergeValues(
+      const std::vector<Register> &Destinations, Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildExtract(Register Destination, Register Source,
+                                                      std::uint64_t Offset) const;
 
 private:
+  [[nodiscard]] Expected<MachineInstr *> buildUnary(Opcode InstructionOpcode,
+                                                    Register Destination,
+                                                    Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildBinary(Opcode InstructionOpcode,
+                                                     Register Destination, Register Left,
+                                                     Register Right) const;
+  [[nodiscard]] Expected<MachineInstr *> buildExtOrTrunc(Opcode ExtensionOpcode,
+                                                         Register Destination,
+                                                         Register Source) const;
+  [[nodiscard]] Expected<LowLevelType> registerType(Register Reg) const;
   [[nodiscard]] Expected<void> validateBlock(const MachineBasicBlock &Block) const;
   [[nodiscard]] Expected<void> validateInstruction(const MachineInstr &Instruction) const;
 

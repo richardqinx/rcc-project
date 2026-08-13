@@ -98,6 +98,11 @@ public:
     return static_cast<std::uint32_t>((RawValue >> ElementCountShift) & ElementCountMask);
   }
 
+  [[nodiscard]] constexpr std::uint64_t minimumBitWidth() const noexcept {
+    return isVector() ? static_cast<std::uint64_t>(scalarBitWidth()) * minimumElementCount()
+                      : scalarBitWidth();
+  }
+
   [[nodiscard]] std::optional<std::uint32_t> addressSpace() const noexcept;
   [[nodiscard]] std::optional<LowLevelType> scalarElementType() const noexcept;
 

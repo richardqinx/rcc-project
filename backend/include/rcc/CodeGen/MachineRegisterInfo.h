@@ -21,6 +21,7 @@
 namespace rcc {
 
 class MachineOperand;
+class MachineInstr;
 
 class RegOperandIterator final {
 public:
@@ -153,6 +154,9 @@ public:
   [[nodiscard]] bool useEmpty(Register Reg, bool IncludeDebug = true) const noexcept;
   [[nodiscard]] bool hasOneUse(Register Reg, bool IncludeDebug = true) const noexcept;
   [[nodiscard]] const MachineOperand *getUniqueVRegDef(Register Reg) const noexcept;
+  [[nodiscard]] MachineInstr *getVRegDef(Register Reg) noexcept;
+  [[nodiscard]] const MachineInstr *getVRegDef(Register Reg) const noexcept;
+  [[nodiscard]] Expected<LowLevelType> getType(Register Reg) const;
   [[nodiscard]] Expected<std::size_t> replaceRegWith(Register OldReg, Register NewReg);
 
   [[nodiscard]] Expected<void> verifyDefUseChains() const;

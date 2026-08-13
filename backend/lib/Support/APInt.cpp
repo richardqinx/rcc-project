@@ -138,6 +138,23 @@ Expected<APInt> APInt::fromSigned(std::uint32_t BitWidth, std::int64_t Value) {
   return create(BitWidth, Words);
 }
 
+Expected<APInt> APInt::getLowBitsSet(std::uint32_t BitWidth,
+                                     std::uint32_t SetBitCount) {
+  if (BitWidth == 0 || BitWidth > MaxBitWidth || SetBitCount > BitWidth)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "APInt low-bit mask has an invalid width");
+  std::vector<std::uint64_t> Words(wordCount(BitWidth), 0);
+  const std::size_t FullWords = SetBitCount / 64U;
+  std::ranges::fill_n(
+      Words.begin(),
+      static_cast<std::vector<std::uint64_t>::difference_type>(FullWords),
+                      std::numeric_limits<std::uint64_t>::max());
+  const std::uint32_t RemainingBits = SetBitCount % 64U;
+  if (RemainingBits != 0)
+    Words[FullWords] = (std::uint64_t{1} << RemainingBits) - 1U;
+  return create(BitWidth, Words);
+}
+
 Expected<APInt> APInt::parseDecimal(std::uint32_t BitWidth, std::string_view Text) {
   if (BitWidth == 0 || BitWidth > MaxBitWidth)
     return makeUnexpected(ErrorCode::ParseError, "APInt bit width is outside the supported range");
@@ -241,6 +258,43 @@ std::size_t APInt::countrZero() const noexcept {
 
 std::uint64_t APInt::word(std::size_t Index) const noexcept {
   return Index < Words.size() ? Words[Index] : 0;
+}
+
+Expected<APInt> APInt::trunc(std::uint32_t NewBitWidth) const {
+  if (NewBitWidth == 0 || NewBitWidth >= BitWidth)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "APInt truncation requires a smaller nonzero width");
+  std::vector<std::uint64_t> ResultWords(wordCount(NewBitWidth), 0);
+  std::ranges::copy_n(
+      Words.begin(),
+      static_cast<std::vector<std::uint64_t>::difference_type>(
+          ResultWords.size()),
+      ResultWords.begin());
+  ResultWords.back() &= highWordMask(NewBitWidth);
+  return create(NewBitWidth, ResultWords);
+}
+
+Expected<APInt> APInt::zext(std::uint32_t NewBitWidth) const {
+  if (NewBitWidth <= BitWidth || NewBitWidth > MaxBitWidth)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "APInt zero extension requires a larger supported width");
+  std::vector<std::uint64_t> ResultWords(wordCount(NewBitWidth), 0);
+  std::ranges::copy(Words, ResultWords.begin());
+  return create(NewBitWidth, ResultWords);
+}
+
+Expected<APInt> APInt::sext(std::uint32_t NewBitWidth) const {
+  if (NewBitWidth <= BitWidth || NewBitWidth > MaxBitWidth)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "APInt sign extension requires a larger supported width");
+  std::vector<std::uint64_t> ResultWords(
+      wordCount(NewBitWidth),
+      isNegative() ? std::numeric_limits<std::uint64_t>::max() : std::uint64_t{0});
+  std::ranges::copy(Words, ResultWords.begin());
+  if (isNegative() && BitWidth % 64U != 0)
+    ResultWords[wordCount(BitWidth) - 1U] |= ~highWordMask(BitWidth);
+  ResultWords.back() &= highWordMask(NewBitWidth);
+  return create(NewBitWidth, ResultWords);
 }
 
 int APInt::compare(const APInt &Other) const noexcept {

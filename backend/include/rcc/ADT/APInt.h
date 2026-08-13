@@ -26,6 +26,8 @@ public:
                                               std::span<const std::uint64_t> Words);
   [[nodiscard]] static Expected<APInt> fromUnsigned(std::uint32_t BitWidth, std::uint64_t Value);
   [[nodiscard]] static Expected<APInt> fromSigned(std::uint32_t BitWidth, std::int64_t Value);
+  [[nodiscard]] static Expected<APInt> getLowBitsSet(std::uint32_t BitWidth,
+                                                     std::uint32_t SetBitCount);
   [[nodiscard]] static Expected<APInt> parseDecimal(std::uint32_t BitWidth, std::string_view Text);
   [[nodiscard]] static Expected<APInt> parseLLVMHex(std::uint32_t BitWidth, std::string_view Text);
 
@@ -42,6 +44,9 @@ public:
   [[nodiscard]] std::size_t activeBitWidth() const noexcept;
   [[nodiscard]] std::size_t countrZero() const noexcept;
   [[nodiscard]] std::uint64_t word(std::size_t Index) const noexcept;
+  [[nodiscard]] Expected<APInt> trunc(std::uint32_t NewBitWidth) const;
+  [[nodiscard]] Expected<APInt> zext(std::uint32_t NewBitWidth) const;
+  [[nodiscard]] Expected<APInt> sext(std::uint32_t NewBitWidth) const;
   [[nodiscard]] int compare(const APInt &Other) const noexcept;
   [[nodiscard]] int compareToShifted(const APInt &Other, std::size_t OtherShift) const noexcept;
 

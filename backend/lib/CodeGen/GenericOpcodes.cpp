@@ -451,7 +451,13 @@ private:
     if (Predicate == nullptr || ((Generic == GO::G_ICMP) != Predicate->isInteger())) {
       return semanticError("generic comparison predicate kind does not match its opcode");
     }
-    return requireI1WithShape(TypeAt(0), TypeAt(2), false);
+    const LowLevelType Result = TypeAt(0);
+    const LowLevelType Compared = TypeAt(2);
+    if (!Compared.isVector())
+      return Result.isCategoryNeutralScalar()
+                 ? Expected<void>{}
+                 : semanticError("scalar generic comparison requires a scalar integer result");
+    return requireI1WithShape(Result, Compared, false);
   }
   case GO::G_SCMP:
   case GO::G_UCMP:
