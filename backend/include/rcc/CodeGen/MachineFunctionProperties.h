@@ -34,7 +34,6 @@ enum class MachineFunctionProperty : std::uint8_t {
   Count,
 };
 
-[[nodiscard]] bool isKnownMachineFunctionProperty(MachineFunctionProperty Property) noexcept;
 [[nodiscard]] std::string_view
 getMachineFunctionPropertyName(MachineFunctionProperty Property) noexcept;
 

@@ -28,10 +28,6 @@ static_assert(PropertyNames.size() == static_cast<std::size_t>(MachineFunctionPr
 
 } // namespace
 
-bool isKnownMachineFunctionProperty(MachineFunctionProperty Property) noexcept {
-  return static_cast<std::size_t>(Property) < PropertyNames.size();
-}
-
 std::string_view getMachineFunctionPropertyName(MachineFunctionProperty Property) noexcept {
   const auto Index = static_cast<std::size_t>(Property);
   if (Index >= PropertyNames.size())
