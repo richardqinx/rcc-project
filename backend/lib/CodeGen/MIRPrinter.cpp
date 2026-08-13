@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/MIRPrinter.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InlineAsm.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MIRYamlMapping.h"
@@ -2877,8 +2878,8 @@ Expected<void> BodyPrinter::printInstruction(const MachineInstr &Instruction) {
       continue;
     }
     bool PrintVirtualType = true;
-    if (Descriptor->Flags.has(InstructionFlag::Generic) &&
-        !Descriptor->Flags.has(InstructionFlag::Phi) && Index < Descriptor->Operands.size()) {
+    if (isGenericOpcode(Instruction.opcode()) && !Descriptor->Flags.has(InstructionFlag::Phi) &&
+        Index < Descriptor->Operands.size()) {
       const std::optional<OperandTypeConstraint> &UseConstraint =
           Descriptor->Operands[Index].TypeConstraint;
       if (UseConstraint) {
