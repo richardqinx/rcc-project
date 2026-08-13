@@ -7,10 +7,12 @@
 #include "rcc/Support/Error.h"
 
 #include <string>
+#include <vector>
 
 namespace rcc {
 
 class MachineFunction;
+class MachineBasicBlock;
 class TargetDescription;
 
 namespace mir {
@@ -23,6 +25,11 @@ enum class MIPrintMode : unsigned char {
 struct MIPrinterOptions final {
   MIPrintMode Mode = MIPrintMode::Complete;
 };
+
+[[nodiscard]] Expected<void> guessSuccessors(const MachineBasicBlock &Block,
+                                             const TargetDescription &Target,
+                                             std::vector<MachineBasicBlock *> &Result,
+                                             bool &IsFallthrough);
 
 [[nodiscard]] Expected<std::string> printMachineFunctionBody(const MachineFunction &Function,
                                                              const TargetDescription &Target,

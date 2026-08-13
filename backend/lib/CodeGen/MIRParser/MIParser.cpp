@@ -7,6 +7,7 @@
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InlineAsm.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
+#include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MIRYamlMapping.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
@@ -2860,25 +2861,11 @@ bool MIParser::Impl::inferSuccessors() {
     if (ExplicitSuccessorBlocks.contains(Block))
       continue;
 
-    bool BlocksFallthrough = true;
     std::vector<MachineBasicBlock *> Successors;
-    for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
-         Instruction = Instruction->next()) {
-      const InstructionDescriptor *Descriptor =
-          Target.instructions().descriptor(Instruction->opcode());
-      if (Descriptor == nullptr)
-        return fail("instruction has no target descriptor while inferring successors");
-      if (Descriptor->Flags.has(InstructionFlag::Branch)) {
-        for (const MachineOperand &Operand : Instruction->operands()) {
-          if (const BasicBlockOperand *TargetBlock = Operand.getIf<BasicBlockOperand>()) {
-            if (std::ranges::find(Successors, TargetBlock->Block) == Successors.end())
-              Successors.push_back(TargetBlock->Block);
-          }
-        }
-      }
-      if (Descriptor->Flags.has(InstructionFlag::Barrier))
-        BlocksFallthrough = false;
-    }
+    bool BlocksFallthrough = false;
+    auto Guessed = guessSuccessors(*Block, Target, Successors, BlocksFallthrough);
+    if (!Guessed)
+      return importError(token(), Guessed.error());
     if (BlocksFallthrough && Block->next() != nullptr &&
         std::ranges::find(Successors, Block->next()) == Successors.end())
       Successors.push_back(Block->next());

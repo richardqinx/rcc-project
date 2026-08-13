@@ -3069,9 +3069,36 @@ Expected<void> BodyPrinter::printBlock(const MachineBasicBlock &Block) {
   }
   Output.append(":\n");
 
+  bool CanPredictProbabilities = true;
+  if (Block.successors().size() > 1) {
+    const BranchProbability FirstProbability = Block.successors().front().Probability;
+    CanPredictProbabilities = std::ranges::all_of(
+        Block.successors(), [FirstProbability](const MachineSuccessor &Successor) {
+          return Successor.Probability == FirstProbability;
+        });
+  }
+  std::vector<MachineBasicBlock *> GuessedSuccessors;
+  bool IsFallthrough = false;
+  auto Guessed = guessSuccessors(Block, Target, GuessedSuccessors, IsFallthrough);
+  if (!Guessed)
+    return std::unexpected(Guessed.error());
+  MachineBasicBlock *NextBlock = const_cast<MachineBasicBlock *>(Block.next());
+  if (IsFallthrough && NextBlock != nullptr &&
+      std::ranges::find(GuessedSuccessors, NextBlock) == GuessedSuccessors.end()) {
+    GuessedSuccessors.push_back(NextBlock);
+  }
+  const bool CanPredictSuccessors =
+      GuessedSuccessors.size() == Block.successors().size() &&
+      std::ranges::equal(GuessedSuccessors, Block.successors(), {}, {},
+                         [](const MachineSuccessor &Successor) { return Successor.Block; });
+
   bool HasLineAttributes = false;
-  if (!Block.successors().empty()) {
-    Output.append("  successors: ");
+  const bool Simplify = Options.Mode == MIPrintMode::Readable;
+  if ((!Block.successors().empty() && !Simplify) || !CanPredictProbabilities ||
+      !CanPredictSuccessors) {
+    Output.append("  successors:");
+    if (!Block.successors().empty())
+      Output.push_back(' ');
     for (std::size_t Index = 0; Index < Block.successors().size(); ++Index) {
       if (Index != 0)
         Output.append(", ");
@@ -3081,10 +3108,12 @@ Expected<void> BodyPrinter::printBlock(const MachineBasicBlock &Block) {
                               "successor references an unlinked block");
       }
       appendBlockReference(*Successor.Block);
-      Output.append("(0x");
-      Output.append(hexadecimalWords(
-          std::array{static_cast<std::uint64_t>(Successor.Probability.rawValue())}, 32));
-      Output.push_back(')');
+      if (!Simplify || !CanPredictProbabilities) {
+        Output.append("(0x");
+        Output.append(hexadecimalWords(
+            std::array{static_cast<std::uint64_t>(Successor.Probability.rawValue())}, 32));
+        Output.push_back(')');
+      }
     }
     Output.push_back('\n');
     HasLineAttributes = true;
@@ -3156,6 +3185,35 @@ Expected<std::string> BodyPrinter::run() {
 }
 
 } // namespace
+
+Expected<void> guessSuccessors(const MachineBasicBlock &Block, const TargetDescription &Target,
+                               std::vector<MachineBasicBlock *> &Result, bool &IsFallthrough) {
+  Result.clear();
+  const InstructionDescriptor *LastCodeDescriptor = nullptr;
+  for (const MachineInstr *Instruction = Block.firstInstruction(); Instruction != nullptr;
+       Instruction = Instruction->next()) {
+    const InstructionDescriptor *Descriptor =
+        Target.instructions().descriptor(Instruction->opcode());
+    if (Descriptor == nullptr) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "instruction has no target descriptor while inferring successors");
+    }
+    if (!Descriptor->Flags.has(InstructionFlag::Phi)) {
+      for (const MachineOperand &Operand : Instruction->operands()) {
+        const BasicBlockOperand *TargetBlock = Operand.getIf<BasicBlockOperand>();
+        if (TargetBlock != nullptr && TargetBlock->Block != nullptr &&
+            std::ranges::find(Result, TargetBlock->Block) == Result.end()) {
+          Result.push_back(TargetBlock->Block);
+        }
+      }
+    }
+    if (!Descriptor->Flags.has(InstructionFlag::Meta))
+      LastCodeDescriptor = Descriptor;
+  }
+  IsFallthrough =
+      LastCodeDescriptor == nullptr || !LastCodeDescriptor->Flags.has(InstructionFlag::Barrier);
+  return {};
+}
 
 Expected<std::string> printMachineFunctionBody(const MachineFunction &Function,
                                                const TargetDescription &Target,
