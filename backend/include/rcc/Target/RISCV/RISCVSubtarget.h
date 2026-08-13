@@ -34,6 +34,35 @@ enum class RISCVExtension : std::uint8_t {
   Count,
 };
 
+enum class RISCVSubtargetOption : std::uint8_t {
+  DisablePostMISchedLoadClustering,
+  DisablePostMISchedStoreClustering,
+  FusionAddLoad,
+  FusionAddMemory,
+  FusionAddImmediateLoad,
+  FusionAUIPCAddImmediate,
+  FusionAUIPCLoad,
+  FusionLoadDoubleAdd,
+  FusionLogicImmediateRegister,
+  FusionLogicRegisterImmediate,
+  FusionLogicRegisterRegister,
+  FusionLUIAddImmediate,
+  FusionLUILoad,
+  FusionMultiplyAdd,
+  FusionShiftBitExtract,
+  FusionShiftedZeroExtendWord,
+  FusionZeroExtendHalf,
+  FusionZeroExtendWord,
+  PreferWordInstructions,
+  ReserveX6,
+  ReserveX7,
+  SaveRestore,
+  TaggedGlobals,
+  UnalignedScalarMemory,
+  UsePostRAScheduler,
+  Count,
+};
+
 class RISCVSubtargetFeatures final {
 public:
   [[nodiscard]] static Expected<RISCVSubtargetFeatures>
@@ -41,14 +70,18 @@ public:
   [[nodiscard]] static RISCVSubtargetFeatures rv64gc() noexcept;
 
   [[nodiscard]] bool has(RISCVExtension Extension) const noexcept;
+  [[nodiscard]] bool has(RISCVSubtargetOption Option) const noexcept;
 
   friend bool operator==(const RISCVSubtargetFeatures &Left,
                          const RISCVSubtargetFeatures &Right) = default;
 
 private:
-  explicit constexpr RISCVSubtargetFeatures(std::uint16_t Enabled) noexcept : Enabled(Enabled) {}
+  explicit constexpr RISCVSubtargetFeatures(std::uint16_t Enabled,
+                                            std::uint32_t Options = 0) noexcept
+      : Enabled(Enabled), Options(Options) {}
 
   std::uint16_t Enabled = 0;
+  std::uint32_t Options = 0;
 };
 
 class RISCVSubtarget final {
