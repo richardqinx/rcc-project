@@ -2312,14 +2312,18 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
         buildBinaryBefore(Builder, Anchor, GenericOpcode::G_ADD, *Type, Left[Index], Right[Index]);
     if (!Base)
       return std::unexpected(Base.error());
+    Register BaseCarry;
+    if (Index + 1U < Left.size()) {
+      auto Compared = buildIntegerCompareBefore(Builder, Anchor, IntegerPredicate::UnsignedLessThan,
+                                                *Base, Left[Index]);
+      if (!Compared)
+        return std::unexpected(Compared.error());
+      BaseCarry = *Compared;
+    }
     auto Sum = buildBinaryBefore(Builder, Anchor, GenericOpcode::G_ADD, *Type, *Base, *Carry);
     if (!Sum)
       return std::unexpected(Sum.error());
     if (Index + 1U < Left.size()) {
-      auto BaseCarry = buildIntegerCompareBefore(
-          Builder, Anchor, IntegerPredicate::UnsignedLessThan, *Base, Left[Index]);
-      if (!BaseCarry)
-        return std::unexpected(BaseCarry.error());
       auto Zero = buildIntegerConstantBefore(Builder, Anchor, 64, 0);
       if (!Zero)
         return std::unexpected(Zero.error());
@@ -2331,7 +2335,7 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
           buildBinaryBefore(Builder, Anchor, GenericOpcode::G_AND, *Type, *IsZero, *Carry);
       if (!CarryFromIncoming)
         return std::unexpected(CarryFromIncoming.error());
-      auto NextCarry = buildBinaryBefore(Builder, Anchor, GenericOpcode::G_OR, *Type, *BaseCarry,
+      auto NextCarry = buildBinaryBefore(Builder, Anchor, GenericOpcode::G_OR, *Type, BaseCarry,
                                          *CarryFromIncoming);
       if (!NextCarry)
         return std::unexpected(NextCarry.error());
@@ -2370,16 +2374,20 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
         buildBinaryBefore(Builder, Anchor, GenericOpcode::G_SUB, *Type, Left[Index], Right[Index]);
     if (!Base)
       return std::unexpected(Base.error());
+    Register BaseBorrow;
+    if (Index + 1U < Left.size()) {
+      auto Compared = buildIntegerCompareBefore(
+          Builder, Anchor, IntegerPredicate::UnsignedGreaterThan, *Base, Left[Index]);
+      if (!Compared)
+        return std::unexpected(Compared.error());
+      BaseBorrow = *Compared;
+    }
     auto Difference =
         buildBinaryBefore(Builder, Anchor, GenericOpcode::G_SUB, *Type, *Base, *Borrow);
     if (!Difference)
       return std::unexpected(Difference.error());
     Results.push_back(*Difference);
     if (Index + 1U < Left.size()) {
-      auto BaseBorrow = buildIntegerCompareBefore(
-          Builder, Anchor, IntegerPredicate::UnsignedGreaterThan, *Base, Left[Index]);
-      if (!BaseBorrow)
-        return std::unexpected(BaseBorrow.error());
       auto Zero = buildIntegerConstantBefore(Builder, Anchor, 64, 0);
       if (!Zero)
         return std::unexpected(Zero.error());
@@ -2391,7 +2399,7 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
           buildBinaryBefore(Builder, Anchor, GenericOpcode::G_AND, *Type, *IsZero, *Borrow);
       if (!BorrowFromIncoming)
         return std::unexpected(BorrowFromIncoming.error());
-      auto NextBorrow = buildBinaryBefore(Builder, Anchor, GenericOpcode::G_OR, *Type, *BaseBorrow,
+      auto NextBorrow = buildBinaryBefore(Builder, Anchor, GenericOpcode::G_OR, *Type, BaseBorrow,
                                           *BorrowFromIncoming);
       if (!NextBorrow)
         return std::unexpected(NextBorrow.error());
