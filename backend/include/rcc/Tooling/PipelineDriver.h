@@ -77,6 +77,7 @@ runRV64GCPipeline(mir::MIRDocument &Document, const TargetDescription &Target,
                   const BackendInvocation &Invocation, PipelineControls Controls = {},
                   MachinePassInstrumentation *Instrumentation = nullptr);
 [[nodiscard]] BackendStage stageForFunction(const MachineFunction &Function) noexcept;
+[[nodiscard]] bool isEarlierStage(BackendStage Left, BackendStage Right) noexcept;
 [[nodiscard]] std::string_view spelling(BackendStage Stage) noexcept;
 [[nodiscard]] Expected<BackendStage> parseBackendStage(std::string_view Value);
 

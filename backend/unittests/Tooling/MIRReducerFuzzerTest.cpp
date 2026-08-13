@@ -110,7 +110,7 @@ int main() {
   if (!RegBankInput)
     return tooling_test::fail(RegBankInput.error().message());
   auto RegBank = rcc::tooling::runBackend(std::move(*RegBankInput), *Target, Invocation,
-                                          rcc::tooling::BackendOutputKind::RegisterBankMIR);
+                                          rcc::tooling::ArtifactKind::RegisterBankMIR);
   if (!RegBank)
     return tooling_test::fail(RegBank.error().message());
   rcc::tooling::BackendInvocation FailureInvocation = Invocation;
@@ -123,7 +123,7 @@ int main() {
     if (!Input)
       return rcc::Expected<bool>(std::unexpected(Input.error()));
     auto Run = rcc::tooling::runBackend(std::move(*Input), *Target, Candidate,
-                                        rcc::tooling::BackendOutputKind::SelectedMIR);
+                                        rcc::tooling::ArtifactKind::SelectedMIR);
     return rcc::Expected<bool>(!Run && Run.error().code() == rcc::ErrorCode::VerificationError);
   };
   rcc::tooling::MIRReducerOptions FailureOptions;

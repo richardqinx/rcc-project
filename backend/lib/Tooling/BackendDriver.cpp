@@ -17,34 +17,26 @@
 namespace rcc::tooling {
 namespace {
 
-[[nodiscard]] bool isMIR(BackendOutputKind Output) noexcept {
-  return Output <= BackendOutputKind::FinalMIR;
-}
-
-[[nodiscard]] BackendStage outputStage(BackendOutputKind Output) noexcept {
+[[nodiscard]] BackendStage outputStage(ArtifactKind Output) noexcept {
   switch (Output) {
-  case BackendOutputKind::PreLegalizerMIR:
+  case ArtifactKind::PreLegalizerMIR:
     return BackendStage::PreLegalizerMIR;
-  case BackendOutputKind::LegalizedMIR:
+  case ArtifactKind::LegalizedMIR:
     return BackendStage::LegalizedMIR;
-  case BackendOutputKind::RegisterBankMIR:
+  case ArtifactKind::RegisterBankMIR:
     return BackendStage::RegisterBankMIR;
-  case BackendOutputKind::SelectedMIR:
+  case ArtifactKind::SelectedMIR:
     return BackendStage::SelectedMIR;
-  case BackendOutputKind::PostSSAMIR:
+  case ArtifactKind::PostSSAMIR:
     return BackendStage::PostSSAMIR;
-  case BackendOutputKind::PostRegisterAllocationMIR:
+  case ArtifactKind::PostRegisterAllocationMIR:
     return BackendStage::PostRegisterAllocationMIR;
-  case BackendOutputKind::FinalMIR:
-  case BackendOutputKind::Assembly:
-  case BackendOutputKind::RelocatableObject:
+  case ArtifactKind::FinalMIR:
+  case ArtifactKind::Assembly:
+  case ArtifactKind::RelocatableObject:
     return BackendStage::FinalMIR;
   }
   return BackendStage::FinalMIR;
-}
-
-[[nodiscard]] std::uint8_t ordinal(BackendStage Stage) noexcept {
-  return static_cast<std::uint8_t>(Stage);
 }
 
 [[nodiscard]] Expected<std::vector<std::uint8_t>> printMIR(const mir::MIRDocument &Document,
@@ -64,13 +56,13 @@ namespace {
 } // namespace
 
 std::string_view BackendRunResult::text() const noexcept {
-  if (Kind == BackendOutputKind::RelocatableObject || Output.empty())
+  if (Kind == ArtifactKind::RelocatableObject || Output.empty())
     return {};
   return {reinterpret_cast<const char *>(Output.data()), Output.size()};
 }
 
 Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescription &Target,
-                                      const BackendInvocation &Invocation, BackendOutputKind Output,
+                                      const BackendInvocation &Invocation, ArtifactKind Output,
                                       PipelineControls Controls,
                                       MachinePassInstrumentation *Instrumentation) {
   auto InvocationVerification = verifyRV64GCInvocation(Invocation);
@@ -87,16 +79,16 @@ Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescriptio
     if (Function == nullptr)
       return makeUnexpected(ErrorCode::InternalError, "backend input contains a null function");
     const BackendStage Stage = stageForFunction(*Function);
-    if (Index == 0 || ordinal(Stage) < ordinal(InitialStage))
+    if (Index == 0 || isEarlierStage(Stage, InitialStage))
       InitialStage = Stage;
   }
   const BackendStage RequiredStage = outputStage(Output);
-  if (isMIR(Output) && ordinal(RequiredStage) < ordinal(InitialStage)) {
+  if (isMIRArtifact(Output) && isEarlierStage(RequiredStage, InitialStage)) {
     return makeUnexpected(ErrorCode::InvalidInvocation,
                           "backend cannot reconstruct an earlier MIR stage from a later snapshot");
   }
 
-  if (isMIR(Output)) {
+  if (isMIRArtifact(Output)) {
     if (Controls.StopAtStage && *Controls.StopAtStage != RequiredStage) {
       return makeUnexpected(ErrorCode::InvalidInvocation,
                             "output stage conflicts with the explicit pipeline stop stage");
@@ -115,12 +107,12 @@ Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescriptio
     return std::unexpected(Pipeline.error());
 
   std::vector<std::uint8_t> Bytes;
-  if (isMIR(Output)) {
+  if (isMIRArtifact(Output)) {
     auto Printed = printMIR(Input.Document, Target, Invocation, SimplifyMIR);
     if (!Printed)
       return std::unexpected(Printed.error());
     Bytes = std::move(*Printed);
-  } else if (Output == BackendOutputKind::Assembly) {
+  } else if (Output == ArtifactKind::Assembly) {
     auto Assembly = riscv::emitAssembly(Input.Document.unit(), Target);
     if (!Assembly)
       return std::unexpected(Assembly.error());
@@ -138,77 +130,6 @@ Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescriptio
       .Pipeline = std::move(*Pipeline),
       .Actions = ActiveInstrumentation->actionEvents(),
   };
-}
-
-std::string_view spelling(BackendOutputKind Output) noexcept {
-  switch (Output) {
-  case BackendOutputKind::PreLegalizerMIR:
-    return "prelegalizer-mir";
-  case BackendOutputKind::LegalizedMIR:
-    return "legalized-mir";
-  case BackendOutputKind::RegisterBankMIR:
-    return "regbank-mir";
-  case BackendOutputKind::SelectedMIR:
-    return "selected-mir";
-  case BackendOutputKind::PostSSAMIR:
-    return "post-ssa-mir";
-  case BackendOutputKind::PostRegisterAllocationMIR:
-    return "post-ra-mir";
-  case BackendOutputKind::FinalMIR:
-    return "final-mir";
-  case BackendOutputKind::Assembly:
-    return "assembly";
-  case BackendOutputKind::RelocatableObject:
-    return "object";
-  }
-  return "invalid";
-}
-
-ArtifactKind manifestArtifactKind(BackendOutputKind Output) noexcept {
-  switch (Output) {
-  case BackendOutputKind::PreLegalizerMIR:
-    return ArtifactKind::PreLegalizerMIR;
-  case BackendOutputKind::LegalizedMIR:
-    return ArtifactKind::LegalizedMIR;
-  case BackendOutputKind::RegisterBankMIR:
-    return ArtifactKind::RegisterBankMIR;
-  case BackendOutputKind::SelectedMIR:
-    return ArtifactKind::SelectedMIR;
-  case BackendOutputKind::PostSSAMIR:
-    return ArtifactKind::PostSSAMIR;
-  case BackendOutputKind::PostRegisterAllocationMIR:
-    return ArtifactKind::PostRegisterAllocationMIR;
-  case BackendOutputKind::FinalMIR:
-    return ArtifactKind::FinalMIR;
-  case BackendOutputKind::Assembly:
-    return ArtifactKind::Assembly;
-  case BackendOutputKind::RelocatableObject:
-    return ArtifactKind::RelocatableObject;
-  }
-  return ArtifactKind::FinalMIR;
-}
-
-Expected<ArtifactKind> cacheArtifactKind(BackendOutputKind Output) {
-  switch (Output) {
-  case BackendOutputKind::PreLegalizerMIR:
-    return ArtifactKind::PreLegalizerMIR;
-  case BackendOutputKind::SelectedMIR:
-    return ArtifactKind::SelectedMIR;
-  case BackendOutputKind::PostRegisterAllocationMIR:
-    return ArtifactKind::PostRegisterAllocationMIR;
-  case BackendOutputKind::FinalMIR:
-    return ArtifactKind::FinalMIR;
-  case BackendOutputKind::Assembly:
-    return ArtifactKind::Assembly;
-  case BackendOutputKind::RelocatableObject:
-    return ArtifactKind::RelocatableObject;
-  case BackendOutputKind::LegalizedMIR:
-  case BackendOutputKind::RegisterBankMIR:
-  case BackendOutputKind::PostSSAMIR:
-    return makeUnexpected(ErrorCode::InvalidInvocation,
-                          "the selected intermediate stage is not a cache boundary");
-  }
-  return makeUnexpected(ErrorCode::InvalidInvocation, "invalid backend output kind");
 }
 
 } // namespace rcc::tooling

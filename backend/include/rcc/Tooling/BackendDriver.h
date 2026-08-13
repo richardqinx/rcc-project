@@ -19,20 +19,8 @@ class TargetDescription;
 
 namespace tooling {
 
-enum class BackendOutputKind : std::uint8_t {
-  PreLegalizerMIR,
-  LegalizedMIR,
-  RegisterBankMIR,
-  SelectedMIR,
-  PostSSAMIR,
-  PostRegisterAllocationMIR,
-  FinalMIR,
-  Assembly,
-  RelocatableObject,
-};
-
 struct BackendRunResult final {
-  BackendOutputKind Kind = BackendOutputKind::FinalMIR;
+  ArtifactKind Kind = ArtifactKind::FinalMIR;
   std::vector<std::uint8_t> Output;
   PipelineRunResult Pipeline;
   std::vector<MachineActionEvent> Actions;
@@ -42,12 +30,8 @@ struct BackendRunResult final {
 
 [[nodiscard]] Expected<BackendRunResult>
 runBackend(CanonicalMIR Input, const TargetDescription &Target, const BackendInvocation &Invocation,
-           BackendOutputKind Output, PipelineControls Controls = {},
+           ArtifactKind Output, PipelineControls Controls = {},
            MachinePassInstrumentation *Instrumentation = nullptr);
-
-[[nodiscard]] std::string_view spelling(BackendOutputKind Output) noexcept;
-[[nodiscard]] ArtifactKind manifestArtifactKind(BackendOutputKind Output) noexcept;
-[[nodiscard]] Expected<ArtifactKind> cacheArtifactKind(BackendOutputKind Output);
 
 } // namespace tooling
 } // namespace rcc

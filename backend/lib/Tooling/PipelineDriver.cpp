@@ -34,8 +34,24 @@ struct FunctionRunResult final {
   std::optional<Error> Failure;
 };
 
-[[nodiscard]] unsigned stageOrdinal(BackendStage Stage) noexcept {
-  return static_cast<unsigned>(Stage);
+[[nodiscard]] std::uint8_t stageRank(BackendStage Stage) noexcept {
+  switch (Stage) {
+  case BackendStage::PreLegalizerMIR:
+    return 0;
+  case BackendStage::LegalizedMIR:
+    return 1;
+  case BackendStage::RegisterBankMIR:
+    return 2;
+  case BackendStage::SelectedMIR:
+    return 3;
+  case BackendStage::PostSSAMIR:
+    return 4;
+  case BackendStage::PostRegisterAllocationMIR:
+    return 5;
+  case BackendStage::FinalMIR:
+    return 6;
+  }
+  return 0;
 }
 
 [[nodiscard]] bool selectorMatches(std::string_view Selector, std::string_view Pass,
@@ -224,7 +240,7 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
     if (!Captured)
       return std::unexpected(Captured.error());
   }
-  if (Controls.StopAtStage && stageOrdinal(CurrentStage) >= stageOrdinal(*Controls.StopAtStage)) {
+  if (Controls.StopAtStage && !isEarlierStage(CurrentStage, *Controls.StopAtStage)) {
     return Result;
   }
 
@@ -289,7 +305,7 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
       StopMatched = true;
       break;
     }
-    if (Controls.StopAtStage && stageOrdinal(CurrentStage) >= stageOrdinal(*Controls.StopAtStage)) {
+    if (Controls.StopAtStage && !isEarlierStage(CurrentStage, *Controls.StopAtStage)) {
       break;
     }
   }
@@ -313,6 +329,10 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
 }
 
 } // namespace
+
+bool isEarlierStage(BackendStage Left, BackendStage Right) noexcept {
+  return stageRank(Left) < stageRank(Right);
+}
 
 BackendStage stageForFunction(const MachineFunction &Function) noexcept {
   const MachineFunctionProperties &Properties = Function.properties();

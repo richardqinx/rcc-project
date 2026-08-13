@@ -31,7 +31,7 @@ printDocument(const rcc::mir::MIRDocument &Document, const rcc::TargetDescriptio
 
 [[nodiscard]] rcc::Expected<rcc::tooling::BackendRunResult>
 runInput(std::string_view SourceName, std::string SourceText, const rcc::TargetDescription &Target,
-         const rcc::tooling::BackendInvocation &Invocation, rcc::tooling::BackendOutputKind Output,
+         const rcc::tooling::BackendInvocation &Invocation, rcc::tooling::ArtifactKind Output,
          rcc::tooling::PipelineControls Controls = {}) {
   auto Input = rcc::tooling::parseAndCanonicalizeMIR(std::string(SourceName), std::move(SourceText),
                                                      Target, Invocation);
@@ -70,15 +70,15 @@ runDeterminismCase(std::string_view Input, const rcc::TargetDescription &Target,
   rcc::tooling::BackendInvocation Invocation = rcc::tooling::defaultRV64GCInvocation();
   Invocation.Determinism.ThreadCount = ThreadCount;
   auto Final = runInput("determinism-final.mir", std::string(Input), Target, Invocation,
-                        rcc::tooling::BackendOutputKind::FinalMIR);
+                        rcc::tooling::ArtifactKind::FinalMIR);
   if (!Final)
     return std::unexpected(Final.error());
   auto Assembly = runInput("determinism-assembly.mir", std::string(Input), Target, Invocation,
-                           rcc::tooling::BackendOutputKind::Assembly);
+                           rcc::tooling::ArtifactKind::Assembly);
   if (!Assembly)
     return std::unexpected(Assembly.error());
   auto Object = runInput("determinism-object.mir", std::string(Input), Target, Invocation,
-                         rcc::tooling::BackendOutputKind::RelocatableObject);
+                         rcc::tooling::ArtifactKind::RelocatableObject);
   if (!Object)
     return std::unexpected(Object.error());
   return DeterministicOutputs{
@@ -108,7 +108,7 @@ int main() {
   if (!CanonicalAtomicOnly)
     return tooling_test::fail(CanonicalAtomicOnly.error().message());
   auto AtomicOnlyRun = runInput("atomic-only.mir", *Source, *Target, AtomicOnlyInvocation,
-                                rcc::tooling::BackendOutputKind::LegalizedMIR);
+                                rcc::tooling::ArtifactKind::LegalizedMIR);
   if (!AtomicOnlyRun)
     return tooling_test::fail(AtomicOnlyRun.error().message());
 
@@ -121,19 +121,16 @@ int main() {
     return tooling_test::fail("RV64 backend invocation must reject unsupported target features");
 
   constexpr std::array StageCases{
-      std::pair{rcc::tooling::BackendOutputKind::PreLegalizerMIR,
+      std::pair{rcc::tooling::ArtifactKind::PreLegalizerMIR,
                 rcc::tooling::BackendStage::PreLegalizerMIR},
-      std::pair{rcc::tooling::BackendOutputKind::LegalizedMIR,
-                rcc::tooling::BackendStage::LegalizedMIR},
-      std::pair{rcc::tooling::BackendOutputKind::RegisterBankMIR,
+      std::pair{rcc::tooling::ArtifactKind::LegalizedMIR, rcc::tooling::BackendStage::LegalizedMIR},
+      std::pair{rcc::tooling::ArtifactKind::RegisterBankMIR,
                 rcc::tooling::BackendStage::RegisterBankMIR},
-      std::pair{rcc::tooling::BackendOutputKind::SelectedMIR,
-                rcc::tooling::BackendStage::SelectedMIR},
-      std::pair{rcc::tooling::BackendOutputKind::PostSSAMIR,
-                rcc::tooling::BackendStage::PostSSAMIR},
-      std::pair{rcc::tooling::BackendOutputKind::PostRegisterAllocationMIR,
+      std::pair{rcc::tooling::ArtifactKind::SelectedMIR, rcc::tooling::BackendStage::SelectedMIR},
+      std::pair{rcc::tooling::ArtifactKind::PostSSAMIR, rcc::tooling::BackendStage::PostSSAMIR},
+      std::pair{rcc::tooling::ArtifactKind::PostRegisterAllocationMIR,
                 rcc::tooling::BackendStage::PostRegisterAllocationMIR},
-      std::pair{rcc::tooling::BackendOutputKind::FinalMIR, rcc::tooling::BackendStage::FinalMIR},
+      std::pair{rcc::tooling::ArtifactKind::FinalMIR, rcc::tooling::BackendStage::FinalMIR},
   };
   std::optional<std::string> SelectedMIR;
   for (const auto &[Output, ExpectedStage] : StageCases) {
@@ -153,18 +150,18 @@ int main() {
           "MIR output requested " + std::string(rcc::tooling::spelling(ExpectedStage)) +
           " but reparsed as " + std::string(rcc::tooling::spelling(ActualStage)));
     }
-    if (Output == rcc::tooling::BackendOutputKind::SelectedMIR)
+    if (Output == rcc::tooling::ArtifactKind::SelectedMIR)
       SelectedMIR = std::string(Run->text());
   }
 
-  auto Assembly = runInput("assembly.mir", *Source, *Target, Invocation,
-                           rcc::tooling::BackendOutputKind::Assembly);
+  auto Assembly =
+      runInput("assembly.mir", *Source, *Target, Invocation, rcc::tooling::ArtifactKind::Assembly);
   if (!Assembly || !Assembly->text().contains("generic_pipeline") ||
       !Assembly->text().contains("jalr x0, x1, 0")) {
     return tooling_test::fail("assembly output must use the complete RV64GC production pipeline");
   }
   auto Object = runInput("object.mir", *Source, *Target, Invocation,
-                         rcc::tooling::BackendOutputKind::RelocatableObject);
+                         rcc::tooling::ArtifactKind::RelocatableObject);
   constexpr std::array<std::uint8_t, 4> ELFMagic{0x7fU, 'E', 'L', 'F'};
   if (!Object || Object->Output.size() < ELFMagic.size() ||
       !std::ranges::equal(ELFMagic, std::span<const std::uint8_t>(Object->Output).first(4))) {
@@ -241,13 +238,13 @@ int main() {
   if (!LaterInput)
     return tooling_test::fail(LaterInput.error().message());
   if (rcc::tooling::runBackend(std::move(*LaterInput), *Target, Invocation,
-                               rcc::tooling::BackendOutputKind::PreLegalizerMIR)) {
+                               rcc::tooling::ArtifactKind::PreLegalizerMIR)) {
     return tooling_test::fail(
         "backend must not reconstruct an earlier stage from a later snapshot");
   }
 
   auto RegBankRun = runInput("action-regbank.mir", *Source, *Target, Invocation,
-                             rcc::tooling::BackendOutputKind::RegisterBankMIR);
+                             rcc::tooling::ArtifactKind::RegisterBankMIR);
   if (!RegBankRun)
     return tooling_test::fail(RegBankRun.error().message());
   rcc::tooling::BackendInvocation InstructionSelectInvocation = Invocation;
@@ -269,10 +266,10 @@ int main() {
   InstructionSelectInvocation.ActionFuel.reset();
   auto AcceptedFirst =
       runInput("action-accepted-1.mir", std::string(RegBankRun->text()), *Target,
-               InstructionSelectInvocation, rcc::tooling::BackendOutputKind::SelectedMIR);
+               InstructionSelectInvocation, rcc::tooling::ArtifactKind::SelectedMIR);
   auto AcceptedSecond =
       runInput("action-accepted-2.mir", std::string(RegBankRun->text()), *Target,
-               InstructionSelectInvocation, rcc::tooling::BackendOutputKind::SelectedMIR);
+               InstructionSelectInvocation, rcc::tooling::ArtifactKind::SelectedMIR);
   if (!AcceptedFirst || !AcceptedSecond || AcceptedFirst->Actions.empty() ||
       AcceptedFirst->Actions != AcceptedSecond->Actions ||
       AcceptedFirst->Output != AcceptedSecond->Output) {

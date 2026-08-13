@@ -36,7 +36,6 @@ using rcc::ErrorCode;
 using rcc::Expected;
 using rcc::tooling::ArtifactKind;
 using rcc::tooling::BackendInvocation;
-using rcc::tooling::BackendOutputKind;
 using rcc::tooling::BackendRunResult;
 using rcc::tooling::CanonicalMIR;
 
@@ -64,7 +63,7 @@ struct CommandLine final {
   std::string OutputPath = "-";
   std::filesystem::path ReproducerPath;
   std::filesystem::path CachePath;
-  BackendOutputKind Output = BackendOutputKind::FinalMIR;
+  ArtifactKind Output = ArtifactKind::FinalMIR;
   BackendInvocation Invocation = rcc::tooling::defaultRV64GCInvocation();
   rcc::tooling::PipelineControls Controls;
   rcc::tooling::MIRFuzzOptions FuzzOptions;
@@ -635,17 +634,17 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
                                "-run-pass cannot be used with a limited code-generation pipeline");
   }
   if (ExplicitPipeline || HasLimitedCodeGenPipeline) {
-    Command.Output = BackendOutputKind::FinalMIR;
+    Command.Output = ArtifactKind::FinalMIR;
   } else {
     switch (CodeGenFlags.FileType) {
     case rcc::CodeGenFileType::AssemblyFile:
-      Command.Output = BackendOutputKind::Assembly;
+      Command.Output = ArtifactKind::Assembly;
       break;
     case rcc::CodeGenFileType::ObjectFile:
-      Command.Output = BackendOutputKind::RelocatableObject;
+      Command.Output = ArtifactKind::RelocatableObject;
       break;
     case rcc::CodeGenFileType::Null:
-      Command.Output = BackendOutputKind::Assembly;
+      Command.Output = ArtifactKind::Assembly;
       Command.DiscardOutput = true;
       break;
     }
@@ -715,30 +714,6 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
   return writeOutput(Path, std::span<const std::uint8_t>(Bytes, Text.size()));
 }
 
-[[nodiscard]] Expected<BackendOutputKind> outputFromArtifact(ArtifactKind Artifact) {
-  switch (Artifact) {
-  case ArtifactKind::PreLegalizerMIR:
-    return BackendOutputKind::PreLegalizerMIR;
-  case ArtifactKind::LegalizedMIR:
-    return BackendOutputKind::LegalizedMIR;
-  case ArtifactKind::RegisterBankMIR:
-    return BackendOutputKind::RegisterBankMIR;
-  case ArtifactKind::SelectedMIR:
-    return BackendOutputKind::SelectedMIR;
-  case ArtifactKind::PostSSAMIR:
-    return BackendOutputKind::PostSSAMIR;
-  case ArtifactKind::PostRegisterAllocationMIR:
-    return BackendOutputKind::PostRegisterAllocationMIR;
-  case ArtifactKind::FinalMIR:
-    return BackendOutputKind::FinalMIR;
-  case ArtifactKind::Assembly:
-    return BackendOutputKind::Assembly;
-  case ArtifactKind::RelocatableObject:
-    return BackendOutputKind::RelocatableObject;
-  }
-  return rcc::makeUnexpected(ErrorCode::ReproducerError, "invalid reproducer artifact kind");
-}
-
 void printSnapshots(const BackendRunResult &Result) {
   for (const rcc::tooling::PipelineSnapshot &Snapshot : Result.Pipeline.Snapshots) {
     std::cerr << "*** " << rcc::tooling::spelling(Snapshot.Stage);
@@ -764,9 +739,9 @@ void printActions(const BackendRunResult &Result) {
                                                          const rcc::TargetDescription &Target) {
   if (Command.ReproducerPath.empty())
     return {};
-  auto Manifest = rcc::tooling::createBackendManifest(
-      rcc::tooling::ManifestKind::Reproducer, rcc::tooling::manifestArtifactKind(Command.Output),
-      Command.Invocation, Target, Input.Text);
+  auto Manifest =
+      rcc::tooling::createBackendManifest(rcc::tooling::ManifestKind::Reproducer, Command.Output,
+                                          Command.Invocation, Target, Input.Text);
   if (!Manifest)
     return std::unexpected(Manifest.error());
   return rcc::tooling::writeReproducer(Command.ReproducerPath, *Manifest, Input.Text);
@@ -779,10 +754,11 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
     return rcc::tooling::runBackend(std::move(Input), Target, Command.Invocation, Command.Output,
                                     Command.Controls, Instrumentation);
   }
-  auto Kind = rcc::tooling::cacheArtifactKind(Command.Output);
-  if (!Kind)
-    return std::unexpected(Kind.error());
-  const ArtifactKind CacheKind = *Kind;
+  if (!rcc::tooling::isCacheableArtifact(Command.Output)) {
+    return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
+                               "the selected intermediate stage is not a cache boundary");
+  }
+  const ArtifactKind CacheKind = Command.Output;
   if (Command.Cache == CachePolicy::Read || Command.Cache == CachePolicy::ReadWrite) {
     auto Cached = rcc::tooling::loadCacheEntry(Command.CachePath, CacheKind, Command.Invocation,
                                                Target, Input.Text);
@@ -827,10 +803,7 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
     auto Package = rcc::tooling::loadReproducer(Command.ReproducerPath, *Target);
     if (!Package)
       return std::unexpected(Package.error());
-    auto Output = outputFromArtifact(Package->Manifest.Artifact);
-    if (!Output)
-      return std::unexpected(Output.error());
-    Command.Output = *Output;
+    Command.Output = Package->Manifest.Artifact;
     Command.Invocation = Package->Manifest.Invocation;
     Command.ReproducerPath.clear();
     auto Run = runWithCache(Command, std::move(Package->Input), *Target);

@@ -37,6 +37,9 @@ struct ReproducerPackage final {
   CanonicalMIR Input;
 };
 
+[[nodiscard]] bool isMIRArtifact(ArtifactKind Artifact) noexcept;
+[[nodiscard]] bool isCacheableArtifact(ArtifactKind Artifact) noexcept;
+
 [[nodiscard]] Expected<CanonicalMIR> parseAndCanonicalizeMIR(std::string SourceName,
                                                              std::string SourceText,
                                                              const TargetDescription &Target,

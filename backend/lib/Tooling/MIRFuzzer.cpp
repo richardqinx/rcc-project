@@ -224,24 +224,24 @@ private:
   return true;
 }
 
-[[nodiscard]] BackendOutputKind outputForStage(BackendStage Stage) noexcept {
+[[nodiscard]] ArtifactKind outputForStage(BackendStage Stage) noexcept {
   switch (Stage) {
   case BackendStage::PreLegalizerMIR:
-    return BackendOutputKind::PreLegalizerMIR;
+    return ArtifactKind::PreLegalizerMIR;
   case BackendStage::LegalizedMIR:
-    return BackendOutputKind::LegalizedMIR;
+    return ArtifactKind::LegalizedMIR;
   case BackendStage::RegisterBankMIR:
-    return BackendOutputKind::RegisterBankMIR;
+    return ArtifactKind::RegisterBankMIR;
   case BackendStage::SelectedMIR:
-    return BackendOutputKind::SelectedMIR;
+    return ArtifactKind::SelectedMIR;
   case BackendStage::PostSSAMIR:
-    return BackendOutputKind::PostSSAMIR;
+    return ArtifactKind::PostSSAMIR;
   case BackendStage::PostRegisterAllocationMIR:
-    return BackendOutputKind::PostRegisterAllocationMIR;
+    return ArtifactKind::PostRegisterAllocationMIR;
   case BackendStage::FinalMIR:
-    return BackendOutputKind::FinalMIR;
+    return ArtifactKind::FinalMIR;
   }
-  return BackendOutputKind::FinalMIR;
+  return ArtifactKind::FinalMIR;
 }
 
 [[nodiscard]] Expected<bool> propertyCase(std::string_view Canonical, DeterministicRandom &Random,
@@ -251,10 +251,15 @@ private:
       parseAndCanonicalizeMIR("property-fuzz.mir", std::string(Canonical), Target, Invocation);
   if (!Parsed)
     return std::unexpected(Parsed.error());
-  const auto Stage = static_cast<BackendStage>(Random.index(7U));
+  constexpr std::array Stages{
+      BackendStage::PreLegalizerMIR, BackendStage::LegalizedMIR,
+      BackendStage::RegisterBankMIR, BackendStage::SelectedMIR,
+      BackendStage::PostSSAMIR,      BackendStage::PostRegisterAllocationMIR,
+      BackendStage::FinalMIR,
+  };
+  const BackendStage Stage = Stages[Random.index(Stages.size())];
   const MachineFunction *Function = Parsed->Document.unit().functionAt(0);
-  if (Function == nullptr ||
-      static_cast<std::uint8_t>(Stage) < static_cast<std::uint8_t>(stageForFunction(*Function))) {
+  if (Function == nullptr || isEarlierStage(Stage, stageForFunction(*Function))) {
     return false;
   }
   auto Run = runBackend(std::move(*Parsed), Target, Invocation, outputForStage(Stage));
@@ -304,8 +309,7 @@ private:
   Controls.DetectUnreportedChanges = true;
   Invocation.Determinism.ThreadCount = std::array<std::uint32_t, 3>{1, 2, 4}[Random.index(3U)];
   const std::string Stop = Controls.StopAfter ? *Controls.StopAfter : "end";
-  auto Run =
-      runBackend(std::move(*Parsed), Target, Invocation, BackendOutputKind::FinalMIR, Controls);
+  auto Run = runBackend(std::move(*Parsed), Target, Invocation, ArtifactKind::FinalMIR, Controls);
   if (!Run)
     return std::unexpected(Run.error());
   auto RoundTrip = verifyCanonicalRoundTrip(std::string(Run->text()), Target, Invocation);
@@ -479,8 +483,7 @@ using RegisterValues = std::unordered_map<std::uint64_t, std::uint64_t>;
       parseAndCanonicalizeMIR("semantic-pipeline.mir", std::string(Canonical), Target, Invocation);
   if (!CompiledInput)
     return std::unexpected(CompiledInput.error());
-  auto Compiled =
-      runBackend(std::move(*CompiledInput), Target, Invocation, BackendOutputKind::FinalMIR);
+  auto Compiled = runBackend(std::move(*CompiledInput), Target, Invocation, ArtifactKind::FinalMIR);
   if (!Compiled)
     return std::unexpected(Compiled.error());
   auto Final = parseAndCanonicalizeMIR("semantic-final.mir", std::string(Compiled->text()), Target,

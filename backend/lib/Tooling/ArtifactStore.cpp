@@ -32,7 +32,9 @@ namespace {
 constexpr std::uintmax_t MaximumPackageFileSize = std::uintmax_t{1} << 30U;
 std::atomic<std::uint64_t> TemporarySequence = 0;
 
-[[nodiscard]] bool isMIRArtifact(ArtifactKind Artifact) noexcept {
+} // namespace
+
+bool isMIRArtifact(ArtifactKind Artifact) noexcept {
   switch (Artifact) {
   case ArtifactKind::PreLegalizerMIR:
   case ArtifactKind::LegalizedMIR:
@@ -49,7 +51,7 @@ std::atomic<std::uint64_t> TemporarySequence = 0;
   return false;
 }
 
-[[nodiscard]] bool isCacheableArtifact(ArtifactKind Artifact) noexcept {
+bool isCacheableArtifact(ArtifactKind Artifact) noexcept {
   switch (Artifact) {
   case ArtifactKind::PreLegalizerMIR:
   case ArtifactKind::SelectedMIR:
@@ -65,6 +67,8 @@ std::atomic<std::uint64_t> TemporarySequence = 0;
   }
   return false;
 }
+
+namespace {
 
 [[nodiscard]] std::string_view artifactFileName(ArtifactKind Artifact) noexcept {
   switch (Artifact) {
