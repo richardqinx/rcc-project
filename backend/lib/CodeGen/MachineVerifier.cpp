@@ -49,8 +49,7 @@ namespace {
         continue;
       }
       if (RegisterValue->isVirtual()) {
-        Result.push_back('%');
-        Result.append(std::to_string(*RegisterValue->virtualIndex()));
+        Result.append(RegisterValue->toString());
         continue;
       }
       const auto Physical = RegisterValue->physicalRegister();
