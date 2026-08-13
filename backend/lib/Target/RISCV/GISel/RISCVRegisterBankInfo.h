@@ -9,13 +9,15 @@ namespace rcc::riscv {
 
 class RISCVRegisterBankInfo final : public RegisterBankInfo {
 public:
-  [[nodiscard]] Expected<RegisterBankID> selectBank(const MachineFunction &Function, Register Reg,
-                                                    const VirtualRegisterInfo &Info,
-                                                    const MachineInstr *Instruction,
-                                                    const TargetDescription &Target) const override;
-  [[nodiscard]] Expected<void> constrainInstruction(MachineInstr &Instruction,
-                                                    MachineFunction &Function,
-                                                    const TargetDescription &Target) const override;
+  [[nodiscard]] Expected<RegisterBankSelection>
+  selectBank(const MachineFunction &Function, Register Reg, const VirtualRegisterInfo &Info,
+             const MachineInstr *Instruction, const TargetDescription &Target) const override;
+  [[nodiscard]] Expected<RegisterBankInstructionMapping>
+  getInstructionMapping(const MachineInstr &Instruction, const MachineFunction &Function,
+                        const TargetDescription &Target) const override;
+  [[nodiscard]] Expected<void> constrainSelectedInstruction(MachineInstr &Instruction,
+                                                            MachineFunction &Function,
+                                                            const TargetDescription &Target) const;
   [[nodiscard]] Expected<void> constrainRegister(MachineFunction &Function, Register Reg,
                                                  const TargetDescription &Target) const;
   [[nodiscard]] Expected<void> validateInstruction(const MachineInstr &Instruction,

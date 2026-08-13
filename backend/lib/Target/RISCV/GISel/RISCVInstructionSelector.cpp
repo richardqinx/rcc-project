@@ -139,7 +139,7 @@ public:
   [[nodiscard]] Expected<void>
   constrainSelectedInstruction(MachineInstr &Instruction, MachineFunction &Function,
                                const TargetDescription &Target) const override {
-    return RegisterBanks.constrainInstruction(Instruction, Function, Target);
+    return RegisterBanks.constrainSelectedInstruction(Instruction, Function, Target);
   }
 
   [[nodiscard]] Expected<void> canSelect(const MachineInstr &Instruction,

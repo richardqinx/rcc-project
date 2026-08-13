@@ -255,6 +255,10 @@ RegOperandRange MachineRegisterInfo::regOperands(Register Reg) noexcept {
   return RegOperandRange(headFor(Reg), false, false, false);
 }
 
+RegOperandRange MachineRegisterInfo::regOperands(Register Reg) const noexcept {
+  return RegOperandRange(headFor(Reg), false, false, false);
+}
+
 RegOperandRange MachineRegisterInfo::regNoDebugOperands(Register Reg) noexcept {
   return RegOperandRange(headFor(Reg), false, false, true);
 }

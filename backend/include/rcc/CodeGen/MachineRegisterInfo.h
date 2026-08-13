@@ -145,6 +145,7 @@ public:
   }
 
   [[nodiscard]] RegOperandRange regOperands(Register Reg) noexcept;
+  [[nodiscard]] RegOperandRange regOperands(Register Reg) const noexcept;
   [[nodiscard]] RegOperandRange regNoDebugOperands(Register Reg) noexcept;
   [[nodiscard]] RegOperandRange useOperands(Register Reg, bool IncludeDebug = true) noexcept;
   [[nodiscard]] RegOperandRange defOperands(Register Reg) noexcept;

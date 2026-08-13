@@ -47,7 +47,7 @@ void testBankConflict(TestContext &Context) {
                  "failed bank selection must preserve the original bank assignment");
 }
 
-void testBankClassOnlyChange(TestContext &Context) {
+void testBankSelectionDoesNotAssignAClass(TestContext &Context) {
   auto Target = rcc::riscv::createTargetDescription();
   auto Fixture = createFixture(Context, "pipeline_bank_class", 5);
   Context.expect(Target.has_value() && Fixture.Function != nullptr && Fixture.Entry != nullptr,
@@ -68,18 +68,15 @@ void testBankClassOnlyChange(TestContext &Context) {
   rcc::RegBankSelect Pass(Subtarget.getRegBankInfo());
   rcc::MachineFunctionAnalysisManager Analyses;
   auto Result = Pass.run(*Fixture.Function, *Target, Analyses);
-  Context.expect(Result.has_value() && Result->Changed &&
-                     Result->Changes.has(rcc::MachinePassChange::Registers),
-                 "bank selection must report a class-only register change");
+  Context.expect(Result.has_value() && !Result->Changed,
+                 "bank selection must preserve an existing bank-only mapping");
   auto Info = Fixture.Function->registerInfo().virtualRegisterInfo(Value);
-  Context.expect(Info && Info->get().Bank && Info->get().RegClass,
-                 "bank selection must publish both bank and class");
-  if (!Info || !Info->get().RegClass)
+  Context.expect(Info && Info->get().Bank && !Info->get().RegClass,
+                 "bank selection must not assign a register class");
+  if (!Info || !Info->get().Bank)
     return;
-  Context.expect(Info->get().RegClass.value_or(rcc::RegisterClassID{}) ==
-                     rcc::RegisterClassID::fromValue(
-                         static_cast<std::uint32_t>(rcc::riscv::RegisterClass::GPR)),
-                 "i64 GPR bank must select the GPR class");
+  Context.expect(Info->get().Bank.value_or(rcc::RegisterBankID{}) == GPR,
+                 "bank selection must preserve the GPR bank");
 }
 
 } // namespace
@@ -87,6 +84,6 @@ void testBankClassOnlyChange(TestContext &Context) {
 int main() {
   TestContext Context;
   testBankConflict(Context);
-  testBankClassOnlyChange(Context);
+  testBankSelectionDoesNotAssignAClass(Context);
   return Context.result();
 }
