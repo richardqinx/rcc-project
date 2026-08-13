@@ -470,7 +470,7 @@ void testTypedIntegerTruncation(TestContext &Context) {
   rcc::mir::MIParser Parser(*Function, *Target, "typed-integer-truncation.mir", Body);
   const auto Parsed = Parser.parse();
   const auto Instructions = Function->allInstructions();
-  const auto *MinusOne = Instructions.size() > 0
+  const auto *MinusOne = !Instructions.empty()
                              ? Instructions[0]->operandAt(1)->getIf<rcc::IntegerImmediateOperand>()
                              : nullptr;
   const auto *NarrowNegative =
