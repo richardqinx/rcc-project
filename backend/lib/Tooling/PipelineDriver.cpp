@@ -310,13 +310,12 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
     }
   }
   if (!Started) {
-    const std::string &Selector =
-        Controls.StartBefore ? *Controls.StartBefore : *Controls.StartAfter;
+    const std::string Selector = Controls.StartBefore.value_or(Controls.StartAfter.value_or(""));
     return makeUnexpected(ErrorCode::InvalidInvocation,
                           "pipeline start selector did not match: '" + Selector + "'");
   }
   if (!StopMatched) {
-    const std::string &Selector = Controls.StopBefore ? *Controls.StopBefore : *Controls.StopAfter;
+    const std::string Selector = Controls.StopBefore.value_or(Controls.StopAfter.value_or(""));
     return makeUnexpected(ErrorCode::InvalidInvocation,
                           "pipeline stop selector did not match: '" + Selector + "'");
   }
