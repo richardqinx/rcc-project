@@ -615,7 +615,7 @@ namespace {
   if (Opcode >= 0x70U && Opcode <= 0x8FU)
     return "DW_OP_breg" + std::to_string(Opcode - 0x70U);
   const auto &Opcodes = namedOpcodes();
-  const auto Found =
+  const auto *const Found =
       std::ranges::find_if(Opcodes, [Opcode](const auto &Entry) { return Entry.second == Opcode; });
   if (Found == Opcodes.end())
     return std::nullopt;
@@ -648,7 +648,7 @@ namespace {
 
 [[nodiscard]] std::optional<std::string_view> attributeName(std::uint64_t Encoding) noexcept {
   const auto &Encodings = attributeEncodings();
-  const auto Found = std::ranges::find_if(
+  const auto *const Found = std::ranges::find_if(
       Encodings, [Encoding](const auto &Entry) { return Entry.second == Encoding; });
   if (Found == Encodings.end())
     return std::nullopt;
@@ -685,7 +685,7 @@ std::optional<std::uint64_t> parseDIExpressionOpcodeName(std::string_view Name) 
 std::optional<std::uint64_t>
 parseDIExpressionAttributeEncodingName(std::string_view Name) noexcept {
   const auto &Encodings = attributeEncodings();
-  const auto Found =
+  const auto *const Found =
       std::ranges::find_if(Encodings, [Name](const auto &Entry) { return Entry.first == Name; });
   if (Found == Encodings.end())
     return std::nullopt;
