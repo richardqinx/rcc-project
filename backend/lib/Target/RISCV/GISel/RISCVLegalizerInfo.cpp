@@ -31,15 +31,19 @@
 namespace rcc::riscv {
 namespace {
 
-[[nodiscard]] std::optional<LLT> registerType(const MachineFunction &Function,
-                                              const MachineOperand &Operand) {
-  const Register *Reg = Operand.getIf<Register>();
-  if (Reg == nullptr || !Reg->isVirtual())
+[[nodiscard]] std::optional<LLT> registerType(const MachineFunction &Function, Register Reg) {
+  if (!Reg.isVirtual())
     return std::nullopt;
-  auto Info = Function.registerInfo().virtualRegisterInfo(*Reg);
+  auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
   if (!Info)
     return std::nullopt;
   return Info->get().Type;
+}
+
+[[nodiscard]] std::optional<LLT> registerType(const MachineFunction &Function,
+                                              const MachineOperand &Operand) {
+  const Register *Reg = Operand.getIf<Register>();
+  return Reg == nullptr ? std::nullopt : registerType(Function, *Reg);
 }
 
 [[nodiscard]] std::optional<LLT> resultType(const MachineFunction &Function,
@@ -136,11 +140,11 @@ foldConstantExtension(MachineInstr &Instruction, MachineFunction &Function, Gene
   if (Integer == nullptr)
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V constant extension requires an integer constant");
-  const auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(*Destination);
-  if (!DestinationInfo || !DestinationInfo->get().Type)
+  const auto DestinationType = registerType(Function, *Destination);
+  if (!DestinationType)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V constant extension destination has no type");
-  const std::uint32_t DestinationWidth = DestinationInfo->get().Type->scalarBitWidth();
+  const std::uint32_t DestinationWidth = DestinationType->scalarBitWidth();
   const bool SignExtend = Generic != GenericOpcode::G_ZEXT;
   auto Extended = extendIntegerImmediate(Integer->Value, DestinationWidth, SignExtend);
   if (!Extended)
@@ -247,10 +251,8 @@ wideConstantUnmergePlan(const MachineInstr &Constant, const MachineFunction &Fun
     const Register *Reg = Operand == nullptr ? nullptr : Operand->getIf<Register>();
     if (Reg == nullptr || !Reg->isVirtual() || !Operand->isDef())
       return std::nullopt;
-    const auto Info = Function.registerInfo().virtualRegisterInfo(*Reg);
-    if (!Info || !Info->get().Type || Info->get().Type->scalarBitWidth() == 0 ||
-        Info->get().Type->scalarBitWidth() > 64 ||
-        (!Info->get().Type->isInteger() && !Info->get().Type->isAnyScalar()))
+    const auto Type = registerType(Function, *Reg);
+    if (!Type || !isSupportedIntegerScalar(*Type))
       return std::nullopt;
     Plan.Outputs.push_back(*Reg);
   }
@@ -300,12 +302,11 @@ wideConstantUnmergePlan(const MachineInstr &Constant, const MachineFunction &Fun
   std::vector<APInt> Words;
   Words.reserve(Plan->Outputs.size());
   for (std::size_t Index = 0; Index < Plan->Outputs.size(); ++Index) {
-    const auto Info = Function.registerInfo().virtualRegisterInfo(Plan->Outputs[Index]);
-    if (!Info || !Info->get().Type)
+    const auto Type = registerType(Function, Plan->Outputs[Index]);
+    if (!Type)
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V wide constant output has no virtual-register type");
-    auto Word = wideConstantWord(Integer->Value, Index, Info->get().Type->scalarBitWidth(),
-                                 Plan->SignExtend);
+    auto Word = wideConstantWord(Integer->Value, Index, Type->scalarBitWidth(), Plan->SignExtend);
     if (!Word)
       return std::unexpected(Word.error());
     Words.push_back(std::move(*Word));
@@ -423,14 +424,12 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
   if (Destination == nullptr || Source == nullptr || !Destination->isVirtual() ||
       !Source->isVirtual() || singleRegisterUse(Function, *Source) != &Extension)
     return std::nullopt;
-  const auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(*Destination);
-  const auto SourceInfo = Function.registerInfo().virtualRegisterInfo(*Source);
-  if (!DestinationInfo || !SourceInfo || !DestinationInfo->get().Type || !SourceInfo->get().Type)
+  const auto DestinationType = registerType(Function, *Destination);
+  const auto SourceType = registerType(Function, *Source);
+  if (!DestinationType || !SourceType)
     return std::nullopt;
-  const LLT DestinationType = *DestinationInfo->get().Type;
-  const LLT SourceType = *SourceInfo->get().Type;
-  if (!isScalarIntegerExtension(DestinationType, SourceType) ||
-      DestinationType.scalarBitWidth() != 64)
+  if (!isScalarIntegerExtension(*DestinationType, *SourceType) ||
+      DestinationType->scalarBitWidth() != 64)
     return std::nullopt;
 
   const MachineOperand *SourceDefinition = Function.registerInfo().getUniqueVRegDef(*Source);
@@ -449,7 +448,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
   NarrowAnyExtBinaryPlan Plan;
   Plan.Binary = Binary;
   Plan.Generic = Generic;
-  Plan.SourceWidth = SourceType.scalarBitWidth();
+  Plan.SourceWidth = SourceType->scalarBitWidth();
   const auto AddArtifact = [&Plan](MachineInstr *Artifact) {
     if (std::ranges::find(Plan.Artifacts, Artifact) == Plan.Artifacts.end())
       Plan.Artifacts.push_back(Artifact);
@@ -466,7 +465,7 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
     const std::optional<LLT> WideType =
         WideOperand == nullptr ? std::nullopt : registerType(Function, *WideOperand);
     if (Narrow == nullptr || Wide == nullptr || !Wide->isVirtual() || !WideType ||
-        *WideType != DestinationType || singleRegisterUse(Function, *Narrow) != OnlyUse)
+        *WideType != *DestinationType || singleRegisterUse(Function, *Narrow) != OnlyUse)
       return std::nullopt;
     return *Wide;
   };
@@ -475,14 +474,14 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
     const Register *Reg = Operand == nullptr ? nullptr : Operand->getIf<Register>();
     if (Reg == nullptr || !Reg->isVirtual())
       return std::nullopt;
-    const auto Info = Function.registerInfo().virtualRegisterInfo(*Reg);
-    if (!Info || !Info->get().Type)
+    const auto Type = registerType(Function, *Reg);
+    if (!Type)
       return std::nullopt;
-    if (*Info->get().Type == DestinationType) {
+    if (*Type == *DestinationType) {
       Plan.WideInputs[Index] = *Reg;
       continue;
     }
-    if (*Info->get().Type != SourceType)
+    if (*Type != *SourceType)
       return std::nullopt;
 
     const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(*Reg);
@@ -556,11 +555,11 @@ narrowAnyExtBinaryPlan(const MachineInstr &Extension, const MachineFunction &Fun
                                                                   MachineFunction &Function,
                                                                   MachineIRBuilder &Builder,
                                                                   Register Source, LLT WideType) {
-  const auto SourceInfo = Function.registerInfo().virtualRegisterInfo(Source);
-  if (!SourceInfo || !SourceInfo->get().Type)
+  const auto SourceType = registerType(Function, Source);
+  if (!SourceType)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V compare-exchange source has no scalar type");
-  if (SourceInfo->get().Type->scalarBitWidth() == WideType.scalarBitWidth())
+  if (SourceType->scalarBitWidth() == WideType.scalarBitWidth())
     return Source;
 
   const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Source);
@@ -729,12 +728,11 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
                                                            MachineFunction &Function,
                                                            MachineIRBuilder &Builder,
                                                            Register Source, LLT WideType) {
-  const auto SourceInfo = Function.registerInfo().virtualRegisterInfo(Source);
-  if (!SourceInfo || !SourceInfo->get().Type)
+  const auto SourceType = registerType(Function, Source);
+  if (!SourceType)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V integer compare source has no scalar type");
-  const LLT SourceType = *SourceInfo->get().Type;
-  if (SourceType.scalarBitWidth() == WideType.scalarBitWidth())
+  if (SourceType->scalarBitWidth() == WideType.scalarBitWidth())
     return Source;
 
   const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Source);
@@ -797,7 +795,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
       if (auto Added = Pending->addUse(*WideSource); !Added)
         return std::unexpected(Added.error());
       if (auto Added =
-              Pending->addImmediate(static_cast<std::int64_t>(SourceType.scalarBitWidth()));
+              Pending->addImmediate(static_cast<std::int64_t>(SourceType->scalarBitWidth()));
           !Added) {
         return std::unexpected(Added.error());
       }
@@ -844,11 +842,11 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   if (auto Replaced = Instruction.operandAt(3)->setRegister(*WideRight); !Replaced)
     return std::unexpected(Replaced.error());
 
-  const auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(OriginalDestination);
-  if (!DestinationInfo || !DestinationInfo->get().Type)
+  const auto DestinationType = registerType(Function, OriginalDestination);
+  if (!DestinationType)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V integer compare destination has no scalar type");
-  if (DestinationInfo->get().Type->scalarBitWidth() == 64)
+  if (DestinationType->scalarBitWidth() == 64)
     return {};
 
   MachineInstr *FoldedExtension = singleRegisterUse(Function, OriginalDestination);
@@ -1027,12 +1025,10 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   if (Destination == nullptr || !Destination->isVirtual() || Immediate == nullptr)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V constant-pool legalization has invalid operands");
-  const auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(*Destination);
-  if (!DestinationInfo || !DestinationInfo->get().Type ||
-      DestinationInfo->get().Type->scalarBitWidth() != 64)
+  const auto DestinationType = registerType(Function, *Destination);
+  if (!DestinationType || DestinationType->scalarBitWidth() != 64)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V constant-pool legalization requires a 64-bit destination");
-  const LLT DestinationType = *DestinationInfo->get().Type;
   auto Value = GenericConstantData::integer(Immediate->Value);
   if (!Value)
     return std::unexpected(Value.error());
@@ -1073,7 +1069,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   MachineMemOperandDesc MemoryDescription;
   MemoryDescription.Accesses = {MemoryAccessFlag::Load};
   MemoryDescription.Size = *MemorySize::fixed(8);
-  MemoryDescription.MemoryType = DestinationType;
+  MemoryDescription.MemoryType = *DestinationType;
   MemoryDescription.Align = *Align;
   MemoryDescription.Base = MemoryBase::constantPoolPseudo();
   auto Memory = Function.createMemOperand(std::move(MemoryDescription));
@@ -1435,10 +1431,10 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
                                        std::uint32_t ActiveBits, unsigned Depth = 0) {
   if (Depth > 8 || !Reg.isVirtual())
     return false;
-  const auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
-  if (!Info || !Info->get().Type)
+  const auto Type = registerType(Function, Reg);
+  if (!Type)
     return false;
-  const std::uint32_t Width = Info->get().Type->scalarBitWidth();
+  const std::uint32_t Width = Type->scalarBitWidth();
   if (Width <= ActiveBits)
     return true;
   const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Reg);
@@ -1458,9 +1454,8 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
     if (Source == nullptr)
       return false;
-    const auto SourceInfo = Function.registerInfo().virtualRegisterInfo(*Source);
-    return SourceInfo && SourceInfo->get().Type &&
-           SourceInfo->get().Type->scalarBitWidth() <= ActiveBits;
+    const auto SourceType = registerType(Function, *Source);
+    return SourceType && SourceType->scalarBitWidth() <= ActiveBits;
   }
   if (Def->opcode() == opcode(GenericOpcode::G_TRUNC)) {
     const MachineOperand *SourceOperand = Def->operandAt(1);
@@ -1473,11 +1468,10 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
 [[nodiscard]] Expected<Register> zeroExtendToRV64(MachineIRBuilder &Builder, MachineInstr &Anchor,
                                                   MachineFunction &Function, Register Source,
                                                   std::vector<MachineInstr *> &DeadCandidates) {
-  const auto Info = Function.registerInfo().virtualRegisterInfo(Source);
-  if (!Info || !Info->get().Type)
+  const auto SourceType = registerType(Function, Source);
+  if (!SourceType)
     return makeUnexpected(ErrorCode::VerificationError, "RISC-V merge source has no scalar type");
-  const LLT SourceType = *Info->get().Type;
-  if (SourceType.scalarBitWidth() == 64)
+  if (SourceType->scalarBitWidth() == 64)
     return Source;
   const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Source);
   MachineInstr *Def =
@@ -1486,9 +1480,9 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     const MachineOperand *WideOperand = Def->operandAt(1);
     const Register *Wide = WideOperand == nullptr ? nullptr : WideOperand->getIf<Register>();
     if (Wide != nullptr) {
-      const auto WideInfo = Function.registerInfo().virtualRegisterInfo(*Wide);
-      if (WideInfo && WideInfo->get().Type && WideInfo->get().Type->scalarBitWidth() == 64 &&
-          isKnownZeroExtended(Function, *Wide, SourceType.scalarBitWidth())) {
+      const auto WideType = registerType(Function, *Wide);
+      if (WideType && WideType->scalarBitWidth() == 64 &&
+          isKnownZeroExtended(Function, *Wide, SourceType->scalarBitWidth())) {
         DeadCandidates.push_back(Def);
         return *Wide;
       }
@@ -1539,17 +1533,15 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     const MachineOperand *TruncResultOperand = Trunc->operandAt(0);
     const Register *TruncResult =
         TruncResultOperand == nullptr ? nullptr : TruncResultOperand->getIf<Register>();
-    const auto LowInfo = RegisterInfo.virtualRegisterInfo(*Low);
-    const auto ResultInfo =
-        TruncResult == nullptr
-            ? Expected<std::reference_wrapper<const VirtualRegisterInfo>>(
-                  std::unexpected(Error(ErrorCode::InvalidArgument, "missing truncation result")))
-            : RegisterInfo.virtualRegisterInfo(*TruncResult);
-    if (!LowInfo || !LowInfo->get().Type || !ResultInfo || !ResultInfo->get().Type ||
-        ResultInfo->get().Type->scalarBitWidth() > LowInfo->get().Type->scalarBitWidth())
+    if (TruncResult == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V wide merge truncation has no result");
+    const auto LowType = registerType(Function, *Low);
+    const auto ResultType = registerType(Function, *TruncResult);
+    if (!LowType || !ResultType || ResultType->scalarBitWidth() > LowType->scalarBitWidth())
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V wide merge truncation spans more than its low source");
-    if (*ResultInfo->get().Type == *LowInfo->get().Type) {
+    if (*ResultType == *LowType) {
       auto Replaced = replaceRegisterUses(Function, *TruncResult, *Low);
       if (!Replaced)
         return std::unexpected(Replaced.error());
@@ -1686,11 +1678,11 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
   if (Narrow == nullptr)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V wide unmerge extension has no register source");
-  const auto NarrowInfo = Function.registerInfo().virtualRegisterInfo(*Narrow);
-  if (!NarrowInfo || !NarrowInfo->get().Type)
+  const auto NarrowType = registerType(Function, *Narrow);
+  if (!NarrowType)
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V wide unmerge extension source has no type");
-  const std::uint32_t NarrowWidth = NarrowInfo->get().Type->scalarBitWidth();
+  const std::uint32_t NarrowWidth = NarrowType->scalarBitWidth();
 
   std::vector<MachineInstr *> DeadUsers;
   for (std::size_t Index = 0; Index < OutputCount; ++Index) {
@@ -1698,21 +1690,20 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
     const Register *Output = OutputOperand == nullptr ? nullptr : OutputOperand->getIf<Register>();
     if (Output == nullptr || Function.registerInfo().useEmpty(*Output))
       continue;
-    const auto OutputInfo = Function.registerInfo().virtualRegisterInfo(*Output);
-    if (!OutputInfo || !OutputInfo->get().Type)
+    const auto OutputType = registerType(Function, *Output);
+    if (!OutputType)
       return makeUnexpected(ErrorCode::VerificationError, "RISC-V wide unmerge output has no type");
-    const std::uint64_t Offset =
-        static_cast<std::uint64_t>(Index) * OutputInfo->get().Type->scalarBitWidth();
+    const std::uint64_t Offset = static_cast<std::uint64_t>(Index) * OutputType->scalarBitWidth();
     if (Offset != 0)
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V wide unmerge cannot materialize a used high wide part");
-    if (OutputInfo->get().Type->scalarBitWidth() == NarrowWidth) {
+    if (OutputType->scalarBitWidth() == NarrowWidth) {
       auto Replaced = replaceRegisterUses(Function, *Output, *Narrow);
       if (!Replaced)
         return std::unexpected(Replaced.error());
       continue;
     }
-    if (OutputInfo->get().Type->scalarBitWidth() < NarrowWidth)
+    if (OutputType->scalarBitWidth() < NarrowWidth)
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V wide unmerge output unexpectedly narrows its source");
     std::vector<MachineOperand *> Uses;
@@ -1728,16 +1719,14 @@ void eraseDeadArtifacts(std::span<MachineInstr *const> Candidates,
       const MachineOperand *ResultOperand = Trunc->operandAt(0);
       const Register *Result =
           ResultOperand == nullptr ? nullptr : ResultOperand->getIf<Register>();
-      const auto ResultInfo =
-          Result == nullptr
-              ? Expected<std::reference_wrapper<const VirtualRegisterInfo>>(
-                    std::unexpected(Error(ErrorCode::InvalidArgument, "missing truncation result")))
-              : Function.registerInfo().virtualRegisterInfo(*Result);
-      if (!ResultInfo || !ResultInfo->get().Type ||
-          ResultInfo->get().Type->scalarBitWidth() > NarrowWidth)
+      if (Result == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V wide unmerge truncation has no result");
+      const auto ResultType = registerType(Function, *Result);
+      if (!ResultType || ResultType->scalarBitWidth() > NarrowWidth)
         return makeUnexpected(ErrorCode::Unsupported,
                               "RISC-V wide unmerge truncation exceeds its source width");
-      if (ResultInfo->get().Type->scalarBitWidth() == NarrowWidth) {
+      if (ResultType->scalarBitWidth() == NarrowWidth) {
         auto Replaced = replaceRegisterUses(Function, *Result, *Narrow);
         if (!Replaced)
           return std::unexpected(Replaced.error());
@@ -1859,15 +1848,14 @@ struct WideValueParts final {
 collectWideValueParts(Register Value, MachineFunction &Function, unsigned Depth = 0) {
   if (Depth > 16)
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V wide-value artifact chain is too deep");
-  const auto Info = Function.registerInfo().virtualRegisterInfo(Value);
-  if (!Info || !Info->get().Type)
+  const auto Type = registerType(Function, Value);
+  if (!Type)
     return makeUnexpected(ErrorCode::VerificationError, "RISC-V wide value has no scalar type");
-  const LLT Type = *Info->get().Type;
-  if ((!Type.isInteger() && !Type.isAnyScalar()) || Type.scalarBitWidth() == 0)
+  if ((!Type->isInteger() && !Type->isAnyScalar()) || Type->scalarBitWidth() == 0)
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V wide-value decomposition requires an integer scalar");
-  if (Type.scalarBitWidth() <= 64)
-    return WideValueParts{.BitWidth = Type.scalarBitWidth(), .Parts = {Value}, .Artifacts = {}};
+  if (Type->scalarBitWidth() <= 64)
+    return WideValueParts{.BitWidth = Type->scalarBitWidth(), .Parts = {Value}, .Artifacts = {}};
 
   const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Value);
   MachineInstr *Def =
@@ -1877,7 +1865,7 @@ collectWideValueParts(Register Value, MachineFunction &Function, unsigned Depth 
                           "RISC-V wide value has no decomposable definition");
   if (Def->opcode() == opcode(GenericOpcode::G_MERGE_VALUES)) {
     WideValueParts Result;
-    Result.BitWidth = Type.scalarBitWidth();
+    Result.BitWidth = Type->scalarBitWidth();
     for (std::size_t Index = 1; Index < Def->operandCount(); ++Index) {
       const MachineOperand *Operand = Def->operandAt(Index);
       const Register *Part = Operand == nullptr ? nullptr : Operand->getIf<Register>();
@@ -1900,8 +1888,8 @@ collectWideValueParts(Register Value, MachineFunction &Function, unsigned Depth 
     auto Result = collectWideValueParts(*Source, Function, Depth + 1U);
     if (!Result)
       return std::unexpected(Result.error());
-    Result->BitWidth = Type.scalarBitWidth();
-    const std::size_t RequiredParts = (Type.scalarBitWidth() + 63U) / 64U;
+    Result->BitWidth = Type->scalarBitWidth();
+    const std::size_t RequiredParts = (Type->scalarBitWidth() + 63U) / 64U;
     if (Result->Parts.size() < RequiredParts)
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V wide truncation source has too few limbs");
@@ -2324,18 +2312,14 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
         buildBinaryBefore(Builder, Anchor, GenericOpcode::G_ADD, *Type, Left[Index], Right[Index]);
     if (!Base)
       return std::unexpected(Base.error());
-    std::optional<Register> BaseCarry;
-    if (Index + 1U < Left.size()) {
-      auto Compared = buildIntegerCompareBefore(Builder, Anchor, IntegerPredicate::UnsignedLessThan,
-                                                *Base, Left[Index]);
-      if (!Compared)
-        return std::unexpected(Compared.error());
-      BaseCarry = *Compared;
-    }
     auto Sum = buildBinaryBefore(Builder, Anchor, GenericOpcode::G_ADD, *Type, *Base, *Carry);
     if (!Sum)
       return std::unexpected(Sum.error());
     if (Index + 1U < Left.size()) {
+      auto BaseCarry = buildIntegerCompareBefore(
+          Builder, Anchor, IntegerPredicate::UnsignedLessThan, *Base, Left[Index]);
+      if (!BaseCarry)
+        return std::unexpected(BaseCarry.error());
       auto Zero = buildIntegerConstantBefore(Builder, Anchor, 64, 0);
       if (!Zero)
         return std::unexpected(Zero.error());
@@ -2386,20 +2370,16 @@ emitThreeLimbLeftShift(MachineIRBuilder &Builder, MachineInstr &Anchor,
         buildBinaryBefore(Builder, Anchor, GenericOpcode::G_SUB, *Type, Left[Index], Right[Index]);
     if (!Base)
       return std::unexpected(Base.error());
-    std::optional<Register> BaseBorrow;
-    if (Index + 1U < Left.size()) {
-      auto Compared = buildIntegerCompareBefore(
-          Builder, Anchor, IntegerPredicate::UnsignedGreaterThan, *Base, Left[Index]);
-      if (!Compared)
-        return std::unexpected(Compared.error());
-      BaseBorrow = *Compared;
-    }
     auto Difference =
         buildBinaryBefore(Builder, Anchor, GenericOpcode::G_SUB, *Type, *Base, *Borrow);
     if (!Difference)
       return std::unexpected(Difference.error());
     Results.push_back(*Difference);
     if (Index + 1U < Left.size()) {
+      auto BaseBorrow = buildIntegerCompareBefore(
+          Builder, Anchor, IntegerPredicate::UnsignedGreaterThan, *Base, Left[Index]);
+      if (!BaseBorrow)
+        return std::unexpected(BaseBorrow.error());
       auto Zero = buildIntegerConstantBefore(Builder, Anchor, 64, 0);
       if (!Zero)
         return std::unexpected(Zero.error());
@@ -2505,11 +2485,10 @@ emitWideBitwise(MachineIRBuilder &Builder, MachineInstr &Anchor, GenericOpcode G
   if (Condition == nullptr || !Condition->isVirtual() ||
       singleRegisterUse(Function, *Condition) != &Instruction)
     return false;
-  const auto ConditionInfo = Function.registerInfo().virtualRegisterInfo(*Condition);
+  const auto ConditionType = registerType(Function, *Condition);
   const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(*Condition);
   const MachineInstr *Truncation = Definition == nullptr ? nullptr : Definition->parent();
-  if (!ConditionInfo || !ConditionInfo->get().Type ||
-      ConditionInfo->get().Type->scalarBitWidth() != 1 || Truncation == nullptr ||
+  if (!ConditionType || ConditionType->scalarBitWidth() != 1 || Truncation == nullptr ||
       Truncation->opcode() != opcode(GenericOpcode::G_TRUNC) || Truncation->operandCount() != 2)
     return false;
   return operandType(Function, *Truncation, 1)
@@ -2669,11 +2648,11 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
       LegalIncoming.push_back(Entry.Value);
       continue;
     }
-    const auto ValueInfo = Function.registerInfo().virtualRegisterInfo(Entry.Value);
-    if (!ValueInfo || !ValueInfo->get().Type)
+    const auto ValueType = registerType(Function, Entry.Value);
+    if (!ValueType)
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V narrow PHI input has no scalar type");
-    const std::uint32_t Width = ValueInfo->get().Type->scalarBitWidth();
+    const std::uint32_t Width = ValueType->scalarBitWidth();
     const GenericOpcode Conversion = Width < 32   ? GenericOpcode::G_ANYEXT
                                      : Width > 32 ? GenericOpcode::G_TRUNC
                                                   : GenericOpcode::COPY;
@@ -2799,8 +2778,8 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
   const Register *Low = LowOperand == nullptr ? nullptr : LowOperand->getIf<Register>();
   if (Low == nullptr)
     return false;
-  const auto LowInfo = Function.registerInfo().virtualRegisterInfo(*Low);
-  if (!LowInfo || !LowInfo->get().Type)
+  const auto LowType = registerType(Function, *Low);
+  if (!LowType)
     return false;
   const MachineOperand *DestinationOperand = Instruction.operandAt(0);
   const Register *Destination =
@@ -2814,7 +2793,7 @@ buildIncomingConversion(MachineFunction &Function, const TargetDescription &Targ
         Trunc->operandAt(1) != &Use)
       return false;
     const std::optional<LLT> Result = resultType(Function, *Trunc);
-    if (!Result || Result->scalarBitWidth() > LowInfo->get().Type->scalarBitWidth())
+    if (!Result || Result->scalarBitWidth() > LowType->scalarBitWidth())
       return false;
   }
   return true;
