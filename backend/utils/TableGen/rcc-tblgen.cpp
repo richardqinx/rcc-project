@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "TargetDescriptionGenerator.h"
+#include "TableGenBackends.h"
 #include "rcc/Support/TextDiagnostic.h"
 
 #include <filesystem>
@@ -25,7 +25,7 @@ struct CommandLine final {
     if (Argument == "--input" || Argument == "--register-header" ||
         Argument == "--instruction-header" || Argument == "--tables") {
       if (Index + 1 >= ArgumentCount) {
-        std::cerr << "rcc-backend-descgen: missing value for " << Argument << '\n';
+        std::cerr << "rcc-tblgen: missing value for " << Argument << '\n';
         return false;
       }
       std::string *Destination = nullptr;
@@ -40,14 +40,14 @@ struct CommandLine final {
       *Destination = Arguments[++Index];
       continue;
     }
-    std::cerr << "rcc-backend-descgen: unknown argument '" << Argument << "'\n";
+    std::cerr << "rcc-tblgen: unknown argument '" << Argument << "'\n";
     return false;
   }
   if (!Result.InputPath.empty() && !Result.RegisterHeaderPath.empty() &&
       !Result.InstructionHeaderPath.empty() && !Result.TablesPath.empty()) {
     return true;
   }
-  std::cerr << "usage: rcc-backend-descgen --input <file> --register-header <file> "
+  std::cerr << "usage: rcc-tblgen --input <file> --register-header <file> "
                "--instruction-header <file> --tables <file>\n";
   return false;
 }
@@ -56,13 +56,13 @@ struct CommandLine final {
   std::error_code Error;
   std::filesystem::create_directories(Path.parent_path(), Error);
   if (Error) {
-    std::cerr << "rcc-backend-descgen: cannot create output directory for '" << Path.string()
+    std::cerr << "rcc-tblgen: cannot create output directory for '" << Path.string()
               << "': " << Error.message() << '\n';
     return false;
   }
   std::ofstream Output(Path, std::ios::binary | std::ios::trunc);
   if (!Output) {
-    std::cerr << "rcc-backend-descgen: cannot open output '" << Path.string() << "'\n";
+    std::cerr << "rcc-tblgen: cannot open output '" << Path.string() << "'\n";
     return false;
   }
   Output.write(Contents.data(), static_cast<std::streamsize>(Contents.size()));
@@ -70,7 +70,7 @@ struct CommandLine final {
     Output.close();
     return true;
   }
-  std::cerr << "rcc-backend-descgen: cannot write output '" << Path.string() << "'\n";
+  std::cerr << "rcc-tblgen: cannot write output '" << Path.string() << "'\n";
   return false;
 }
 
@@ -83,7 +83,7 @@ int main(int ArgumentCount, char *Arguments[]) {
 
   std::ifstream Input(Command.InputPath, std::ios::binary);
   if (!Input) {
-    std::cerr << "rcc-backend-descgen: cannot open input '" << Command.InputPath << "'\n";
+    std::cerr << "rcc-tblgen: cannot open input '" << Command.InputPath << "'\n";
     return 1;
   }
   const std::string SourceText{std::istreambuf_iterator<char>(Input),
@@ -98,7 +98,7 @@ int main(int ArgumentCount, char *Arguments[]) {
   }
 
   if (!Result.Output) {
-    std::cerr << "rcc-backend-descgen: successful generation produced no output\n";
+    std::cerr << "rcc-tblgen: successful generation produced no output\n";
     return 1;
   }
   const rcc::targetgen::GeneratedDescription &Output = Result.Output.value();

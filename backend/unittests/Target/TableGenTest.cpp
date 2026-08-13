@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "TargetDescriptionGenerator.h"
+#include "TableGenBackends.h"
 
 #include <cstddef>
 #include <iostream>

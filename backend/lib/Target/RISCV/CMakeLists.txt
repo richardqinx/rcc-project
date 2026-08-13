@@ -20,12 +20,12 @@ add_custom_command(
     "${RCCBackendRISCVGeneratedInstructionHeader}"
     "${RCCBackendRISCVGeneratedTables}"
   COMMAND
-    "$<TARGET_FILE:RCCBackendDescriptionGenerator>"
+    "$<TARGET_FILE:RCCBackendTableGenTool>"
     --input "${RCCBackendRISCVDescription}"
     --register-header "${RCCBackendRISCVGeneratedRegisterHeader}"
     --instruction-header "${RCCBackendRISCVGeneratedInstructionHeader}"
     --tables "${RCCBackendRISCVGeneratedTables}"
-  DEPENDS RCCBackendDescriptionGenerator "${RCCBackendRISCVDescription}"
+  DEPENDS RCCBackendTableGenTool "${RCCBackendRISCVDescription}"
   COMMENT "Generating RCC RV64GC target tables"
   VERBATIM
 )
