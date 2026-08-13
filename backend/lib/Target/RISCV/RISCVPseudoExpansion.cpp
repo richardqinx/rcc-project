@@ -29,13 +29,6 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
 constexpr std::uint32_t CopyF32Flag = 8;
 constexpr std::uint32_t CopyF64Flag = 16;
 
-[[nodiscard]] Expected<PhysicalRegister> physical(PhysicalRegisterID ID) {
-  auto Reg = physicalRegister(ID);
-  if (!Reg)
-    return std::unexpected(Reg.error());
-  return *Reg;
-}
-
 [[nodiscard]] std::optional<RegisterBankID>
 registerBank(Register Reg, const MachineFunction &Function, const TargetDescription &Target) {
   if (Reg.isVirtual()) {
@@ -339,7 +332,7 @@ copyRegisters(const MachineInstr &Instruction) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V FFLAGS pseudo retains a nonphysical value register");
   }
-  auto Zero = physical(PhysicalRegisterID::X0);
+  auto Zero = physicalRegister(PhysicalRegisterID::X0);
   if (!Zero)
     return std::unexpected(Zero.error());
 
@@ -387,9 +380,9 @@ copyRegisters(const MachineInstr &Instruction) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V call pseudo has malformed explicit operands");
   }
-  auto Zero = physical(PhysicalRegisterID::X0);
-  auto Link = physical(PhysicalRegisterID::X1);
-  auto Scratch = physical(PhysicalRegisterID::X6);
+  auto Zero = physicalRegister(PhysicalRegisterID::X0);
+  auto Link = physicalRegister(PhysicalRegisterID::X1);
+  auto Scratch = physicalRegister(PhysicalRegisterID::X6);
   if (!Zero || !Link || !Scratch)
     return makeUnexpected(ErrorCode::InternalError, "RISC-V call registers are unavailable");
 
@@ -477,8 +470,8 @@ copyRegisters(const MachineInstr &Instruction) {
 
 [[nodiscard]] Expected<bool> expandReturn(MachineInstr &Instruction, MachineFunction &Function,
                                           const TargetDescription &Target) {
-  auto Zero = physical(PhysicalRegisterID::X0);
-  auto Link = physical(PhysicalRegisterID::X1);
+  auto Zero = physicalRegister(PhysicalRegisterID::X0);
+  auto Link = physicalRegister(PhysicalRegisterID::X1);
   if (!Zero || !Link)
     return makeUnexpected(ErrorCode::InternalError, "RISC-V return registers are unavailable");
   MachineIRBuilder Builder(Function, Target);
@@ -522,7 +515,7 @@ copyRegisters(const MachineInstr &Instruction) {
                           "RISC-V PseudoBR has no basic-block target");
   }
 
-  auto Zero = physical(PhysicalRegisterID::X0);
+  auto Zero = physicalRegister(PhysicalRegisterID::X0);
   if (!Zero)
     return std::unexpected(Zero.error());
   MachineIRBuilder Builder(Function, Target);

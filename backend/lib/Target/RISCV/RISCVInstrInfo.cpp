@@ -130,13 +130,6 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
   return Block->removeInstruction(Instruction);
 }
 
-[[nodiscard]] Expected<PhysicalRegister> physical(PhysicalRegisterID ID) {
-  auto Reg = physicalRegister(ID);
-  if (!Reg)
-    return std::unexpected(Reg.error());
-  return *Reg;
-}
-
 [[nodiscard]] Expected<MachineInstr *>
 buildJAL(MachineFunction &Function, const TargetDescription &Target, MachineBasicBlock &Block,
          MachineInstr *Before, PhysicalRegister Destination, MachineBasicBlock &TargetBlock) {
@@ -281,7 +274,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
     return std::unexpected(Point.error());
 
   if (Instruction.opcode() == instructionOpcode(InstructionOpcode::C_J)) {
-    auto Zero = physical(PhysicalRegisterID::X0);
+    auto Zero = physicalRegister(PhysicalRegisterID::X0);
     if (!Zero)
       return std::unexpected(Zero.error());
     auto Replacement = buildJAL(Function, Target, *Block, &Instruction, *Zero, **TargetBlock);
@@ -301,7 +294,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   if (Source == nullptr)
     return makeUnexpected(ErrorCode::VerificationError,
                           "compressed conditional branch has no source register");
-  auto Zero = physical(PhysicalRegisterID::X0);
+  auto Zero = physicalRegister(PhysicalRegisterID::X0);
   if (!Zero)
     return std::unexpected(Zero.error());
   const InstructionOpcode Expanded =
@@ -367,7 +360,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
       return std::unexpected(Retargeted.error());
     return true;
   }
-  auto Zero = physical(PhysicalRegisterID::X0);
+  auto Zero = physicalRegister(PhysicalRegisterID::X0);
   if (!Zero)
     return std::unexpected(Zero.error());
   MachineIRBuilder Builder(Function, Target);
@@ -625,7 +618,7 @@ public:
     if (&Block.function() != &Function || &TargetBlock.function() != &Function)
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "RISC-V branch insertion references another function");
-    auto Zero = physical(PhysicalRegisterID::X0);
+    auto Zero = physicalRegister(PhysicalRegisterID::X0);
     if (!Zero)
       return std::unexpected(Zero.error());
     return buildJAL(Function, Target, Block, nullptr, *Zero, TargetBlock);

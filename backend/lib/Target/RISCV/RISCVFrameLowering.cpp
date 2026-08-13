@@ -43,10 +43,6 @@ constexpr std::uint8_t DwarfCFAExpression = 0x10U;
 constexpr std::uint8_t DwarfOpBaseRegister0 = 0x70U;
 constexpr std::uint8_t DwarfOpBaseRegisterExtended = 0x92U;
 
-[[nodiscard]] Expected<PhysicalRegister> physical(PhysicalRegisterID ID) {
-  return physicalRegister(ID);
-}
-
 [[nodiscard]] constexpr bool fitsSigned12(std::int64_t Value) noexcept {
   return Value >= MinSigned12 && Value <= MaxSigned12;
 }
@@ -182,13 +178,13 @@ struct CallFrameRequirement final {
                                                        const TargetDescription &Target) {
   std::vector<PhysicalRegister> FrameRegisters;
   if (requiresFramePointer(Function)) {
-    auto FP = physical(PhysicalRegisterID::X8);
+    auto FP = physicalRegister(PhysicalRegisterID::X8);
     if (!FP)
       return std::unexpected(FP.error());
     FrameRegisters.push_back(*FP);
   }
   if (requiresBasePointer(Function)) {
-    auto BP = physical(PhysicalRegisterID::X9);
+    auto BP = physicalRegister(PhysicalRegisterID::X9);
     if (!BP)
       return std::unexpected(BP.error());
     FrameRegisters.push_back(*BP);
@@ -214,7 +210,7 @@ struct CallFrameRequirement final {
   }
   if (!requiresStackRealignment(Function))
     return {};
-  auto OldFPScratch = physical(PhysicalRegisterID::X5);
+  auto OldFPScratch = physicalRegister(PhysicalRegisterID::X5);
   if (!OldFPScratch)
     return std::unexpected(OldFPScratch.error());
   const auto OverlapsScratch = [&](PhysicalRegister Reg) {
@@ -349,7 +345,7 @@ modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescri
                                   "RISC-V callee-save analysis found a null register mask");
           }
           for (const PhysicalRegisterID ID : saveOrder()) {
-            auto Reg = physical(ID);
+            auto Reg = physicalRegister(ID);
             if (!Reg)
               return std::unexpected(Reg.error());
             if (Mask->Mask->clobbers(*Reg))
@@ -368,14 +364,14 @@ modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescri
 
   std::vector<PhysicalRegister> Result;
   for (const PhysicalRegisterID ID : saveOrder()) {
-    auto Reg = physical(ID);
+    auto Reg = physicalRegister(ID);
     if (!Reg)
       return std::unexpected(Reg.error());
     if (Modified.contains(*Reg))
       Result.push_back(*Reg);
   }
   if (requiresFramePointer(Function)) {
-    auto FP = physical(PhysicalRegisterID::X8);
+    auto FP = physicalRegister(PhysicalRegisterID::X8);
     if (!FP)
       return std::unexpected(FP.error());
     if (std::ranges::find(Result, *FP) == Result.end()) {
@@ -385,7 +381,7 @@ modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescri
     }
   }
   if (requiresBasePointer(Function)) {
-    auto BP = physical(PhysicalRegisterID::X9);
+    auto BP = physicalRegister(PhysicalRegisterID::X9);
     if (!BP)
       return std::unexpected(BP.error());
     if (std::ranges::find(Result, *BP) == Result.end()) {
@@ -720,7 +716,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
 [[nodiscard]] Expected<std::vector<PhysicalRegister>> scratchRegisters() {
   std::vector<PhysicalRegister> Result;
   for (const PhysicalRegisterID ID : scratchOrder()) {
-    auto Reg = physical(ID);
+    auto Reg = physicalRegister(ID);
     if (!Reg)
       return std::unexpected(Reg.error());
     Result.push_back(*Reg);
@@ -982,7 +978,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
       return std::unexpected(Adjusted.error());
     Offset = *Adjusted;
   }
-  auto Base = physical(BaseID);
+  auto Base = physicalRegister(BaseID);
   if (!Base)
     return std::unexpected(Base.error());
   return FrameIndexReference{*Base, Offset};
@@ -1035,7 +1031,7 @@ emitCalleeSave(MachineIRBuilder &Builder, PhysicalRegister Reg, FrameIndex Index
 
 [[nodiscard]] bool isABIStackSaveRegister(PhysicalRegister Reg) {
   return std::ranges::any_of(saveOrder(), [Reg](PhysicalRegisterID ID) {
-    auto Candidate = physical(ID);
+    auto Candidate = physicalRegister(ID);
     return Candidate && *Candidate == Reg;
   });
 }
@@ -1141,7 +1137,7 @@ public:
   isCalleeSavedRegister(PhysicalRegister Reg, const MachineFunction &,
                         const TargetDescription &Target) const noexcept override {
     return std::ranges::any_of(saveOrder(), [&](PhysicalRegisterID ID) {
-      const auto Candidate = physical(ID);
+      const auto Candidate = physicalRegister(ID);
       return Candidate && Target.registers().regsOverlap(Reg, *Candidate);
     });
   }
@@ -1326,9 +1322,9 @@ public:
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V callee-save frame has no valid save block");
     }
-    auto FP = physical(PhysicalRegisterID::X8);
-    auto BP = physical(PhysicalRegisterID::X9);
-    auto OldFP = physical(PhysicalRegisterID::X5);
+    auto FP = physicalRegister(PhysicalRegisterID::X8);
+    auto BP = physicalRegister(PhysicalRegisterID::X9);
+    auto OldFP = physicalRegister(PhysicalRegisterID::X5);
     if (!FP || !BP || !OldFP)
       return makeUnexpected(ErrorCode::InternalError, "RISC-V frame registers are unavailable");
     const bool Realign = requiresStackRealignment(Function);
@@ -1488,12 +1484,12 @@ public:
     const std::uint64_t StackSize = Function.frameInfo().state().StackSize;
     const std::uint64_t StackAlignment = requiredStackAlignment(Function);
     const bool Realign = requiresStackRealignment(Function);
-    auto SP = physical(PhysicalRegisterID::X2);
-    auto FP = physical(PhysicalRegisterID::X8);
-    auto BP = physical(PhysicalRegisterID::X9);
-    auto Zero = physical(PhysicalRegisterID::X0);
-    auto OldFP = physical(PhysicalRegisterID::X5);
-    auto DefaultTemporary = physical(PhysicalRegisterID::X6);
+    auto SP = physicalRegister(PhysicalRegisterID::X2);
+    auto FP = physicalRegister(PhysicalRegisterID::X8);
+    auto BP = physicalRegister(PhysicalRegisterID::X9);
+    auto Zero = physicalRegister(PhysicalRegisterID::X0);
+    auto OldFP = physicalRegister(PhysicalRegisterID::X5);
+    auto DefaultTemporary = physicalRegister(PhysicalRegisterID::X6);
     if (!SP || !FP || !BP || !Zero || !OldFP || !DefaultTemporary) {
       return makeUnexpected(ErrorCode::InternalError, "RISC-V frame registers are unavailable");
     }
@@ -1673,9 +1669,9 @@ public:
                                             RegisterScavenger &Scavenger) const override {
     if (!isFrameRestoreBlock(Function, Block))
       return {};
-    auto FP = physical(PhysicalRegisterID::X8);
-    auto SP = physical(PhysicalRegisterID::X2);
-    auto BP = physical(PhysicalRegisterID::X9);
+    auto FP = physicalRegister(PhysicalRegisterID::X8);
+    auto SP = physicalRegister(PhysicalRegisterID::X2);
+    auto BP = physicalRegister(PhysicalRegisterID::X9);
     if (!FP || !SP || !BP) {
       return makeUnexpected(ErrorCode::InternalError, "RISC-V frame registers are unavailable");
     }
@@ -1801,7 +1797,7 @@ public:
           return std::unexpected(Adjust.error());
       } else {
         auto Candidates = scratchRegisters();
-        auto Zero = physical(PhysicalRegisterID::X0);
+        auto Zero = physicalRegister(PhysicalRegisterID::X0);
         if (!Candidates || !Zero)
           return std::unexpected(!Candidates ? Candidates.error() : Zero.error());
         auto Scratch = Scavenger.scavenge(Terminator, *Candidates);
@@ -1864,7 +1860,7 @@ public:
         BaseID = PhysicalRegisterID::X9;
       }
     }
-    auto Base = physical(BaseID);
+    auto Base = physicalRegister(BaseID);
     if (!Base)
       return std::unexpected(Base.error());
     return FrameIndexReference{*Base, *Offset};
@@ -1928,7 +1924,7 @@ public:
     auto Point = Builder.setInsertPointBefore(Instruction);
     if (!Point)
       return std::unexpected(Point.error());
-    auto Zero = physical(PhysicalRegisterID::X0);
+    auto Zero = physicalRegister(PhysicalRegisterID::X0);
     if (!Zero)
       return std::unexpected(Zero.error());
     auto Constant = emitConstant(Builder, Scratch->Reg, *Zero, Reference->Offset, std::nullopt);
@@ -1961,7 +1957,7 @@ private:
                                                    MachineInstrFlag Flag) const {
     if (Amount == 0)
       return {};
-    auto SP = physical(PhysicalRegisterID::X2);
+    auto SP = physicalRegister(PhysicalRegisterID::X2);
     if (!SP)
       return std::unexpected(SP.error());
     MachineIRBuilder Builder(Function, Target);
@@ -1993,7 +1989,7 @@ private:
       if (!Saved)
         return std::unexpected(Saved.error());
     }
-    auto Zero = physical(PhysicalRegisterID::X0);
+    auto Zero = physicalRegister(PhysicalRegisterID::X0);
     if (!Zero)
       return std::unexpected(Zero.error());
     auto Constant = emitConstant(Builder, Scratch->Reg, *Zero, Amount, Flag);
