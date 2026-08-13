@@ -15,6 +15,7 @@ set(
   SearchableTableEmitter.cpp
   SubtargetEmitter.cpp
 )
+list(TRANSFORM RCCBackendTableGenBackendSources PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 set(
   RCCBackendTableGenBackendHeaders
   "${CMAKE_CURRENT_SOURCE_DIR}/Common/CodeGenTarget.h"

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 set(RCCBackendTableGenSources Parser.cpp Record.cpp)
+list(TRANSFORM RCCBackendTableGenSources PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 set(
   RCCBackendTableGenHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/TableGen/Parser.h"
