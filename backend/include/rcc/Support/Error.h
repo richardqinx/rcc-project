@@ -56,6 +56,8 @@ private:
   std::string Message;
 };
 
+[[nodiscard]] Error withErrorContext(const Error &Failure, std::string Context);
+
 template <typename ValueT> using Expected = std::expected<ValueT, Error>;
 
 [[nodiscard]] inline std::unexpected<Error> makeUnexpected(ErrorCode Code, std::string Message) {

@@ -51,11 +51,6 @@ enum class PlacementClass : std::uint8_t {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] PlacementClass classify(const MachineBasicBlock &Block,
                                       std::uint64_t Frequency) noexcept {
   const MachineBasicBlockAttributes &Attributes = Block.attributes();
@@ -112,7 +107,7 @@ MachineBlockPlacementPass::run(MachineFunction &Function, const TargetDescriptio
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
-    return std::unexpected(prefixedError(Trial.error(), "block placement setup failed: "));
+    return std::unexpected(withErrorContext(Trial.error(), "block placement setup failed: "));
   MachineFunctionAnalysisManager TrialAnalyses;
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses, Actions);
@@ -121,7 +116,7 @@ MachineBlockPlacementPass::run(MachineFunction &Function, const TargetDescriptio
   Actions.beginReplay();
   auto Result = runImplementation(Function, Target, Analyses, Actions);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "block placement diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();

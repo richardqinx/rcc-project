@@ -64,11 +64,6 @@ struct PhiPlan final {
   std::vector<PhiIncoming> IncomingValues;
 };
 
-[[nodiscard]] Error prefixedError(const Error &Source, std::string Prefix) {
-  Prefix.append(Source.message());
-  return Error(Source.code(), std::move(Prefix));
-}
-
 [[nodiscard]] Expected<void> requireProperties(const MachineFunction &Function,
                                                const MachinePassContract &Contract) {
   const MachineFunctionProperties Missing = Contract.Requires.missingFrom(Function.properties());
@@ -172,7 +167,7 @@ buildCopy(MachineFunction &Function, const TargetDescription &Target,
   auto Legality = TargetInfo.validateCopy(Destination.Reg, Destination.SubReg, Source.Reg,
                                           Source.SubReg, Function, Target);
   if (!Legality)
-    return std::unexpected(prefixedError(Legality.error(), "illegal COPY: "));
+    return std::unexpected(withErrorContext(Legality.error(), "illegal COPY: "));
 
   MachineIRBuilder Builder(Function, Target);
   auto Point =
@@ -500,7 +495,7 @@ Expected<MachinePassResult> PHIEliminationPass::run(MachineFunction &Function,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "PHI-elimination transaction setup failed: "));
+        withErrorContext(Trial.error(), "PHI-elimination transaction setup failed: "));
   }
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
@@ -510,7 +505,7 @@ Expected<MachinePassResult> PHIEliminationPass::run(MachineFunction &Function,
   Actions.beginReplay();
   auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "PHI elimination diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();
@@ -601,7 +596,7 @@ Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunctio
     auto Repaired = repairTrackedLiveness(Function, Target, Result);
     if (!Repaired)
       return std::unexpected(
-          prefixedError(Repaired.error(), "PHI-elimination liveness repair failed: "));
+          withErrorContext(Repaired.error(), "PHI-elimination liveness repair failed: "));
   }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;

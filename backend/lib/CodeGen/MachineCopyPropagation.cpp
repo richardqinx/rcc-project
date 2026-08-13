@@ -62,11 +62,6 @@ copyPropagationContract(MachineCopyPropagationStage Stage) {
   return Stage == MachineCopyPropagationStage::PreRegisterAllocation ? PreRA : PostRA;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
   return Instruction.debugInstrNumber() != 0 || Instruction.preInstrSymbol().has_value() ||
          Instruction.postInstrSymbol().has_value() || Instruction.heapAllocMarker().has_value() ||
@@ -302,7 +297,7 @@ MachineCopyPropagationPass::run(MachineFunction &Function, const TargetDescripti
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "COPY propagation transaction setup failed: "));
+        withErrorContext(Trial.error(), "COPY propagation transaction setup failed: "));
   }
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
@@ -311,7 +306,7 @@ MachineCopyPropagationPass::run(MachineFunction &Function, const TargetDescripti
   Actions.beginReplay();
   auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "COPY propagation diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();

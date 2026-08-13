@@ -26,9 +26,6 @@
 #include <optional>
 #include <ranges>
 #include <span>
-#include <string>
-#include <string_view>
-#include <utility>
 #include <vector>
 
 namespace rcc::regalloc_detail {
@@ -38,12 +35,6 @@ struct AllocationRunResult final {
   bool ChangedInstructions = false;
   bool ChangedFrame = false;
 };
-
-[[nodiscard]] inline Error withPrefix(const Error &Failure, std::string_view Prefix) {
-  std::string Message(Prefix);
-  Message.append(Failure.message());
-  return Error(Failure.code(), std::move(Message));
-}
 
 [[nodiscard]] inline Expected<Register> virtualRegisterAt(std::size_t Index) {
   auto Reg = Register::makeVirtual(Index);

@@ -41,11 +41,6 @@ namespace {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 struct SlotInterval final {
   MachineBasicBlock *Block = nullptr;
   std::size_t First = 0;
@@ -242,14 +237,14 @@ Expected<MachinePassResult> MachineStackSlotColoringPass::run(MachineFunction &F
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "stack-slot coloring transaction setup failed: "));
+        withErrorContext(Trial.error(), "stack-slot coloring transaction setup failed: "));
   }
   auto TrialResult = runImplementation(*Trial->ClonedFunction);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
   auto Result = runImplementation(Function);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "stack-slot coloring diverged after a successful transaction preflight: "));
   }
   return Result;

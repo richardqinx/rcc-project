@@ -195,11 +195,6 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
   return TargetLate;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] std::vector<MachineInstr *> layoutInstructions(MachineFunction &Function) {
   std::vector<MachineInstr *> Result;
   for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next())
@@ -361,7 +356,7 @@ runPreparationTransaction(MachineFunction &Function, const TargetDescription &Ta
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
-    return std::unexpected(prefixedError(Trial.error(), "pseudo preparation setup failed: "));
+    return std::unexpected(withErrorContext(Trial.error(), "pseudo preparation setup failed: "));
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = prepareImplementation(*Trial->ClonedFunction, Target, Info, Actions);
   if (!TrialResult)
@@ -369,8 +364,8 @@ runPreparationTransaction(MachineFunction &Function, const TargetDescription &Ta
   Actions.beginReplay();
   auto Result = prepareImplementation(Function, Target, Info, Actions);
   if (!Result) {
-    return std::unexpected(
-        prefixedError(Result.error(), "pseudo preparation diverged after successful preflight: "));
+    return std::unexpected(withErrorContext(
+        Result.error(), "pseudo preparation diverged after successful preflight: "));
   }
   auto Replayed = Actions.finishReplay();
   if (!Replayed)
@@ -387,7 +382,7 @@ runExpansionTransaction(MachineFunction &Function, const TargetDescription &Targ
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
-    return std::unexpected(prefixedError(Trial.error(), "pseudo expansion setup failed: "));
+    return std::unexpected(withErrorContext(Trial.error(), "pseudo expansion setup failed: "));
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult =
       expandImplementation(*Trial->ClonedFunction, Target, Info, Phase, BranchInfo, Actions);
@@ -397,7 +392,7 @@ runExpansionTransaction(MachineFunction &Function, const TargetDescription &Targ
   auto Result = expandImplementation(Function, Target, Info, Phase, BranchInfo, Actions);
   if (!Result) {
     return std::unexpected(
-        prefixedError(Result.error(), "pseudo expansion diverged after successful preflight: "));
+        withErrorContext(Result.error(), "pseudo expansion diverged after successful preflight: "));
   }
   auto Replayed = Actions.finishReplay();
   if (!Replayed)

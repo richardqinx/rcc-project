@@ -32,11 +32,6 @@ struct RegisterValue final {
   std::uint32_t TargetFlags = 0;
 };
 
-[[nodiscard]] Error prefixedError(const Error &Source, std::string Prefix) {
-  Prefix.append(Source.message());
-  return Error(Source.code(), std::move(Prefix));
-}
-
 [[nodiscard]] Expected<void> requireProperties(const MachineFunction &Function,
                                                const MachinePassContract &Contract) {
   const MachineFunctionProperties Missing = Contract.Requires.missingFrom(Function.properties());
@@ -67,7 +62,7 @@ buildCopy(MachineFunction &Function, const TargetDescription &Target,
   auto Legality = TargetInfo.validateCopy(Destination.Reg, Destination.SubReg, Source.Reg,
                                           Source.SubReg, Function, Target);
   if (!Legality)
-    return std::unexpected(prefixedError(Legality.error(), "illegal COPY: "));
+    return std::unexpected(withErrorContext(Legality.error(), "illegal COPY: "));
 
   MachineIRBuilder Builder(Function, Target);
   auto Point =
@@ -470,7 +465,8 @@ TwoAddressInstructionPass::run(MachineFunction &Function, const TargetDescriptio
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
-    return std::unexpected(prefixedError(Trial.error(), "two-address transaction setup failed: "));
+    return std::unexpected(
+        withErrorContext(Trial.error(), "two-address transaction setup failed: "));
   }
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
@@ -480,7 +476,7 @@ TwoAddressInstructionPass::run(MachineFunction &Function, const TargetDescriptio
   Actions.beginReplay();
   auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "two-address rewrite diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();
@@ -652,7 +648,7 @@ Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
     auto Repaired = repairTrackedLiveness(Function, Target, Result);
     if (!Repaired)
       return std::unexpected(
-          prefixedError(Repaired.error(), "two-address liveness repair failed: "));
+          withErrorContext(Repaired.error(), "two-address liveness repair failed: "));
   }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;

@@ -44,11 +44,6 @@ using Clock = std::chrono::steady_clock;
   return static_cast<std::uint64_t>(Elapsed.count());
 }
 
-[[nodiscard]] Error prefixedError(const Error &Source, std::string Prefix) {
-  Prefix.append(Source.message());
-  return Error(Source.code(), std::move(Prefix));
-}
-
 [[nodiscard]] bool hasDuplicateAnalysisIDs(std::span<const AnalysisID> IDs) {
   std::unordered_set<AnalysisID> Unique;
   for (const AnalysisID ID : IDs) {
@@ -786,8 +781,8 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
     if (Options.VerifyBefore) {
       auto Verification = MachineVerifier::verify(Function, Target);
       if (!Verification) {
-        Error Failure = prefixedError(Verification.error(), "pass '" + std::string(Name) +
-                                                                "' received invalid MachineIR: ");
+        Error Failure = withErrorContext(
+            Verification.error(), "pass '" + std::string(Name) + "' received invalid MachineIR: ");
         if (Instrumentation != nullptr)
           Instrumentation->failure(Name, Function, Failure);
         Analyses.setInstrumentation(nullptr);
@@ -799,8 +794,8 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
       auto Result = Analyses.getResultByID(Required, Function, Target);
       if (!Result) {
         Error Failure =
-            prefixedError(Result.error(), "pass '" + std::string(Name) +
-                                              "' could not materialize a required analysis: ");
+            withErrorContext(Result.error(), "pass '" + std::string(Name) +
+                                                 "' could not materialize a required analysis: ");
         if (Instrumentation != nullptr)
           Instrumentation->failure(Name, Function, Failure);
         Analyses.setInstrumentation(nullptr);
@@ -819,7 +814,7 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
     const std::uint64_t Duration = elapsedNanoseconds(Start);
     if (!PassResult) {
       Error Failure =
-          prefixedError(PassResult.error(), "pass '" + std::string(Name) + "' failed: ");
+          withErrorContext(PassResult.error(), "pass '" + std::string(Name) + "' failed: ");
       if (Instrumentation != nullptr)
         Instrumentation->failure(Name, Function, Failure, Duration);
       Analyses.clear(Function);
@@ -869,8 +864,8 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
         Function.properties().applyTransition(Contract.Requires, Contract.Sets, Contract.Clears);
     if (!Transition) {
       Error Failure =
-          prefixedError(Transition.error(), "pass '" + std::string(Name) +
-                                                "' produced an invalid property transition: ");
+          withErrorContext(Transition.error(), "pass '" + std::string(Name) +
+                                                   "' produced an invalid property transition: ");
       if (Instrumentation != nullptr)
         Instrumentation->failure(Name, Function, Failure, Duration);
       Analyses.clear(Function);
@@ -884,8 +879,8 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
       VerifyOptions.Stage = Contract.VerificationStage;
       auto Verification = MachineVerifier::verify(Function, Target, VerifyOptions);
       if (!Verification) {
-        Error Failure = prefixedError(Verification.error(),
-                                      "pass '" + std::string(Name) + "' left invalid MachineIR: ");
+        Error Failure = withErrorContext(Verification.error(), "pass '" + std::string(Name) +
+                                                                   "' left invalid MachineIR: ");
         if (Instrumentation != nullptr)
           Instrumentation->failure(Name, Function, Failure, Duration);
         Analyses.clear(Function);
@@ -972,7 +967,7 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
       Instrumentation->replayBufferedEvents(EventBuffers[Index]);
     const auto &Failure = Failures[Index];
     if (Failure) {
-      return std::unexpected(prefixedError(
+      return std::unexpected(withErrorContext(
           *Failure, "function '" + std::string(Unit.functionAt(Index)->name()) + "' failed: "));
     }
   }
@@ -1012,8 +1007,8 @@ PassManagerCallbacks<CompilationUnit, CompilationUnitPass, CompilationUnitPassMa
       auto Verification = verifyCompilationUnit(Unit, Target);
       if (!Verification) {
         Error Failure =
-            prefixedError(Verification.error(), "compilation-unit pass '" + std::string(Name) +
-                                                    "' received invalid MachineIR: ");
+            withErrorContext(Verification.error(), "compilation-unit pass '" + std::string(Name) +
+                                                       "' received invalid MachineIR: ");
         if (Instrumentation != nullptr)
           Instrumentation->unitFailure(Name, Unit, Failure);
         UnitAnalyses.setInstrumentation(nullptr);
@@ -1026,8 +1021,8 @@ PassManagerCallbacks<CompilationUnit, CompilationUnitPass, CompilationUnitPassMa
       auto Result = UnitAnalyses.getResultByID(Required, Unit, Target);
       if (!Result) {
         Error Failure =
-            prefixedError(Result.error(), "compilation-unit pass '" + std::string(Name) +
-                                              "' could not materialize a required analysis: ");
+            withErrorContext(Result.error(), "compilation-unit pass '" + std::string(Name) +
+                                                 "' could not materialize a required analysis: ");
         if (Instrumentation != nullptr)
           Instrumentation->unitFailure(Name, Unit, Failure);
         UnitAnalyses.setInstrumentation(nullptr);
@@ -1042,8 +1037,8 @@ PassManagerCallbacks<CompilationUnit, CompilationUnitPass, CompilationUnitPassMa
     auto Result = Pass->run(Unit, Target, UnitAnalyses, FunctionAnalyses);
     const std::uint64_t Duration = elapsedNanoseconds(Start);
     if (!Result) {
-      Error Failure = prefixedError(Result.error(),
-                                    "compilation-unit pass '" + std::string(Name) + "' failed: ");
+      Error Failure = withErrorContext(Result.error(), "compilation-unit pass '" +
+                                                           std::string(Name) + "' failed: ");
       if (Instrumentation != nullptr)
         Instrumentation->unitFailure(Name, Unit, Failure, Duration);
       UnitAnalyses.clearAll();
@@ -1077,8 +1072,8 @@ PassManagerCallbacks<CompilationUnit, CompilationUnitPass, CompilationUnitPassMa
       auto Verification = verifyCompilationUnit(Unit, Target);
       if (!Verification) {
         Error Failure =
-            prefixedError(Verification.error(), "compilation-unit pass '" + std::string(Name) +
-                                                    "' left invalid MachineIR: ");
+            withErrorContext(Verification.error(), "compilation-unit pass '" + std::string(Name) +
+                                                       "' left invalid MachineIR: ");
         if (Instrumentation != nullptr)
           Instrumentation->unitFailure(Name, Unit, Failure, Duration);
         UnitAnalyses.clearAll();

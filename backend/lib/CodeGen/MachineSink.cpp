@@ -61,11 +61,6 @@ namespace {
   return Stage == MachineCodeMotionStage::SelectedSSA ? Selected : PostRA;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
   return Instruction.debugInstrNumber() != 0 || Instruction.preInstrSymbol().has_value() ||
          Instruction.postInstrSymbol().has_value() || Instruction.heapAllocMarker().has_value() ||
@@ -366,7 +361,8 @@ Expected<MachinePassResult> MachineSinkPass::run(MachineFunction &Function,
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
-    return std::unexpected(prefixedError(Trial.error(), "machine sink transaction setup failed: "));
+    return std::unexpected(
+        withErrorContext(Trial.error(), "machine sink transaction setup failed: "));
   }
   MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
@@ -375,7 +371,7 @@ Expected<MachinePassResult> MachineSinkPass::run(MachineFunction &Function,
 
   auto Result = runImplementation(Function, Target, Analyses);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "machine sink diverged after a successful transaction preflight: "));
   }
   return Result;

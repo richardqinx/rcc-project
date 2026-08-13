@@ -327,7 +327,7 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
   PBQPAllocatorEngine Allocator(Function, Target, *Info, Analyses, Options, &Actions);
   auto Allocated = Allocator.run();
   if (!Allocated) {
-    return std::unexpected(regalloc_detail::withPrefix(
+    return std::unexpected(withErrorContext(
         Allocated.error(), "PBQPAllocator diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();

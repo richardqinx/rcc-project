@@ -38,11 +38,6 @@ namespace {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
   return Instruction.flags().has(MachineInstrFlag::FrameSetup) ||
          Instruction.flags().has(MachineInstrFlag::FrameDestroy) ||
@@ -125,7 +120,8 @@ Expected<MachinePassResult> MachineDCEPass::run(MachineFunction &Function,
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
-    return std::unexpected(prefixedError(Trial.error(), "machine DCE transaction setup failed: "));
+    return std::unexpected(
+        withErrorContext(Trial.error(), "machine DCE transaction setup failed: "));
   }
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target);
   if (!TrialResult)
@@ -133,7 +129,7 @@ Expected<MachinePassResult> MachineDCEPass::run(MachineFunction &Function,
 
   auto Result = runImplementation(Function, Target);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "machine DCE diverged after a successful transaction preflight: "));
   }
   return Result;

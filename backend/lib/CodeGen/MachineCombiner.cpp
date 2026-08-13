@@ -113,11 +113,6 @@ namespace {
   return PreLegalizer;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
   return Instruction.flags().has(MachineInstrFlag::FrameSetup) ||
          Instruction.flags().has(MachineInstrFlag::FrameDestroy) ||
@@ -305,7 +300,7 @@ Expected<MachinePassResult> MachineCombinerPass::run(MachineFunction &Function,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "machine combiner transaction setup failed: "));
+        withErrorContext(Trial.error(), "machine combiner transaction setup failed: "));
   }
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
@@ -314,7 +309,7 @@ Expected<MachinePassResult> MachineCombinerPass::run(MachineFunction &Function,
   Actions.beginReplay();
   auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "machine combiner diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();

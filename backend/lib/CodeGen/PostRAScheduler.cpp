@@ -49,11 +49,6 @@ namespace {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 } // namespace
 
 const MachinePassContract &PostRASchedulerPass::contract() const noexcept {
@@ -72,7 +67,7 @@ Expected<MachinePassResult> PostRASchedulerPass::run(MachineFunction &Function,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "post-RA scheduler transaction setup failed: "));
+        withErrorContext(Trial.error(), "post-RA scheduler transaction setup failed: "));
   }
   MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialLiveness =
@@ -104,7 +99,7 @@ Expected<MachinePassResult> PostRASchedulerPass::run(MachineFunction &Function,
   auto Run = runMachineScheduler(Function, Target, *Model, ScheduleDAGMode::PostRegisterAllocation,
                                  **Liveness, **Frequencies, Options, &Actions);
   if (!Run) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Run.error(), "post-RA scheduler diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();

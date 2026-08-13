@@ -167,11 +167,6 @@ void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
   return Error(Code, std::move(Message));
 }
 
-[[nodiscard]] Error prefixedError(const Error &Source, std::string Prefix) {
-  Prefix.append(Source.message());
-  return Error(Source.code(), std::move(Prefix));
-}
-
 [[nodiscard]] Expected<void> repairTrackedLiveness(MachineFunction &Function,
                                                    const TargetDescription &Target,
                                                    MachinePassResult &Result) {
@@ -207,7 +202,7 @@ Expected<MachinePassResult> InstructionSelect::run(MachineFunction &Function,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "instruction-selection transaction setup failed: "));
+        withErrorContext(Trial.error(), "instruction-selection transaction setup failed: "));
   }
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
@@ -216,9 +211,9 @@ Expected<MachinePassResult> InstructionSelect::run(MachineFunction &Function,
   Actions.beginReplay();
   auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
-    return std::unexpected(
-        prefixedError(Result.error(),
-                      "instruction selection diverged after a successful transaction preflight: "));
+    return std::unexpected(withErrorContext(
+        Result.error(),
+        "instruction selection diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();
   if (!Replayed)
@@ -242,7 +237,7 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!Validation)
       return std::unexpected(
-          prefixedError(Validation.error(), "instruction selector input is invalid: "));
+          withErrorContext(Validation.error(), "instruction selector input is invalid: "));
     if (!Descriptor->Flags.has(InstructionFlag::Generic))
       continue;
     auto Match = Info->canSelect(*Instruction, Function, Target);
@@ -291,13 +286,13 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
           passFailure("instruction selector produced an unknown instruction descriptor"));
     auto Constraint = Info->constrainSelectedInstruction(*Instruction, Function, Target);
     if (!Constraint) {
-      return std::unexpected(prefixedError(
+      return std::unexpected(withErrorContext(
           Constraint.error(), "instruction selector could not constrain selected registers: "));
     }
     auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!Validation)
-      return std::unexpected(
-          prefixedError(Validation.error(), "instruction selector produced invalid MachineIR: "));
+      return std::unexpected(withErrorContext(Validation.error(),
+                                              "instruction selector produced invalid MachineIR: "));
     const OpcodeState After = stateOf(*Instruction);
     if (After == Before)
       return std::unexpected(
@@ -330,20 +325,20 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
           passFailure("instruction selector produced an unknown instruction descriptor"));
     auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!Validation)
-      return std::unexpected(
-          prefixedError(Validation.error(), "instruction selector produced invalid MachineIR: "));
+      return std::unexpected(withErrorContext(Validation.error(),
+                                              "instruction selector produced invalid MachineIR: "));
     if (Descriptor->Flags.has(InstructionFlag::Generic))
       return std::unexpected(
           passFailure("instruction selector left a generic opcode in the function"));
   }
   auto RegisterValidation = Target.validateRegisterInfo(Function.registerInfo());
   if (!RegisterValidation)
-    return std::unexpected(prefixedError(RegisterValidation.error(),
-                                         "instruction selection produced invalid registers: "));
+    return std::unexpected(withErrorContext(RegisterValidation.error(),
+                                            "instruction selection produced invalid registers: "));
   auto Liveness = repairTrackedLiveness(Function, Target, Result);
   if (!Liveness) {
     return std::unexpected(
-        prefixedError(Liveness.error(), "instruction-selection liveness repair failed: "));
+        withErrorContext(Liveness.error(), "instruction-selection liveness repair failed: "));
   }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;

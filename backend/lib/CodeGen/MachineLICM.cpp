@@ -62,11 +62,6 @@ namespace {
   return Stage == MachineCodeMotionStage::SelectedSSA ? Selected : PostRA;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] bool containsBlock(const MachineLoop &Loop, const MachineBasicBlock *Block) noexcept {
   return std::ranges::find(Loop.Blocks, Block) != Loop.Blocks.end();
 }
@@ -344,7 +339,8 @@ Expected<MachinePassResult> MachineLICMPass::run(MachineFunction &Function,
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
-    return std::unexpected(prefixedError(Trial.error(), "machine LICM transaction setup failed: "));
+    return std::unexpected(
+        withErrorContext(Trial.error(), "machine LICM transaction setup failed: "));
   }
   MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
@@ -353,7 +349,7 @@ Expected<MachinePassResult> MachineLICMPass::run(MachineFunction &Function,
 
   auto Result = runImplementation(Function, Target, Analyses);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "machine LICM diverged after a successful transaction preflight: "));
   }
   return Result;

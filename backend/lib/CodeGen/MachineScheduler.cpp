@@ -49,11 +49,6 @@ namespace {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] std::uint64_t saturatingAdd(std::uint64_t Left, std::uint64_t Right) noexcept {
   return std::numeric_limits<std::uint64_t>::max() - Left < Right
              ? std::numeric_limits<std::uint64_t>::max()
@@ -406,7 +401,7 @@ Expected<MachinePassResult> MachineSchedulerPass::run(MachineFunction &Function,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "machine scheduler transaction setup failed: "));
+        withErrorContext(Trial.error(), "machine scheduler transaction setup failed: "));
   }
   MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialLiveness =
@@ -434,7 +429,7 @@ Expected<MachinePassResult> MachineSchedulerPass::run(MachineFunction &Function,
   auto Run = runMachineScheduler(Function, Target, *Model, ScheduleDAGMode::PreRegisterAllocation,
                                  **Liveness, **Frequencies, Options, &Actions);
   if (!Run) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Run.error(), "machine scheduler diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();

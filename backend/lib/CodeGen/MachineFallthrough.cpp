@@ -36,11 +36,6 @@ namespace {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] Expected<std::vector<MachineBasicBlock *>>
 normalizeFallthroughs(MachineFunction &Function, const TargetDescription &Target,
                       const TargetInstrInfo &Info) {
@@ -129,7 +124,7 @@ Expected<MachinePassResult> MachineFallthroughPass::run(MachineFunction &Functio
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
-    return std::unexpected(prefixedError(Trial.error(), "fallthrough setup failed: "));
+    return std::unexpected(withErrorContext(Trial.error(), "fallthrough setup failed: "));
   MachineFunctionAnalysisManager TrialAnalyses;
   auto TrialLiveness =
       TrialAnalyses.getResult<LiveVariablesAnalysis>(*Trial->ClonedFunction, Target);
@@ -147,8 +142,8 @@ Expected<MachinePassResult> MachineFallthroughPass::run(MachineFunction &Functio
     return std::unexpected(Liveness.error());
   auto ChangedBlocks = normalizeFallthroughs(Function, Target, *Info);
   if (!ChangedBlocks) {
-    return std::unexpected(prefixedError(ChangedBlocks.error(),
-                                         "fallthrough diverged after a successful preflight: "));
+    return std::unexpected(withErrorContext(ChangedBlocks.error(),
+                                            "fallthrough diverged after a successful preflight: "));
   }
   auto Repaired = repairPostRAMachineBlockLiveness(*ChangedBlocks, Target, **Liveness);
   if (!Repaired)

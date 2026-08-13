@@ -95,11 +95,6 @@ registerConfigurationFingerprint(const MachineRegisterInfo &RegInfo) noexcept {
   return Error(Code, std::move(Message));
 }
 
-[[nodiscard]] Error prefixedError(const Error &Source, std::string Prefix) {
-  Prefix.append(Source.message());
-  return Error(Source.code(), std::move(Prefix));
-}
-
 [[nodiscard]] Expected<void> repairTrackedLiveness(MachineFunction &Function,
                                                    const TargetDescription &Target,
                                                    MachinePassResult &Result) {
@@ -173,7 +168,7 @@ Expected<MachinePassResult> RegBankSelect::run(MachineFunction &Function,
     auto Validation = Info->validateInstruction(*Instruction, Function, Target);
     if (!Validation)
       return std::unexpected(
-          prefixedError(Validation.error(), "register-bank mapping precondition failed: "));
+          withErrorContext(Validation.error(), "register-bank mapping precondition failed: "));
   }
 
   for (const auto &[Reg, Bank] : PlannedBanks) {
@@ -197,25 +192,27 @@ Expected<MachinePassResult> RegBankSelect::run(MachineFunction &Function,
     if (!Constraint) {
       auto Restored = Restore();
       if (!Restored)
-        return std::unexpected(prefixedError(Restored.error(), "register-bank rollback failed: "));
+        return std::unexpected(
+            withErrorContext(Restored.error(), "register-bank rollback failed: "));
       return std::unexpected(Constraint.error());
     }
     auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!Validation) {
       auto Restored = Restore();
       if (!Restored)
-        return std::unexpected(prefixedError(Restored.error(), "register-bank rollback failed: "));
-      return std::unexpected(prefixedError(Validation.error(),
-                                           "register-bank selection produced invalid MachineIR: "));
+        return std::unexpected(
+            withErrorContext(Restored.error(), "register-bank rollback failed: "));
+      return std::unexpected(withErrorContext(
+          Validation.error(), "register-bank selection produced invalid MachineIR: "));
     }
   }
   auto RegisterValidation = Target.validateRegisterInfo(RegInfo);
   if (!RegisterValidation) {
     auto Restored = Restore();
     if (!Restored)
-      return std::unexpected(prefixedError(Restored.error(), "register-bank rollback failed: "));
-    return std::unexpected(prefixedError(RegisterValidation.error(),
-                                         "register-bank selection produced invalid registers: "));
+      return std::unexpected(withErrorContext(Restored.error(), "register-bank rollback failed: "));
+    return std::unexpected(withErrorContext(
+        RegisterValidation.error(), "register-bank selection produced invalid registers: "));
   }
 
   if (registerConfigurationFingerprint(RegInfo) != RegisterConfigurationBefore) {
@@ -227,9 +224,9 @@ Expected<MachinePassResult> RegBankSelect::run(MachineFunction &Function,
   if (!Liveness) {
     auto Restored = Restore();
     if (!Restored)
-      return std::unexpected(prefixedError(Restored.error(), "register-bank rollback failed: "));
+      return std::unexpected(withErrorContext(Restored.error(), "register-bank rollback failed: "));
     return std::unexpected(
-        prefixedError(Liveness.error(), "register-bank liveness repair failed: "));
+        withErrorContext(Liveness.error(), "register-bank liveness repair failed: "));
   }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;

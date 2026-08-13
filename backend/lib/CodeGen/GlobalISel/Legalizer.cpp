@@ -106,11 +106,6 @@ void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
   return Error(Code, std::move(Message));
 }
 
-[[nodiscard]] Error prefixedError(const Error &Source, std::string Prefix) {
-  Prefix.append(Source.message());
-  return Error(Source.code(), std::move(Prefix));
-}
-
 [[nodiscard]] std::string_view legalizationActionName(LegalizationAction Action) noexcept {
   switch (Action) {
   case LegalizationAction::Legal:
@@ -187,7 +182,7 @@ Expected<MachinePassResult> Legalizer::run(MachineFunction &Function,
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
-    return std::unexpected(prefixedError(Trial.error(), "legalizer transaction setup failed: "));
+    return std::unexpected(withErrorContext(Trial.error(), "legalizer transaction setup failed: "));
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
   if (!TrialResult)
@@ -195,7 +190,7 @@ Expected<MachinePassResult> Legalizer::run(MachineFunction &Function,
   Actions.beginReplay();
   auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "legalizer diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();
@@ -231,7 +226,7 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
 
     auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!Validation)
-      return std::unexpected(prefixedError(Validation.error(), "legalizer input is invalid: "));
+      return std::unexpected(withErrorContext(Validation.error(), "legalizer input is invalid: "));
 
     auto Action = Info->classify(*Instruction, Function, Target);
     if (!Action)
@@ -253,7 +248,7 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
     auto LoweringValidation = Info->validateLowering(*Instruction, Function, Target, *Action);
     if (!LoweringValidation)
       return std::unexpected(
-          prefixedError(LoweringValidation.error(), "legalizer lowering precondition failed: "));
+          withErrorContext(LoweringValidation.error(), "legalizer lowering precondition failed: "));
     std::string Rule = "legalize.";
     Rule.append(legalizationActionName(*Action));
     Rule.push_back('.');
@@ -311,12 +306,12 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
     auto FinalValidation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!FinalValidation)
       return std::unexpected(
-          prefixedError(FinalValidation.error(), "legalizer produced invalid MachineIR: "));
+          withErrorContext(FinalValidation.error(), "legalizer produced invalid MachineIR: "));
   }
   auto Liveness = clearTrackedLivenessFlags(Function, Result);
   if (!Liveness)
     return std::unexpected(
-        prefixedError(Liveness.error(), "legalizer liveness-flag invalidation failed: "));
+        withErrorContext(Liveness.error(), "legalizer liveness-flag invalidation failed: "));
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;
 }

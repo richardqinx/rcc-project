@@ -45,11 +45,6 @@ namespace {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
   return Instruction.debugInstrNumber() != 0 || Instruction.preInstrSymbol().has_value() ||
          Instruction.postInstrSymbol().has_value() || Instruction.heapAllocMarker().has_value() ||
@@ -311,14 +306,14 @@ Expected<MachinePassResult> MachineBranchOptimizationPass::run(MachineFunction &
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "branch optimization transaction setup failed: "));
+        withErrorContext(Trial.error(), "branch optimization transaction setup failed: "));
   }
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
   auto Result = runImplementation(Function, Target);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "branch optimization diverged after a successful transaction preflight: "));
   }
   return Result;

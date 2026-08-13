@@ -61,4 +61,9 @@ std::string_view getErrorCodeName(ErrorCode Code) noexcept {
 
 Error::Error(ErrorCode Code, std::string Message) : Code(Code), Message(std::move(Message)) {}
 
+Error withErrorContext(const Error &Failure, std::string Context) {
+  Context.append(Failure.message());
+  return Error(Failure.code(), std::move(Context));
+}
+
 } // namespace rcc

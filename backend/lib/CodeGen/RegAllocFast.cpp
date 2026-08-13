@@ -605,7 +605,7 @@ Expected<MachinePassResult> FastAllocatorPass::run(MachineFunction &Function,
   FastAllocatorEngine Allocator(Function, Target, *Info, **Liveness);
   auto Allocated = Allocator.run();
   if (!Allocated) {
-    return std::unexpected(regalloc_detail::withPrefix(
+    return std::unexpected(withErrorContext(
         Allocated.error(), "FastAllocator diverged after a successful transaction preflight: "));
   }
   auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);

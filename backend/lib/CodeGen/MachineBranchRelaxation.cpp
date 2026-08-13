@@ -47,11 +47,6 @@ struct MachineLayout final {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] Expected<std::uint64_t> alignTo(std::uint64_t Value, std::uint64_t Alignment) {
   if (Alignment == 0 || (Alignment & (Alignment - 1U)) != 0)
     return makeUnexpected(ErrorCode::VerificationError, "block alignment is not a power of two");
@@ -118,7 +113,7 @@ MachineBranchRelaxationPass::run(MachineFunction &Function, const TargetDescript
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
-    return std::unexpected(prefixedError(Trial.error(), "branch relaxation setup failed: "));
+    return std::unexpected(withErrorContext(Trial.error(), "branch relaxation setup failed: "));
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
   if (!TrialResult)
@@ -126,7 +121,7 @@ MachineBranchRelaxationPass::run(MachineFunction &Function, const TargetDescript
   Actions.beginReplay();
   auto Result = runImplementation(Function, Target, Actions);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "branch relaxation diverged after a successful transaction preflight: "));
   }
   auto Replayed = Actions.finishReplay();

@@ -3,11 +3,11 @@
 #include "rcc/CodeGen/PrologueEpilogueInsertion.h"
 
 #include "rcc/CodeGen/FrameIndexElimination.h"
+#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
-#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineVerifier.h"
@@ -19,14 +19,7 @@
 #include <vector>
 
 namespace rcc {
-namespace {
-
-[[nodiscard]] Error prefixedError(const Error &Source, std::string Prefix) {
-  Prefix.append(Source.message());
-  return Error(Source.code(), std::move(Prefix));
-}
-
-} // namespace
+namespace {} // namespace
 
 const MachinePassContract &PrologueEpilogueInsertionPass::contract() const noexcept {
   static const MachinePassContract Contract = [] {
@@ -63,15 +56,16 @@ Expected<MachinePassResult> PrologueEpilogueInsertionPass::run(MachineFunction &
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
-    return std::unexpected(prefixedError(Trial.error(), "frame transaction setup failed: "));
+    return std::unexpected(withErrorContext(Trial.error(), "frame transaction setup failed: "));
   auto TrialRun = runImplementation(*Trial->ClonedFunction, Target);
   if (!TrialRun)
-    return std::unexpected(prefixedError(TrialRun.error(), "frame transaction rejected input: "));
+    return std::unexpected(
+        withErrorContext(TrialRun.error(), "frame transaction rejected input: "));
   auto Transition = Trial->ClonedFunction->properties().applyTransition(
       contract().Requires, contract().Sets, contract().Clears);
   if (!Transition) {
     return std::unexpected(
-        prefixedError(Transition.error(), "frame transaction property update failed: "));
+        withErrorContext(Transition.error(), "frame transaction property update failed: "));
   }
   auto Verified =
       MachineVerifier::verify(*Trial->ClonedFunction, Target,
@@ -80,12 +74,12 @@ Expected<MachinePassResult> PrologueEpilogueInsertionPass::run(MachineFunction &
                                                      .VerifyProperties = true});
   if (!Verified) {
     return std::unexpected(
-        prefixedError(Verified.error(), "frame transaction postcondition failed: "));
+        withErrorContext(Verified.error(), "frame transaction postcondition failed: "));
   }
 
   auto Result = runImplementation(Function, Target);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "frame lowering diverged after successful transaction preflight: "));
   }
   return Result;

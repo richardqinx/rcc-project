@@ -49,11 +49,6 @@ namespace {
   return Contract;
 }
 
-[[nodiscard]] Error prefixedError(const Error &Failure, std::string Prefix) {
-  Prefix.append(Failure.message());
-  return Error(Failure.code(), std::move(Prefix));
-}
-
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
   return Instruction.debugInstrNumber() != 0 || Instruction.preInstrSymbol().has_value() ||
          Instruction.postInstrSymbol().has_value() || Instruction.heapAllocMarker().has_value() ||
@@ -258,14 +253,14 @@ Expected<MachinePassResult> MachineTailDuplicationPass::run(MachineFunction &Fun
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial) {
     return std::unexpected(
-        prefixedError(Trial.error(), "tail duplication transaction setup failed: "));
+        withErrorContext(Trial.error(), "tail duplication transaction setup failed: "));
   }
   auto TrialResult = runImplementation(*Trial->ClonedFunction, Target);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
   auto Result = runImplementation(Function, Target);
   if (!Result) {
-    return std::unexpected(prefixedError(
+    return std::unexpected(withErrorContext(
         Result.error(), "tail duplication diverged after a successful transaction preflight: "));
   }
   return Result;
