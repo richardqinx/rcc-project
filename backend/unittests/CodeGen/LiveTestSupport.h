@@ -53,12 +53,12 @@ private:
   int Failures = 0;
 };
 
-[[nodiscard]] rcc::Opcode testOpcode(std::uint32_t Value) {
+[[nodiscard]] inline rcc::Opcode testOpcode(std::uint32_t Value) {
   return rcc::Opcode::fromValue(Value);
 }
 
-[[nodiscard]] rcc::OperandDescriptor registerOperand(rcc::RegisterOperandRole Role,
-                                                     bool EarlyClobber = false) {
+[[nodiscard]] inline rcc::OperandDescriptor registerOperand(rcc::RegisterOperandRole Role,
+                                                            bool EarlyClobber = false) {
   rcc::OperandDescriptor Result;
   Result.Kinds = {rcc::MachineOperand::Kind::Register};
   Result.RegisterRole = Role;
@@ -67,13 +67,13 @@ private:
   return Result;
 }
 
-[[nodiscard]] rcc::OperandDescriptor plainOperand(rcc::MachineOperand::Kind Kind) {
+[[nodiscard]] inline rcc::OperandDescriptor plainOperand(rcc::MachineOperand::Kind Kind) {
   rcc::OperandDescriptor Result;
   Result.Kinds = {Kind};
   return Result;
 }
 
-[[nodiscard]] rcc::InstructionDescriptor instruction(std::uint32_t Value, std::string Name) {
+[[nodiscard]] inline rcc::InstructionDescriptor instruction(std::uint32_t Value, std::string Name) {
   rcc::InstructionDescriptor Result;
   Result.InstructionOpcode = testOpcode(Value);
   Result.Name = std::move(Name);
@@ -81,7 +81,7 @@ private:
   return Result;
 }
 
-[[nodiscard]] rcc::Expected<rcc::TargetDescription> createTarget() {
+[[nodiscard]] inline rcc::Expected<rcc::TargetDescription> createTarget() {
   std::vector<rcc::InstructionDescriptor> Descriptors;
   std::vector<rcc::ImmediatePredicate> Predicates;
   auto Generic = rcc::appendGenericInstructionInfo(Descriptors, Predicates);
@@ -131,8 +131,8 @@ struct FunctionFixture final {
   std::vector<rcc::MachineBasicBlock *> Blocks;
 };
 
-[[nodiscard]] rcc::Expected<FunctionFixture> createFunction(std::string Name, std::uint64_t ID,
-                                                            std::size_t BlockCount) {
+[[nodiscard]] inline rcc::Expected<FunctionFixture>
+createFunction(std::string Name, std::uint64_t ID, std::size_t BlockCount) {
   auto Function =
       rcc::MachineFunction::create(std::move(Name), rcc::MachineFunctionStableID::fromValue(ID));
   if (!Function)
@@ -151,7 +151,7 @@ struct FunctionFixture final {
   return Result;
 }
 
-[[nodiscard]] rcc::Expected<rcc::Register> createVReg(rcc::MachineFunction &Function) {
+[[nodiscard]] inline rcc::Expected<rcc::Register> createVReg(rcc::MachineFunction &Function) {
   auto Type = rcc::LLT::makeInteger(64);
   if (!Type)
     return std::unexpected(Type.error());
@@ -167,7 +167,7 @@ struct FunctionFixture final {
   return *Reg;
 }
 
-[[nodiscard]] rcc::Expected<rcc::MachineInstr *>
+[[nodiscard]] inline rcc::Expected<rcc::MachineInstr *>
 buildDef(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
          rcc::MachineBasicBlock &Block, rcc::Register Reg, rcc::SubRegIndex SubReg = {},
          bool EarlyClobber = false) {
@@ -187,7 +187,7 @@ buildDef(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
   return Pending->build();
 }
 
-[[nodiscard]] rcc::Expected<rcc::MachineInstr *>
+[[nodiscard]] inline rcc::Expected<rcc::MachineInstr *>
 buildUse(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
          rcc::MachineBasicBlock &Block, rcc::Register Reg, rcc::SubRegIndex SubReg = {},
          rcc::MachineInstr *Before = nullptr) {
@@ -205,7 +205,7 @@ buildUse(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
   return Pending->build();
 }
 
-[[nodiscard]] rcc::Expected<rcc::MachineInstr *>
+[[nodiscard]] inline rcc::Expected<rcc::MachineInstr *>
 buildMask(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
           rcc::MachineBasicBlock &Block, std::shared_ptr<const rcc::RegisterMask> Mask) {
   rcc::MachineIRBuilder Builder(Function, Target);
@@ -221,7 +221,7 @@ buildMask(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
   return Pending->build();
 }
 
-[[nodiscard]] rcc::Expected<rcc::MachineInstr *>
+[[nodiscard]] inline rcc::Expected<rcc::MachineInstr *>
 buildMaskedDef(rcc::MachineFunction &Function, const rcc::TargetDescription &Target,
                rcc::MachineBasicBlock &Block, rcc::Register Reg,
                std::shared_ptr<const rcc::RegisterMask> Mask) {
@@ -241,12 +241,12 @@ buildMaskedDef(rcc::MachineFunction &Function, const rcc::TargetDescription &Tar
   return Pending->build();
 }
 
-[[nodiscard]] rcc::PhysicalRegister physical(std::uint32_t Number) {
+[[nodiscard]] inline rcc::PhysicalRegister physical(std::uint32_t Number) {
   return *rcc::PhysicalRegister::create(Number);
 }
 
-[[nodiscard]] bool hasFlag(const rcc::MachineInstr &Instruction, std::size_t OperandIndex,
-                           rcc::RegisterOperandFlag Flag) {
+[[nodiscard]] inline bool hasFlag(const rcc::MachineInstr &Instruction, std::size_t OperandIndex,
+                                  rcc::RegisterOperandFlag Flag) {
   const rcc::MachineOperand *Operand = Instruction.operandAt(OperandIndex);
   return Operand != nullptr && Operand->registerFlags().has(Flag);
 }
