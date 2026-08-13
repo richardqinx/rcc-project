@@ -428,6 +428,7 @@ CodeGenTarget::normalizeImplicitRegisters(const std::vector<SourceImplicitRegist
         .Flags = {},
         .SchedulingClass = HasSchedulingClass ? SchedulingClass->second : 0,
         .EncodingCategory = HasEncodingCategory ? EncodingCategory->second : 0,
+        .SizeInBytes = Instruction.SizeInBytes,
         .AssemblyFormat = HasAssemblyFormat ? AssemblyFormat->second : 0,
         .RequiresMemoryOperands = Instruction.RequiresMemoryOperands,
         .Owner = std::string(*Owner),
@@ -545,6 +546,10 @@ CodeGenTarget::normalizeImplicitRegisters(const std::vector<SourceImplicitRegist
         (HasFlag("TerminalEmission") &&
          (!IsPseudo || Normalized.Owner != "AsmPrinter" || !HasFlag("ProducesCode")))) {
       fail(Instruction.Range, "instruction pseudo flags, owner, and deadline are inconsistent");
+      return false;
+    }
+    if (Normalized.SizeInBytes != 0 && !HasFlag("ProducesCode")) {
+      fail(Instruction.Range, "only code-producing instructions can declare a byte size");
       return false;
     }
     if (Normalized.RequiresMemoryOperands && !HasFlag("MayLoad") && !HasFlag("MayStore")) {

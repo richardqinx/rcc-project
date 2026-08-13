@@ -3962,6 +3962,7 @@ instructions:
     implicit_defs: [{ register: X1 }]
     allow_extra_implicit_operands: true
     flags: [pseudo, produces_code, allowed_pre_legalizer, call, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
+    size: 8
     owner: post_ra_expansion
     deadline: post_ra_finalized
   -
@@ -3974,6 +3975,7 @@ instructions:
     num_explicit_defs: 0
     allow_extra_implicit_operands: true
     flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, call, barrier, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
+    size: 8
     owner: post_ra_expansion
     deadline: post_ra_finalized
   -
@@ -3984,6 +3986,7 @@ instructions:
     num_explicit_defs: 0
     allow_extra_implicit_operands: true
     flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, return, barrier]
+    size: 4
     owner: post_ra_expansion
     deadline: post_ra_finalized
   -
@@ -4044,5 +4047,6 @@ instructions:
       - { kinds: [basic_block], name: TARGET }
     num_explicit_defs: 0
     flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, barrier]
+    size: 4
     owner: post_ra_expansion
     deadline: post_ra_finalized

@@ -179,8 +179,9 @@ std::string emitInstructionInfo(const NormalizedTargetModel &Model) {
       Output << "InstructionFlag::" << Flag << ", ";
     Output << "}, .SchedulingClass = SchedulingClassID::fromValue(" << Instruction.SchedulingClass
            << "), .EncodingCategory = EncodingCategoryID::fromValue("
-           << Instruction.EncodingCategory << "), .AssemblyFormat = AssemblyFormatID::fromValue("
-           << Instruction.AssemblyFormat << "), .RequiresMemoryOperands = "
+           << Instruction.EncodingCategory << "), .SizeInBytes = " << Instruction.SizeInBytes
+           << ", .AssemblyFormat = AssemblyFormatID::fromValue(" << Instruction.AssemblyFormat
+           << "), .RequiresMemoryOperands = "
            << (Instruction.RequiresMemoryOperands ? "true" : "false")
            << ", .Owner = PseudoOwner::" << Instruction.Owner
            << ", .Deadline = PipelineStage::" << Instruction.Deadline

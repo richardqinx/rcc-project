@@ -2,7 +2,6 @@
 
 #include "rcc/CodeGen/MachineBranchRelaxation.h"
 
-#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
@@ -29,16 +28,12 @@ struct MachineLayout final {
 [[nodiscard]] const MachinePassContract &relaxationContract() {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
-        .Name = "machine-branch-relaxation",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::TracksLiveness,
-                     MachineFunctionProperty::FrameFinalized,
-                     MachineFunctionProperty::NoFrameIndices},
+        .Name = "branch-relaxation",
+        .Requires = {MachineFunctionProperty::TracksLiveness},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {},
-        .VerificationStage = PipelineStage::PostRAFinalized,
+        .VerificationStage = std::nullopt,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
     Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands};
@@ -107,7 +102,7 @@ MachineBranchRelaxationPass::run(MachineFunction &Function, const TargetDescript
                                  MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
-                          "branch relaxation requires finalized frame and tracked liveness");
+                          "branch relaxation requires tracked liveness");
   }
   auto Trial = cloneMachineFunction(
       Function, Target,
@@ -185,9 +180,6 @@ MachineBranchRelaxationPass::runImplementation(MachineFunction &Function,
     if (Changed)
       continue;
     if (Result.Changed) {
-      auto Rebuilt = rebuildMachineLiveness(Function, Target);
-      if (!Rebuilt)
-        return std::unexpected(Rebuilt.error());
       Result.Changes = {MachinePassChange::Instructions, MachinePassChange::Operands};
       Result.Preserved = PreservedAnalyses::none();
     } else {

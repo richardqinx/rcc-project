@@ -155,6 +155,7 @@ struct NormalizedInstruction final {
   std::vector<std::string> Flags;
   std::uint32_t SchedulingClass = 0;
   std::uint32_t EncodingCategory = 0;
+  std::uint32_t SizeInBytes = 0;
   std::uint32_t AssemblyFormat = 0;
   bool RequiresMemoryOperands = false;
   std::string Owner;

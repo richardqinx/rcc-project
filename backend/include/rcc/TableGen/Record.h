@@ -196,6 +196,7 @@ struct SourceInstruction final {
   std::vector<std::string> Flags;
   std::string SchedulingClassSymbol;
   std::string EncodingCategorySymbol;
+  std::uint32_t SizeInBytes = 0;
   std::string AssemblyFormatSymbol;
   bool RequiresMemoryOperands = false;
   std::string Owner = "none";

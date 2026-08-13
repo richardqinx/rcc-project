@@ -1027,8 +1027,8 @@ private:
                      {"id", "symbol", "name", "assembly_mnemonic", "encoding", "operands",
                       "num_explicit_defs", "variadic", "implicit_defs", "implicit_uses",
                       "allow_extra_implicit_operands", "flags", "scheduling_class",
-                      "encoding_category", "assembly_format", "requires_memory_operands", "owner",
-                      "deadline"},
+                      "encoding_category", "size", "assembly_format", "requires_memory_operands",
+                      "owner", "deadline"},
                      "instruction")) {
         return false;
       }
@@ -1079,6 +1079,12 @@ private:
         if (!Value)
           return false;
         Instruction.EncodingCategorySymbol = *Value;
+      }
+      if (const yaml::Node *Size = optionalNode(*Element, "size")) {
+        const auto Value = unsignedInteger32(*Size, "instruction size");
+        if (!Value)
+          return false;
+        Instruction.SizeInBytes = *Value;
       }
       if (const yaml::Node *AssemblyFormat = optionalNode(*Element, "assembly_format")) {
         const auto Value = scalar(*AssemblyFormat, "instruction assembly_format");

@@ -2,6 +2,7 @@
 
 #include "RISCVInstrInfo.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -29,6 +31,57 @@ namespace {
 
 constexpr std::uint32_t PCRelativeHighFlag = 2;
 constexpr std::uint32_t PCRelativeLowFlag = 4;
+
+[[nodiscard]] bool isAsmSpace(char Value) noexcept {
+  return Value == ' ' || Value == '\t' || Value == '\r' || Value == '\f' || Value == '\v';
+}
+
+[[nodiscard]] std::string_view trimAsmSpace(std::string_view Text) noexcept {
+  while (!Text.empty() && isAsmSpace(Text.front()))
+    Text.remove_prefix(1);
+  while (!Text.empty() && isAsmSpace(Text.back()))
+    Text.remove_suffix(1);
+  return Text;
+}
+
+[[nodiscard]] Expected<std::uint32_t> inlineAsmSize(const MachineInstr &Instruction) {
+  const MachineOperand *Operand = Instruction.operandAt(0);
+  const auto *Symbol = Operand == nullptr ? nullptr : Operand->getIf<ExternalSymbolOperand>();
+  if (Symbol == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError, "RISC-V INLINEASM has no assembly text");
+
+  std::uint64_t Size = 0;
+  std::string_view Remaining = Symbol->Name;
+  while (!Remaining.empty()) {
+    const std::size_t Separator = Remaining.find_first_of("\n;");
+    std::string_view Statement = trimAsmSpace(Remaining.substr(0, Separator));
+    Remaining =
+        Separator == std::string_view::npos ? std::string_view{} : Remaining.substr(Separator + 1U);
+    if (Statement.empty() || Statement.front() == '#')
+      continue;
+
+    std::uint64_t StatementSize = 4;
+    constexpr std::string_view SpaceDirective = ".space";
+    if (Statement.starts_with(SpaceDirective) && (Statement.size() == SpaceDirective.size() ||
+                                                  isAsmSpace(Statement[SpaceDirective.size()]))) {
+      std::string_view Argument = trimAsmSpace(Statement.substr(SpaceDirective.size()));
+      std::int64_t Count = 0;
+      const auto Parsed =
+          std::from_chars(Argument.data(), Argument.data() + Argument.size(), Count);
+      if (Parsed.ec == std::errc{}) {
+        std::string_view Trailing(
+            Parsed.ptr, static_cast<std::size_t>(Argument.data() + Argument.size() - Parsed.ptr));
+        Trailing = trimAsmSpace(Trailing);
+        if (Trailing.empty() || Trailing.front() == '#')
+          StatementSize = Count < 0 ? 0 : static_cast<std::uint64_t>(Count);
+      }
+    }
+    if (StatementSize > std::numeric_limits<std::uint32_t>::max() - Size)
+      return makeUnexpected(ErrorCode::VerificationError, "RISC-V INLINEASM size overflowed");
+    Size += StatementSize;
+  }
+  return static_cast<std::uint32_t>(Size);
+}
 
 [[nodiscard]] bool isConditionalBranch(Opcode Value) noexcept {
   return Value == instructionOpcode(InstructionOpcode::BEQ) ||
@@ -333,6 +386,18 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   auto TrueTarget = directTarget(Instruction);
   if (!TrueTarget)
     return std::unexpected(TrueTarget.error());
+  MachineInstr *Following = Instruction.next();
+  if (Following != nullptr && isUnconditionalBranch(*Following)) {
+    auto FalseTarget = directTarget(*Following);
+    if (!FalseTarget)
+      return std::unexpected(FalseTarget.error());
+    if (*FalseTarget == *TrueTarget) {
+      auto Removed = removeInstruction(Instruction);
+      if (!Removed)
+        return std::unexpected(Removed.error());
+      return true;
+    }
+  }
   MachineBasicBlock *FalseTarget = Block->next();
   if (FalseTarget == nullptr || FalseTarget == *TrueTarget ||
       std::ranges::none_of(Block->successors(), [FalseTarget](const MachineSuccessor &Successor) {
@@ -353,7 +418,6 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   if (!SetTarget)
     return std::unexpected(SetTarget.error());
 
-  MachineInstr *Following = Instruction.next();
   if (Following != nullptr && isUnconditionalBranch(*Following)) {
     auto Retargeted = setDirectTarget(*Following, **TrueTarget);
     if (!Retargeted)
@@ -702,6 +766,12 @@ public:
                             "RISC-V instruction-size query encountered an unknown opcode");
     if (!Descriptor->Flags.has(InstructionFlag::ProducesCode))
       return 0;
+    if (Instruction.opcode() == opcode(GenericOpcode::INLINEASM) ||
+        Instruction.opcode() == opcode(GenericOpcode::INLINEASM_BR)) {
+      return inlineAsmSize(Instruction);
+    }
+    if (Descriptor->SizeInBytes != 0)
+      return Descriptor->SizeInBytes;
     const auto Category =
         std::ranges::find_if(encodingCategories(), [Descriptor](const EncodingCategoryInfo &Info) {
           return Info.ID == Descriptor->EncodingCategory;

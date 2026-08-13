@@ -256,6 +256,7 @@ struct InstructionDescriptor final {
   InstructionFlags Flags;
   SchedulingClassID SchedulingClass;
   EncodingCategoryID EncodingCategory;
+  std::uint32_t SizeInBytes = 0;
   AssemblyFormatID AssemblyFormat;
   bool RequiresMemoryOperands = false;
   PseudoOwner Owner = PseudoOwner::None;
