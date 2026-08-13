@@ -198,8 +198,8 @@ void testMachineMemOperand(TestContext &Context) {
   OffsetAlignment.Align = *rcc::Alignment::create(4);
   OffsetAlignment.BaseAlign = *rcc::Alignment::create(8);
   auto OffsetAligned = rcc::MachineMemOperand::create(OffsetAlignment);
-  Context.expect(OffsetAligned && OffsetAligned->description().BaseAlign &&
-                     OffsetAligned->description().BaseAlign->bytes() == 8,
+  Context.expect(OffsetAligned &&
+                     OffsetAligned->description().BaseAlign == *rcc::Alignment::create(8),
                  "MMO base alignment must derive effective alignment through its offset");
 
   OffsetAlignment.Align = *rcc::Alignment::create(8);
