@@ -1,4 +1,4 @@
-HeaderFilterRegex: '(^|/)(include|lib|tools|utils|unittests)/'
+HeaderFilterRegex: '(^|/)backend/(include|lib|tools|utils|unittests)/'
 WarningsAsErrors: ''
 FormatStyle: file
 Checks: >
@@ -9,7 +9,6 @@ Checks: >
   performance-*,
   -performance-enum-size,
   portability-*,
-  llvm-header-guard,
   llvm-namespace-comment,
   llvm-qualified-auto,
   misc-definitions-in-headers,
