@@ -2,6 +2,7 @@
 
 add_subdirectory(Support)
 add_subdirectory(MC)
+add_subdirectory(AsmParser)
 add_subdirectory(Target)
 add_subdirectory(CodeGen)
 add_subdirectory(MIR)

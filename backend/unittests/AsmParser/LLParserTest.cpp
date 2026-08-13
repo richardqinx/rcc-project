@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/MIR/LLVMConstantSyntax.h"
+#include "rcc/AsmParser/LLParser.h"
+
+#include "rcc/IR/DataLayout.h"
 
 #include <algorithm>
 #include <array>
@@ -30,69 +32,90 @@ private:
   int FailureCount = 0;
 };
 
-constexpr rcc::mir::LLVMConstantSyntaxOptions Options{
+struct TestOptions final {
+  std::string_view DataLayout;
+  std::span<const rcc::LLNamedTypeDefinition> NamedTypes;
+};
+
+[[nodiscard]] rcc::Expected<rcc::GenericConstantData> parseConstant(std::string_view Text,
+                                                                    TestOptions Options) {
+  return rcc::parseLLVMConstant(Text, {.NamedTypes = Options.NamedTypes});
+}
+
+[[nodiscard]] rcc::Expected<rcc::GenericConstantType> parseType(std::string_view Text,
+                                                                TestOptions Options) {
+  return rcc::parseLLVMType(Text, {.NamedTypes = Options.NamedTypes});
+}
+
+[[nodiscard]] rcc::Expected<std::uint64_t> allocationSize(const rcc::GenericConstantType &Type,
+                                                          TestOptions Options) {
+  auto Layout = rcc::DataLayout::parse(Options.DataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
+  return Layout->getTypeAllocSize(Type);
+}
+
+[[nodiscard]] rcc::Expected<std::uint64_t> preferredAlignment(const rcc::GenericConstantType &Type,
+                                                              TestOptions Options) {
+  auto Layout = rcc::DataLayout::parse(Options.DataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
+  return Layout->getPrefTypeAlign(Type);
+}
+
+[[nodiscard]] rcc::Expected<std::uint32_t> pointerSizeInBits(std::uint32_t AddressSpace,
+                                                             TestOptions Options = {}) {
+  auto Layout = rcc::DataLayout::parse(Options.DataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
+  return Layout->getPointerSizeInBits(AddressSpace);
+}
+
+constexpr TestOptions Options{
     .DataLayout = "e-p:64:64",
     .NamedTypes = {},
 };
 
 void expectRoundTrip(TestContext &Context, std::string_view Text, std::uint64_t ExpectedSize) {
-  auto Parsed = rcc::mir::parseLLVMConstant(Text, Options);
+  auto Parsed = parseConstant(Text, Options);
   Context.expect(Parsed.has_value(), "valid LLVM constant must parse");
   if (!Parsed) {
     std::cerr << Text << ": " << Parsed.error().message() << '\n';
     return;
   }
-  auto Size = rcc::mir::llvmConstantStorageSize(Parsed->Type, Options);
-  if (!Size || *Size != ExpectedSize) {
-    std::cerr << Text << ": expected storage size " << ExpectedSize << ", got ";
-    if (Size)
-      std::cerr << *Size;
-    else
-      std::cerr << Size.error().message();
-    std::cerr << '\n';
-  }
+  auto Size = allocationSize(Parsed->Type, Options);
   Context.expect(Size.has_value() && *Size == ExpectedSize,
                  "LLVM constant storage size must match its structured type");
-  auto Printed = rcc::mir::printLLVMConstant(*Parsed);
+  auto Printed = Parsed->toLLVMString();
   Context.expect(Printed.has_value(), "structured LLVM constant must print");
   if (!Printed)
     return;
-  auto Reparsing = rcc::mir::parseLLVMConstant(*Printed, Options);
+  auto Reparsing = parseConstant(*Printed, Options);
   Context.expect(Reparsing.has_value() && *Reparsing == *Parsed,
                  "LLVM constant parse-print-parse must preserve the value tree");
   if (!Reparsing)
     std::cerr << *Printed << ": " << Reparsing.error().message() << '\n';
 }
 
-void expectLayoutRoundTrip(TestContext &Context, std::string_view Text,
-                           rcc::mir::LLVMConstantSyntaxOptions LayoutOptions,
+void expectLayoutRoundTrip(TestContext &Context, std::string_view Text, TestOptions LayoutOptions,
                            std::uint64_t ExpectedSize, std::uint64_t ExpectedPreferredAlignment) {
-  auto Parsed = rcc::mir::parseLLVMConstant(Text, LayoutOptions);
+  auto Parsed = parseConstant(Text, LayoutOptions);
   Context.expect(Parsed.has_value(), "DataLayout-aware LLVM constant must parse");
   if (!Parsed) {
     std::cerr << Text << ": " << Parsed.error().message() << '\n';
     return;
   }
-  auto Size = rcc::mir::llvmConstantStorageSize(Parsed->Type, LayoutOptions);
-  auto Alignment = rcc::mir::llvmConstantPreferredAlignment(Parsed->Type, LayoutOptions);
+  auto Size = allocationSize(Parsed->Type, LayoutOptions);
+  auto Alignment = preferredAlignment(Parsed->Type, LayoutOptions);
   Context.expect(Size.has_value() && *Size == ExpectedSize,
                  "DataLayout must determine the exact allocation size");
-  if (!Size || *Size != ExpectedSize) {
-    std::cerr << Text << ": expected size " << ExpectedSize << ", got "
-              << (Size ? std::to_string(*Size) : Size.error().message()) << '\n';
-  }
-  Context.expect(Alignment.has_value() && Alignment->bytes() == ExpectedPreferredAlignment,
+  Context.expect(Alignment.has_value() && *Alignment == ExpectedPreferredAlignment,
                  "DataLayout must determine the exact preferred alignment");
-  if (!Alignment || Alignment->bytes() != ExpectedPreferredAlignment) {
-    std::cerr << Text << ": expected preferred alignment " << ExpectedPreferredAlignment << ", got "
-              << (Alignment ? std::to_string(Alignment->bytes()) : Alignment.error().message())
-              << '\n';
-  }
-  auto Printed = rcc::mir::printLLVMConstant(*Parsed);
+  auto Printed = Parsed->toLLVMString();
   Context.expect(Printed.has_value(), "DataLayout-aware LLVM constant must print");
   if (!Printed)
     return;
-  auto Reparsing = rcc::mir::parseLLVMConstant(*Printed, LayoutOptions);
+  auto Reparsing = parseConstant(*Printed, LayoutOptions);
   Context.expect(Reparsing.has_value() && *Reparsing == *Parsed,
                  "DataLayout-aware named constants must round-trip structurally");
 }
@@ -111,15 +134,15 @@ void testScalarConstants(TestContext &Context) {
   expectRoundTrip(Context, "i32 poison", 4);
   expectRoundTrip(Context, "i32 zeroinitializer", 4);
 
-  auto BFloat = rcc::mir::parseLLVMConstant("bfloat 0xR3E80", Options);
-  auto PrintedBFloat = BFloat ? rcc::mir::printLLVMConstant(*BFloat)
-                              : rcc::Expected<std::string>(std::unexpected(BFloat.error()));
+  auto BFloat = parseConstant("bfloat 0xR3E80", Options);
+  auto PrintedBFloat =
+      BFloat ? BFloat->toLLVMString() : rcc::Expected<std::string>(std::unexpected(BFloat.error()));
   Context.expect(PrintedBFloat && *PrintedBFloat == "bfloat 2.500000e-01",
                  "LLVM-compatible floating printing must prefer an exact decimal spelling");
 
-  auto Pi = rcc::mir::parseLLVMConstant("double f0x400921FB54442D18", Options);
-  auto PrintedPi = Pi ? rcc::mir::printLLVMConstant(*Pi)
-                      : rcc::Expected<std::string>(std::unexpected(Pi.error()));
+  auto Pi = parseConstant("double f0x400921FB54442D18", Options);
+  auto PrintedPi =
+      Pi ? Pi->toLLVMString() : rcc::Expected<std::string>(std::unexpected(Pi.error()));
   Context.expect(
       PrintedPi && *PrintedPi == "double f0x400921FB54442D18",
       "floating printing must retain exact bits when six decimal digits do not round-trip");
@@ -127,7 +150,7 @@ void testScalarConstants(TestContext &Context) {
 
 void expectIntegerWords(TestContext &Context, std::string_view Text,
                         std::span<const std::uint64_t> ExpectedWords) {
-  auto Parsed = rcc::mir::parseLLVMConstant(Text, Options);
+  auto Parsed = parseConstant(Text, Options);
   Context.expect(Parsed.has_value() && Parsed->IntegerValue.has_value() &&
                      std::ranges::equal(Parsed->IntegerValue->words(), ExpectedWords),
                  "LLVM integer literal must preserve its exact bit pattern");
@@ -149,7 +172,7 @@ void testDecimalIntegerTruncation(TestContext &Context) {
 
 void expectFloatingWords(TestContext &Context, std::string_view Text,
                          std::span<const std::uint64_t> ExpectedWords) {
-  auto Parsed = rcc::mir::parseLLVMConstant(Text, Options);
+  auto Parsed = parseConstant(Text, Options);
   Context.expect(Parsed.has_value() && Parsed->FloatingValue.has_value() &&
                      std::ranges::equal(Parsed->FloatingValue->words(), ExpectedWords),
                  "LLVM floating special literal must preserve its exact bit pattern");
@@ -169,11 +192,11 @@ void expectFloatingWords(TestContext &Context, std::string_view Text,
     }
     std::cerr << std::dec << '\n';
   }
-  auto Printed = rcc::mir::printLLVMConstant(*Parsed);
+  auto Printed = Parsed->toLLVMString();
   Context.expect(Printed.has_value(), "LLVM floating special literal must print");
   if (!Printed)
     return;
-  auto Reparsing = rcc::mir::parseLLVMConstant(*Printed, Options);
+  auto Reparsing = parseConstant(*Printed, Options);
   Context.expect(Reparsing.has_value() && *Reparsing == *Parsed,
                  "printed LLVM floating special literal must round-trip");
 }
@@ -194,8 +217,7 @@ void testExplicitHexIntegerConstants(TestContext &Context) {
   expectIntegerWords(Context, "i8 s0x1FF", SignedFF8);
 
   expectRoundTrip(Context, "i65 s0x01", 12);
-  Context.expect(!rcc::mir::parseLLVMConstant("i32 u0x", Options) &&
-                     !rcc::mir::parseLLVMConstant("i32 u0X1", Options),
+  Context.expect(!parseConstant("i32 u0x", Options) && !parseConstant("i32 u0X1", Options),
                  "explicit LLVM hexadecimal integers must use the fixed spelling");
 }
 
@@ -242,7 +264,7 @@ void testSpecialFloatingLiterals(TestContext &Context) {
            std::string_view{"float +snan"},
            std::string_view{"float +qnan(0x1)"},
        }) {
-    Context.expect(!rcc::mir::parseLLVMConstant(Text, Options),
+    Context.expect(!parseConstant(Text, Options),
                    "malformed LLVM floating special literal must be rejected");
   }
 }
@@ -296,7 +318,7 @@ void testExactFloatingConversion(TestContext &Context) {
            std::string_view{"float 0X1.0p0"},
            std::string_view{"float 0x1p0"},
        }) {
-    Context.expect(!rcc::mir::parseLLVMConstant(Text, Options),
+    Context.expect(!parseConstant(Text, Options),
                    "noncanonical LLVM floating syntax must be rejected");
   }
 }
@@ -354,22 +376,20 @@ void testConstantExpressionVerification(TestContext &Context) {
                             "<2 x i32> <i32 3, i32 4>, <2 x i64> <i64 0, i64 3>)"},
            std::string_view{"ptr ptrauth (ptr @function, i64 1)"},
        }) {
-    Context.expect(!rcc::mir::parseLLVMConstant(Text, Options),
+    Context.expect(!parseConstant(Text, Options),
                    "constant expression with incompatible typed operands must be rejected");
   }
 }
 
 void testDataLayoutAndNamedTypes(TestContext &Context) {
   static constexpr std::array Definitions{
-      rcc::mir::LLVMNamedTypeDefinition{
-          .Name = "pair", .Definition = "{ i8, i64 }", .NumericName = false},
-      rcc::mir::LLVMNamedTypeDefinition{.Name = "word", .Definition = "i32", .NumericName = false},
-      rcc::mir::LLVMNamedTypeDefinition{
+      rcc::LLNamedTypeDefinition{.Name = "pair", .Definition = "{ i8, i64 }", .NumericName = false},
+      rcc::LLNamedTypeDefinition{.Name = "word", .Definition = "i32", .NumericName = false},
+      rcc::LLNamedTypeDefinition{
           .Name = "node", .Definition = "{ i32, %node* }", .NumericName = false},
-      rcc::mir::LLVMNamedTypeDefinition{
-          .Name = "loop", .Definition = "{ %loop }", .NumericName = false},
+      rcc::LLNamedTypeDefinition{.Name = "loop", .Definition = "{ %loop }", .NumericName = false},
   };
-  static constexpr rcc::mir::LLVMConstantSyntaxOptions LayoutOptions{
+  static constexpr TestOptions LayoutOptions{
       .DataLayout = "e-p:64:64-p1:32:16:64-i64:64:128-i128:128-v96:128:256-a:0:64",
       .NamedTypes = Definitions,
   };
@@ -382,47 +402,47 @@ void testDataLayoutAndNamedTypes(TestContext &Context) {
   expectLayoutRoundTrip(Context, "%word 7", LayoutOptions, 4, 4);
   expectLayoutRoundTrip(Context, "%node zeroinitializer", LayoutOptions, 16, 8);
 
-  Context.expect(!rcc::mir::parseLLVMType("%loop", LayoutOptions),
+  Context.expect(!parseType("%loop", LayoutOptions),
                  "directly recursive named aggregate types must be rejected as unsized");
-  auto NodeType = rcc::mir::parseLLVMType("%node", LayoutOptions);
+  auto NodeType = parseType("%node", LayoutOptions);
   Context.expect(NodeType.has_value(),
                  "named recursion through a pointer must remain sized and legal");
 }
 
 void testAddressSpacePointerWidths(TestContext &Context) {
-  constexpr rcc::mir::LLVMConstantSyntaxOptions HeterogeneousLayoutOptions{
+  constexpr TestOptions HeterogeneousLayoutOptions{
       .DataLayout = "e-p:64:64-p1:32:16:64",
       .NamedTypes = {},
   };
-  auto DefaultPointer = rcc::mir::llvmPointerSizeInBits(0, HeterogeneousLayoutOptions);
-  auto AddressSpaceOnePointer = rcc::mir::llvmPointerSizeInBits(1, HeterogeneousLayoutOptions);
+  auto DefaultPointer = pointerSizeInBits(0, HeterogeneousLayoutOptions);
+  auto AddressSpaceOnePointer = pointerSizeInBits(1, HeterogeneousLayoutOptions);
   Context.expect(DefaultPointer.has_value() && *DefaultPointer == 64 &&
                      AddressSpaceOnePointer.has_value() && *AddressSpaceOnePointer == 32,
                  "LLVM data layout must provide pointer width by address space");
 
-  auto MissingPointer = rcc::mir::llvmPointerSizeInBits(7);
+  auto MissingPointer = pointerSizeInBits(7);
   Context.expect(!MissingPointer,
                  "pointer width lookup must reject a missing explicit data layout");
 }
 
 void testDataLayoutBoundaryRules(TestContext &Context) {
-  static constexpr rcc::mir::LLVMConstantSyntaxOptions IntegerAlignmentOptions{
+  static constexpr TestOptions IntegerAlignmentOptions{
       .DataLayout = "e-p:64:64-i24:128:128",
       .NamedTypes = {},
   };
-  static constexpr rcc::mir::LLVMConstantSyntaxOptions HistoricalAggregateOptions{
+  static constexpr TestOptions HistoricalAggregateOptions{
       .DataLayout = "e-p:64:64-a0:64:128",
       .NamedTypes = {},
   };
-  static constexpr rcc::mir::LLVMConstantSyntaxOptions ZeroAggregateOptions{
+  static constexpr TestOptions ZeroAggregateOptions{
       .DataLayout = "e-p:64:64-a:0:64",
       .NamedTypes = {},
   };
-  static constexpr rcc::mir::LLVMConstantSyntaxOptions NonBytePointerOptions{
+  static constexpr TestOptions NonBytePointerOptions{
       .DataLayout = "e-p:33:8:8:32",
       .NamedTypes = {},
   };
-  static constexpr rcc::mir::LLVMConstantSyntaxOptions PointerFlagsOptions{
+  static constexpr TestOptions PointerFlagsOptions{
       .DataLayout = "e-pue1(storage):33:8:8:32-po2(allones):64:64",
       .NamedTypes = {},
   };
@@ -434,28 +454,27 @@ void testDataLayoutBoundaryRules(TestContext &Context) {
   expectLayoutRoundTrip(Context, "ptr null", NonBytePointerOptions, 5, 1);
   expectLayoutRoundTrip(Context, "ptr addrspace(1) null", PointerFlagsOptions, 5, 1);
 
-  static constexpr rcc::mir::LLVMConstantSyntaxOptions InvalidIndexSizeOptions{
+  static constexpr TestOptions InvalidIndexSizeOptions{
       .DataLayout = "e-p:33:8:8:34",
       .NamedTypes = {},
   };
-  auto Pointer = rcc::mir::parseLLVMType("ptr", InvalidIndexSizeOptions);
-  Context.expect(Pointer.has_value() &&
-                     !rcc::mir::llvmConstantStorageSize(*Pointer, InvalidIndexSizeOptions),
+  auto Pointer = parseType("ptr", InvalidIndexSizeOptions);
+  Context.expect(Pointer.has_value() && !allocationSize(*Pointer, InvalidIndexSizeOptions),
                  "LLVM pointer index size larger than its representation must be rejected");
 
-  static constexpr rcc::mir::LLVMConstantSyntaxOptions NonLayoutOptions{
+  static constexpr TestOptions NonLayoutOptions{
       .DataLayout = "e-m:e-n8:16:32-S128-Fi64-P1-G2-A3-ni:1:2-ve-s-p:64:64",
       .NamedTypes = {},
   };
   expectLayoutRoundTrip(Context, "ptr null", NonLayoutOptions, 8, 8);
 
   const auto ExpectInvalidDataLayout = [&Context](std::string_view DataLayout) {
-    const rcc::mir::LLVMConstantSyntaxOptions InvalidOptions{
+    const TestOptions InvalidOptions{
         .DataLayout = DataLayout,
         .NamedTypes = {},
     };
-    auto Type = rcc::mir::parseLLVMType("ptr", InvalidOptions);
-    Context.expect(Type.has_value() && !rcc::mir::llvmConstantStorageSize(*Type, InvalidOptions),
+    auto Type = parseType("ptr", InvalidOptions);
+    Context.expect(Type.has_value() && !allocationSize(*Type, InvalidOptions),
                    "malformed non-layout LLVM data-layout component must be rejected");
   };
   for (const std::string_view DataLayout : {
@@ -490,8 +509,7 @@ void testInvalidConstants(TestContext &Context) {
            std::string_view{"ptr getelementptr (i8, i64 0)"},
            std::string_view{"i32 1 trailing"},
        }) {
-    Context.expect(!rcc::mir::parseLLVMConstant(Text, Options),
-                   "invalid LLVM constant must be rejected");
+    Context.expect(!parseConstant(Text, Options), "invalid LLVM constant must be rejected");
   }
 }
 

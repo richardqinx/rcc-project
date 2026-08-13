@@ -2,7 +2,6 @@
 
 #include "rcc/Target/RISCV/RISCVMCTargetLowering.h"
 
-#include "rcc/CodeGen/GenericConstant.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
@@ -15,6 +14,8 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/Register.h"
 #include "rcc/CodeGen/TargetConstant.h"
+#include "rcc/IR/Constants.h"
+#include "rcc/IR/DataLayout.h"
 #include "rcc/MC/MCContext.h"
 #include "rcc/MC/MCExpr.h"
 #include "rcc/MC/MCInst.h"
@@ -51,11 +52,6 @@ constexpr std::uint32_t KnownTargetFlags =
     CallTargetFlag | PCRelativeHighTargetFlag | PCRelativeLowTargetFlag | CopyF32TargetFlag |
     CopyF64TargetFlag | AbsoluteHighTargetFlag | AbsoluteLowTargetFlag;
 
-struct TypeLayout final {
-  std::uint64_t Size = 0;
-  std::uint64_t Alignment = 1;
-};
-
 [[nodiscard]] Expected<std::uint8_t> targetRelocationSize(TargetRelocationKindID Kind) {
   if (Kind == targetRelocationKind(RISCVTargetRelocationKind::Absolute32))
     return 4;
@@ -63,132 +59,6 @@ struct TypeLayout final {
     return 8;
   return makeUnexpected(ErrorCode::Unsupported,
                         "RV64GC target constant has an unknown relocation kind");
-}
-
-[[nodiscard]] Expected<std::uint64_t> checkedAdd(std::uint64_t Left, std::uint64_t Right) {
-  std::uint64_t Result = 0;
-  if (__builtin_add_overflow(Left, Right, &Result))
-    return makeUnexpected(ErrorCode::AssemblyLoweringFailed, "constant layout size overflows");
-  return Result;
-}
-
-[[nodiscard]] Expected<std::uint64_t> checkedMultiply(std::uint64_t Left, std::uint64_t Right) {
-  std::uint64_t Result = 0;
-  if (__builtin_mul_overflow(Left, Right, &Result))
-    return makeUnexpected(ErrorCode::AssemblyLoweringFailed, "constant layout size overflows");
-  return Result;
-}
-
-[[nodiscard]] Expected<std::uint64_t> alignTo(std::uint64_t Value, std::uint64_t Alignment) {
-  if (Alignment == 0 || (Alignment & (Alignment - 1U)) != 0) {
-    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
-                          "constant layout requires power-of-two alignment");
-  }
-  auto Adjusted = checkedAdd(Value, Alignment - 1U);
-  if (!Adjusted)
-    return std::unexpected(Adjusted.error());
-  return *Adjusted & ~(Alignment - 1U);
-}
-
-[[nodiscard]] std::uint64_t naturalAlignment(std::uint64_t Size) noexcept {
-  if (Size <= 1)
-    return 1;
-  std::uint64_t Result = 1;
-  while (Result < Size && Result < 16)
-    Result <<= 1U;
-  return Result;
-}
-
-[[nodiscard]] const GenericConstantType &resolvedType(const GenericConstantType &Type) noexcept {
-  const GenericConstantType *Result = &Type;
-  std::size_t Depth = 0;
-  while (Result->Kind == GenericConstantTypeKind::Named && Result->Elements.size() == 1 &&
-         Depth++ < 1024) {
-    Result = &Result->Elements.front();
-  }
-  return *Result;
-}
-
-[[nodiscard]] Expected<TypeLayout> layoutType(const GenericConstantType &InputType,
-                                              std::size_t Depth = 0) {
-  if (Depth > 1024) {
-    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
-                          "constant layout exceeds its nesting limit");
-  }
-  const GenericConstantType &Type = resolvedType(InputType);
-  switch (Type.Kind) {
-  case GenericConstantTypeKind::Integer: {
-    const std::uint64_t Size = (static_cast<std::uint64_t>(Type.BitWidth) + 7U) / 8U;
-    return TypeLayout{.Size = Size, .Alignment = naturalAlignment(Size)};
-  }
-  case GenericConstantTypeKind::Byte:
-    return TypeLayout{.Size = 1, .Alignment = 1};
-  case GenericConstantTypeKind::Floating: {
-    const auto BitWidth = getFloatSemanticsBitWidth(Type.Semantics);
-    if (!BitWidth) {
-      return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
-                            "floating constant has unknown semantics");
-    }
-    const std::uint64_t Size = (static_cast<std::uint64_t>(*BitWidth) + 7U) / 8U;
-    return TypeLayout{.Size = Size, .Alignment = naturalAlignment(Size)};
-  }
-  case GenericConstantTypeKind::Pointer:
-    return TypeLayout{.Size = 8, .Alignment = 8};
-  case GenericConstantTypeKind::Array:
-  case GenericConstantTypeKind::Vector: {
-    if (Type.Elements.size() != 1 ||
-        (Type.Kind == GenericConstantTypeKind::Vector && Type.Scalable)) {
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RV64GC assembly cannot lay out this sequential constant type");
-    }
-    auto Element = layoutType(Type.Elements.front(), Depth + 1);
-    if (!Element)
-      return std::unexpected(Element.error());
-    auto Stride = alignTo(Element->Size, Element->Alignment);
-    if (!Stride)
-      return std::unexpected(Stride.error());
-    auto Size = checkedMultiply(*Stride, Type.ElementCount);
-    if (!Size)
-      return std::unexpected(Size.error());
-    std::uint64_t Alignment = Element->Alignment;
-    if (Type.Kind == GenericConstantTypeKind::Vector)
-      Alignment = naturalAlignment(*Size);
-    return TypeLayout{.Size = *Size, .Alignment = Alignment};
-  }
-  case GenericConstantTypeKind::Struct: {
-    std::uint64_t Offset = 0;
-    std::uint64_t StructAlignment = 1;
-    for (const GenericConstantType &ElementType : Type.Elements) {
-      auto Element = layoutType(ElementType, Depth + 1);
-      if (!Element)
-        return std::unexpected(Element.error());
-      const std::uint64_t ElementAlignment = Type.Packed ? 1 : Element->Alignment;
-      auto Aligned = alignTo(Offset, ElementAlignment);
-      if (!Aligned)
-        return std::unexpected(Aligned.error());
-      auto End = checkedAdd(*Aligned, Element->Size);
-      if (!End)
-        return std::unexpected(End.error());
-      Offset = *End;
-      StructAlignment = std::max(StructAlignment, ElementAlignment);
-    }
-    auto Size = alignTo(Offset, StructAlignment);
-    if (!Size)
-      return std::unexpected(Size.error());
-    return TypeLayout{.Size = *Size, .Alignment = StructAlignment};
-  }
-  case GenericConstantTypeKind::Named:
-    return makeUnexpected(ErrorCode::Unsupported,
-                          "RV64GC assembly cannot lay out an unresolved named constant type");
-  case GenericConstantTypeKind::Invalid:
-  case GenericConstantTypeKind::Void:
-  case GenericConstantTypeKind::Label:
-  case GenericConstantTypeKind::Token:
-  case GenericConstantTypeKind::Metadata:
-  case GenericConstantTypeKind::Function:
-    return makeUnexpected(ErrorCode::AssemblyLoweringFailed, "constant has a non-storage type");
-  }
-  return makeUnexpected(ErrorCode::InternalError, "generic constant type kind is invalid");
 }
 
 [[nodiscard]] Expected<mc::MCExprRef> addOffset(mc::MCExprRef Expression, std::int64_t Offset) {
@@ -509,11 +379,10 @@ struct TypeLayout final {
   return Size == 0 ? Expected<void>{} : Streamer.emitZeroFill(Size);
 }
 
-[[nodiscard]] Expected<void> emitGenericConstantImpl(const GenericConstantData &Constant,
-                                                     const TypeLayout &Layout,
-                                                     MachineMCContext &Context,
-                                                     mc::MCStreamer &Streamer,
-                                                     std::size_t Depth = 0) {
+[[nodiscard]] Expected<void>
+emitGenericConstantImpl(const GenericConstantData &Constant, const DataLayout &Layout,
+                        std::uint64_t AllocationSize, MachineMCContext &Context,
+                        mc::MCStreamer &Streamer, std::size_t Depth = 0) {
   if (Depth > 1024) {
     return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                           "generic constant exceeds its emission nesting limit");
@@ -522,17 +391,17 @@ struct TypeLayout final {
   case GenericConstantKind::Integer: {
     if (!Constant.IntegerValue)
       return makeUnexpected(ErrorCode::InternalError, "integer constant has no value");
-    const auto Bytes = bytesFromWords(Constant.IntegerValue->words(), Layout.Size);
+    const auto Bytes = bytesFromWords(Constant.IntegerValue->words(), AllocationSize);
     return Streamer.emitBytes(Bytes);
   }
   case GenericConstantKind::Floating: {
     if (!Constant.FloatingValue)
       return makeUnexpected(ErrorCode::InternalError, "floating constant has no value");
-    const auto Bytes = bytesFromWords(Constant.FloatingValue->words(), Layout.Size);
+    const auto Bytes = bytesFromWords(Constant.FloatingValue->words(), AllocationSize);
     return Streamer.emitBytes(Bytes);
   }
   case GenericConstantKind::ByteString: {
-    if (Constant.ByteValue.size() != Layout.Size) {
+    if (Constant.ByteValue.size() != AllocationSize) {
       return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                             "byte-string constant size does not match its RV64GC layout");
     }
@@ -546,61 +415,57 @@ struct TypeLayout final {
   case GenericConstantKind::ZeroInitializer:
   case GenericConstantKind::Undef:
   case GenericConstantKind::Poison:
-    return Streamer.emitZeroFill(Layout.Size);
+    return Streamer.emitZeroFill(AllocationSize);
   case GenericConstantKind::Aggregate: {
-    const GenericConstantType &Type = resolvedType(Constant.Type);
+    const GenericConstantType &Type = Constant.Type.resolved();
     std::uint64_t Offset = 0;
     for (std::size_t Index = 0; Index < Constant.Elements.size(); ++Index) {
-      auto ElementLayout = layoutType(Constant.Elements[Index].Type, Depth + 1);
-      if (!ElementLayout)
-        return std::unexpected(ElementLayout.error());
-      const std::uint64_t Alignment = Type.Kind == GenericConstantTypeKind::Struct && Type.Packed
-                                          ? 1
-                                          : ElementLayout->Alignment;
-      auto ElementOffset = alignTo(Offset, Alignment);
-      if (!ElementOffset)
-        return std::unexpected(ElementOffset.error());
-      auto Padding = emitPadding(*ElementOffset - Offset, Streamer);
+      auto ElementSize = Layout.getTypeAllocSize(Constant.Elements[Index].Type);
+      auto ElementAlignment = Layout.getABITypeAlign(Constant.Elements[Index].Type);
+      if (!ElementSize)
+        return std::unexpected(ElementSize.error());
+      if (!ElementAlignment)
+        return std::unexpected(ElementAlignment.error());
+      const std::uint64_t Alignment =
+          Type.Kind == GenericConstantTypeKind::Struct && Type.Packed ? 1 : *ElementAlignment;
+      const std::uint64_t AlignmentMask = Alignment - 1U;
+      if (Offset > std::numeric_limits<std::uint64_t>::max() - AlignmentMask) {
+        return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                              "aggregate constant exceeds its RV64GC layout");
+      }
+      const std::uint64_t ElementOffset = (Offset + AlignmentMask) & ~AlignmentMask;
+      if (ElementOffset > AllocationSize || *ElementSize > AllocationSize - ElementOffset) {
+        return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                              "aggregate constant exceeds its RV64GC layout");
+      }
+      auto Padding = emitPadding(ElementOffset - Offset, Streamer);
       if (!Padding)
         return std::unexpected(Padding.error());
-      auto Element = emitGenericConstantImpl(Constant.Elements[Index], *ElementLayout, Context,
-                                             Streamer, Depth + 1);
+      auto Element = emitGenericConstantImpl(Constant.Elements[Index], Layout, *ElementSize,
+                                             Context, Streamer, Depth + 1);
       if (!Element)
         return std::unexpected(Element.error());
-      auto End = checkedAdd(*ElementOffset, ElementLayout->Size);
-      if (!End)
-        return std::unexpected(End.error());
-      Offset = *End;
-      if (Type.Kind == GenericConstantTypeKind::Array ||
-          Type.Kind == GenericConstantTypeKind::Vector) {
-        auto StrideEnd = alignTo(Offset, ElementLayout->Alignment);
-        if (!StrideEnd)
-          return std::unexpected(StrideEnd.error());
-        auto ElementPadding = emitPadding(*StrideEnd - Offset, Streamer);
-        if (!ElementPadding)
-          return std::unexpected(ElementPadding.error());
-        Offset = *StrideEnd;
-      }
+      Offset = ElementOffset + *ElementSize;
     }
-    if (Offset > Layout.Size) {
+    if (Offset > AllocationSize) {
       return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                             "aggregate constant exceeds its RV64GC layout");
     }
-    return emitPadding(Layout.Size - Offset, Streamer);
+    return emitPadding(AllocationSize - Offset, Streamer);
   }
   case GenericConstantKind::GlobalAddress:
   case GenericConstantKind::BlockAddress:
   case GenericConstantKind::DSOLocalEquivalent:
   case GenericConstantKind::NoCFI:
   case GenericConstantKind::Expression: {
-    if (Layout.Size != 1 && Layout.Size != 2 && Layout.Size != 4 && Layout.Size != 8) {
+    if (AllocationSize != 1 && AllocationSize != 2 && AllocationSize != 4 && AllocationSize != 8) {
       return makeUnexpected(ErrorCode::Unsupported,
                             "symbolic RV64GC constant has an unsupported storage size");
     }
     auto Expression = lowerConstantExpression(Constant, Context);
     if (!Expression)
       return std::unexpected(Expression.error());
-    return Streamer.emitValue(std::move(*Expression), static_cast<std::uint8_t>(Layout.Size));
+    return Streamer.emitValue(std::move(*Expression), static_cast<std::uint8_t>(AllocationSize));
   }
   case GenericConstantKind::PointerAuth:
     return makeUnexpected(ErrorCode::Unsupported,
@@ -1151,14 +1016,17 @@ Expected<void> RISCVMCTargetLowering::emitGenericConstant(const GenericConstantD
   auto Verification = Constant.verify();
   if (!Verification)
     return std::unexpected(Verification.error());
-  auto Layout = layoutType(Constant.Type);
+  auto Layout = DataLayout::parse(TargetDataLayout);
   if (!Layout)
     return std::unexpected(Layout.error());
-  if (Layout->Size != Size) {
+  auto AllocationSize = Layout->getTypeAllocSize(Constant.Type);
+  if (!AllocationSize)
+    return std::unexpected(AllocationSize.error());
+  if (*AllocationSize != Size) {
     return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                           "generic constant size does not match the RV64GC data layout");
   }
-  return emitGenericConstantImpl(Constant, *Layout, Context, Streamer);
+  return emitGenericConstantImpl(Constant, *Layout, *AllocationSize, Context, Streamer);
 }
 
 Expected<void> RISCVMCTargetLowering::emitGlobalInitializer(const GlobalInitializer &Initializer,

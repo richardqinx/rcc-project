@@ -6,15 +6,6 @@ target_link_libraries(RCCBackendEmbeddedIRTests PRIVATE RCCBackend::MIR)
 
 add_test(NAME RCCBackend.MIR.EmbeddedIR COMMAND RCCBackendEmbeddedIRTests)
 
-add_executable(RCCBackendLLVMConstantSyntaxTests LLVMConstantSyntaxTest.cpp)
-rcc_backend_configure_target(RCCBackendLLVMConstantSyntaxTests)
-target_link_libraries(RCCBackendLLVMConstantSyntaxTests PRIVATE RCCBackend::MIR)
-
-add_test(
-  NAME RCCBackend.MIR.LLVMConstantSyntax
-  COMMAND RCCBackendLLVMConstantSyntaxTests
-)
-
 add_executable(RCCBackendMILexerTests MILexerTest.cpp)
 rcc_backend_configure_target(RCCBackendMILexerTests)
 target_include_directories(
@@ -49,14 +40,12 @@ add_test(NAME RCCBackend.MIR.MIRDocument COMMAND RCCBackendMIRDocumentTests)
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIRTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/LLVMConstantSyntaxTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MILexerTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MIRDocumentTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MIParserTest.cpp"
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIRTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/LLVMConstantSyntaxTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MILexerTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MIRDocumentTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MIParserTest.cpp"

@@ -3,7 +3,6 @@
 set(
   RCCBackendMIRSources
   EmbeddedIR.cpp
-  LLVMConstantSyntax.cpp
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIParser.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIRParser.cpp"
@@ -17,7 +16,6 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MIRPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MIRYamlMapping.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/EmbeddedIR.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/LLVMConstantSyntax.h"
 )
 
 add_library(RCCBackendMIR ${RCCBackendMIRSources})
@@ -31,7 +29,13 @@ target_include_directories(
     "$<BUILD_INTERFACE:${RCC_BACKEND_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
-target_link_libraries(RCCBackendMIR PUBLIC RCCBackend::CodeGen)
+target_link_libraries(
+  RCCBackendMIR
+  PUBLIC
+    RCCBackend::AsmParser
+    RCCBackend::CodeGen
+    RCCBackend::IR
+)
 
 set_target_properties(
   RCCBackendMIR
@@ -50,7 +54,6 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/LLVMConstantSyntax.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.h"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIParser.cpp"
@@ -61,7 +64,6 @@ rcc_backend_register_format_files(
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/LLVMConstantSyntax.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIParser.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIRParser.cpp"

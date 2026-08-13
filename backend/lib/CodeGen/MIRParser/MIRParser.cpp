@@ -18,7 +18,7 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
-#include "rcc/MIR/LLVMConstantSyntax.h"
+#include "rcc/IR/DataLayout.h"
 
 #include <algorithm>
 #include <array>
@@ -74,11 +74,8 @@ std::string_view MIRDocumentParser::effectiveDataLayout() const noexcept {
   return {};
 }
 
-LLVMConstantSyntaxOptions MIRDocumentParser::pointerLayoutOptions() const noexcept {
-  return {
-      .DataLayout = effectiveDataLayout(),
-      .NamedTypes = {},
-  };
+Expected<DataLayout> MIRDocumentParser::dataLayout() const {
+  return DataLayout::parse(effectiveDataLayout());
 }
 
 bool MIRDocumentParser::requireKind(const yaml::Node &Node, yaml::NodeKind Kind,
@@ -160,7 +157,13 @@ MIRDocumentParseResult MIRDocumentParser::run() {
   }
 
   if (!effectiveDataLayout().empty()) {
-    auto PointerSize = llvmPointerSizeInBits(0, pointerLayoutOptions());
+    auto Layout = dataLayout();
+    if (!Layout) {
+      static_cast<void>(
+          importError(Stream->documents()[FirstContent].Range, Layout.error(), "mir-data-layout"));
+      return std::move(Result);
+    }
+    auto PointerSize = Layout->getPointerSizeInBits();
     if (!PointerSize) {
       static_cast<void>(importError(Stream->documents()[FirstContent].Range, PointerSize.error(),
                                     "mir-data-layout"));

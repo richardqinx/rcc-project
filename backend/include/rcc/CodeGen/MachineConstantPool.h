@@ -3,10 +3,10 @@
 #ifndef RCC_CODEGEN_MACHINECONSTANTPOOL_H
 #define RCC_CODEGEN_MACHINECONSTANTPOOL_H
 
-#include "rcc/CodeGen/GenericConstant.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/TargetConstant.h"
+#include "rcc/IR/Constants.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>

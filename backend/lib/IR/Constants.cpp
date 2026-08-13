@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "rcc/CodeGen/GenericConstant.h"
+#include "rcc/IR/Constants.h"
 
 #include <algorithm>
 #include <bit>
@@ -11,6 +11,18 @@
 #include <utility>
 
 namespace rcc {
+
+const GenericConstantType &GenericConstantType::resolved() const noexcept {
+  constexpr std::size_t MaximumResolvedDepth = 1024;
+  const GenericConstantType *Result = this;
+  std::size_t Depth = 0;
+  while (Result->Kind == GenericConstantTypeKind::Named && Result->Elements.size() == 1 &&
+         Depth++ <= MaximumResolvedDepth) {
+    Result = &Result->Elements.front();
+  }
+  return *Result;
+}
+
 namespace {
 
 constexpr std::size_t MaximumVerificationDepth = 1024;
@@ -21,29 +33,19 @@ constexpr std::size_t MaximumVerificationNodes = std::size_t{1} << 24U;
          Kind == GenericConstantTypeKind::Struct;
 }
 
-[[nodiscard]] const GenericConstantType &resolvedType(const GenericConstantType &Type) noexcept {
-  const GenericConstantType *Resolved = &Type;
-  std::size_t Depth = 0;
-  while (Resolved->Kind == GenericConstantTypeKind::Named && Resolved->Elements.size() == 1 &&
-         Depth++ <= MaximumVerificationDepth) {
-    Resolved = &Resolved->Elements.front();
-  }
-  return *Resolved;
-}
-
 [[nodiscard]] bool sameResolvedType(const GenericConstantType &Left,
                                     const GenericConstantType &Right) noexcept {
-  return resolvedType(Left) == resolvedType(Right);
+  return Left.resolved() == Right.resolved();
 }
 
 [[nodiscard]] bool isIntegerScalarType(const GenericConstantType &Type) noexcept {
-  const GenericConstantTypeKind Kind = resolvedType(Type).Kind;
+  const GenericConstantTypeKind Kind = Type.resolved().Kind;
   return Kind == GenericConstantTypeKind::Integer || Kind == GenericConstantTypeKind::Byte;
 }
 
 [[nodiscard]] std::optional<std::uint32_t>
 integerScalarBitWidth(const GenericConstantType &Type) noexcept {
-  const GenericConstantType &Resolved = resolvedType(Type);
+  const GenericConstantType &Resolved = Type.resolved();
   if (Resolved.Kind == GenericConstantTypeKind::Integer)
     return Resolved.BitWidth;
   if (Resolved.Kind == GenericConstantTypeKind::Byte)
@@ -52,11 +54,11 @@ integerScalarBitWidth(const GenericConstantType &Type) noexcept {
 }
 
 [[nodiscard]] bool isPointerScalarType(const GenericConstantType &Type) noexcept {
-  return resolvedType(Type).Kind == GenericConstantTypeKind::Pointer;
+  return Type.resolved().Kind == GenericConstantTypeKind::Pointer;
 }
 
 [[nodiscard]] bool isFloatingScalarType(const GenericConstantType &Type) noexcept {
-  return resolvedType(Type).Kind == GenericConstantTypeKind::Floating;
+  return Type.resolved().Kind == GenericConstantTypeKind::Floating;
 }
 
 struct VectorShape final {
@@ -67,7 +69,7 @@ struct VectorShape final {
 };
 
 [[nodiscard]] std::optional<VectorShape> vectorShape(const GenericConstantType &Type) noexcept {
-  const GenericConstantType &Resolved = resolvedType(Type);
+  const GenericConstantType &Resolved = Type.resolved();
   if (Resolved.Kind != GenericConstantTypeKind::Vector)
     return std::nullopt;
   return VectorShape{.ElementCount = Resolved.ElementCount, .Scalable = Resolved.Scalable};
@@ -75,7 +77,7 @@ struct VectorShape final {
 
 [[nodiscard]] const GenericConstantType *
 vectorElementType(const GenericConstantType &Type) noexcept {
-  const GenericConstantType &Resolved = resolvedType(Type);
+  const GenericConstantType &Resolved = Type.resolved();
   if (Resolved.Kind != GenericConstantTypeKind::Vector || Resolved.Elements.size() != 1)
     return nullptr;
   return &Resolved.Elements.front();
@@ -104,13 +106,13 @@ vectorElementType(const GenericConstantType &Type) noexcept {
 
 [[nodiscard]] std::optional<std::uint32_t>
 pointerAddressSpace(const GenericConstantType &Type) noexcept {
-  const GenericConstantType &Resolved = resolvedType(Type);
+  const GenericConstantType &Resolved = Type.resolved();
   if (Resolved.Kind == GenericConstantTypeKind::Pointer)
     return Resolved.AddressSpace;
   const GenericConstantType *Element = vectorElementType(Resolved);
   if (Element == nullptr)
     return std::nullopt;
-  const GenericConstantType &ResolvedElement = resolvedType(*Element);
+  const GenericConstantType &ResolvedElement = Element->resolved();
   if (ResolvedElement.Kind != GenericConstantTypeKind::Pointer)
     return std::nullopt;
   return ResolvedElement.AddressSpace;
@@ -125,7 +127,7 @@ pointerAddressSpace(const GenericConstantType &Type) noexcept {
 
 [[nodiscard]] std::optional<std::uint64_t>
 nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
-  const GenericConstantType &Resolved = resolvedType(Type);
+  const GenericConstantType &Resolved = Type.resolved();
   if (const auto Width = integerScalarBitWidth(Resolved))
     return *Width;
   if (Resolved.Kind == GenericConstantTypeKind::Floating)
@@ -144,8 +146,8 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
 [[nodiscard]] bool hasIntegerCastShape(const GenericConstantType &Source,
                                        const GenericConstantType &Destination,
                                        bool RequireNarrowing) noexcept {
-  const GenericConstantType &ResolvedSource = resolvedType(Source);
-  const GenericConstantType &ResolvedDestination = resolvedType(Destination);
+  const GenericConstantType &ResolvedSource = Source.resolved();
+  const GenericConstantType &ResolvedDestination = Destination.resolved();
   if (const auto SourceWidth = integerScalarBitWidth(ResolvedSource)) {
     const auto DestinationWidth = integerScalarBitWidth(ResolvedDestination);
     return DestinationWidth && (RequireNarrowing ? *SourceWidth > *DestinationWidth
@@ -162,8 +164,8 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
 
 [[nodiscard]] bool hasPointerIntegerCastShape(const GenericConstantType &Pointer,
                                               const GenericConstantType &Integer) noexcept {
-  const GenericConstantType &ResolvedPointer = resolvedType(Pointer);
-  const GenericConstantType &ResolvedInteger = resolvedType(Integer);
+  const GenericConstantType &ResolvedPointer = Pointer.resolved();
+  const GenericConstantType &ResolvedInteger = Integer.resolved();
   if (isPointerScalarType(ResolvedPointer))
     return isIntegerScalarType(ResolvedInteger);
   const GenericConstantType *PointerElement = vectorElementType(ResolvedPointer);
@@ -176,7 +178,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
 [[nodiscard]] bool isSizedType(const GenericConstantType &Type, std::size_t Depth = 0) noexcept {
   if (Depth > MaximumVerificationDepth)
     return false;
-  const GenericConstantType &Resolved = resolvedType(Type);
+  const GenericConstantType &Resolved = Type.resolved();
   switch (Resolved.Kind) {
   case GenericConstantTypeKind::Integer:
   case GenericConstantTypeKind::Byte:
@@ -311,7 +313,7 @@ nonPointerFixedBitWidth(const GenericConstantType &Type) noexcept {
   auto TypeResult = verifyType(Value.Type, 0, TypeNodes);
   if (!TypeResult)
     return TypeResult;
-  const GenericConstantType &EffectiveType = resolvedType(Value.Type);
+  const GenericConstantType &EffectiveType = Value.Type.resolved();
 
   const auto RequireEmptyScalarPayload = [&]() -> Expected<void> {
     if (Value.IntegerValue || Value.FloatingValue || !Value.ByteValue.empty() ||

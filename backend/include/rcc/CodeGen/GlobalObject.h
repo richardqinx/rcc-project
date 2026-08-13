@@ -3,9 +3,9 @@
 #ifndef RCC_CODEGEN_GLOBALOBJECT_H
 #define RCC_CODEGEN_GLOBALOBJECT_H
 
-#include "rcc/CodeGen/GenericConstant.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/TargetConstant.h"
+#include "rcc/IR/Constants.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>

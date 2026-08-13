@@ -24,7 +24,7 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
-#include "rcc/MIR/LLVMConstantSyntax.h"
+#include "rcc/IR/DataLayout.h"
 
 #include <algorithm>
 #include <array>
@@ -424,10 +424,9 @@ MIRDocumentPrinter::verifyOmittedEmbeddedIRLayout(const MachineFunction &Functio
         "DataLayout");
   }
 
-  const LLVMConstantSyntaxOptions LayoutOptions{
-      .DataLayout = Options.DataLayout,
-      .NamedTypes = {},
-  };
+  auto Layout = DataLayout::parse(Options.DataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
   for (const VirtualRegisterInfo &RegisterInfo : Function.registerInfo().virtualRegisters()) {
     if (RegisterInfo.IsTombstone || !RegisterInfo.Type ||
         !RegisterInfo.Type->isPointerOrPointerVector()) {
@@ -438,7 +437,7 @@ MIRDocumentPrinter::verifyOmittedEmbeddedIRLayout(const MachineFunction &Functio
       return makeUnexpected(ErrorCode::VerificationError,
                             "pointer virtual register has no address space");
     }
-    auto PointerSize = llvmPointerSizeInBits(*AddressSpace, LayoutOptions);
+    auto PointerSize = Layout->getPointerSizeInBits(*AddressSpace);
     if (!PointerSize) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "printer DataLayout cannot determine pointer width: " +
@@ -457,7 +456,7 @@ MIRDocumentPrinter::verifyOmittedEmbeddedIRLayout(const MachineFunction &Functio
     const auto *Generic = std::get_if<GenericConstantData>(&Description->Value);
     if (Generic == nullptr)
       continue;
-    auto StorageSize = llvmConstantStorageSize(Generic->Type, LayoutOptions);
+    auto StorageSize = Layout->getTypeAllocSize(Generic->Type);
     if (!StorageSize) {
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "printer DataLayout cannot lay out generic constant: " +
@@ -1085,7 +1084,7 @@ Expected<void> MIRDocumentPrinter::printConstants(const MachineFunction &Functio
     Expected<std::string> Value =
         makeUnexpected(ErrorCode::Unsupported, "constant-pool kind is not MIR serializable");
     if (const auto *Generic = std::get_if<GenericConstantData>(&Description->Value)) {
-      Value = printLLVMConstant(*Generic);
+      Value = Generic->toLLVMString();
     } else if (const auto *TargetConstantValue = std::get_if<TargetConstant>(&Description->Value)) {
       IsTargetSpecific = true;
       Value = Target.mirText().printTargetConstant(*TargetConstantValue);
@@ -2264,7 +2263,7 @@ Expected<void> BodyPrinter::printOperand(const MachineOperand &Operand, bool IsE
     auto Constant = GenericConstantData::floating(Bits);
     if (!Constant)
       return std::unexpected(Constant.error());
-    auto Text = printLLVMConstant(*Constant);
+    auto Text = Constant->toLLVMString();
     if (!Text)
       return std::unexpected(Text.error());
     Output.append(*Text);
@@ -2620,7 +2619,7 @@ Expected<void> BodyPrinter::printMemoryBase(const MemoryBase &Base, std::int64_t
       return makeUnexpected(ErrorCode::VerificationError,
                             "IR-constant memory base has no constant value");
     }
-    auto Printed = printLLVMConstant(*Constant);
+    auto Printed = Constant->toLLVMString();
     if (!Printed)
       return std::unexpected(Printed.error());
     Output.push_back('`');

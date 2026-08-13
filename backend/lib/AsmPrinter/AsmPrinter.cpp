@@ -3,7 +3,6 @@
 #include "rcc/CodeGen/AsmPrinter.h"
 
 #include "rcc/CodeGen/CompilationUnit.h"
-#include "rcc/CodeGen/GenericConstant.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
@@ -19,6 +18,7 @@
 #include "rcc/CodeGen/TargetConstant.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMCInstLowering.h"
+#include "rcc/IR/Constants.h"
 #include "rcc/MC/MCCFI.h"
 #include "rcc/MC/MCContext.h"
 #include "rcc/MC/MCExpr.h"

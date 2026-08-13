@@ -3,10 +3,10 @@
 #ifndef RCC_CODEGEN_MACHINEMEMOPERAND_H
 #define RCC_CODEGEN_MACHINEMEMOPERAND_H
 
-#include "rcc/CodeGen/GenericConstant.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMetadata.h"
+#include "rcc/IR/Constants.h"
 
 #include <cstdint>
 #include <initializer_list>

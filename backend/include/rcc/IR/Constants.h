@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifndef RCC_CODEGEN_GENERICCONSTANT_H
-#define RCC_CODEGEN_GENERICCONSTANT_H
+#ifndef RCC_IR_CONSTANTS_H
+#define RCC_IR_CONSTANTS_H
 
 #include "rcc/ADT/APFloat.h"
 #include "rcc/ADT/APInt.h"
-#include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
@@ -63,6 +62,7 @@ struct GenericConstantType final {
   [[nodiscard]] static Expected<GenericConstantType> named(std::string Name,
                                                            bool NumericName = false);
 
+  [[nodiscard]] const GenericConstantType &resolved() const noexcept;
   [[nodiscard]] Expected<void> verify() const;
 
   friend bool operator==(const GenericConstantType &Left,
@@ -164,6 +164,7 @@ struct GenericConstantData final {
   [[nodiscard]] static Expected<GenericConstantData> byteString(GenericConstantType Type,
                                                                 std::vector<std::byte> Bytes);
 
+  [[nodiscard]] Expected<std::string> toLLVMString() const;
   [[nodiscard]] Expected<void> verify() const;
   [[nodiscard]] bool referencesSymbol() const noexcept;
 
@@ -173,4 +174,4 @@ struct GenericConstantData final {
 
 } // namespace rcc
 
-#endif // RCC_CODEGEN_GENERICCONSTANT_H
+#endif // RCC_IR_CONSTANTS_H

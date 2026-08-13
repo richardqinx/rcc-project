@@ -3,6 +3,7 @@
 #include "rcc/CodeGen/MIRParser/MIParser.h"
 
 #include "MILexer.h"
+#include "rcc/AsmParser/LLParser.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InlineAsm.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
@@ -17,7 +18,6 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
-#include "rcc/MIR/LLVMConstantSyntax.h"
 
 #include <algorithm>
 #include <array>

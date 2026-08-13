@@ -3,6 +3,7 @@
 #include "rcc/CodeGen/MIRYamlMapping.h"
 
 #include "MIRParser/MILexer.h"
+#include "rcc/AsmParser/LLParser.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineConstantPool.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
@@ -18,7 +19,6 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
-#include "rcc/MIR/LLVMConstantSyntax.h"
 
 #include <algorithm>
 #include <array>
@@ -259,8 +259,8 @@ bool MIRDocumentParser::parseConstants(const yaml::Node &Root, MachineFunction &
       std::string_view{"alignment"},
       std::string_view{"isTargetSpecific"},
   };
-  std::vector<LLVMNamedTypeDefinition> NamedTypes;
-  const std::string_view DataLayout = effectiveDataLayout();
+  std::vector<LLNamedTypeDefinition> NamedTypes;
+  const std::string_view DataLayoutText = effectiveDataLayout();
   if (ActiveDocument->EmbeddedIR) {
     const auto Definitions = ActiveDocument->EmbeddedIR->typeDefinitions();
     NamedTypes.reserve(Definitions.size());
@@ -270,6 +270,9 @@ bool MIRDocumentParser::parseConstants(const yaml::Node &Root, MachineFunction &
                             .NumericName = Definition.NumericName});
     }
   }
+  auto Layout = DataLayout::parse(DataLayoutText);
+  if (!Layout)
+    return importError(Constants->range(), Layout.error(), "mir-data-layout");
   std::unordered_set<std::uint32_t> IDs;
   for (const yaml::NodeID ConstantID : Constants->sequence()) {
     const yaml::Node *Constant = node(ConstantID);
@@ -328,14 +331,13 @@ bool MIRDocumentParser::parseConstants(const yaml::Node &Root, MachineFunction &
     std::string_view ValueText;
     if (scalar(*ValueNode, ValueText, "LLVM constant"))
       return true;
-    const LLVMConstantSyntaxOptions ConstantOptions{
-        .DataLayout = DataLayout,
+    const LLParserOptions ConstantOptions{
         .NamedTypes = NamedTypes,
     };
     auto Data = parseLLVMConstant(trim(ValueText), ConstantOptions);
     if (!Data)
       return importError(ValueNode->range(), Data.error(), "mir-llvm-constant");
-    auto Size = llvmConstantStorageSize(Data->Type, ConstantOptions);
+    auto Size = Layout->getTypeAllocSize(Data->Type);
     if (!Size)
       return importError(ValueNode->range(), Size.error(), "mir-llvm-constant");
 
@@ -346,11 +348,14 @@ bool MIRDocumentParser::parseConstants(const yaml::Node &Root, MachineFunction &
       if (alignment(*AlignmentNode, Description.Align, true))
         return true;
     } else {
-      auto Preferred = llvmConstantPreferredAlignment(
-          std::get<GenericConstantData>(Description.Value).Type, ConstantOptions);
+      auto Preferred =
+          Layout->getPrefTypeAlign(std::get<GenericConstantData>(Description.Value).Type);
       if (!Preferred)
         return importError(ValueNode->range(), Preferred.error(), "mir-llvm-constant");
-      Description.Align = *Preferred;
+      auto PreferredAlignment = Alignment::create(*Preferred);
+      if (!PreferredAlignment)
+        return importError(ValueNode->range(), PreferredAlignment.error(), "mir-llvm-constant");
+      Description.Align = *PreferredAlignment;
     }
     auto Added = Function.constantPool().addEntry(std::move(Description));
     if (!Added)
@@ -2219,9 +2224,11 @@ bool MIRDocumentParser::parseBody(const yaml::Node &Root, MachineFunction &Funct
   }
 
   if (!effectiveDataLayout().empty()) {
-    const LLVMConstantSyntaxOptions PointerOptions = pointerLayoutOptions();
-    Context.PointerSizeInBits = [PointerOptions](std::uint32_t AddressSpace) {
-      return llvmPointerSizeInBits(AddressSpace, PointerOptions);
+    auto Layout = dataLayout();
+    if (!Layout)
+      return importError(BodyRange, Layout.error(), "mir-data-layout");
+    Context.PointerSizeInBits = [Layout = std::move(*Layout)](std::uint32_t AddressSpace) {
+      return Layout.getPointerSizeInBits(AddressSpace);
     };
   }
   Context.SyncScopes = ActiveDocument->SyncScopes;

@@ -6,7 +6,6 @@ set(
   CommandFlags.cpp
   GlobalObject.cpp
   GenericOpcodes.cpp
-  GenericConstant.cpp
   FrameIndexElimination.cpp
   InstructionDescriptor.cpp
   LowLevelType.cpp
@@ -93,7 +92,6 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CommandFlags.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalObject.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericOpcodes.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericConstant.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/FrameIndexElimination.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InlineAsm.h"
@@ -202,7 +200,7 @@ target_include_directories(
     "$<BUILD_INTERFACE:${RCC_BACKEND_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
-target_link_libraries(RCCBackendCodeGen PUBLIC RCCBackend::Support)
+target_link_libraries(RCCBackendCodeGen PUBLIC RCCBackend::IR)
 
 set_target_properties(
   RCCBackendCodeGen
@@ -224,7 +222,6 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CommandFlags.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GlobalObject.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GenericOpcodes.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/GenericConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlockAttributes.cpp"
@@ -312,7 +309,6 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CommandFlags.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GlobalObject.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GenericOpcodes.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/GenericConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/InstructionDescriptor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/LowLevelType.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineBasicBlockAttributes.cpp"

@@ -9,7 +9,7 @@
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineMetadata.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
-#include "rcc/MIR/LLVMConstantSyntax.h"
+#include "rcc/IR/DataLayout.h"
 #include "rcc/Support/Error.h"
 
 #include <cstdint>
@@ -106,7 +106,7 @@ private:
   [[nodiscard]] bool convertTargetNode(const yaml::Node &Source, MIRTargetNode &Destination);
   [[nodiscard]] bool validateDocumentReferences(const MachineFunction &Function);
   [[nodiscard]] std::string_view effectiveDataLayout() const noexcept;
-  [[nodiscard]] LLVMConstantSyntaxOptions pointerLayoutOptions() const noexcept;
+  [[nodiscard]] Expected<DataLayout> dataLayout() const;
 
   [[nodiscard]] MachineBasicBlock *blockAt(MachineFunction &Function,
                                            std::uint32_t Number) const noexcept;
