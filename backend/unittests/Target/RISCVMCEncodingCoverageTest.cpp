@@ -82,6 +82,8 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
   if (Category == rcc::riscv::EncodingCategory::R) {
     switch (Format) {
     case RD_RS1_RS2:
+    case FRD_FRS1_FRS2:
+    case RD_FRS1_FRS2:
       addRegister(Result, Descriptor, DestinationEncoding);
       addRegister(Result, Descriptor, Source1Encoding);
       addRegister(Result, Descriptor, Source2Encoding);
@@ -92,26 +94,8 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
       addRegister(Result, Descriptor, Source2Encoding);
       addImmediate(Result, (Encoding >> 12U) & 7U);
       return Result;
-    case FRD_FRS1_FRS2:
-      addRegister(Result, Descriptor, DestinationEncoding);
-      addRegister(Result, Descriptor, Source1Encoding);
-      addRegister(Result, Descriptor, Source2Encoding);
-      return Result;
-    case RD_FRS1_FRS2:
-      addRegister(Result, Descriptor, DestinationEncoding);
-      addRegister(Result, Descriptor, Source1Encoding);
-      addRegister(Result, Descriptor, Source2Encoding);
-      return Result;
     case FRD_FRS1_RM:
-      addRegister(Result, Descriptor, DestinationEncoding);
-      addRegister(Result, Descriptor, Source1Encoding);
-      addImmediate(Result, (Encoding >> 12U) & 7U);
-      return Result;
     case RD_FRS1_RM:
-      addRegister(Result, Descriptor, DestinationEncoding);
-      addRegister(Result, Descriptor, Source1Encoding);
-      addImmediate(Result, (Encoding >> 12U) & 7U);
-      return Result;
     case FRD_RS1_RM:
       addRegister(Result, Descriptor, DestinationEncoding);
       addRegister(Result, Descriptor, Source1Encoding);
@@ -119,9 +103,6 @@ createStandardFixture(const rcc::InstructionDescriptor &Descriptor,
       return Result;
     case RD_RS1:
     case RD_FRS1:
-      addRegister(Result, Descriptor, DestinationEncoding);
-      addRegister(Result, Descriptor, Source1Encoding);
-      return Result;
     case FRD_RS1:
       addRegister(Result, Descriptor, DestinationEncoding);
       addRegister(Result, Descriptor, Source1Encoding);
