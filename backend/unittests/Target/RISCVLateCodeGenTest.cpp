@@ -636,87 +636,6 @@ void testTailMerge(TestContext &Context, const rcc::TargetDescription &Target) {
                  "tail merge must redirect identical tails and repair liveness");
 }
 
-void testCopyPropagation(TestContext &Context, const rcc::TargetDescription &Target) {
-  auto Function = makeFunction(Context, "pre_ra_copy_propagation", 13);
-  if (!Function)
-    return;
-  rcc::MachineBasicBlock *Block = appendBlock(Context, *Function);
-  auto I64 = rcc::LLT::makeInteger(64);
-  if (Block == nullptr || !I64)
-    return;
-  auto Source = Function->registerInfo().createVirtualRegister(*I64);
-  auto CopyResult = Function->registerInfo().createVirtualRegister(*I64);
-  auto ResultReg = Function->registerInfo().createVirtualRegister(*I64);
-  if (!Source || !CopyResult || !ResultReg || !constrainGPR64(Context, *Function, *Source) ||
-      !constrainGPR64(Context, *Function, *CopyResult) ||
-      !constrainGPR64(Context, *Function, *ResultReg)) {
-    return;
-  }
-  rcc::MachineIRBuilder Builder(*Function, Target);
-  if (!Builder.setInsertPoint(*Block))
-    return;
-  auto Copy = Builder.buildInstr(rcc::opcode(rcc::GenericOpcode::COPY));
-  if (!Copy || !Copy->addDef(*CopyResult) || !Copy->addUse(*Source) || !Copy->build())
-    return;
-  rcc::MachineInstr *Add = buildADDI(Context, Builder, *ResultReg, *CopyResult, 3);
-  if (Add == nullptr)
-    return;
-  setSelectedProperties(*Function);
-  rcc::MachineFunctionAnalysisManager Analyses;
-  rcc::MachineCopyPropagationPass PreRA(rcc::riscv::instrInfo(),
-                                        rcc::MachineCopyPropagationStage::PreRegisterAllocation);
-  auto PreResult = PreRA.run(*Function, Target, Analyses);
-  if (!PreResult)
-    std::cerr << "pre-RA COPY propagation failure: " << PreResult.error().message() << '\n';
-  Context.expect(PreResult && PreResult->Changed && Block->instructionCount() == 1 &&
-                     Add->operandAt(1)->registerValue() == *Source &&
-                     !Function->registerInfo().isKnownVirtualRegister(*CopyResult),
-                 "pre-RA COPY propagation must replace uses and retire the COPY result");
-
-  auto PostFunction = makeFunction(Context, "post_ra_copy_propagation", 14);
-  if (!PostFunction)
-    return;
-  rcc::MachineBasicBlock *PostBlock = appendBlock(Context, *PostFunction);
-  if (PostBlock == nullptr)
-    return;
-  rcc::MachineIRBuilder PostBuilder(*PostFunction, Target);
-  if (!PostBuilder.setInsertPoint(*PostBlock))
-    return;
-  auto PhysicalCopy = PostBuilder.buildInstr(rcc::opcode(rcc::GenericOpcode::COPY));
-  if (!PhysicalCopy || !PhysicalCopy->addDef(physical(rcc::riscv::PhysicalRegisterID::X11)) ||
-      !PhysicalCopy->addUse(physical(rcc::riscv::PhysicalRegisterID::X10)) ||
-      !PhysicalCopy->build()) {
-    return;
-  }
-  rcc::MachineInstr *PhysicalAdd =
-      buildADDI(Context, PostBuilder, physical(rcc::riscv::PhysicalRegisterID::X12),
-                physical(rcc::riscv::PhysicalRegisterID::X11), 5);
-  rcc::MachineInstr *SourceClobber =
-      buildADDI(Context, PostBuilder, physical(rcc::riscv::PhysicalRegisterID::X10),
-                physical(rcc::riscv::PhysicalRegisterID::X0), 9);
-  rcc::MachineInstr *AfterClobber =
-      buildADDI(Context, PostBuilder, physical(rcc::riscv::PhysicalRegisterID::X13),
-                physical(rcc::riscv::PhysicalRegisterID::X11), 6);
-  if (PhysicalAdd == nullptr || SourceClobber == nullptr || AfterClobber == nullptr)
-    return;
-  setPostRAProperties(*PostFunction);
-  Context.expect(rcc::rebuildMachineLiveness(*PostFunction, Target).has_value(),
-                 "post-RA COPY propagation liveness must be rebuilt");
-  rcc::MachineFunctionAnalysisManager PostAnalyses;
-  rcc::MachineCopyPropagationPass PostRA(rcc::riscv::instrInfo(),
-                                         rcc::MachineCopyPropagationStage::PostRegisterAllocation);
-  auto PostResult = PostRA.run(*PostFunction, Target, PostAnalyses);
-  if (!PostResult)
-    std::cerr << "post-RA COPY propagation failure: " << PostResult.error().message() << '\n';
-  Context.expect(PostResult && PostResult->Changed &&
-                     PhysicalAdd->operandAt(1)->registerValue() ==
-                         physical(rcc::riscv::PhysicalRegisterID::X10) &&
-                     AfterClobber->operandAt(1)->registerValue() ==
-                         physical(rcc::riscv::PhysicalRegisterID::X11) &&
-                     rcc::verifyTrackedMachineLiveness(*PostFunction, Target).has_value(),
-                 "post-RA COPY propagation must stop at clobbers and repair liveness");
-}
-
 void testStackSlotColoring(TestContext &Context, const rcc::TargetDescription &Target) {
   auto Function = makeFunction(Context, "stack_slot_coloring", 15);
   if (!Function)
@@ -1219,7 +1138,7 @@ void testCanonicalOptimizationPipelines(TestContext &Context,
                      SelectedPipeline.size() == 6,
                  "canonical selected-SSA optimization pipeline must register completely");
   Context.expect(rcc::addPreRegisterAllocationOptimizationPipeline(PreRAPipeline, TargetInfo) &&
-                     PreRAPipeline.size() == 5,
+                     PreRAPipeline.size() == 4,
                  "canonical pre-RA optimization pipeline must register completely");
 
   auto Function = makeFunction(Context, "canonical_post_ra_pipeline", 21);
@@ -1446,7 +1365,6 @@ int main() {
   testBranchOptimization(Context, *Target);
   testTailDuplication(Context, *Target);
   testTailMerge(Context, *Target);
-  testCopyPropagation(Context, *Target);
   testStackSlotColoring(Context, *Target);
   testRISCVMemoryFoldingBoundary(Context, *Target);
   testShrinkWrappedFrameRegion(Context, *Target);

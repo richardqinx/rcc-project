@@ -100,7 +100,9 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
              const riscv::RISCVSubtarget &Subtarget, MachinePassManagerOptions Options) {
   MachineFunctionPassManager Pipeline(Options);
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
-    auto Added = riscv::addCanonicalPipeline(Pipeline, Function, Subtarget);
+    auto Added =
+        riscv::addCanonicalPipeline(Pipeline, Function, Subtarget,
+                                    riscv::RISCVPipelineOptions{.UseTargetCopyInstructions = true});
     if (!Added)
       return std::unexpected(Added.error());
   } else {
@@ -108,8 +110,14 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
       return makeUnexpected(ErrorCode::InvalidInvocation,
                             "the default pipeline marker cannot be mixed with named passes");
     }
+    const auto TargetCopyOption = std::ranges::find(
+        Invocation.TargetOptions, std::string_view{"mcp-use-is-copy-instr"}, &BackendOption::Name);
+    const bool UseTargetCopyInstructions =
+        TargetCopyOption != Invocation.TargetOptions.end() && TargetCopyOption->Value == "true";
     for (const std::string &Name : Invocation.PassPipeline) {
-      auto Pass = riscv::createCanonicalPipelinePass(Name, Subtarget);
+      auto Pass = riscv::createCanonicalPipelinePass(
+          Name, Subtarget,
+          riscv::RISCVPipelineOptions{.UseTargetCopyInstructions = UseTargetCopyInstructions});
       if (!Pass)
         return std::unexpected(Pass.error());
       auto Added = Pipeline.addPass(std::move(*Pass));

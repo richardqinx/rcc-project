@@ -315,6 +315,26 @@ Expected<void> MachineOperand::setRegister(Register Reg) {
   return {};
 }
 
+Expected<void> MachineOperand::changeToImmediate(std::int64_t Value) {
+  if (!isRegister() || isImplicit() || isDef() || tiedOperandIndex()) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "only an untied explicit register use can become an immediate");
+  }
+  unlinkFromRegInfo();
+  OperandKind = Kind::Immediate;
+  Storage = Value;
+  RegFlags = {};
+  RegSubReg = {};
+  return {};
+}
+
+Expected<void> MachineOperand::setImmediate(std::int64_t Value) {
+  if (OperandKind != Kind::Immediate)
+    return makeUnexpected(ErrorCode::InvalidArgument, "setImmediate requires an immediate operand");
+  Storage = Value;
+  return {};
+}
+
 Expected<void> MachineOperand::setRegisterFlags(RegisterOperandFlags Flags) {
   if (!isRegister()) {
     return makeUnexpected(ErrorCode::InvalidArgument, "register flags require a register operand");

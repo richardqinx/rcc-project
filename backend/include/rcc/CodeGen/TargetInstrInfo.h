@@ -16,7 +16,13 @@ namespace rcc {
 class MachineBasicBlock;
 class MachineFunction;
 class MachineInstr;
+class MachineOperand;
 class TargetDescription;
+
+struct MachineCopyOperands final {
+  MachineOperand *Destination = nullptr;
+  MachineOperand *Source = nullptr;
+};
 
 struct MachineBranchAnalysis final {
   MachineInstr *Conditional = nullptr;
@@ -56,6 +62,16 @@ public:
                                                     SubRegIndex SourceSubReg,
                                                     const MachineFunction &Function,
                                                     const TargetDescription &Target) const = 0;
+
+  [[nodiscard]] virtual std::optional<MachineCopyOperands>
+  getCopyOperands(MachineInstr &) const noexcept {
+    return std::nullopt;
+  }
+
+  [[nodiscard]] virtual Expected<bool> simplifyInstruction(MachineInstr &, MachineFunction &,
+                                                           const TargetDescription &) const {
+    return false;
+  }
 
   [[nodiscard]] virtual Expected<bool> tryConvertToThreeAddress(MachineInstr &, std::size_t,
                                                                 std::size_t, MachineFunction &,

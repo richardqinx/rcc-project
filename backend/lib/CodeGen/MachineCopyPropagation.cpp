@@ -4,13 +4,11 @@
 
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/InstructionDescriptor.h"
-#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetInstrInfo.h"
@@ -20,46 +18,26 @@
 #include <cstddef>
 #include <optional>
 #include <ranges>
-#include <string>
 #include <utility>
-#include <vector>
 
 namespace rcc {
 namespace {
 
-[[nodiscard]] const MachinePassContract &
-copyPropagationContract(MachineCopyPropagationStage Stage) {
-  static const MachinePassContract PreRA = [] {
+[[nodiscard]] const MachinePassContract &copyPropagationContract() {
+  static const MachinePassContract Contract = [] {
     MachinePassContract Value{
-        .Name = "pre-ra-machine-copy-propagation",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten},
+        .Name = "machine-cp",
+        .Requires = {MachineFunctionProperty::NoVRegs},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {},
-        .VerificationStage = PipelineStage::TiedOpsRewritten,
-    };
-    Value.ThreadSafety = PassThreadSafety::ThreadSafe;
-    Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands,
-                             MachinePassChange::Registers};
-    return Value;
-  }();
-  static const MachinePassContract PostRA = [] {
-    MachinePassContract Value{
-        .Name = "post-ra-machine-copy-propagation",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::TracksLiveness},
-        .Sets = {},
-        .Clears = {},
-        .RequiredAnalyses = {},
-        .VerificationStage = PipelineStage::RegisterAllocated,
+        .VerificationStage = std::nullopt,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
     Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands};
     return Value;
   }();
-  return Stage == MachineCopyPropagationStage::PreRegisterAllocation ? PreRA : PostRA;
+  return Contract;
 }
 
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
@@ -78,13 +56,25 @@ struct CopyOperands final {
   Register Source;
 };
 
-[[nodiscard]] std::optional<CopyOperands> copyOperands(MachineInstr &Instruction) {
-  if (Instruction.opcode() != opcode(GenericOpcode::COPY) || Instruction.operandCount() != 2 ||
-      hasProtectedAttachment(Instruction)) {
+[[nodiscard]] std::optional<CopyOperands> copyOperands(MachineInstr &Instruction,
+                                                       const TargetInstrInfo &Info,
+                                                       bool UseTargetCopyInstructions) {
+  if (hasProtectedAttachment(Instruction))
     return std::nullopt;
+  MachineOperand *DestinationOperand = nullptr;
+  MachineOperand *SourceOperand = nullptr;
+  if (UseTargetCopyInstructions) {
+    const std::optional<MachineCopyOperands> TargetCopy = Info.getCopyOperands(Instruction);
+    if (!TargetCopy)
+      return std::nullopt;
+    DestinationOperand = TargetCopy->Destination;
+    SourceOperand = TargetCopy->Source;
+  } else {
+    if (Instruction.opcode() != opcode(GenericOpcode::COPY) || Instruction.operandCount() < 2)
+      return std::nullopt;
+    DestinationOperand = Instruction.operandAt(0);
+    SourceOperand = Instruction.operandAt(1);
   }
-  MachineOperand *DestinationOperand = Instruction.operandAt(0);
-  MachineOperand *SourceOperand = Instruction.operandAt(1);
   const Register *Destination =
       DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
   const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
@@ -93,88 +83,6 @@ struct CopyOperands final {
     return std::nullopt;
   }
   return CopyOperands{DestinationOperand, SourceOperand, *Destination, *Source};
-}
-
-[[nodiscard]] Expected<bool> compatibleVirtualRegisters(Register Destination, Register Source,
-                                                        const MachineFunction &Function,
-                                                        const TargetDescription &Target) {
-  if (!Destination.isVirtual() || !Source.isVirtual())
-    return false;
-  auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(Destination);
-  auto SourceInfo = Function.registerInfo().virtualRegisterInfo(Source);
-  if (!DestinationInfo || !SourceInfo)
-    return std::unexpected(!DestinationInfo ? DestinationInfo.error() : SourceInfo.error());
-  const VirtualRegisterInfo &DestinationValue = DestinationInfo->get();
-  const VirtualRegisterInfo &SourceValue = SourceInfo->get();
-  if (DestinationValue.Type != SourceValue.Type)
-    return false;
-  if (DestinationValue.Bank && SourceValue.Bank &&
-      !Target.registers().registerBanksOverlap(*DestinationValue.Bank, *SourceValue.Bank)) {
-    return false;
-  }
-  if (DestinationValue.RegClass && SourceValue.RegClass &&
-      !Target.registers().isSubclass(*SourceValue.RegClass, *DestinationValue.RegClass)) {
-    return false;
-  }
-  return true;
-}
-
-[[nodiscard]] Expected<bool> propagateVirtualCopy(MachineInstr &Copy, const CopyOperands &Operands,
-                                                  MachineFunction &Function,
-                                                  const TargetDescription &Target,
-                                                  const TargetInstrInfo &Info) {
-  if (!Operands.Destination.isVirtual() || !Operands.Source.isVirtual())
-    return false;
-  if (Function.registerInfo().getUniqueVRegDef(Operands.Destination) !=
-      Operands.DestinationOperand) {
-    return false;
-  }
-  auto Compatible =
-      compatibleVirtualRegisters(Operands.Destination, Operands.Source, Function, Target);
-  if (!Compatible)
-    return std::unexpected(Compatible.error());
-  if (!*Compatible)
-    return false;
-  auto ValidCopy =
-      Info.validateCopy(Operands.Destination, Operands.DestinationOperand->subReg(),
-                        Operands.Source, Operands.SourceOperand->subReg(), Function, Target);
-  if (!ValidCopy) {
-    if (ValidCopy.error().code() == ErrorCode::Unsupported)
-      return false;
-    return std::unexpected(ValidCopy.error());
-  }
-
-  std::vector<MachineOperand *> Uses;
-  for (MachineOperand &Use : Function.registerInfo().useOperands(Operands.Destination, true)) {
-    if (&Use == Operands.SourceOperand)
-      continue;
-    if (Use.tiedOperandIndex() || Use.isImplicit() ||
-        Use.subReg() != Operands.DestinationOperand->subReg()) {
-      return false;
-    }
-    Uses.push_back(&Use);
-  }
-  for (MachineOperand *Use : Uses) {
-    auto Replaced = Use->setRegister(Operands.Source);
-    if (!Replaced)
-      return std::unexpected(Replaced.error());
-  }
-  MachineBasicBlock *Block = Copy.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "virtual COPY propagation candidate is detached");
-  auto Removed = Block->removeInstruction(Copy);
-  if (!Removed)
-    return std::unexpected(Removed.error());
-  if (!Function.registerInfo().useEmpty(Operands.Destination, true) ||
-      Function.registerInfo().getUniqueVRegDef(Operands.Destination) != nullptr) {
-    return makeUnexpected(ErrorCode::InternalError,
-                          "virtual COPY propagation left destination references");
-  }
-  auto Erased = Function.registerInfo().eraseVirtualRegister(Operands.Destination);
-  if (!Erased)
-    return std::unexpected(Erased.error());
-  return true;
 }
 
 [[nodiscard]] bool shareRegisterClass(PhysicalRegister Left, PhysicalRegister Right,
@@ -203,8 +111,9 @@ struct CopyOperands final {
 }
 
 [[nodiscard]] bool canReplacePhysicalUse(const MachineInstr &Instruction, std::size_t OperandIndex,
-                                         PhysicalRegister Source,
-                                         const TargetDescription &Target) noexcept {
+                                         PhysicalRegister Source, const MachineFunction &Function,
+                                         const TargetDescription &Target,
+                                         const TargetInstrInfo &Info) noexcept {
   const MachineOperand *Operand = Instruction.operandAt(OperandIndex);
   const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
   if (Operand == nullptr || Descriptor == nullptr || Operand->isImplicit() ||
@@ -220,7 +129,55 @@ struct CopyOperands final {
   if (Constraint.RegBank && !Target.registers().bankContainsRegister(*Constraint.RegBank, Source)) {
     return false;
   }
+  if (Instruction.opcode() == opcode(GenericOpcode::COPY)) {
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    if (Destination == nullptr)
+      return false;
+    auto Valid =
+        Info.validateCopy(*Destination, DestinationOperand->subReg(),
+                          Register::fromPhysical(Source), Operand->subReg(), Function, Target);
+    if (!Valid)
+      return false;
+  }
   return true;
+}
+
+[[nodiscard]] bool valueUsedAfter(const MachineInstr &Copy, PhysicalRegister Destination,
+                                  const TargetDescription &Target) noexcept {
+  for (const MachineInstr *Instruction = Copy.next(); Instruction != nullptr;
+       Instruction = Instruction->next()) {
+    for (const MachineOperand &Operand : Instruction->operands()) {
+      if (const auto *Mask = Operand.getIf<RegisterMaskOperand>()) {
+        if (Mask->Mask && Mask->Mask->clobbers(Destination))
+          return false;
+        continue;
+      }
+      const Register *Reg = Operand.getIf<Register>();
+      const std::optional<PhysicalRegister> Physical =
+          Reg == nullptr ? std::nullopt : Reg->physicalRegister();
+      if (!Physical || !Target.registers().regsOverlap(*Physical, Destination))
+        continue;
+      if (Operand.isUse())
+        return true;
+      if (Operand.isDef())
+        return false;
+    }
+  }
+  const MachineBasicBlock *Block = Copy.parent();
+  if (Block == nullptr)
+    return true;
+  if (!Block->successors().empty() &&
+      !Copy.function().properties().has(MachineFunctionProperty::TracksLiveness)) {
+    return true;
+  }
+  return std::ranges::any_of(Block->successors(), [&](const MachineSuccessor &Successor) {
+    return Successor.Block != nullptr &&
+           std::ranges::any_of(Successor.Block->liveIns(), [&](const MachineBasicBlockLiveIn &In) {
+             return Target.registers().regsOverlap(In.PhysReg, Destination);
+           });
+  });
 }
 
 [[nodiscard]] Expected<bool> propagatePhysicalCopy(MachineInstr &Copy, const CopyOperands &Operands,
@@ -244,7 +201,8 @@ struct CopyOperands final {
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError,
                           "physical COPY propagation candidate is detached");
-  if (*Destination == *Source) {
+  const bool IsGenericCopy = Copy.opcode() == opcode(GenericOpcode::COPY);
+  if (*Destination == *Source && IsGenericCopy) {
     auto Removed = Block->removeInstruction(Copy);
     if (!Removed)
       return std::unexpected(Removed.error());
@@ -265,16 +223,35 @@ struct CopyOperands final {
       const Register *Reg = Operand == nullptr ? nullptr : Operand->getIf<Register>();
       const std::optional<PhysicalRegister> Physical =
           Reg == nullptr ? std::nullopt : Reg->physicalRegister();
-      if (!Physical || !Operand->isUse() || Operand->isDebugUse() ||
-          !Target.registers().regsOverlap(*Physical, *Destination) ||
-          !canReplacePhysicalUse(*Instruction, Index, *Source, Target)) {
+      if (!Physical || *Physical != *Destination || !Operand->isUse() || Operand->isDebugUse() ||
+          !Operand->registerFlags().has(RegisterOperandFlag::Renamable) ||
+          !canReplacePhysicalUse(*Instruction, Index, *Source, Function, Target, Info)) {
         continue;
       }
       auto Replaced = Operand->setRegister(Operands.Source);
       if (!Replaced)
         return std::unexpected(Replaced.error());
+      RegisterOperandFlags Flags = Operand->registerFlags();
+      Flags.clear(RegisterOperandFlag::Kill);
+      if (!Operands.SourceOperand->registerFlags().has(RegisterOperandFlag::Renamable))
+        Flags.clear(RegisterOperandFlag::Renamable);
+      if (Operands.SourceOperand->registerFlags().has(RegisterOperandFlag::Undef))
+        Flags.set(RegisterOperandFlag::Undef);
+      else
+        Flags.clear(RegisterOperandFlag::Undef);
+      auto SetFlags = Operand->setRegisterFlags(Flags);
+      if (!SetFlags)
+        return std::unexpected(SetFlags.error());
       Changed = true;
     }
+  }
+  if (IsGenericCopy &&
+      Operands.DestinationOperand->registerFlags().has(RegisterOperandFlag::Renamable) &&
+      !valueUsedAfter(Copy, *Destination, Target)) {
+    auto Removed = Block->removeInstruction(Copy);
+    if (!Removed)
+      return std::unexpected(Removed.error());
+    Changed = true;
   }
   return Changed;
 }
@@ -282,7 +259,7 @@ struct CopyOperands final {
 } // namespace
 
 const MachinePassContract &MachineCopyPropagationPass::contract() const noexcept {
-  return copyPropagationContract(Stage);
+  return copyPropagationContract();
 }
 
 Expected<MachinePassResult>
@@ -325,7 +302,13 @@ MachineCopyPropagationPass::runImplementation(MachineFunction &Function,
     for (MachineInstr *Instruction = Block->firstInstruction();
          Instruction != nullptr && PropagatedCopies < Options.MaximumPropagatedCopies;) {
       MachineInstr *Next = Instruction->next();
-      const std::optional<CopyOperands> Operands = copyOperands(*Instruction);
+      auto Simplified = Info->simplifyInstruction(*Instruction, Function, Target);
+      if (!Simplified)
+        return std::unexpected(Simplified.error());
+      if (*Simplified)
+        Result.Changed = true;
+      const std::optional<CopyOperands> Operands =
+          copyOperands(*Instruction, *Info, Options.UseTargetCopyInstructions);
       if (!Operands) {
         Instruction = Next;
         continue;
@@ -338,9 +321,7 @@ MachineCopyPropagationPass::runImplementation(MachineFunction &Function,
         continue;
       }
       Expected<bool> Changed =
-          Stage == MachineCopyPropagationStage::PreRegisterAllocation
-              ? propagateVirtualCopy(*Instruction, *Operands, Function, Target, *Info)
-              : propagatePhysicalCopy(*Instruction, *Operands, Function, Target, *Info);
+          propagatePhysicalCopy(*Instruction, *Operands, Function, Target, *Info);
       if (!Changed)
         return std::unexpected(Changed.error());
       if (*Changed) {
@@ -355,14 +336,7 @@ MachineCopyPropagationPass::runImplementation(MachineFunction &Function,
     Result.Preserved = PreservedAnalyses::all();
     return Result;
   }
-  if (Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
-    auto Rebuilt = rebuildMachineLiveness(Function, Target);
-    if (!Rebuilt)
-      return std::unexpected(Rebuilt.error());
-  }
   Result.Changes = {MachinePassChange::Instructions, MachinePassChange::Operands};
-  if (Stage == MachineCopyPropagationStage::PreRegisterAllocation)
-    Result.Changes.add(MachinePassChange::Registers);
   Result.Preserved = PreservedAnalyses::none();
   return Result;
 }

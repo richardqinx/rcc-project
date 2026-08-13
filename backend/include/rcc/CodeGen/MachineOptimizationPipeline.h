@@ -23,6 +23,10 @@ struct MachineOptimizationPipelineTargetInfo final {
   const TargetSchedulingModel &SchedulingModel;
 };
 
+struct MachineOptimizationPipelineOptions final {
+  bool UseTargetCopyInstructions = false;
+};
+
 [[nodiscard]] Expected<void>
 registerMachineOptimizationAnalyses(MachineFunctionAnalysisManager &Analyses);
 
@@ -35,7 +39,8 @@ addSelectedSSAOptimizationPipeline(MachineFunctionPassManager &Pipeline,
 
 [[nodiscard]] Expected<void>
 addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
-                                  const MachineOptimizationPipelineTargetInfo &TargetInfo);
+                                  const MachineOptimizationPipelineTargetInfo &TargetInfo,
+                                  MachineOptimizationPipelineOptions Options = {});
 
 } // namespace rcc
 

@@ -72,10 +72,6 @@ Expected<void> addPreRegisterAllocationOptimizationPipeline(
   auto Added = addPass<MachineBranchOptimizationPass>(Pipeline, TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<MachineCopyPropagationPass>(Pipeline, TargetInfo.InstrInfo,
-                                              MachineCopyPropagationStage::PreRegisterAllocation);
-  if (!Added)
-    return std::unexpected(Added.error());
   Added = addPass<MachineCombinerPass>(Pipeline, TargetInfo.Combiner,
                                        MachineCombinerStage::PreRegisterAllocation);
   if (!Added)
@@ -88,12 +84,9 @@ Expected<void> addPreRegisterAllocationOptimizationPipeline(
 
 Expected<void>
 addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
-                                  const MachineOptimizationPipelineTargetInfo &TargetInfo) {
+                                  const MachineOptimizationPipelineTargetInfo &TargetInfo,
+                                  MachineOptimizationPipelineOptions Options) {
   auto Added = addPass<MachineStackSlotColoringPass>(Pipeline);
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = addPass<MachineCopyPropagationPass>(Pipeline, TargetInfo.InstrInfo,
-                                              MachineCopyPropagationStage::PostRegisterAllocation);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<MachineCombinerPass>(Pipeline, TargetInfo.Combiner,
@@ -138,6 +131,12 @@ addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<MachineFallthroughPass>(Pipeline, TargetInfo.InstrInfo);
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = addPass<MachineCopyPropagationPass>(
+      Pipeline, TargetInfo.InstrInfo,
+      MachineCopyPropagationOptions{.UseTargetCopyInstructions =
+                                        Options.UseTargetCopyInstructions});
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<MachineBranchRelaxationPass>(Pipeline, TargetInfo.InstrInfo);

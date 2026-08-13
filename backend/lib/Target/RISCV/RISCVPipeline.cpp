@@ -65,7 +65,8 @@ template <typename PassT, typename... ArgumentT>
 }
 
 [[nodiscard]] Expected<void> addCompleteRegistry(MachineFunctionPassManager &Pipeline,
-                                                 const RISCVSubtarget &Subtarget) {
+                                                 const RISCVSubtarget &Subtarget,
+                                                 RISCVPipelineOptions Options) {
   auto Added = addInitialPipeline(Pipeline, Subtarget);
   if (!Added)
     return std::unexpected(Added.error());
@@ -75,14 +76,17 @@ template <typename PassT, typename... ArgumentT>
   Added = addRegisterAllocationPipeline(Pipeline);
   if (!Added)
     return std::unexpected(Added.error());
-  return addPostRegisterAllocationPipeline(Pipeline, optimizationPipelineInfo());
+  return addPostRegisterAllocationPipeline(
+      Pipeline, optimizationPipelineInfo(),
+      MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
+                                             Options.UseTargetCopyInstructions});
 }
 
 } // namespace
 
 Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
                                     const MachineFunction &Function,
-                                    const RISCVSubtarget &Subtarget) {
+                                    const RISCVSubtarget &Subtarget, RISCVPipelineOptions Options) {
   if (!Function.properties().has(MachineFunctionProperty::Legalized)) {
     auto Added = addPass<MachineCombinerPass>(Pipeline, machineCombinerInfo(),
                                               MachineCombinerStage::PreLegalizer);
@@ -123,7 +127,10 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
       return std::unexpected(Added.error());
   }
   if (!Function.properties().has(MachineFunctionProperty::NoExecutablePseudos)) {
-    auto Added = addPostRegisterAllocationPipeline(Pipeline, optimizationPipelineInfo());
+    auto Added = addPostRegisterAllocationPipeline(
+        Pipeline, optimizationPipelineInfo(),
+        MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
+                                               Options.UseTargetCopyInstructions});
     if (!Added)
       return std::unexpected(Added.error());
   }
@@ -131,11 +138,12 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
 }
 
 Expected<std::unique_ptr<MachineFunctionPass>>
-createCanonicalPipelinePass(std::string_view Name, const RISCVSubtarget &Subtarget) {
+createCanonicalPipelinePass(std::string_view Name, const RISCVSubtarget &Subtarget,
+                            RISCVPipelineOptions Options) {
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidArgument, "pipeline pass name cannot be empty");
   MachineFunctionPassManager Registry;
-  auto Added = addCompleteRegistry(Registry, Subtarget);
+  auto Added = addCompleteRegistry(Registry, Subtarget, Options);
   if (!Added)
     return std::unexpected(Added.error());
   MachineFunctionPassManager::PassList Passes = std::move(Registry).takePasses();

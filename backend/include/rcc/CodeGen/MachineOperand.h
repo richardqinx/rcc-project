@@ -382,6 +382,8 @@ public:
   [[nodiscard]] bool isImplicit() const noexcept;
 
   [[nodiscard]] Expected<void> setRegister(Register Reg);
+  [[nodiscard]] Expected<void> changeToImmediate(std::int64_t Value);
+  [[nodiscard]] Expected<void> setImmediate(std::int64_t Value);
   [[nodiscard]] Expected<void> setRegisterFlags(RegisterOperandFlags Flags);
   [[nodiscard]] Expected<void> setSubReg(SubRegIndex SubReg);
   [[nodiscard]] Expected<void> setBasicBlock(MachineBasicBlock &Block);

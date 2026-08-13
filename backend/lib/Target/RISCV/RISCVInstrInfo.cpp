@@ -124,6 +124,50 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
          Left->subReg() == Right->subReg();
 }
 
+[[nodiscard]] bool isPhysicalRegister(const MachineOperand *Operand,
+                                      PhysicalRegisterID Expected) noexcept {
+  const Register *Reg = Operand == nullptr ? nullptr : Operand->getIf<Register>();
+  const std::optional<PhysicalRegister> Physical =
+      Reg == nullptr ? std::nullopt : Reg->physicalRegister();
+  return Physical && Physical->number() == static_cast<std::uint32_t>(Expected);
+}
+
+[[nodiscard]] Expected<void> swapRegisters(MachineOperand &Left, MachineOperand &Right) {
+  const Register *LeftReg = Left.getIf<Register>();
+  const Register *RightReg = Right.getIf<Register>();
+  if (LeftReg == nullptr || RightReg == nullptr)
+    return makeUnexpected(ErrorCode::InvalidArgument, "register swap requires two registers");
+  const Register LeftValue = *LeftReg;
+  const Register RightValue = *RightReg;
+  const RegisterOperandFlags LeftFlags = Left.registerFlags();
+  const RegisterOperandFlags RightFlags = Right.registerFlags();
+  const SubRegIndex LeftSubReg = Left.subReg();
+  const SubRegIndex RightSubReg = Right.subReg();
+  const std::uint32_t LeftTargetFlags = Left.targetFlags();
+  const std::uint32_t RightTargetFlags = Right.targetFlags();
+  auto SetLeft = Left.setRegister(RightValue);
+  if (!SetLeft)
+    return std::unexpected(SetLeft.error());
+  auto SetRight = Right.setRegister(LeftValue);
+  if (!SetRight)
+    return std::unexpected(SetRight.error());
+  SetLeft = Left.setRegisterFlags(RightFlags);
+  if (!SetLeft)
+    return std::unexpected(SetLeft.error());
+  SetRight = Right.setRegisterFlags(LeftFlags);
+  if (!SetRight)
+    return std::unexpected(SetRight.error());
+  SetLeft = Left.setSubReg(RightSubReg);
+  if (!SetLeft)
+    return std::unexpected(SetLeft.error());
+  SetRight = Right.setSubReg(LeftSubReg);
+  if (!SetRight)
+    return std::unexpected(SetRight.error());
+  Left.setTargetFlags(RightTargetFlags);
+  Right.setTargetFlags(LeftTargetFlags);
+  return {};
+}
+
 [[nodiscard]] bool isUnconditionalBranch(const MachineInstr &Instruction) noexcept {
   if (Instruction.opcode() == instructionOpcode(InstructionOpcode::C_J) ||
       Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoBR)) {
@@ -755,6 +799,290 @@ public:
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V GPR/FPR COPY requires 32-bit or 64-bit values");
     return {};
+  }
+
+  [[nodiscard]] std::optional<MachineCopyOperands>
+  getCopyOperands(MachineInstr &Instruction) const noexcept override {
+    auto Pair = [&Instruction](std::size_t Destination,
+                               std::size_t Source) -> std::optional<MachineCopyOperands> {
+      MachineOperand *DestinationOperand = Instruction.operandAt(Destination);
+      MachineOperand *SourceOperand = Instruction.operandAt(Source);
+      return DestinationOperand != nullptr && SourceOperand != nullptr
+                 ? std::optional<MachineCopyOperands>{MachineCopyOperands{DestinationOperand,
+                                                                          SourceOperand}}
+                 : std::nullopt;
+    };
+    if (Instruction.opcode() == opcode(GenericOpcode::COPY))
+      return Pair(0, 1);
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::ADD) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::OR) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::XOR)) {
+      if (isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0))
+        return Pair(0, 2);
+      if (isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0))
+        return Pair(0, 1);
+    }
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::ADDI)) {
+      const auto *Immediate = Instruction.operandAt(2) == nullptr
+                                  ? nullptr
+                                  : Instruction.operandAt(2)->getIf<std::int64_t>();
+      if (Immediate != nullptr && *Immediate == 0)
+        return Pair(0, 1);
+    }
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::SUB) &&
+        isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0)) {
+      return Pair(0, 1);
+    }
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::SH1ADD) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::SH1ADD_UW) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::SH2ADD) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::SH2ADD_UW) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::SH3ADD) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::SH3ADD_UW)) {
+      if (isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0))
+        return Pair(0, 2);
+    }
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::FSGNJ_D) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::FSGNJ_S)) {
+      if (sameRegister(Instruction.operandAt(1), Instruction.operandAt(2)))
+        return Pair(0, 1);
+    }
+    return std::nullopt;
+  }
+
+  [[nodiscard]] Expected<bool> simplifyInstruction(MachineInstr &Instruction,
+                                                   MachineFunction &Function,
+                                                   const TargetDescription &) const override {
+    if (&Instruction.function() != &Function)
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "RISC-V instruction simplification references another function");
+    auto SetOpcode = [&Instruction](InstructionOpcode NewOpcode) -> Expected<bool> {
+      auto Result = Instruction.setOpcode(instructionOpcode(NewOpcode));
+      if (!Result)
+        return std::unexpected(Result.error());
+      return true;
+    };
+    auto SetZeroImmediate = [&Instruction, &SetOpcode](
+                                std::size_t Index, InstructionOpcode NewOpcode) -> Expected<bool> {
+      MachineOperand *Operand = Instruction.operandAt(Index);
+      if (Operand == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V simplification has no source operand");
+      auto Changed = Operand->changeToImmediate(0);
+      if (!Changed)
+        return std::unexpected(Changed.error());
+      return SetOpcode(NewOpcode);
+    };
+    const Opcode Value = Instruction.opcode();
+    if (Value == instructionOpcode(InstructionOpcode::ADD) ||
+        Value == instructionOpcode(InstructionOpcode::OR) ||
+        Value == instructionOpcode(InstructionOpcode::XOR)) {
+      if (isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+        auto Swapped = swapRegisters(*Instruction.operandAt(1), *Instruction.operandAt(2));
+        if (!Swapped)
+          return std::unexpected(Swapped.error());
+      }
+      if (isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0))
+        return SetZeroImmediate(2, InstructionOpcode::ADDI);
+      if (Value == instructionOpcode(InstructionOpcode::XOR) &&
+          sameRegister(Instruction.operandAt(1), Instruction.operandAt(2))) {
+        auto Zero = physicalRegister(PhysicalRegisterID::X0);
+        if (!Zero)
+          return std::unexpected(Zero.error());
+        auto SetSource = Instruction.operandAt(1)->setRegister(Register::fromPhysical(*Zero));
+        if (!SetSource)
+          return std::unexpected(SetSource.error());
+        return SetZeroImmediate(2, InstructionOpcode::ADDI);
+      }
+      return false;
+    }
+    if ((Value == instructionOpcode(InstructionOpcode::ORI) ||
+         Value == instructionOpcode(InstructionOpcode::XORI)) &&
+        isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+      return SetOpcode(InstructionOpcode::ADDI);
+    }
+    if (Value == instructionOpcode(InstructionOpcode::SUB) &&
+        isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0)) {
+      return SetZeroImmediate(2, InstructionOpcode::ADDI);
+    }
+    if (Value == instructionOpcode(InstructionOpcode::SUBW) &&
+        isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0)) {
+      return SetZeroImmediate(2, InstructionOpcode::ADDIW);
+    }
+    if (Value == instructionOpcode(InstructionOpcode::ADDW)) {
+      if (isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+        auto Swapped = swapRegisters(*Instruction.operandAt(1), *Instruction.operandAt(2));
+        if (!Swapped)
+          return std::unexpected(Swapped.error());
+      }
+      if (isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0))
+        return SetZeroImmediate(2, InstructionOpcode::ADDIW);
+      return false;
+    }
+    if (Value == instructionOpcode(InstructionOpcode::SH1ADD) ||
+        Value == instructionOpcode(InstructionOpcode::SH1ADD_UW) ||
+        Value == instructionOpcode(InstructionOpcode::SH2ADD) ||
+        Value == instructionOpcode(InstructionOpcode::SH2ADD_UW) ||
+        Value == instructionOpcode(InstructionOpcode::SH3ADD) ||
+        Value == instructionOpcode(InstructionOpcode::SH3ADD_UW)) {
+      if (isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+        auto Removed = Instruction.eraseOperand(1);
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        Removed = Instruction.addOperand(MachineOperand::immediate(0));
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        return SetOpcode(InstructionOpcode::ADDI);
+      }
+      if (isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0)) {
+        const bool IsUnsignedWord = Value == instructionOpcode(InstructionOpcode::SH1ADD_UW) ||
+                                    Value == instructionOpcode(InstructionOpcode::SH2ADD_UW) ||
+                                    Value == instructionOpcode(InstructionOpcode::SH3ADD_UW);
+        const std::int64_t Shift = Value == instructionOpcode(InstructionOpcode::SH1ADD) ||
+                                           Value == instructionOpcode(InstructionOpcode::SH1ADD_UW)
+                                       ? 1
+                                   : Value == instructionOpcode(InstructionOpcode::SH2ADD) ||
+                                           Value == instructionOpcode(InstructionOpcode::SH2ADD_UW)
+                                       ? 2
+                                       : 3;
+        auto Removed = Instruction.eraseOperand(2);
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        Removed = Instruction.addOperand(MachineOperand::immediate(Shift));
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        return SetOpcode(IsUnsignedWord ? InstructionOpcode::SLLI_UW : InstructionOpcode::SLLI);
+      }
+      return false;
+    }
+    if (Value == instructionOpcode(InstructionOpcode::AND) ||
+        Value == instructionOpcode(InstructionOpcode::MUL) ||
+        Value == instructionOpcode(InstructionOpcode::MULH) ||
+        Value == instructionOpcode(InstructionOpcode::MULHSU) ||
+        Value == instructionOpcode(InstructionOpcode::MULHU) ||
+        Value == instructionOpcode(InstructionOpcode::MULW)) {
+      if (!isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0) &&
+          !isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0)) {
+        return false;
+      }
+      auto Zero = physicalRegister(PhysicalRegisterID::X0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      auto SetSource = Instruction.operandAt(1)->setRegister(Register::fromPhysical(*Zero));
+      if (!SetSource)
+        return std::unexpected(SetSource.error());
+      return SetZeroImmediate(2, InstructionOpcode::ADDI);
+    }
+    if (Value == instructionOpcode(InstructionOpcode::ANDI) &&
+        isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+      MachineOperand *Immediate = Instruction.operandAt(2);
+      if (Immediate == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V ANDI simplification has no immediate operand");
+      auto SetImmediate = Immediate->setImmediate(0);
+      if (!SetImmediate)
+        return std::unexpected(SetImmediate.error());
+      return SetOpcode(InstructionOpcode::ADDI);
+    }
+    if (Value == instructionOpcode(InstructionOpcode::SLL) ||
+        Value == instructionOpcode(InstructionOpcode::SRL) ||
+        Value == instructionOpcode(InstructionOpcode::SRA)) {
+      if (isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0) ||
+          isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0)) {
+        return SetZeroImmediate(2, InstructionOpcode::ADDI);
+      }
+      return false;
+    }
+    if ((Value == instructionOpcode(InstructionOpcode::SLLW) ||
+         Value == instructionOpcode(InstructionOpcode::SRLW) ||
+         Value == instructionOpcode(InstructionOpcode::SRAW)) &&
+        isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+      return SetZeroImmediate(2, InstructionOpcode::ADDI);
+    }
+    if ((Value == instructionOpcode(InstructionOpcode::SLLI) ||
+         Value == instructionOpcode(InstructionOpcode::SRLI) ||
+         Value == instructionOpcode(InstructionOpcode::SRAI) ||
+         Value == instructionOpcode(InstructionOpcode::SLLIW) ||
+         Value == instructionOpcode(InstructionOpcode::SRLIW) ||
+         Value == instructionOpcode(InstructionOpcode::SRAIW) ||
+         Value == instructionOpcode(InstructionOpcode::SLLI_UW)) &&
+        isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+      MachineOperand *Immediate = Instruction.operandAt(2);
+      if (Immediate == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V shift simplification has no immediate operand");
+      auto SetImmediate = Immediate->setImmediate(0);
+      if (!SetImmediate)
+        return std::unexpected(SetImmediate.error());
+      return SetOpcode(InstructionOpcode::ADDI);
+    }
+    if (Value == instructionOpcode(InstructionOpcode::SLTU) ||
+        Value == instructionOpcode(InstructionOpcode::ADD_UW)) {
+      const bool LeftZero = isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0);
+      const bool RightZero = isPhysicalRegister(Instruction.operandAt(2), PhysicalRegisterID::X0);
+      if (LeftZero && RightZero)
+        return SetZeroImmediate(2, InstructionOpcode::ADDI);
+      if (Value == instructionOpcode(InstructionOpcode::ADD_UW) && LeftZero) {
+        auto Removed = Instruction.eraseOperand(1);
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        Removed = Instruction.addOperand(MachineOperand::immediate(0));
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        return SetOpcode(InstructionOpcode::ADDI);
+      }
+      return false;
+    }
+    if (Value == instructionOpcode(InstructionOpcode::SLTIU) &&
+        isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+      MachineOperand *Immediate = Instruction.operandAt(2);
+      const auto *ImmediateValue =
+          Immediate == nullptr ? nullptr : Immediate->getIf<std::int64_t>();
+      if (ImmediateValue == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V SLTIU simplification has no immediate operand");
+      const std::int64_t Result = *ImmediateValue != 0 ? 1 : 0;
+      auto SetImmediate = Immediate->setImmediate(Result);
+      if (!SetImmediate)
+        return std::unexpected(SetImmediate.error());
+      return SetOpcode(InstructionOpcode::ADDI);
+    }
+    if ((Value == instructionOpcode(InstructionOpcode::SEXT_H) ||
+         Value == instructionOpcode(InstructionOpcode::SEXT_B) ||
+         Value == instructionOpcode(InstructionOpcode::ZEXT_H_RV32) ||
+         Value == instructionOpcode(InstructionOpcode::ZEXT_H_RV64)) &&
+        isPhysicalRegister(Instruction.operandAt(1), PhysicalRegisterID::X0)) {
+      auto Added = Instruction.addOperand(MachineOperand::immediate(0));
+      if (!Added)
+        return std::unexpected(Added.error());
+      return SetOpcode(InstructionOpcode::ADDI);
+    }
+    if ((Value == instructionOpcode(InstructionOpcode::MIN) ||
+         Value == instructionOpcode(InstructionOpcode::MINU) ||
+         Value == instructionOpcode(InstructionOpcode::MAX) ||
+         Value == instructionOpcode(InstructionOpcode::MAXU)) &&
+        sameRegister(Instruction.operandAt(1), Instruction.operandAt(2))) {
+      return SetZeroImmediate(2, InstructionOpcode::ADDI);
+    }
+    if ((Value == instructionOpcode(InstructionOpcode::BEQ) ||
+         Value == instructionOpcode(InstructionOpcode::BNE)) &&
+        isPhysicalRegister(Instruction.operandAt(0), PhysicalRegisterID::X0)) {
+      auto Swapped = swapRegisters(*Instruction.operandAt(0), *Instruction.operandAt(1));
+      if (!Swapped)
+        return std::unexpected(Swapped.error());
+      return true;
+    }
+    if ((Value == instructionOpcode(InstructionOpcode::BLTU) ||
+         Value == instructionOpcode(InstructionOpcode::BGEU)) &&
+        isPhysicalRegister(Instruction.operandAt(0), PhysicalRegisterID::X0)) {
+      auto Swapped = swapRegisters(*Instruction.operandAt(0), *Instruction.operandAt(1));
+      if (!Swapped)
+        return std::unexpected(Swapped.error());
+      return SetOpcode(Value == instructionOpcode(InstructionOpcode::BLTU)
+                           ? InstructionOpcode::BNE
+                           : InstructionOpcode::BEQ);
+    }
+    return false;
   }
 
   [[nodiscard]] Expected<std::uint32_t>
