@@ -52,10 +52,6 @@ private:
   int Failures = 0;
 };
 
-[[nodiscard]] constexpr rcc::Opcode targetOpcode(rcc::riscv::InstructionOpcode Value) noexcept {
-  return rcc::Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] constexpr rcc::RegisterClassID
 registerClass(rcc::riscv::RegisterClass Value) noexcept {
   return rcc::RegisterClassID::fromValue(static_cast<std::uint32_t>(Value));
@@ -108,7 +104,8 @@ buildAddImmediate(rcc::MachineFunction &Function, const rcc::TargetDescription &
   rcc::MachineIRBuilder Builder(Function, Target);
   if (auto Result = Builder.setInsertPoint(Block); !Result)
     return std::unexpected(Result.error());
-  auto Pending = Builder.buildInstr(targetOpcode(rcc::riscv::InstructionOpcode::ADDI));
+  auto Pending =
+      Builder.buildInstr(rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::ADDI));
   if (!Pending)
     return std::unexpected(Pending.error());
   if (auto Result = Pending->addDef(Destination); !Result)
@@ -128,7 +125,8 @@ buildAddImmediate(rcc::MachineFunction &Function, const rcc::TargetDescription &
   rcc::MachineIRBuilder Builder(Function, Target);
   if (auto Result = Builder.setInsertPoint(Block); !Result)
     return std::unexpected(Result.error());
-  auto Pending = Builder.buildInstr(targetOpcode(rcc::riscv::InstructionOpcode::ADD));
+  auto Pending =
+      Builder.buildInstr(rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::ADD));
   if (!Pending)
     return std::unexpected(Pending.error());
   if (auto Result = Pending->addDef(Destination); !Result)
@@ -198,7 +196,7 @@ enum class AllocatorKind : std::uint8_t {
        Block = Block->next()) {
     for (const rcc::MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
          Instruction = Instruction->next()) {
-      Count += Instruction->opcode() == targetOpcode(Value) ? 1U : 0U;
+      Count += Instruction->opcode() == rcc::riscv::instructionOpcode(Value) ? 1U : 0U;
     }
   }
   return Count;
@@ -277,12 +275,18 @@ void testTargetHooks(TestContext &Context, const rcc::TargetDescription &Target)
       Info.emitSpill(Builder, physical(rcc::riscv::PhysicalRegisterID::F11_D),
                      registerClass(rcc::riscv::RegisterClass::FPR64), *Slot, rcc::LaneMask::all());
   Context.expect(GPRReload && GPRSpill && F32Reload && F32Spill && F64Reload && F64Spill &&
-                     (*GPRReload)->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::LD) &&
-                     (*GPRSpill)->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::SD) &&
-                     (*F32Reload)->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::FLW) &&
-                     (*F32Spill)->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::FSW) &&
-                     (*F64Reload)->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::FLD) &&
-                     (*F64Spill)->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::FSD),
+                     (*GPRReload)->opcode() ==
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::LD) &&
+                     (*GPRSpill)->opcode() ==
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::SD) &&
+                     (*F32Reload)->opcode() ==
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::FLW) &&
+                     (*F32Spill)->opcode() ==
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::FSW) &&
+                     (*F64Reload)->opcode() ==
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::FLD) &&
+                     (*F64Spill)->opcode() ==
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::FSD),
                  "RV64GC hooks must select width- and bank-correct stack instructions");
   if (GPRReload && F32Reload && F64Reload) {
     Context.expect(
@@ -321,7 +325,7 @@ void testRematerialization(TestContext &Context, const rcc::TargetDescription &T
   auto Materialized = Info.rematerialize(Builder, **Definition, *Child, *Original, Target);
   Context.expect(Accepted && *Accepted && Materialized &&
                      (*Materialized)->opcode() ==
-                         targetOpcode(rcc::riscv::InstructionOpcode::ADDI) &&
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::ADDI) &&
                      (*Materialized)->operandAt(0)->registerValue() == *Child &&
                      (*Materialized)->operandAt(1)->registerValue() ==
                          physical(rcc::riscv::PhysicalRegisterID::X0),

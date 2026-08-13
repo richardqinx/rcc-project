@@ -30,19 +30,15 @@ namespace {
 constexpr std::uint32_t PCRelativeHighFlag = 2;
 constexpr std::uint32_t PCRelativeLowFlag = 4;
 
-[[nodiscard]] constexpr Opcode targetOpcode(InstructionOpcode Value) noexcept {
-  return Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] bool isConditionalBranch(Opcode Value) noexcept {
-  return Value == targetOpcode(InstructionOpcode::BEQ) ||
-         Value == targetOpcode(InstructionOpcode::BNE) ||
-         Value == targetOpcode(InstructionOpcode::BLT) ||
-         Value == targetOpcode(InstructionOpcode::BGE) ||
-         Value == targetOpcode(InstructionOpcode::BLTU) ||
-         Value == targetOpcode(InstructionOpcode::BGEU) ||
-         Value == targetOpcode(InstructionOpcode::C_BEQZ) ||
-         Value == targetOpcode(InstructionOpcode::C_BNEZ);
+  return Value == instructionOpcode(InstructionOpcode::BEQ) ||
+         Value == instructionOpcode(InstructionOpcode::BNE) ||
+         Value == instructionOpcode(InstructionOpcode::BLT) ||
+         Value == instructionOpcode(InstructionOpcode::BGE) ||
+         Value == instructionOpcode(InstructionOpcode::BLTU) ||
+         Value == instructionOpcode(InstructionOpcode::BGEU) ||
+         Value == instructionOpcode(InstructionOpcode::C_BEQZ) ||
+         Value == instructionOpcode(InstructionOpcode::C_BNEZ);
 }
 
 [[nodiscard]] std::optional<Opcode> reversedOpcode(Opcode Value) noexcept {
@@ -53,10 +49,10 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
       {InstructionOpcode::C_BEQZ, InstructionOpcode::C_BNEZ},
   }};
   for (const auto &[Left, Right] : Pairs) {
-    if (Value == targetOpcode(Left))
-      return targetOpcode(Right);
-    if (Value == targetOpcode(Right))
-      return targetOpcode(Left);
+    if (Value == instructionOpcode(Left))
+      return instructionOpcode(Right);
+    if (Value == instructionOpcode(Right))
+      return instructionOpcode(Left);
   }
   return std::nullopt;
 }
@@ -76,33 +72,33 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
 }
 
 [[nodiscard]] bool isUnconditionalBranch(const MachineInstr &Instruction) noexcept {
-  if (Instruction.opcode() == targetOpcode(InstructionOpcode::C_J) ||
-      Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoBR)) {
+  if (Instruction.opcode() == instructionOpcode(InstructionOpcode::C_J) ||
+      Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoBR)) {
     return true;
   }
-  return Instruction.opcode() == targetOpcode(InstructionOpcode::JAL) &&
+  return Instruction.opcode() == instructionOpcode(InstructionOpcode::JAL) &&
          isZeroRegister(Instruction.operandAt(0));
 }
 
 [[nodiscard]] std::size_t branchTargetIndex(Opcode Value) noexcept {
-  if (Value == targetOpcode(InstructionOpcode::C_J) ||
-      Value == targetOpcode(InstructionOpcode::PseudoBR)) {
+  if (Value == instructionOpcode(InstructionOpcode::C_J) ||
+      Value == instructionOpcode(InstructionOpcode::PseudoBR)) {
     return 0;
   }
-  if (Value == targetOpcode(InstructionOpcode::C_BEQZ) ||
-      Value == targetOpcode(InstructionOpcode::C_BNEZ)) {
+  if (Value == instructionOpcode(InstructionOpcode::C_BEQZ) ||
+      Value == instructionOpcode(InstructionOpcode::C_BNEZ)) {
     return 1;
   }
-  if (Value == targetOpcode(InstructionOpcode::JAL))
+  if (Value == instructionOpcode(InstructionOpcode::JAL))
     return 1;
   return 2;
 }
 
 [[nodiscard]] Expected<MachineBasicBlock *> directTarget(MachineInstr &Instruction) {
   if (!isConditionalBranch(Instruction.opcode()) &&
-      Instruction.opcode() != targetOpcode(InstructionOpcode::JAL) &&
-      Instruction.opcode() != targetOpcode(InstructionOpcode::C_J) &&
-      Instruction.opcode() != targetOpcode(InstructionOpcode::PseudoBR)) {
+      Instruction.opcode() != instructionOpcode(InstructionOpcode::JAL) &&
+      Instruction.opcode() != instructionOpcode(InstructionOpcode::C_J) &&
+      Instruction.opcode() != instructionOpcode(InstructionOpcode::PseudoBR)) {
     return static_cast<MachineBasicBlock *>(nullptr);
   }
   MachineOperand *Operand = Instruction.operandAt(branchTargetIndex(Instruction.opcode()));
@@ -149,7 +145,7 @@ buildJAL(MachineFunction &Function, const TargetDescription &Target, MachineBasi
       Before == nullptr ? Builder.setInsertPoint(Block) : Builder.setInsertPointBefore(*Before);
   if (!Point)
     return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(targetOpcode(InstructionOpcode::JAL));
+  auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JAL));
   if (!Pending)
     return std::unexpected(Pending.error());
   auto Def = Pending->addDef(Register::fromPhysical(Destination));
@@ -284,7 +280,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   if (!Point)
     return std::unexpected(Point.error());
 
-  if (Instruction.opcode() == targetOpcode(InstructionOpcode::C_J)) {
+  if (Instruction.opcode() == instructionOpcode(InstructionOpcode::C_J)) {
     auto Zero = physical(PhysicalRegisterID::X0);
     if (!Zero)
       return std::unexpected(Zero.error());
@@ -308,10 +304,10 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   auto Zero = physical(PhysicalRegisterID::X0);
   if (!Zero)
     return std::unexpected(Zero.error());
-  const InstructionOpcode Expanded = Instruction.opcode() == targetOpcode(InstructionOpcode::C_BEQZ)
-                                         ? InstructionOpcode::BEQ
-                                         : InstructionOpcode::BNE;
-  auto Pending = Builder.buildInstr(targetOpcode(Expanded));
+  const InstructionOpcode Expanded =
+      Instruction.opcode() == instructionOpcode(InstructionOpcode::C_BEQZ) ? InstructionOpcode::BEQ
+                                                                           : InstructionOpcode::BNE;
+  auto Pending = Builder.buildInstr(instructionOpcode(Expanded));
   if (!Pending)
     return std::unexpected(Pending.error());
   auto First = Pending->addUse(*Source);
@@ -378,7 +374,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   auto Point = Builder.setInsertPointAfter(Instruction);
   if (!Point)
     return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(targetOpcode(InstructionOpcode::JAL));
+  auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JAL));
   if (!Pending)
     return std::unexpected(Pending.error());
   auto Def = Pending->addDef(Register::fromPhysical(*Zero));
@@ -440,7 +436,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   auto Point = Builder.setInsertPointBefore(Instruction);
   if (!Point)
     return std::unexpected(Point.error());
-  auto HighPending = Builder.buildInstr(targetOpcode(InstructionOpcode::AUIPC));
+  auto HighPending = Builder.buildInstr(instructionOpcode(InstructionOpcode::AUIPC));
   if (!HighPending)
     return std::unexpected(HighPending.error());
   auto HighDef = HighPending->addDef(Register::fromPhysical(*Scratch));
@@ -459,7 +455,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   if (!HighIdentity)
     return std::unexpected(HighIdentity.error());
 
-  auto LowPending = Builder.buildInstr(targetOpcode(InstructionOpcode::JALR));
+  auto LowPending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JALR));
   if (!LowPending)
     return std::unexpected(LowPending.error());
   auto LowDef = LowPending->addDef(*Destination);
@@ -742,17 +738,17 @@ public:
     const Opcode Value = Instruction.opcode();
     if (!isConditionalBranch(Value))
       return std::optional<bool>{};
-    if (Value == targetOpcode(InstructionOpcode::C_BEQZ) ||
-        Value == targetOpcode(InstructionOpcode::C_BNEZ)) {
+    if (Value == instructionOpcode(InstructionOpcode::C_BEQZ) ||
+        Value == instructionOpcode(InstructionOpcode::C_BNEZ)) {
       if (!isZeroRegister(Instruction.operandAt(0)))
         return std::optional<bool>{};
-      return std::optional<bool>{Value == targetOpcode(InstructionOpcode::C_BEQZ)};
+      return std::optional<bool>{Value == instructionOpcode(InstructionOpcode::C_BEQZ)};
     }
     if (!sameRegister(Instruction.operandAt(0), Instruction.operandAt(1)))
       return std::optional<bool>{};
-    if (Value == targetOpcode(InstructionOpcode::BEQ) ||
-        Value == targetOpcode(InstructionOpcode::BGE) ||
-        Value == targetOpcode(InstructionOpcode::BGEU)) {
+    if (Value == instructionOpcode(InstructionOpcode::BEQ) ||
+        Value == instructionOpcode(InstructionOpcode::BGE) ||
+        Value == instructionOpcode(InstructionOpcode::BGEU)) {
       return std::optional<bool>{true};
     }
     return std::optional<bool>{false};
@@ -763,16 +759,16 @@ public:
     if ((Offset & 1) != 0)
       return false;
     const Opcode Value = Instruction.opcode();
-    if (Value == targetOpcode(InstructionOpcode::C_BEQZ) ||
-        Value == targetOpcode(InstructionOpcode::C_BNEZ)) {
+    if (Value == instructionOpcode(InstructionOpcode::C_BEQZ) ||
+        Value == instructionOpcode(InstructionOpcode::C_BNEZ)) {
       return Offset >= -256 && Offset <= 254;
     }
-    if (Value == targetOpcode(InstructionOpcode::C_J))
+    if (Value == instructionOpcode(InstructionOpcode::C_J))
       return Offset >= -2048 && Offset <= 2046;
     if (isConditionalBranch(Value))
       return Offset >= -4096 && Offset <= 4094;
-    if (Value == targetOpcode(InstructionOpcode::JAL) ||
-        Value == targetOpcode(InstructionOpcode::PseudoBR)) {
+    if (Value == instructionOpcode(InstructionOpcode::JAL) ||
+        Value == instructionOpcode(InstructionOpcode::PseudoBR)) {
       return Offset >= -1048576 && Offset <= 1048574;
     }
     return true;
@@ -784,14 +780,14 @@ public:
     if (&Instruction.function() != &Function)
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "RISC-V branch relaxation references another function");
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::C_J) ||
-        Instruction.opcode() == targetOpcode(InstructionOpcode::C_BEQZ) ||
-        Instruction.opcode() == targetOpcode(InstructionOpcode::C_BNEZ)) {
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::C_J) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::C_BEQZ) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::C_BNEZ)) {
       return expandCompressedBranch(Instruction, Function, Target);
     }
     if (isConditionalBranch(Instruction.opcode()))
       return relaxConditionalBranch(Instruction, Function, Target);
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::JAL))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::JAL))
       return relaxJAL(Instruction, Offset, Function, Target);
     return false;
   }

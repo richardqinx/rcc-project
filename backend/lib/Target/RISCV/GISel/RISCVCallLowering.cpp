@@ -35,10 +35,6 @@ constexpr std::uint64_t ABIStackAlignmentBytes = 16;
 constexpr std::uint32_t AllowedDirectCallFlags =
     static_cast<std::uint32_t>(CallTargetFlag::DirectCall);
 
-[[nodiscard]] Opcode targetOpcode(InstructionOpcode Value) noexcept {
-  return Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] std::uint64_t stackObjectFlag(CallStackObjectFlag Flag) noexcept {
   return static_cast<std::uint64_t>(Flag);
 }
@@ -806,7 +802,7 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
                                         Register Source, CallValueTransform Transform) {
   const Opcode CopyOpcode = Transform == CallValueTransform::Full
                                 ? opcode(GenericOpcode::COPY)
-                                : targetOpcode(InstructionOpcode::PseudoCC_COPY);
+                                : instructionOpcode(InstructionOpcode::PseudoCC_COPY);
   auto Instruction = Builder.buildInstr(CopyOpcode);
   if (!Instruction)
     return std::unexpected(Instruction.error());
@@ -831,7 +827,7 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
                                            const CCAssignment &Assignment, FrameIndex Object,
                                            std::uint64_t ObjectOffset,
                                            const MachineMemOperand &Memory) {
-  auto Instruction = Builder.buildInstr(targetOpcode(InstructionOpcode::PseudoLOAD_STACK_ARG));
+  auto Instruction = Builder.buildInstr(instructionOpcode(InstructionOpcode::PseudoLOAD_STACK_ARG));
   if (!Instruction)
     return std::unexpected(Instruction.error());
   auto Def = Instruction->addDef(Assignment.OriginalValue);
@@ -860,7 +856,8 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
                                             FrameIndex Object, std::uint64_t ObjectOffset,
                                             const MachineMemOperand &Memory,
                                             CallValueTransform Transform) {
-  auto Instruction = Builder.buildInstr(targetOpcode(InstructionOpcode::PseudoSTORE_STACK_ARG));
+  auto Instruction =
+      Builder.buildInstr(instructionOpcode(InstructionOpcode::PseudoSTORE_STACK_ARG));
   if (!Instruction)
     return std::unexpected(Instruction.error());
   auto Use = Instruction->addUse(Source);
@@ -978,7 +975,7 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
       InstructionOpcode::PseudoRET,
   };
   for (const InstructionOpcode OpcodeValue : Required) {
-    if (Builder.target().instructionDescriptor(targetOpcode(OpcodeValue)) == nullptr) {
+    if (Builder.target().instructionDescriptor(instructionOpcode(OpcodeValue)) == nullptr) {
       return makeUnexpected(ErrorCode::InternalError,
                             "RISC-V target description lacks a call-lowering pseudo");
     }
@@ -1205,7 +1202,7 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V call-frame size does not fit a MIR immediate");
   }
-  auto Instruction = Builder.buildInstr(targetOpcode(OpcodeValue));
+  auto Instruction = Builder.buildInstr(instructionOpcode(OpcodeValue));
   if (!Instruction)
     return std::unexpected(Instruction.error());
   auto Size = Instruction->addImmediate(static_cast<std::int64_t>(Frame.SizeBytes));
@@ -1249,7 +1246,7 @@ emitByValCopies(MachineIRBuilder &Builder, const CallLoweringPlan &Plan) {
     if (!DestinationMemory)
       return std::unexpected(DestinationMemory.error());
 
-    auto Instruction = Builder.buildInstr(targetOpcode(InstructionOpcode::PseudoBYVAL_COPY));
+    auto Instruction = Builder.buildInstr(instructionOpcode(InstructionOpcode::PseudoBYVAL_COPY));
     if (!Instruction)
       return std::unexpected(Instruction.error());
     auto Def = Instruction->addDef(*Temporary);
@@ -1359,7 +1356,7 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
                                                  const CallLoweringPlan &Plan) {
   const bool IsTail = Plan.tailDecision() != TailCallKind::NotTail;
   auto Instruction = Builder.buildInstr(
-      targetOpcode(IsTail ? InstructionOpcode::PseudoTAIL : InstructionOpcode::PseudoCALL));
+      instructionOpcode(IsTail ? InstructionOpcode::PseudoTAIL : InstructionOpcode::PseudoCALL));
   if (!Instruction)
     return std::unexpected(Instruction.error());
   auto Callee = addCallTarget(*Instruction, *Plan.callee());
@@ -1459,7 +1456,7 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
       return std::unexpected(Copy.error());
   }
 
-  auto Return = Builder.buildInstr(targetOpcode(InstructionOpcode::PseudoRET));
+  auto Return = Builder.buildInstr(instructionOpcode(InstructionOpcode::PseudoRET));
   if (!Return)
     return std::unexpected(Return.error());
   for (const CCAssignment &Assignment : Plan.returnAssignments()) {

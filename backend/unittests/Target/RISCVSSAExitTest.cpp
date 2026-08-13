@@ -46,10 +46,6 @@ private:
   int Failures = 0;
 };
 
-[[nodiscard]] rcc::Opcode targetOpcode(rcc::riscv::InstructionOpcode Opcode) {
-  return rcc::Opcode::fromValue(static_cast<std::uint32_t>(Opcode));
-}
-
 [[nodiscard]] rcc::RegisterBankID bank(rcc::riscv::RegisterBank Bank) {
   return rcc::RegisterBankID::fromValue(static_cast<std::uint32_t>(Bank));
 }
@@ -91,7 +87,8 @@ buildAddImmediate(rcc::MachineFunction &Function, const rcc::TargetDescription &
   auto Point = Builder.setInsertPoint(Block);
   if (!Point)
     return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(targetOpcode(rcc::riscv::InstructionOpcode::ADDI));
+  auto Pending =
+      Builder.buildInstr(rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::ADDI));
   if (!Pending)
     return std::unexpected(Pending.error());
   auto Def = Pending->addDef(Destination);
@@ -114,7 +111,8 @@ buildBranchEqual(rcc::MachineFunction &Function, const rcc::TargetDescription &T
   auto Point = Builder.setInsertPoint(Block);
   if (!Point)
     return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(targetOpcode(rcc::riscv::InstructionOpcode::BEQ));
+  auto Pending =
+      Builder.buildInstr(rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::BEQ));
   if (!Pending)
     return std::unexpected(Pending.error());
   auto LeftUse = Pending->addUse(Left);
@@ -208,7 +206,8 @@ void testBehaviorAndCopyLegality(TestContext &Context, const rcc::TargetDescript
   rcc::MachineInstr *Jump = (*First)->lastInstruction();
   const auto X0 = rcc::riscv::physicalRegister(rcc::riscv::PhysicalRegisterID::X0);
   Context.expect(Jump != nullptr &&
-                     Jump->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::JAL) &&
+                     Jump->opcode() ==
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::JAL) &&
                      Jump->operandAt(0)->registerValue() == rcc::Register::fromPhysical(*X0) &&
                      blockOperand(*Jump, 1) != nullptr && blockOperand(*Jump, 1)->Block == *Second,
                  "RV64GC unconditional branches must use JAL with x0 as the link destination");
@@ -280,7 +279,8 @@ void testCompressedConditionalBranchBehavior(TestContext &Context,
     Context.expect(false, "compressed conditional branch insertion point must be established");
     return;
   }
-  auto Pending = Builder.buildInstr(targetOpcode(rcc::riscv::InstructionOpcode::C_BEQZ));
+  auto Pending =
+      Builder.buildInstr(rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::C_BEQZ));
   if (!X8 || !Pending || !Pending->addUse(rcc::Register::fromPhysical(*X8)) ||
       !Pending->addBasicBlock(**BranchTarget)) {
     Context.expect(false, "compressed conditional branch construction must succeed");
@@ -370,7 +370,8 @@ void testRV64GCCriticalEdge(TestContext &Context, const rcc::TargetDescription &
     return;
   rcc::MachineInstr *Conditional = (*From)->lastInstruction();
   Context.expect(Conditional != nullptr &&
-                     Conditional->opcode() == targetOpcode(rcc::riscv::InstructionOpcode::BEQ) &&
+                     Conditional->opcode() ==
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::BEQ) &&
                      blockOperand(*Conditional, 2) != nullptr &&
                      blockOperand(*Conditional, 2)->Block == Edge,
                  "RV64GC BEQ must be redirected to the critical-edge block");
@@ -380,13 +381,13 @@ void testRV64GCCriticalEdge(TestContext &Context, const rcc::TargetDescription &
   Context.expect(OtherInstructions.size() == 3 &&
                      OtherInstructions[1]->opcode() == rcc::opcode(rcc::GenericOpcode::COPY) &&
                      OtherInstructions[2]->opcode() ==
-                         targetOpcode(rcc::riscv::InstructionOpcode::JAL) &&
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::JAL) &&
                      blockOperand(*OtherInstructions[2], 1)->Block == *Merge,
                  "RV64GC must materialize an unrelated fallthrough before edge-block insertion");
   Context.expect(EdgeInstructions.size() == 2 &&
                      EdgeInstructions[0]->opcode() == rcc::opcode(rcc::GenericOpcode::COPY) &&
                      EdgeInstructions[1]->opcode() ==
-                         targetOpcode(rcc::riscv::InstructionOpcode::JAL) &&
+                         rcc::riscv::instructionOpcode(rcc::riscv::InstructionOpcode::JAL) &&
                      EdgeInstructions[1]->operandAt(0)->registerValue() == Zero &&
                      blockOperand(*EdgeInstructions[1], 1)->Block == *Merge,
                  "RV64GC edge block must transfer the PHI value and jump to the merge");

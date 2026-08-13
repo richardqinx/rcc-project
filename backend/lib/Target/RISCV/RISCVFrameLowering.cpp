@@ -43,10 +43,6 @@ constexpr std::uint8_t DwarfCFAExpression = 0x10U;
 constexpr std::uint8_t DwarfOpBaseRegister0 = 0x70U;
 constexpr std::uint8_t DwarfOpBaseRegisterExtended = 0x92U;
 
-[[nodiscard]] constexpr Opcode targetOpcode(InstructionOpcode Value) noexcept {
-  return Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] Expected<PhysicalRegister> physical(PhysicalRegisterID ID) {
   return physicalRegister(ID);
 }
@@ -280,8 +276,9 @@ struct CallFrameRequirement final {
     for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
          Instruction = Instruction->next()) {
       const bool IsDown =
-          Instruction->opcode() == targetOpcode(InstructionOpcode::ADJCALLSTACKDOWN);
-      const bool IsUp = Instruction->opcode() == targetOpcode(InstructionOpcode::ADJCALLSTACKUP);
+          Instruction->opcode() == instructionOpcode(InstructionOpcode::ADJCALLSTACKDOWN);
+      const bool IsUp =
+          Instruction->opcode() == instructionOpcode(InstructionOpcode::ADJCALLSTACKUP);
       if (!IsDown && !IsUp)
         continue;
       SawPseudo = true;
@@ -584,7 +581,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
       Remaining |= ~std::uint64_t{0} << 52U;
   }
 
-  auto Base = Builder.buildInstr(targetOpcode(InstructionOpcode::ADDI));
+  auto Base = Builder.buildInstr(instructionOpcode(InstructionOpcode::ADDI));
   if (!Base)
     return std::unexpected(Base.error());
   if (auto Result = Base->addDef(Register::fromPhysical(Destination)); !Result)
@@ -599,7 +596,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
     return std::unexpected(Result.error());
 
   for (std::size_t Reverse = Digits.size(); Reverse != 0; --Reverse) {
-    auto Shift = Builder.buildInstr(targetOpcode(InstructionOpcode::SLLI));
+    auto Shift = Builder.buildInstr(instructionOpcode(InstructionOpcode::SLLI));
     if (!Shift)
       return std::unexpected(Shift.error());
     if (auto Result = Shift->addDef(Register::fromPhysical(Destination)); !Result)
@@ -613,7 +610,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
     if (auto Result = Shift->build(); !Result)
       return std::unexpected(Result.error());
 
-    auto Add = Builder.buildInstr(targetOpcode(InstructionOpcode::ADDI));
+    auto Add = Builder.buildInstr(instructionOpcode(InstructionOpcode::ADDI));
     if (!Add)
       return std::unexpected(Add.error());
     if (auto Result = Add->addDef(Register::fromPhysical(Destination)); !Result)
@@ -634,7 +631,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
                                              PhysicalRegister Destination, PhysicalRegister Left,
                                              PhysicalRegister Right,
                                              std::optional<MachineInstrFlag> Flag) {
-  auto Add = Builder.buildInstr(targetOpcode(InstructionOpcode::ADD));
+  auto Add = Builder.buildInstr(instructionOpcode(InstructionOpcode::ADD));
   if (!Add)
     return std::unexpected(Add.error());
   if (auto Result = Add->addDef(Register::fromPhysical(Destination)); !Result)
@@ -655,7 +652,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
                                               PhysicalRegister Destination, PhysicalRegister Source,
                                               std::int64_t Amount,
                                               std::optional<MachineInstrFlag> Flag) {
-  auto Add = Builder.buildInstr(targetOpcode(InstructionOpcode::ADDI));
+  auto Add = Builder.buildInstr(instructionOpcode(InstructionOpcode::ADDI));
   if (!Add)
     return std::unexpected(Add.error());
   if (auto Result = Add->addDef(Register::fromPhysical(Destination)); !Result)
@@ -676,7 +673,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
                                               PhysicalRegister Destination, PhysicalRegister Source,
                                               std::int64_t Amount,
                                               std::optional<MachineInstrFlag> Flag) {
-  auto And = Builder.buildInstr(targetOpcode(InstructionOpcode::ANDI));
+  auto And = Builder.buildInstr(instructionOpcode(InstructionOpcode::ANDI));
   if (!And)
     return std::unexpected(And.error());
   if (auto Result = And->addDef(Register::fromPhysical(Destination)); !Result)
@@ -697,7 +694,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
                                              PhysicalRegister Destination, PhysicalRegister Left,
                                              PhysicalRegister Right,
                                              std::optional<MachineInstrFlag> Flag) {
-  auto And = Builder.buildInstr(targetOpcode(InstructionOpcode::AND));
+  auto And = Builder.buildInstr(instructionOpcode(InstructionOpcode::AND));
   if (!And)
     return std::unexpected(And.error());
   if (auto Result = And->addDef(Register::fromPhysical(Destination)); !Result)
@@ -1001,7 +998,7 @@ emitCalleeSave(MachineIRBuilder &Builder, PhysicalRegister Reg, FrameIndex Index
                                   Restore ? MemoryAccessFlag::Load : MemoryAccessFlag::Store);
   if (!Memory)
     return std::unexpected(Memory.error());
-  auto Pending = Builder.buildInstr(targetOpcode(OpcodeValue));
+  auto Pending = Builder.buildInstr(instructionOpcode(OpcodeValue));
   if (!Pending)
     return std::unexpected(Pending.error());
   const Register Value = Register::fromPhysical(Reg);
@@ -1439,8 +1436,8 @@ public:
   }
 
   [[nodiscard]] bool isCallFramePseudo(const MachineInstr &Instruction) const noexcept override {
-    return Instruction.opcode() == targetOpcode(InstructionOpcode::ADJCALLSTACKDOWN) ||
-           Instruction.opcode() == targetOpcode(InstructionOpcode::ADJCALLSTACKUP);
+    return Instruction.opcode() == instructionOpcode(InstructionOpcode::ADJCALLSTACKDOWN) ||
+           Instruction.opcode() == instructionOpcode(InstructionOpcode::ADJCALLSTACKUP);
   }
 
   [[nodiscard]] Expected<void>
@@ -1455,7 +1452,7 @@ public:
       if (!Amount)
         return std::unexpected(Amount.error());
       std::int64_t Adjustment = *Amount;
-      if (Instruction.opcode() == targetOpcode(InstructionOpcode::ADJCALLSTACKDOWN))
+      if (Instruction.opcode() == instructionOpcode(InstructionOpcode::ADJCALLSTACKDOWN))
         Adjustment = -Adjustment;
       auto Adjusted = emitStackAdjustment(Instruction, Function, Target, Scavenger, Adjustment,
                                           Adjustment < 0 ? MachineInstrFlag::FrameSetup
@@ -1664,7 +1661,7 @@ public:
 
   [[nodiscard]] bool isEpilogueTerminator(const MachineInstr &Instruction,
                                           const TargetDescription &Target) const noexcept override {
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoTAIL))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoTAIL))
       return true;
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
     return Descriptor != nullptr && Descriptor->Flags.has(InstructionFlag::Return);
@@ -2027,8 +2024,8 @@ private:
         Function, Restore ? MemoryAccessFlag::Load : MemoryAccessFlag::Store, Reference.Offset);
     if (!Memory)
       return std::unexpected(Memory.error());
-    auto Pending =
-        Builder.buildInstr(targetOpcode(Restore ? InstructionOpcode::LD : InstructionOpcode::SD));
+    auto Pending = Builder.buildInstr(
+        instructionOpcode(Restore ? InstructionOpcode::LD : InstructionOpcode::SD));
     if (!Pending)
       return std::unexpected(Pending.error());
     auto Value = Restore ? Pending->addDef(Register::fromPhysical(Scratch))

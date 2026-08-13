@@ -104,13 +104,16 @@ void emitImmediatePredicate(std::ostream &Output, const NormalizedImmediatePredi
   appendQuoted(Output, SourceName);
   Output << ". Do not edit it manually.\n\n";
   Output << "#ifndef " << Guard << "\n#define " << Guard << "\n\n";
-  Output << "#include <cstdint>\n\n";
+  Output << "#include \"rcc/CodeGen/MachineIRTypes.h\"\n\n#include <cstdint>\n\n";
   Output << "namespace rcc::" << Model.Target.Namespace << " {\n\n";
 
   Output << "enum class InstructionOpcode : std::uint32_t {\n  Invalid = 0,\n";
   for (const NormalizedInstruction &Instruction : Model.Instructions)
     Output << "  " << Instruction.Symbol << " = " << Instruction.ID << ",\n";
   Output << "};\n\n";
+  Output << "[[nodiscard]] constexpr Opcode instructionOpcode(InstructionOpcode Value) noexcept {\n"
+            "  return Opcode::fromValue(static_cast<std::uint32_t>(Value));\n"
+            "}\n\n";
 
   Output << "enum class ImmediatePredicate : std::uint32_t {\n  None = 0,\n";
   for (const NormalizedImmediatePredicate &Predicate : Model.ImmediatePredicates)

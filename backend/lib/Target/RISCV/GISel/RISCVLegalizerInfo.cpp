@@ -31,10 +31,6 @@
 namespace rcc::riscv {
 namespace {
 
-[[nodiscard]] Opcode targetOpcode(InstructionOpcode Value) noexcept {
-  return Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] std::optional<LLT> registerType(const MachineFunction &Function,
                                               const MachineOperand &Operand) {
   const Register *Reg = Operand.getIf<Register>();
@@ -943,7 +939,7 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
       Amount = *MaskedAmount;
     }
     auto SetOpcode =
-        Extension.setOpcode(Plan->SourceWidth == 32 ? targetOpcode(InstructionOpcode::G_SLLW)
+        Extension.setOpcode(Plan->SourceWidth == 32 ? instructionOpcode(InstructionOpcode::G_SLLW)
                                                     : opcode(GenericOpcode::G_SHL));
     if (!SetOpcode)
       return std::unexpected(SetOpcode.error());

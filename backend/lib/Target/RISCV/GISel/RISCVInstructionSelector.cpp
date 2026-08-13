@@ -31,10 +31,6 @@
 namespace rcc::riscv {
 namespace {
 
-[[nodiscard]] Opcode targetOpcode(InstructionOpcode Value) noexcept {
-  return Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] std::optional<LLT> registerType(const MachineFunction &Function,
                                               const MachineOperand &Operand) {
   const Register *Reg = Operand.getIf<Register>();
@@ -149,7 +145,7 @@ public:
   [[nodiscard]] Expected<void> canSelect(const MachineInstr &Instruction,
                                          const MachineFunction &Function,
                                          const TargetDescription &Target) const override {
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::G_SLLW)) {
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW)) {
       const std::optional<LLT> Type = resultType(Function, Instruction);
       const std::optional<LLT> Left = operandType(Function, Instruction, 1);
       const std::optional<LLT> Right = operandType(Function, Instruction, 2);
@@ -308,13 +304,13 @@ public:
     auto Match = canSelect(Instruction, Function, Target);
     if (!Match)
       return std::unexpected(Match.error());
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::G_SLLW))
-      return Instruction.setOpcode(targetOpcode(InstructionOpcode::SLLW));
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW))
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SLLW));
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
     const std::optional<LLT> Type = resultType(Function, Instruction);
 
     const auto SelectDirect = [&Instruction](InstructionOpcode Selected) {
-      return Instruction.setOpcode(targetOpcode(Selected));
+      return Instruction.setOpcode(instructionOpcode(Selected));
     };
     switch (Generic) {
     case GenericOpcode::G_ADD:
@@ -559,7 +555,7 @@ private:
     auto Point = Builder.setInsertPointAfter(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
-    auto Pending = Builder.buildInstr(targetOpcode(Opcode));
+    auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
     if (!Pending)
       return std::unexpected(Pending.error());
     auto DefResult = Pending->addDef(Def);
@@ -583,7 +579,7 @@ private:
     auto Point = Builder.setInsertPointAfter(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
-    auto Pending = Builder.buildInstr(targetOpcode(Opcode));
+    auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
     if (!Pending)
       return std::unexpected(Pending.error());
     auto DefResult = Pending->addDef(Def);
@@ -607,7 +603,7 @@ private:
     auto Point = Builder.setInsertPointBefore(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
-    auto Pending = Builder.buildInstr(targetOpcode(Opcode));
+    auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
     if (!Pending)
       return std::unexpected(Pending.error());
     auto DefResult = Pending->addDef(Def);
@@ -676,7 +672,7 @@ private:
     auto Point = Builder.setInsertPointAfter(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
-    auto Pending = Builder.buildInstr(targetOpcode(Opcode));
+    auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
     if (!Pending)
       return std::unexpected(Pending.error());
     auto DefResult = Pending->addDef(Def);
@@ -762,7 +758,7 @@ private:
     const InstructionOpcode RemainderOpcode =
         IsWord ? (Signed ? InstructionOpcode::REMW : InstructionOpcode::REMUW)
                : (Signed ? InstructionOpcode::REM : InstructionOpcode::REMU);
-    auto SetDivision = Instruction.setOpcode(targetOpcode(Division));
+    auto SetDivision = Instruction.setOpcode(instructionOpcode(Division));
     if (!SetDivision)
       return std::unexpected(SetDivision.error());
     MachineIRBuilder Builder(Function, Target);
@@ -782,7 +778,7 @@ private:
                             "RISC-V high multiplication has no result type");
     if (Type->scalarBitWidth() == 64) {
       return Instruction.setOpcode(
-          targetOpcode(Signed ? InstructionOpcode::MULH : InstructionOpcode::MULHU));
+          instructionOpcode(Signed ? InstructionOpcode::MULH : InstructionOpcode::MULHU));
     }
 
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);
@@ -821,7 +817,7 @@ private:
       auto Immediate = appendImmediate(Instruction, 0);
       if (!Immediate)
         return std::unexpected(Immediate.error());
-      auto SetOpcode = Instruction.setOpcode(targetOpcode(InstructionOpcode::ADDIW));
+      auto SetOpcode = Instruction.setOpcode(instructionOpcode(InstructionOpcode::ADDIW));
       if (!SetOpcode)
         return std::unexpected(SetOpcode.error());
       auto ExtendRight = buildImmediateAfter(Builder, *Anchor, InstructionOpcode::ADDIW,
@@ -840,7 +836,7 @@ private:
       auto Immediate = appendImmediate(Instruction, 32);
       if (!Immediate)
         return std::unexpected(Immediate.error());
-      auto SetOpcode = Instruction.setOpcode(targetOpcode(InstructionOpcode::SLLI));
+      auto SetOpcode = Instruction.setOpcode(instructionOpcode(InstructionOpcode::SLLI));
       if (!SetOpcode)
         return std::unexpected(SetOpcode.error());
       auto ExtendLeft = buildImmediateAfter(Builder, *Anchor, InstructionOpcode::SRLI,
@@ -910,7 +906,7 @@ private:
     if (!SetRight)
       return std::unexpected(SetRight.error());
     auto SetCompare = Instruction.setOpcode(
-        targetOpcode(Unsigned ? InstructionOpcode::SLTU : InstructionOpcode::SLT));
+        instructionOpcode(Unsigned ? InstructionOpcode::SLTU : InstructionOpcode::SLT));
     if (!SetCompare)
       return std::unexpected(SetCompare.error());
     const bool IsMaximum = Generic == GenericOpcode::G_SMAX || Generic == GenericOpcode::G_UMAX;
@@ -964,7 +960,7 @@ private:
     auto Mask = appendImmediate(Instruction, 1);
     if (!Mask)
       return std::unexpected(Mask.error());
-    auto SetNormalize = Instruction.setOpcode(targetOpcode(InstructionOpcode::ANDI));
+    auto SetNormalize = Instruction.setOpcode(instructionOpcode(InstructionOpcode::ANDI));
     if (!SetNormalize)
       return std::unexpected(SetNormalize.error());
 
@@ -1045,7 +1041,7 @@ private:
       return std::unexpected(Shift.error());
     const bool IsWord = Type->scalarBitWidth() <= 32;
     auto SetShift = Instruction.setOpcode(
-        targetOpcode(IsWord ? InstructionOpcode::SRAIW : InstructionOpcode::SRAI));
+        instructionOpcode(IsWord ? InstructionOpcode::SRAIW : InstructionOpcode::SRAI));
     if (!SetShift)
       return std::unexpected(SetShift.error());
     MachineIRBuilder Builder(Function, Target);
@@ -1136,7 +1132,7 @@ private:
         IsAdd   ? (IsWord ? InstructionOpcode::ADDW : InstructionOpcode::ADD)
         : IsSub ? (IsWord ? InstructionOpcode::SUBW : InstructionOpcode::SUB)
                 : (IsWord ? InstructionOpcode::MULW : InstructionOpcode::MUL);
-    auto SetArithmetic = Instruction.setOpcode(targetOpcode(Arithmetic));
+    auto SetArithmetic = Instruction.setOpcode(instructionOpcode(Arithmetic));
     if (!SetArithmetic)
       return std::unexpected(SetArithmetic.error());
     MachineIRBuilder Builder(Function, Target);
@@ -1355,7 +1351,7 @@ private:
     auto RemoveCarryIn = Instruction.eraseOperand(3);
     if (!RemoveCarryIn)
       return std::unexpected(RemoveCarryIn.error());
-    auto SetArithmetic = Instruction.setOpcode(targetOpcode(Arithmetic));
+    auto SetArithmetic = Instruction.setOpcode(instructionOpcode(Arithmetic));
     if (!SetArithmetic)
       return std::unexpected(SetArithmetic.error());
     MachineIRBuilder Builder(Function, Target);
@@ -1429,7 +1425,7 @@ private:
       if (!Point)
         return std::unexpected(Point.error());
       auto Pending = Builder.buildInstr(
-          targetOpcode(IsWord ? InstructionOpcode::SUBW : InstructionOpcode::SUB));
+          instructionOpcode(IsWord ? InstructionOpcode::SUBW : InstructionOpcode::SUB));
       if (!Pending)
         return std::unexpected(Pending.error());
       auto Def = Pending->addDef(*Negated);
@@ -1481,7 +1477,7 @@ private:
     auto SetAddress = Instruction.operandAt(2)->setRegister(*Address);
     if (!SetAddress)
       return std::unexpected(SetAddress.error());
-    return Instruction.setOpcode(targetOpcode(Selected));
+    return Instruction.setOpcode(instructionOpcode(Selected));
   }
 
   [[nodiscard]] Expected<void> selectIntegerExtension(MachineInstr &Instruction,
@@ -1508,7 +1504,7 @@ private:
       auto ImmediateResult = appendImmediate(Instruction, 0);
       if (!ImmediateResult)
         return std::unexpected(ImmediateResult.error());
-      return Instruction.setOpcode(targetOpcode(InstructionOpcode::ADDIW));
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::ADDIW));
     }
 
     const std::uint32_t ContainerBits = DestinationBits <= 32 ? 32 : 64;
@@ -1525,7 +1521,7 @@ private:
     auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
     if (!SetDestination)
       return std::unexpected(SetDestination.error());
-    auto SetOpcode = Instruction.setOpcode(targetOpcode(ShiftLeft));
+    auto SetOpcode = Instruction.setOpcode(instructionOpcode(ShiftLeft));
     if (!SetOpcode)
       return std::unexpected(SetOpcode.error());
     auto ShiftImmediate = appendImmediate(Instruction, Shift);
@@ -1572,7 +1568,7 @@ private:
       auto ImmediateResult = replaceImmediate(Instruction, 2, 0);
       if (!ImmediateResult)
         return std::unexpected(ImmediateResult.error());
-      return Instruction.setOpcode(targetOpcode(InstructionOpcode::ADDIW));
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::ADDIW));
     }
     const std::uint32_t ContainerBits = TypeBits <= 32 ? 32 : 64;
     const std::int64_t Shift = static_cast<std::int64_t>(ContainerBits) - *Width;
@@ -1586,7 +1582,7 @@ private:
     auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
     if (!SetDestination)
       return std::unexpected(SetDestination.error());
-    auto SetOpcode = Instruction.setOpcode(targetOpcode(ShiftLeft));
+    auto SetOpcode = Instruction.setOpcode(instructionOpcode(ShiftLeft));
     if (!SetOpcode)
       return std::unexpected(SetOpcode.error());
     auto ShiftImmediate = replaceImmediate(Instruction, 2, Shift);
@@ -1707,7 +1703,7 @@ private:
       auto Set = SetSources(*LeftRegister, *RightRegister);
       if (!Set)
         return std::unexpected(Set.error());
-      auto SetOpcode = Instruction.setOpcode(targetOpcode(InstructionOpcode::XOR));
+      auto SetOpcode = Instruction.setOpcode(instructionOpcode(InstructionOpcode::XOR));
       if (!SetOpcode)
         return std::unexpected(SetOpcode.error());
       if (Condition == IntegerPredicate::Equal) {
@@ -1749,7 +1745,7 @@ private:
         if (!Set)
           return std::unexpected(Set.error());
       }
-      auto SetOpcode = Instruction.setOpcode(targetOpcode(*OpcodeValue));
+      auto SetOpcode = Instruction.setOpcode(instructionOpcode(*OpcodeValue));
       if (!SetOpcode)
         return std::unexpected(SetOpcode.error());
       auto Result = buildImmediateAfter(Builder, Instruction, InstructionOpcode::XORI,
@@ -1767,7 +1763,7 @@ private:
       if (!Set)
         return std::unexpected(Set.error());
     }
-    return Instruction.setOpcode(targetOpcode(*OpcodeValue));
+    return Instruction.setOpcode(instructionOpcode(*OpcodeValue));
   }
 
   [[nodiscard]] Expected<void> selectFloatingCompare(MachineInstr &Instruction,
@@ -1814,7 +1810,7 @@ private:
       auto SetRight = Instruction.operandAt(2)->setRegister(NewRight);
       if (!SetRight)
         return std::unexpected(SetRight.error());
-      return Instruction.setOpcode(targetOpcode(OpcodeValue));
+      return Instruction.setOpcode(instructionOpcode(OpcodeValue));
     };
     const auto BuildInverted = [&](InstructionOpcode BaseOpcode, Register BaseLeft,
                                    Register BaseRight) -> Expected<void> {
@@ -1915,7 +1911,7 @@ private:
           appendImmediate(Instruction, Condition == FloatingPredicate::AlwaysTrue ? 1 : 0);
       if (!Immediate)
         return std::unexpected(Immediate.error());
-      return Instruction.setOpcode(targetOpcode(InstructionOpcode::ADDI));
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::ADDI));
     }
     case FloatingPredicate::OrderedEqual:
       return SetBase(EqualOpcode, DestinationRegister, LeftRegister, RightRegister);
@@ -1965,11 +1961,11 @@ private:
       return std::unexpected(Rounding.error());
     const bool IsWord = Type->scalarBitWidth() <= 32;
     if (Source->scalarBitWidth() == 32) {
-      return Instruction.setOpcode(targetOpcode(
+      return Instruction.setOpcode(instructionOpcode(
           IsWord ? (Unsigned ? InstructionOpcode::FCVT_WU_S : InstructionOpcode::FCVT_W_S)
                  : (Unsigned ? InstructionOpcode::FCVT_LU_S : InstructionOpcode::FCVT_L_S)));
     }
-    return Instruction.setOpcode(targetOpcode(
+    return Instruction.setOpcode(instructionOpcode(
         IsWord ? (Unsigned ? InstructionOpcode::FCVT_WU_D : InstructionOpcode::FCVT_W_D)
                : (Unsigned ? InstructionOpcode::FCVT_LU_D : InstructionOpcode::FCVT_L_D)));
   }
@@ -1997,11 +1993,11 @@ private:
       return std::unexpected(Rounding.error());
     const bool IsWord = Source->scalarBitWidth() <= 32;
     if (Type->scalarBitWidth() == 32) {
-      return Instruction.setOpcode(targetOpcode(
+      return Instruction.setOpcode(instructionOpcode(
           IsWord ? (Unsigned ? InstructionOpcode::FCVT_S_WU : InstructionOpcode::FCVT_S_W)
                  : (Unsigned ? InstructionOpcode::FCVT_S_LU : InstructionOpcode::FCVT_S_L)));
     }
-    return Instruction.setOpcode(targetOpcode(
+    return Instruction.setOpcode(instructionOpcode(
         IsWord ? (Unsigned ? InstructionOpcode::FCVT_D_WU : InstructionOpcode::FCVT_D_W)
                : (Unsigned ? InstructionOpcode::FCVT_D_LU : InstructionOpcode::FCVT_D_L)));
   }
@@ -2011,9 +2007,9 @@ private:
                                                     InstructionOpcode Single,
                                                     InstructionOpcode Double) const {
     if (Type && Type->isFloat() && Type->scalarBitWidth() == 32)
-      return Instruction.setOpcode(targetOpcode(Single));
+      return Instruction.setOpcode(instructionOpcode(Single));
     if (Type && Type->isFloat() && Type->scalarBitWidth() == 64)
-      return Instruction.setOpcode(targetOpcode(Double));
+      return Instruction.setOpcode(instructionOpcode(Double));
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V cannot select this floating min/max type");
   }
@@ -2047,7 +2043,7 @@ private:
     auto SetSucc = replaceImmediate(Instruction, 1, Succ);
     if (!SetSucc)
       return std::unexpected(SetSucc.error());
-    return Instruction.setOpcode(targetOpcode(InstructionOpcode::FENCE));
+    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FENCE));
   }
 
   [[nodiscard]] Expected<void> selectIndirectBranch(MachineInstr &Instruction) const {
@@ -2060,7 +2056,7 @@ private:
     auto Immediate = appendImmediate(Instruction, 0);
     if (!Immediate)
       return std::unexpected(Immediate.error());
-    return Instruction.setOpcode(targetOpcode(InstructionOpcode::JALR));
+    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::JALR));
   }
 
   [[nodiscard]] Expected<void> selectTrap(MachineInstr &Instruction) const {
@@ -2069,7 +2065,7 @@ private:
       if (!Erased)
         return std::unexpected(Erased.error());
     }
-    return Instruction.setOpcode(targetOpcode(InstructionOpcode::EBREAK));
+    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::EBREAK));
   }
 
   [[nodiscard]] Expected<void> selectBitcast(MachineInstr &Instruction,
@@ -2080,14 +2076,14 @@ private:
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V bitcast has invalid register types");
     if (DestinationType->isInteger() && SourceType->isFloat()) {
-      return Instruction.setOpcode(targetOpcode(SourceType->scalarBitWidth() == 32
-                                                    ? InstructionOpcode::FMV_X_W
-                                                    : InstructionOpcode::FMV_X_D));
+      return Instruction.setOpcode(instructionOpcode(SourceType->scalarBitWidth() == 32
+                                                         ? InstructionOpcode::FMV_X_W
+                                                         : InstructionOpcode::FMV_X_D));
     }
     if (DestinationType->isFloat() && SourceType->isInteger()) {
-      return Instruction.setOpcode(targetOpcode(DestinationType->scalarBitWidth() == 32
-                                                    ? InstructionOpcode::FMV_W_X
-                                                    : InstructionOpcode::FMV_D_X));
+      return Instruction.setOpcode(instructionOpcode(DestinationType->scalarBitWidth() == 32
+                                                         ? InstructionOpcode::FMV_W_X
+                                                         : InstructionOpcode::FMV_D_X));
     }
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V bitcast pair is unsupported");
   }
@@ -2100,7 +2096,7 @@ private:
       return makeUnexpected(ErrorCode::Unsupported,
                             "RISC-V integer instruction requires a supported scalar integer");
     const bool IsWord = Type->isInteger() && Type->scalarBitWidth() <= 32;
-    return Instruction.setOpcode(targetOpcode(IsWord ? Word : DoubleWord));
+    return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
   [[nodiscard]] Expected<void>
@@ -2135,7 +2131,7 @@ private:
     if (!SetRight)
       return std::unexpected(SetRight.error());
     const bool IsWord = Type->scalarBitWidth() <= 32;
-    return Instruction.setOpcode(targetOpcode(IsWord ? Word : DoubleWord));
+    return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
   [[nodiscard]] Expected<void> selectLoad(MachineInstr &Instruction,
@@ -2152,7 +2148,7 @@ private:
         return makeUnexpected(ErrorCode::Unsupported,
                               "RISC-V atomic load requires a 32-bit or 64-bit GPR value");
       return Instruction.setOpcode(
-          targetOpcode(*Bytes == 4 ? InstructionOpcode::LR_W : InstructionOpcode::LR_D));
+          instructionOpcode(*Bytes == 4 ? InstructionOpcode::LR_W : InstructionOpcode::LR_D));
     }
     auto AppendOffset = appendImmediate(Instruction, 0);
     if (!AppendOffset)
@@ -2165,12 +2161,12 @@ private:
                                                        : InstructionOpcode::Invalid;
       if (Selected == InstructionOpcode::Invalid)
         return makeUnexpected(ErrorCode::Unsupported, "RISC-V integer load width is unsupported");
-      return Instruction.setOpcode(targetOpcode(Selected));
+      return Instruction.setOpcode(instructionOpcode(Selected));
     }
     if (Type->isFloat() && Type->scalarBitWidth() == 32)
-      return Instruction.setOpcode(targetOpcode(InstructionOpcode::FLW));
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FLW));
     if (Type->isFloat() && Type->scalarBitWidth() == 64)
-      return Instruction.setOpcode(targetOpcode(InstructionOpcode::FLD));
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FLD));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this generic load type");
   }
 
@@ -2192,7 +2188,7 @@ private:
     auto Immediate = appendImmediate(Instruction, 0);
     if (!Immediate)
       return std::unexpected(Immediate.error());
-    return Instruction.setOpcode(targetOpcode(Selected));
+    return Instruction.setOpcode(instructionOpcode(Selected));
   }
 
   [[nodiscard]] Expected<void> selectFloatExtLoad(MachineInstr &Instruction,
@@ -2217,7 +2213,7 @@ private:
     auto Immediate = appendImmediate(Instruction, 0);
     if (!Immediate)
       return std::unexpected(Immediate.error());
-    auto SetOpcode = Instruction.setOpcode(targetOpcode(InstructionOpcode::FLW));
+    auto SetOpcode = Instruction.setOpcode(instructionOpcode(InstructionOpcode::FLW));
     if (!SetOpcode)
       return std::unexpected(SetOpcode.error());
     MachineIRBuilder Builder(Function, Target);
@@ -2247,7 +2243,7 @@ private:
     auto Point = Builder.setInsertPointBefore(Instruction);
     if (!Point)
       return std::unexpected(Point.error());
-    auto Conversion = Builder.buildInstr(targetOpcode(InstructionOpcode::FCVT_S_D));
+    auto Conversion = Builder.buildInstr(instructionOpcode(InstructionOpcode::FCVT_S_D));
     if (!Conversion)
       return std::unexpected(Conversion.error());
     auto Def = Conversion->addDef(*Temporary);
@@ -2268,7 +2264,7 @@ private:
     auto Immediate = appendImmediate(Instruction, 0);
     if (!Immediate)
       return std::unexpected(Immediate.error());
-    return Instruction.setOpcode(targetOpcode(InstructionOpcode::FSW));
+    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSW));
   }
 
   [[nodiscard]] Expected<void> selectStore(MachineInstr &Instruction,
@@ -2293,8 +2289,8 @@ private:
       auto Destination = insertPhysicalRegister(Instruction, 0, *Zero, RegisterOperandFlag::Define);
       if (!Destination)
         return std::unexpected(Destination.error());
-      return Instruction.setOpcode(
-          targetOpcode(*Bytes == 4 ? InstructionOpcode::AMOSWAP_W : InstructionOpcode::AMOSWAP_D));
+      return Instruction.setOpcode(instructionOpcode(*Bytes == 4 ? InstructionOpcode::AMOSWAP_W
+                                                                 : InstructionOpcode::AMOSWAP_D));
     }
     auto AppendOffset = appendImmediate(Instruction, 0);
     if (!AppendOffset)
@@ -2307,12 +2303,12 @@ private:
                                                        : InstructionOpcode::Invalid;
       if (Selected == InstructionOpcode::Invalid)
         return makeUnexpected(ErrorCode::Unsupported, "RISC-V integer store width is unsupported");
-      return Instruction.setOpcode(targetOpcode(Selected));
+      return Instruction.setOpcode(instructionOpcode(Selected));
     }
     if (Type->isFloat() && Type->scalarBitWidth() == 32)
-      return Instruction.setOpcode(targetOpcode(InstructionOpcode::FSW));
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSW));
     if (Type->isFloat() && Type->scalarBitWidth() == 64)
-      return Instruction.setOpcode(targetOpcode(InstructionOpcode::FSD));
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSD));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this generic store type");
   }
 
@@ -2323,7 +2319,7 @@ private:
     auto Inserted = insertPhysicalRegister(Instruction, 0, *Zero, RegisterOperandFlag::Define);
     if (!Inserted)
       return std::unexpected(Inserted.error());
-    return Instruction.setOpcode(targetOpcode(InstructionOpcode::JAL));
+    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::JAL));
   }
 
   [[nodiscard]] Expected<void> selectConditionalBranch(MachineInstr &Instruction) const {
@@ -2333,7 +2329,7 @@ private:
     auto Inserted = insertPhysicalRegister(Instruction, 1, *Zero, RegisterOperandFlag::Use);
     if (!Inserted)
       return std::unexpected(Inserted.error());
-    return Instruction.setOpcode(targetOpcode(InstructionOpcode::BNE));
+    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::BNE));
   }
 
   [[nodiscard]] Expected<void> selectIntegerConstant(MachineInstr &Instruction,
@@ -2380,7 +2376,7 @@ private:
           Instruction.insertOperand(2, MachineOperand::immediate(Value, ImmediateTargetFlags));
       if (!NormalizeImmediate)
         return std::unexpected(NormalizeImmediate.error());
-      return Instruction.setOpcode(targetOpcode(AddImmediate));
+      return Instruction.setOpcode(instructionOpcode(AddImmediate));
     }
 
     // Recursively decompose the value into signed 12-bit chunks.  The
@@ -2410,7 +2406,7 @@ private:
     if (Parent == nullptr)
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V constant selection received a detached instruction");
-    auto SetOpcode = Instruction.setOpcode(targetOpcode(AddImmediate));
+    auto SetOpcode = Instruction.setOpcode(instructionOpcode(AddImmediate));
     if (!SetOpcode)
       return std::unexpected(SetOpcode.error());
     auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
@@ -2440,7 +2436,7 @@ private:
       auto ShiftResult = createTemporary(Function, *Type, Target);
       if (!ShiftResult)
         return std::unexpected(ShiftResult.error());
-      auto Shift = Builder.buildInstr(targetOpcode(ShiftLeftImmediate));
+      auto Shift = Builder.buildInstr(instructionOpcode(ShiftLeftImmediate));
       if (!Shift)
         return std::unexpected(Shift.error());
       auto ShiftDef = Shift->addDef(*ShiftResult);
@@ -2469,7 +2465,7 @@ private:
       auto Add = Builder.setInsertPointAfter(**BuiltShift);
       if (!Add)
         return std::unexpected(Add.error());
-      auto AddInstruction = Builder.buildInstr(targetOpcode(AddImmediate));
+      auto AddInstruction = Builder.buildInstr(instructionOpcode(AddImmediate));
       if (!AddInstruction)
         return std::unexpected(AddInstruction.error());
       auto AddDef = AddInstruction->addDef(AddDestination);
@@ -2552,7 +2548,7 @@ private:
       return std::unexpected(InsertPoint.error());
     const InstructionOpcode Move =
         BitWidth == 32 ? InstructionOpcode::FMV_W_X : InstructionOpcode::FMV_D_X;
-    auto MoveInstruction = Builder.buildInstr(targetOpcode(Move));
+    auto MoveInstruction = Builder.buildInstr(instructionOpcode(Move));
     if (!MoveInstruction)
       return std::unexpected(MoveInstruction.error());
     auto MoveDef = MoveInstruction->addDef(DestinationRegister);
@@ -2575,9 +2571,9 @@ private:
     if (!RoundingMode)
       return std::unexpected(RoundingMode.error());
     if (Type && Type->isFloat() && Type->scalarBitWidth() == 32)
-      return Instruction.setOpcode(targetOpcode(Single));
+      return Instruction.setOpcode(instructionOpcode(Single));
     if (Type && Type->isFloat() && Type->scalarBitWidth() == 64)
-      return Instruction.setOpcode(targetOpcode(Double));
+      return Instruction.setOpcode(instructionOpcode(Double));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this floating binary type");
   }
 
@@ -2608,9 +2604,9 @@ private:
     if (!Duplicate)
       return std::unexpected(Duplicate.error());
     if (Type && Type->isFloat() && Type->scalarBitWidth() == 32)
-      return Instruction.setOpcode(targetOpcode(Single));
+      return Instruction.setOpcode(instructionOpcode(Single));
     if (Type && Type->isFloat() && Type->scalarBitWidth() == 64)
-      return Instruction.setOpcode(targetOpcode(Double));
+      return Instruction.setOpcode(instructionOpcode(Double));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this floating unary type");
   }
   const RISCVSubtarget &Subtarget;

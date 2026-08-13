@@ -12,10 +12,6 @@
 namespace rcc::riscv {
 namespace {
 
-[[nodiscard]] constexpr Opcode targetOpcode(InstructionOpcode Value) noexcept {
-  return Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] constexpr MachineCombinerStageMask allOptimizationStages() noexcept {
   return machineCombinerStageMask(MachineCombinerStage::SelectedSSA) |
          machineCombinerStageMask(MachineCombinerStage::PreRegisterAllocation) |
@@ -27,7 +23,7 @@ namespace {
                                                        std::string Name, std::int64_t Immediate) {
   return {
       .Name = std::move(Name),
-      .RootOpcode = targetOpcode(OpcodeValue),
+      .RootOpcode = instructionOpcode(OpcodeValue),
       .Stages = allOptimizationStages(),
       .Predicates = {{MachineCombinerPredicateKind::ImmediateEquals, 2, 0, Immediate}},
       .Action = {MachineCombinerActionKind::ReplaceDefWithOperandAndErase, 0, 1},
@@ -39,7 +35,7 @@ namespace {
                                                           std::size_t SourceOperand) {
   return {
       .Name = std::move(Name),
-      .RootOpcode = targetOpcode(OpcodeValue),
+      .RootOpcode = instructionOpcode(OpcodeValue),
       .Stages = allOptimizationStages(),
       .Predicates = {{MachineCombinerPredicateKind::PhysicalRegisterEquals, ZeroOperand, 0,
                       static_cast<std::int64_t>(PhysicalRegisterID::X0)}},
@@ -51,7 +47,7 @@ namespace {
                                                          std::string Name) {
   return {
       .Name = std::move(Name),
-      .RootOpcode = targetOpcode(OpcodeValue),
+      .RootOpcode = instructionOpcode(OpcodeValue),
       .Stages = allOptimizationStages(),
       .Predicates = {{MachineCombinerPredicateKind::RegisterEquals, 1, 2, 0}},
       .Action = {MachineCombinerActionKind::ReplaceDefWithOperandAndErase, 0, 1},

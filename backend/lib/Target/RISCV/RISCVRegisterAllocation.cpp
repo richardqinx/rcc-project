@@ -28,10 +28,6 @@ struct SpillForm final {
   std::uint64_t SizeInBytes;
 };
 
-[[nodiscard]] constexpr Opcode targetOpcode(InstructionOpcode Value) noexcept {
-  return Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] constexpr RegisterClassID registerClassID(RegisterClass Value) noexcept {
   return RegisterClassID::fromValue(static_cast<std::uint32_t>(Value));
 }
@@ -177,7 +173,7 @@ public:
     }
     for (const InstructionOpcode OpcodeValue : {Form->Load, Form->Store}) {
       const InstructionDescriptor *Instruction =
-          Target.instructionDescriptor(targetOpcode(OpcodeValue));
+          Target.instructionDescriptor(instructionOpcode(OpcodeValue));
       const InstructionFlag MemoryFlag =
           OpcodeValue == Form->Load ? InstructionFlag::MayLoad : InstructionFlag::MayStore;
       if (Instruction == nullptr || Instruction->Operands.size() != 3 ||
@@ -212,7 +208,7 @@ public:
                                  Description->SpillAlignmentInBits / 8U);
     if (!Memory)
       return std::unexpected(Memory.error());
-    auto Pending = Builder.buildInstr(targetOpcode(Form.Load));
+    auto Pending = Builder.buildInstr(instructionOpcode(Form.Load));
     if (!Pending)
       return std::unexpected(Pending.error());
     if (auto Result = Pending->addDef(Destination); !Result)
@@ -247,7 +243,7 @@ public:
                                  Description->SpillAlignmentInBits / 8U);
     if (!Memory)
       return std::unexpected(Memory.error());
-    auto Pending = Builder.buildInstr(targetOpcode(Form.Store));
+    auto Pending = Builder.buildInstr(instructionOpcode(Form.Store));
     if (!Pending)
       return std::unexpected(Pending.error());
     if (auto Result = Pending->addUse(Source); !Result)
@@ -269,10 +265,10 @@ public:
     if (DefinedReg == nullptr || *DefinedReg != VirtualReg || !Definition->isDef())
       return false;
 
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::LUI))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::LUI))
       return Instruction.operandCount() == 2 && Instruction.operandAt(1) != nullptr;
-    if (Instruction.opcode() != targetOpcode(InstructionOpcode::ADDI) &&
-        Instruction.opcode() != targetOpcode(InstructionOpcode::ADDIW)) {
+    if (Instruction.opcode() != instructionOpcode(InstructionOpcode::ADDI) &&
+        Instruction.opcode() != instructionOpcode(InstructionOpcode::ADDIW)) {
       return false;
     }
     if (Instruction.operandCount() != 3)

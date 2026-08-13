@@ -29,10 +29,6 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
 constexpr std::uint32_t CopyF32Flag = 8;
 constexpr std::uint32_t CopyF64Flag = 16;
 
-[[nodiscard]] constexpr Opcode targetOpcode(InstructionOpcode Value) noexcept {
-  return Opcode::fromValue(static_cast<std::uint32_t>(Value));
-}
-
 [[nodiscard]] Expected<PhysicalRegister> physical(PhysicalRegisterID ID) {
   auto Reg = physicalRegister(ID);
   if (!Reg)
@@ -246,7 +242,7 @@ copyRegisters(const MachineInstr &Instruction) {
   auto Point = Builder.setInsertPointBefore(Instruction);
   if (!Point)
     return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(targetOpcode(Selected));
+  auto Pending = Builder.buildInstr(instructionOpcode(Selected));
   if (!Pending)
     return std::unexpected(Pending.error());
   auto Def = Pending->addDef(Destination);
@@ -352,7 +348,7 @@ copyRegisters(const MachineInstr &Instruction) {
   if (!Point)
     return std::unexpected(Point.error());
   auto Pending = Builder.buildInstr(
-      targetOpcode(IsRead ? InstructionOpcode::CSRRS : InstructionOpcode::CSRRW));
+      instructionOpcode(IsRead ? InstructionOpcode::CSRRS : InstructionOpcode::CSRRW));
   if (!Pending)
     return std::unexpected(Pending.error());
   Expected<void> Added = IsRead ? Pending->addOperand(ValueOperand->cloneDetached())
@@ -413,7 +409,7 @@ copyRegisters(const MachineInstr &Instruction) {
                  : std::optional<std::string>{".Lrcc_call_" +
                                               std::to_string(Function.stableID().value()) + "_" +
                                               std::to_string(Instruction.stableID().value())};
-    auto HighPending = Builder.buildInstr(targetOpcode(InstructionOpcode::AUIPC));
+    auto HighPending = Builder.buildInstr(instructionOpcode(InstructionOpcode::AUIPC));
     if (!HighPending)
       return std::unexpected(HighPending.error());
     auto HighDef = HighPending->addDef(Base);
@@ -441,7 +437,7 @@ copyRegisters(const MachineInstr &Instruction) {
 
   const InstructionOpcode LowOpcode =
       IsTail ? InstructionOpcode::JALR_TAIL : InstructionOpcode::JALR_CALL;
-  auto LowPending = Builder.buildInstr(targetOpcode(LowOpcode));
+  auto LowPending = Builder.buildInstr(instructionOpcode(LowOpcode));
   if (!LowPending)
     return std::unexpected(LowPending.error());
   const PhysicalRegister DestinationRegister = IsTail ? *Zero : *Link;
@@ -489,7 +485,7 @@ copyRegisters(const MachineInstr &Instruction) {
   auto Point = Builder.setInsertPointBefore(Instruction);
   if (!Point)
     return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(targetOpcode(InstructionOpcode::JALR_RET));
+  auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JALR_RET));
   if (!Pending)
     return std::unexpected(Pending.error());
   auto Def = Pending->addDef(Register::fromPhysical(*Zero));
@@ -533,7 +529,7 @@ copyRegisters(const MachineInstr &Instruction) {
   auto Point = Builder.setInsertPointBefore(Instruction);
   if (!Point)
     return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(targetOpcode(InstructionOpcode::JAL));
+  auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JAL));
   if (!Pending)
     return std::unexpected(Pending.error());
   auto Def = Pending->addDef(Register::fromPhysical(*Zero));
@@ -573,17 +569,17 @@ public:
     auto Subregister = expandSubregisterCopy(Instruction, Function, Target);
     if (!Subregister || *Subregister)
       return Subregister;
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoCALL))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoCALL))
       return expandCall(Instruction, Function, Target, false);
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoTAIL))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoTAIL))
       return expandCall(Instruction, Function, Target, true);
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoRET))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoRET))
       return expandReturn(Instruction, Function, Target);
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::PseudoBR))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoBR))
       return expandBranch(Instruction, Function, Target);
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::ReadFFLAGS))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::ReadFFLAGS))
       return expandFFLAGSAccess(Instruction, Function, Target, true);
-    if (Instruction.opcode() == targetOpcode(InstructionOpcode::WriteFFLAGS))
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::WriteFFLAGS))
       return expandFFLAGSAccess(Instruction, Function, Target, false);
     return false;
   }
