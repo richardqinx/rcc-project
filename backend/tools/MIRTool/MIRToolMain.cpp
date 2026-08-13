@@ -74,7 +74,7 @@ struct CommandLine final {
 };
 
 void printUsage(std::ostream &Output) {
-  Output << "usage: rcc-backend-mir [operation] [options] <input.mir|->\n"
+  Output << "usage: rcc-backend-mir [operation] [options] [input.mir|-]\n"
             "operations:\n"
             "  --verify                       Parse, canonicalize, and verify MIR\n"
             "  --reproduce <package>          Strictly replay a reproducer package\n"
@@ -656,7 +656,7 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
       return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
                                  "reproducer replay does not accept a separate MIR input");
   } else if (Command.InputPath.empty()) {
-    return rcc::makeUnexpected(ErrorCode::InvalidInvocation, "a MIR input path is required");
+    Command.InputPath = "-";
   }
   if (Command.Cache != CachePolicy::Off && Command.CachePath.empty()) {
     return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
