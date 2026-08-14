@@ -757,6 +757,29 @@ Expected<void> LegalizerHelper::narrowScalarSrc(MachineInstr &Instruction, LowLe
   return Operand->setRegister(*NarrowSource);
 }
 
+Expected<void> LegalizerHelper::narrowScalarDst(MachineInstr &Instruction, LowLevelType NarrowType,
+                                                std::size_t OperandIndex,
+                                                GenericOpcode ExtensionOpcode) {
+  MachineOperand *Operand = Instruction.operandAt(OperandIndex);
+  const Register *Destination = Operand == nullptr ? nullptr : Operand->getIf<Register>();
+  if (Destination == nullptr || !Destination->isVirtual() || !Operand->isDef())
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "scalar narrowing destination is not a virtual-register definition");
+
+  const Register OriginalDestination = *Destination;
+  auto NarrowDestination = MRI.createVirtualRegister(NarrowType);
+  if (!NarrowDestination)
+    return std::unexpected(NarrowDestination.error());
+  if (auto Point = MIRBuilder.setInsertPointAfter(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Extension = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {OriginalDestination},
+                                             {*NarrowDestination});
+      !Extension) {
+    return std::unexpected(Extension.error());
+  }
+  return Operand->setRegister(*NarrowDestination);
+}
+
 Expected<void> LegalizerHelper::widenScalarDst(MachineInstr &Instruction, LowLevelType WideType,
                                                std::size_t OperandIndex,
                                                GenericOpcode TruncOpcode) {
@@ -1200,6 +1223,21 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
                                                ? GenericOpcode::G_SEXT
                                                : GenericOpcode::G_ZEXT));
         !Result)
+      return Result;
+    break;
+
+  case GenericOpcode::G_INTTOPTR:
+    if (TypeIndex != 1)
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "G_INTTOPTR destination widening is not defined");
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_ZEXT)); !Result)
+      return Result;
+    break;
+
+  case GenericOpcode::G_PTRTOINT:
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::Unsupported, "G_PTRTOINT source widening is not defined");
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
 
@@ -2453,6 +2491,25 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   case GenericOpcode::G_ZEXT:
   case GenericOpcode::G_ANYEXT:
     return narrowScalarExt(Instruction, TypeIndex, NarrowType);
+  case GenericOpcode::G_INTTOPTR:
+    if (TypeIndex != 1)
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "G_INTTOPTR destination narrowing is not defined");
+    Observer.changingInstr(Instruction);
+    if (auto Narrowed = narrowScalarSrc(Instruction, NarrowType, 1); !Narrowed)
+      return std::unexpected(Narrowed.error());
+    Observer.changedInstr(Instruction);
+    return {};
+  case GenericOpcode::G_PTRTOINT:
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::Unsupported, "G_PTRTOINT source narrowing is not defined");
+    Observer.changingInstr(Instruction);
+    if (auto Narrowed = narrowScalarDst(Instruction, NarrowType, 0, GenericOpcode::G_ZEXT);
+        !Narrowed) {
+      return std::unexpected(Narrowed.error());
+    }
+    Observer.changedInstr(Instruction);
+    return {};
   case GenericOpcode::G_SEXT_INREG: {
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::Unsupported,

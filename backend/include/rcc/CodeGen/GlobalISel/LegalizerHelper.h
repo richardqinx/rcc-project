@@ -39,6 +39,9 @@ public:
                                               GenericOpcode ExtensionOpcode);
   [[nodiscard]] Expected<void> narrowScalarSrc(MachineInstr &Instruction, LowLevelType NarrowType,
                                                std::size_t OperandIndex);
+  [[nodiscard]] Expected<void> narrowScalarDst(MachineInstr &Instruction, LowLevelType NarrowType,
+                                               std::size_t OperandIndex,
+                                               GenericOpcode ExtensionOpcode);
   [[nodiscard]] Expected<void> widenScalarDst(MachineInstr &Instruction, LowLevelType WideType,
                                               std::size_t OperandIndex = 0,
                                               GenericOpcode TruncOpcode = GenericOpcode::G_TRUNC);
