@@ -402,6 +402,11 @@ public:
                                                 const CallLoweringPlan &Plan) const = 0;
 };
 
+struct LibcallLoweringInfo final {
+  const TargetCallLowering *CallLowering = nullptr;
+  CallingConventionID Convention;
+};
+
 } // namespace rcc
 
 #endif // RCC_CODEGEN_TARGETCALLLOWERING_H

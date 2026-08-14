@@ -2,6 +2,7 @@
 
 #include "rcc/Target/RISCV/RISCVPipeline.h"
 
+#include "GISel/RISCVCallLowering.h"
 #include "GISel/RISCVRegisterBankInfo.h"
 #include "RISCV.h"
 #include "RISCVInstrInfo.h"
@@ -26,6 +27,10 @@
 namespace rcc::riscv {
 namespace {
 
+[[nodiscard]] LibcallLoweringInfo libcallLoweringInfo(const RISCVSubtarget &Subtarget) {
+  return {Subtarget.getCallLowering(), callingConventionID(CallingConvention::LP64)};
+}
+
 template <typename PassT, typename... ArgumentT>
 [[nodiscard]] Expected<void> addPass(MachineFunctionPassManager &Pipeline,
                                      ArgumentT &&...Arguments) {
@@ -39,7 +44,8 @@ template <typename PassT, typename... ArgumentT>
                                             MachineCombinerStage::PreLegalizer);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization);
+  Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization,
+                             libcallLoweringInfo(Subtarget));
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<RegBankSelect>(Pipeline, Subtarget.getRegBankInfo());
@@ -93,7 +99,8 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
                                               MachineCombinerStage::PreLegalizer);
     if (!Added)
       return std::unexpected(Added.error());
-    Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization);
+    Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization,
+                               libcallLoweringInfo(Subtarget));
     if (!Added)
       return std::unexpected(Added.error());
   }

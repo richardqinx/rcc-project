@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/CommandFlags.h"
 #include "rcc/CodeGen/GlobalISel/LegalizerInfo.h"
 #include "rcc/CodeGen/MachinePassManager.h"
+#include "rcc/CodeGen/TargetCallLowering.h"
 
 #include <memory>
 
@@ -13,12 +14,16 @@ namespace rcc {
 
 class Legalizer final : public MachineFunctionPass {
 public:
-  Legalizer(const LegalizerInfo *Info, OptimizationLevel Optimization)
-      : Info(Info), Optimization(Optimization) {}
-  Legalizer(const LegalizerInfo &Info, OptimizationLevel Optimization)
-      : Info(&Info), Optimization(Optimization) {}
-  Legalizer(std::unique_ptr<LegalizerInfo> Info, OptimizationLevel Optimization)
-      : OwnedInfo(std::move(Info)), Info(OwnedInfo.get()), Optimization(Optimization) {}
+  Legalizer(const LegalizerInfo *Info, OptimizationLevel Optimization,
+            LibcallLoweringInfo Libcalls = {})
+      : Info(Info), Optimization(Optimization), Libcalls(Libcalls) {}
+  Legalizer(const LegalizerInfo &Info, OptimizationLevel Optimization,
+            LibcallLoweringInfo Libcalls = {})
+      : Info(&Info), Optimization(Optimization), Libcalls(Libcalls) {}
+  Legalizer(std::unique_ptr<LegalizerInfo> Info, OptimizationLevel Optimization,
+            LibcallLoweringInfo Libcalls = {})
+      : OwnedInfo(std::move(Info)), Info(OwnedInfo.get()), Optimization(Optimization),
+        Libcalls(Libcalls) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
@@ -33,6 +38,7 @@ private:
   std::unique_ptr<LegalizerInfo> OwnedInfo;
   const LegalizerInfo *Info = nullptr;
   OptimizationLevel Optimization;
+  LibcallLoweringInfo Libcalls;
 };
 
 } // namespace rcc

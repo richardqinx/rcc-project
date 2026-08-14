@@ -320,7 +320,9 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
   MachineFunctionDelegateInstaller ObserverInstaller(Function, Observer);
   CSEMIRBuilder Builder(Function, Target);
   Builder.setCSEInfo(&CSEInfo);
-  LegalizerHelper Helper(Function, *Info, Observer, Builder);
+  const LibcallLoweringInfo *ActiveLibcalls =
+      Libcalls.CallLowering == nullptr ? nullptr : &Libcalls;
+  LegalizerHelper Helper(Function, *Info, Observer, Builder, ActiveLibcalls);
   GISelValueTracking ValueTracking(Function, Target);
   LegalizationArtifactCombiner ArtifactCombiner(Builder, Function.registerInfo(), *Info,
                                                 &ValueTracking);

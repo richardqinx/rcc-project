@@ -10,6 +10,7 @@
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
+#include "rcc/CodeGen/TargetCallLowering.h"
 
 #include <algorithm>
 #include <bit>
@@ -19,7 +20,10 @@
 #include <numeric>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace rcc {
 namespace {
@@ -175,12 +179,90 @@ struct ScalarLayout final {
   return *Result;
 }
 
+[[nodiscard]] Expected<std::string> integerLibcallName(GenericOpcode Generic,
+                                                       std::uint32_t BitWidth) {
+  std::string_view Prefix;
+  switch (Generic) {
+  case GenericOpcode::G_MUL:
+    Prefix = "__mul";
+    break;
+  case GenericOpcode::G_SDIV:
+    Prefix = "__div";
+    break;
+  case GenericOpcode::G_UDIV:
+    Prefix = "__udiv";
+    break;
+  case GenericOpcode::G_SREM:
+    Prefix = "__mod";
+    break;
+  case GenericOpcode::G_UREM:
+    Prefix = "__umod";
+    break;
+  default:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "integer libcall has no runtime function mapping");
+  }
+
+  std::string_view Suffix;
+  switch (BitWidth) {
+  case 32:
+    Suffix = "si3";
+    break;
+  case 64:
+    Suffix = "di3";
+    break;
+  case 128:
+    Suffix = "ti3";
+    break;
+  default:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "integer libcall requires a 32, 64, or 128-bit scalar");
+  }
+  return std::string(Prefix) + std::string(Suffix);
+}
+
+[[nodiscard]] ABIExtensionKind integerLibcallExtension(GenericOpcode Generic,
+                                                       std::uint32_t BitWidth) noexcept {
+  if (BitWidth >= 64)
+    return ABIExtensionKind::None;
+  if (Generic == GenericOpcode::G_SDIV || Generic == GenericOpcode::G_SREM)
+    return ABIExtensionKind::SignExtend;
+  if (Generic == GenericOpcode::G_UDIV || Generic == GenericOpcode::G_UREM)
+    return ABIExtensionKind::ZeroExtend;
+  return ABIExtensionKind::AnyExtend;
+}
+
+[[nodiscard]] Expected<ABIValue>
+integerABIValue(Register Value, LowLevelType Type, std::uint32_t OriginalValue,
+                std::uint16_t FragmentIndex, std::uint16_t FragmentCount,
+                std::uint32_t FragmentOffsetBytes, Alignment OriginalAlignment,
+                ABIExtensionKind Extension) {
+  auto OneByte = Alignment::create(1);
+  if (!OneByte)
+    return std::unexpected(OneByte.error());
+  return ABIValue{
+      .Value = Value,
+      .Type = Type,
+      .Category = ABIValueCategory::Integer,
+      .OriginalValue = OriginalValue,
+      .FragmentIndex = FragmentIndex,
+      .FragmentCount = FragmentCount,
+      .FragmentOffsetBytes = FragmentOffsetBytes,
+      .OriginalAlignment = OriginalAlignment,
+      .Extension = Extension,
+      .Flags = {},
+      .ByValSizeBytes = 0,
+      .ByValAlignment = *OneByte,
+  };
+}
+
 } // namespace
 
 LegalizerHelper::LegalizerHelper(MachineFunction &Function, const LegalizerInfo &Info,
-                                 GISelChangeObserver &Observer, MachineIRBuilder &MIRBuilder)
+                                 GISelChangeObserver &Observer, MachineIRBuilder &MIRBuilder,
+                                 const LibcallLoweringInfo *Libcalls)
     : MIRBuilder(MIRBuilder), Observer(Observer), Function(Function), MRI(Function.registerInfo()),
-      Info(Info) {}
+      Info(Info), Libcalls(Libcalls) {}
 
 Expected<void> LegalizerHelper::widenScalarMergeValues(MachineInstr &Instruction,
                                                        std::size_t TypeIndex,
@@ -3445,6 +3527,135 @@ Expected<void> LegalizerHelper::lowerRotate(MachineInstr &Instruction) {
   return Block->removeInstruction(Instruction);
 }
 
+Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
+  if (Libcalls == nullptr || Libcalls->CallLowering == nullptr) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "libcall legalization requires target call lowering information");
+  }
+
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  auto DestinationOperand = Instruction.operandAt(0);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  if (Destination == nullptr || !DestinationOperand->isDef()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "integer libcall requires a register destination");
+  }
+  auto Type = MRI.getType(*Destination);
+  if (!Type)
+    return std::unexpected(Type.error());
+  if (!Type->isCategoryNeutralScalar()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "integer libcall requires a category-neutral scalar type");
+  }
+
+  const std::uint32_t BitWidth = Type->scalarBitWidth();
+  auto Name = integerLibcallName(Generic, BitWidth);
+  if (!Name)
+    return std::unexpected(Name.error());
+  auto OriginalAlignment = Alignment::create(BitWidth == 128 ? 16 : BitWidth / 8U);
+  if (!OriginalAlignment)
+    return std::unexpected(OriginalAlignment.error());
+  auto FragmentType = LowLevelType::makeCategoryNeutralScalar(64);
+  if (!FragmentType)
+    return std::unexpected(FragmentType.error());
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+
+  const ABIExtensionKind Extension = integerLibcallExtension(Generic, BitWidth);
+  auto AppendValue = [&](Register Value, std::uint32_t OriginalValue, bool IsResult,
+                         std::vector<ABIValue> &Values,
+                         std::vector<Register> *Fragments) -> Expected<void> {
+    if (BitWidth != 128) {
+      auto ABI =
+          integerABIValue(Value, *Type, OriginalValue, 0, 1, 0, *OriginalAlignment, Extension);
+      if (!ABI)
+        return std::unexpected(ABI.error());
+      Values.push_back(*ABI);
+      if (Fragments != nullptr)
+        Fragments->push_back(Value);
+      return {};
+    }
+
+    std::vector<Register> PartRegisters;
+    PartRegisters.reserve(2);
+    for (std::size_t Index = 0; Index != 2; ++Index) {
+      auto Part = MRI.createVirtualRegister(*FragmentType);
+      if (!Part)
+        return std::unexpected(Part.error());
+      PartRegisters.push_back(*Part);
+    }
+    if (!IsResult) {
+      auto Unmerged = MIRBuilder.buildUnmergeValues(PartRegisters, Value);
+      if (!Unmerged)
+        return std::unexpected(Unmerged.error());
+    }
+    for (std::uint16_t Index = 0; Index != 2; ++Index) {
+      auto ABI = integerABIValue(PartRegisters[Index], *FragmentType, OriginalValue, Index, 2,
+                                 static_cast<std::uint32_t>(Index) * 8U, *OriginalAlignment,
+                                 ABIExtensionKind::None);
+      if (!ABI)
+        return std::unexpected(ABI.error());
+      Values.push_back(*ABI);
+    }
+    if (Fragments != nullptr)
+      *Fragments = std::move(PartRegisters);
+    return {};
+  };
+
+  std::vector<ABIValue> Arguments;
+  Arguments.reserve((Instruction.operandCount() - 1U) * (BitWidth == 128 ? 2U : 1U));
+  std::uint32_t OriginalArgument = 0;
+  for (std::size_t Index = 1; Index != Instruction.operandCount(); ++Index) {
+    const MachineOperand *Operand = Instruction.operandAt(Index);
+    const Register *Source = Operand == nullptr ? nullptr : Operand->getIf<Register>();
+    if (Source == nullptr || !Operand->isUse()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "integer libcall requires register source operands");
+    }
+    auto SourceType = MRI.getType(*Source);
+    if (!SourceType)
+      return std::unexpected(SourceType.error());
+    if (*SourceType != *Type) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "integer libcall source and destination types must match");
+    }
+    if (auto Appended = AppendValue(*Source, OriginalArgument++, false, Arguments, nullptr);
+        !Appended) {
+      return std::unexpected(Appended.error());
+    }
+  }
+
+  std::vector<ABIValue> Results;
+  std::vector<Register> ResultFragments;
+  if (auto Appended = AppendValue(*Destination, 0, true, Results, &ResultFragments); !Appended)
+    return std::unexpected(Appended.error());
+
+  auto Callee = MachineCallTarget::externalSymbol(std::move(*Name));
+  if (!Callee)
+    return std::unexpected(Callee.error());
+  CallLoweringRequest Request;
+  Request.Convention = Libcalls->Convention;
+  Request.Callee = std::move(*Callee);
+  Request.Arguments = std::move(Arguments);
+  Request.Results = std::move(Results);
+  Request.FixedArgumentCount = OriginalArgument;
+  if (auto Lowered = Libcalls->CallLowering->lowerCall(MIRBuilder, Request); !Lowered)
+    return std::unexpected(Lowered.error());
+
+  if (BitWidth == 128) {
+    auto Merged = MIRBuilder.buildMergeLikeInstr(*Destination, ResultFragments);
+    if (!Merged)
+      return std::unexpected(Merged.error());
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "integer libcall became detached during legalization");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::lowerSignedAddSubOverflow(MachineInstr &Instruction) {
   const bool IsAdd = Instruction.opcode() == opcode(GenericOpcode::G_SADDO);
   const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
@@ -3529,10 +3740,11 @@ Expected<void> LegalizerHelper::legalize(MachineInstr &Instruction,
     return Info.legalizeCustom(*this, Instruction, Decision);
   case LegalizationAction::Lower:
     return lower(Instruction, Decision);
+  case LegalizationAction::Libcall:
+    return libcall(Instruction);
   case LegalizationAction::Legal:
     return {};
   case LegalizationAction::Unsupported:
-  case LegalizationAction::Libcall:
   case LegalizationAction::MoreElements:
   case LegalizationAction::FewerElements:
   case LegalizationAction::Bitcast:

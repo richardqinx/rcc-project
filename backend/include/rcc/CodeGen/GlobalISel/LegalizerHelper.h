@@ -15,6 +15,7 @@ namespace rcc {
 class MachineFunction;
 class MachineInstr;
 class GISelChangeObserver;
+struct LibcallLoweringInfo;
 
 class LegalizerHelper final {
 public:
@@ -22,7 +23,8 @@ public:
   GISelChangeObserver &Observer;
 
   LegalizerHelper(MachineFunction &Function, const LegalizerInfo &Info,
-                  GISelChangeObserver &Observer, MachineIRBuilder &MIRBuilder);
+                  GISelChangeObserver &Observer, MachineIRBuilder &MIRBuilder,
+                  const LibcallLoweringInfo *Libcalls = nullptr);
 
   [[nodiscard]] Expected<void> legalize(MachineInstr &Instruction,
                                         const LegalizationDecision &Decision);
@@ -35,6 +37,7 @@ public:
   [[nodiscard]] Expected<void> lowerThreewayCompare(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerRotate(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerVAArg(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> libcall(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> widenScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                            LowLevelType WideType);
   [[nodiscard]] Expected<void> widenScalarSrc(MachineInstr &Instruction, LowLevelType WideType,
@@ -118,6 +121,7 @@ private:
   MachineFunction &Function;
   MachineRegisterInfo &MRI;
   const LegalizerInfo &Info;
+  const LibcallLoweringInfo *Libcalls = nullptr;
 };
 
 } // namespace rcc
