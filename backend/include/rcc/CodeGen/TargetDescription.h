@@ -8,6 +8,7 @@
 #include "rcc/CodeGen/TargetRegisterInfo.h"
 #include "rcc/Support/Error.h"
 
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <utility>
@@ -23,6 +24,18 @@ class MachineMemOperand;
 class MachineRegisterInfo;
 struct VirtualRegisterInfo;
 
+enum class BooleanContent : std::uint8_t {
+  Undefined,
+  ZeroOrOne,
+  ZeroOrNegativeOne,
+};
+
+struct TargetBooleanContentInfo final {
+  BooleanContent ScalarInteger = BooleanContent::Undefined;
+  BooleanContent ScalarFloatingPoint = BooleanContent::Undefined;
+  BooleanContent Vector = BooleanContent::Undefined;
+};
+
 class TargetDescription final {
 public:
   TargetDescription(const TargetDescription &) = delete;
@@ -31,9 +44,9 @@ public:
   TargetDescription &operator=(TargetDescription &&) noexcept = default;
   ~TargetDescription() = default;
 
-  [[nodiscard]] static Expected<TargetDescription> create(InstructionSet Instructions,
-                                                          TargetRegisterInfo Registers,
-                                                          TargetMIRTextInfoDesc MIRText = {});
+  [[nodiscard]] static Expected<TargetDescription>
+  create(InstructionSet Instructions, TargetRegisterInfo Registers,
+         TargetMIRTextInfoDesc MIRText = {}, TargetBooleanContentInfo BooleanInfo = {});
 
   [[nodiscard]] const InstructionSet &instructions() const noexcept {
     return Instructions;
@@ -45,6 +58,13 @@ public:
 
   [[nodiscard]] const TargetMIRTextInfo &mirText() const noexcept {
     return MIRText;
+  }
+
+  [[nodiscard]] BooleanContent getBooleanContents(bool IsVector,
+                                                  bool IsFloatingPoint) const noexcept {
+    if (IsVector)
+      return BooleanInfo.Vector;
+    return IsFloatingPoint ? BooleanInfo.ScalarFloatingPoint : BooleanInfo.ScalarInteger;
   }
 
   [[nodiscard]] const InstructionDescriptor *
@@ -87,9 +107,9 @@ public:
 
 private:
   TargetDescription(InstructionSet Instructions, TargetRegisterInfo Registers,
-                    TargetMIRTextInfo MIRText)
+                    TargetMIRTextInfo MIRText, TargetBooleanContentInfo BooleanInfo)
       : Instructions(std::move(Instructions)), Registers(std::move(Registers)),
-        MIRText(std::move(MIRText)) {}
+        MIRText(std::move(MIRText)), BooleanInfo(BooleanInfo) {}
 
   [[nodiscard]] Expected<void> validateTargetOperand(const OperandDescriptor *Descriptor,
                                                      const MachineOperand &Operand,
@@ -101,6 +121,7 @@ private:
   InstructionSet Instructions;
   TargetRegisterInfo Registers;
   TargetMIRTextInfo MIRText;
+  TargetBooleanContentInfo BooleanInfo;
 };
 
 } // namespace rcc

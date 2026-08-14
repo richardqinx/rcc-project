@@ -4,9 +4,11 @@
 
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/GlobalISel/GISelChangeObserver.h"
+#include "rcc/CodeGen/GlobalISel/GISelValueTracking.h"
 #include "rcc/CodeGen/GlobalISel/GISelWorkList.h"
 #include "rcc/CodeGen/GlobalISel/LegalizationArtifactCombiner.h"
 #include "rcc/CodeGen/GlobalISel/LegalizerHelper.h"
+#include "rcc/CodeGen/GlobalISel/Utils.h"
 #include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -295,13 +297,24 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
   MachineFunctionDelegateInstaller ObserverInstaller(Function, Observer);
   MachineIRBuilder Builder(Function, Target);
   LegalizerHelper Helper(Function, *Info, Observer, Builder);
-  LegalizationArtifactCombiner ArtifactCombiner(Builder, Function.registerInfo(), *Info);
+  GISelValueTracking ValueTracking(Function, Target);
+  LegalizationArtifactCombiner ArtifactCombiner(Builder, Function.registerInfo(), *Info,
+                                                &ValueTracking);
 
   do {
     while (!InstructionWorklist.empty()) {
       MachineInstr *Instruction = InstructionWorklist.popBack();
       if (Instruction == nullptr || Instruction->parent() == nullptr)
         continue;
+
+      if (isTriviallyDead(*Instruction, Function.registerInfo(), Target)) {
+        auto Removed = eraseInstr(*Instruction, Function.registerInfo(), Target);
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        Result.Changed = true;
+        Result.Changes.add(MachinePassChange::Instructions);
+        continue;
+      }
 
       const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
       if (Descriptor == nullptr)
@@ -381,19 +394,23 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
       MachineInstr *Instruction = ArtifactWorklist.popBack();
       if (Instruction == nullptr || Instruction->parent() == nullptr)
         continue;
+      if (isTriviallyDead(*Instruction, Function.registerInfo(), Target)) {
+        auto Removed = eraseInstr(*Instruction, Function.registerInfo(), Target);
+        if (!Removed)
+          return std::unexpected(Removed.error());
+        Result.Changed = true;
+        Result.Changes.add(MachinePassChange::Instructions);
+        continue;
+      }
       std::vector<MachineInstr *> DeadInstructions;
       auto Combined =
           ArtifactCombiner.tryCombineInstruction(*Instruction, DeadInstructions, Observer);
       if (!Combined)
         return std::unexpected(Combined.error());
       if (*Combined) {
-        for (MachineInstr *Dead : DeadInstructions) {
-          if (Dead == nullptr || Dead->parent() == nullptr)
-            continue;
-          auto Removed = Dead->parent()->removeInstruction(*Dead);
-          if (!Removed)
-            return std::unexpected(Removed.error());
-        }
+        auto Removed = eraseInstrs(DeadInstructions, Function.registerInfo(), Target);
+        if (!Removed)
+          return std::unexpected(Removed.error());
         Result.Changed = true;
         Result.Changes.add(MachinePassChange::Instructions);
         continue;

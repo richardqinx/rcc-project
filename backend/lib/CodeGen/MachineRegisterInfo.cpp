@@ -81,6 +81,20 @@ Expected<Register> MachineRegisterInfo::createVirtualRegister(LowLevelType Type)
   return *Reg;
 }
 
+Expected<Register> MachineRegisterInfo::cloneVirtualRegister(Register Reg) {
+  auto Source = virtualRegisterInfo(Reg);
+  if (!Source)
+    return std::unexpected(Source.error());
+  auto Clone = createVirtualRegister();
+  if (!Clone)
+    return std::unexpected(Clone.error());
+  VirtualRegisters.back() = Source->get();
+  VirtualRegisters.back().Name.reset();
+  VirtualRegisters.back().AllocationHints.clear();
+  VirtualRegisters.back().IsTombstone = false;
+  return *Clone;
+}
+
 Expected<void> MachineRegisterInfo::eraseVirtualRegister(Register Reg) {
   auto Info = virtualRegisterInfo(Reg);
   if (!Info)
@@ -313,8 +327,7 @@ const MachineOperand *MachineRegisterInfo::getUniqueVRegDef(Register Reg) const 
 
 MachineInstr *MachineRegisterInfo::getVRegDef(Register Reg) noexcept {
   const MachineOperand *Definition = getUniqueVRegDef(Reg);
-  return Definition == nullptr ? nullptr
-                               : const_cast<MachineInstr *>(Definition->parent());
+  return Definition == nullptr ? nullptr : const_cast<MachineInstr *>(Definition->parent());
 }
 
 const MachineInstr *MachineRegisterInfo::getVRegDef(Register Reg) const noexcept {
@@ -327,8 +340,7 @@ Expected<LowLevelType> MachineRegisterInfo::getType(Register Reg) const {
   if (!Info)
     return std::unexpected(Info.error());
   if (!Info->get().Type)
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "virtual register has no LowLevelType");
+    return makeUnexpected(ErrorCode::InvalidArgument, "virtual register has no LowLevelType");
   return *Info->get().Type;
 }
 

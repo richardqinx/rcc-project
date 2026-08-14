@@ -109,6 +109,7 @@ public:
 
   [[nodiscard]] Expected<Register> createVirtualRegister();
   [[nodiscard]] Expected<Register> createVirtualRegister(LowLevelType Type);
+  [[nodiscard]] Expected<Register> cloneVirtualRegister(Register Reg);
   [[nodiscard]] Expected<void> eraseVirtualRegister(Register Reg);
 
   [[nodiscard]] bool isKnownVirtualRegister(Register Reg) const noexcept;

@@ -51,7 +51,8 @@ namespace {
 
 Expected<TargetDescription> TargetDescription::create(InstructionSet Instructions,
                                                       TargetRegisterInfo Registers,
-                                                      TargetMIRTextInfoDesc MIRTextDescription) {
+                                                      TargetMIRTextInfoDesc MIRTextDescription,
+                                                      TargetBooleanContentInfo BooleanInfo) {
   auto MIRText = TargetMIRTextInfo::create(std::move(MIRTextDescription), Registers);
   if (!MIRText)
     return std::unexpected(MIRText.error());
@@ -122,7 +123,8 @@ Expected<TargetDescription> TargetDescription::create(InstructionSet Instruction
     }
   }
 
-  return TargetDescription(std::move(Instructions), std::move(Registers), std::move(*MIRText));
+  return TargetDescription(std::move(Instructions), std::move(Registers), std::move(*MIRText),
+                           BooleanInfo);
 }
 
 Expected<void> TargetDescription::validateVirtualRegister(Register Reg,

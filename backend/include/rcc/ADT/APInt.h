@@ -43,7 +43,14 @@ public:
   [[nodiscard]] bool isNegative() const noexcept;
   [[nodiscard]] std::size_t activeBitWidth() const noexcept;
   [[nodiscard]] std::size_t countrZero() const noexcept;
+  [[nodiscard]] std::size_t countlOne() const noexcept;
+  [[nodiscard]] bool isAllOnes() const noexcept;
+  [[nodiscard]] bool testBit(std::size_t Bit) const noexcept;
   [[nodiscard]] std::uint64_t word(std::size_t Index) const noexcept;
+  [[nodiscard]] Expected<APInt> bitwiseAnd(const APInt &Other) const;
+  [[nodiscard]] Expected<APInt> bitwiseOr(const APInt &Other) const;
+  [[nodiscard]] Expected<APInt> bitwiseXor(const APInt &Other) const;
+  [[nodiscard]] Expected<APInt> bitwiseNot() const;
   [[nodiscard]] Expected<APInt> trunc(std::uint32_t NewBitWidth) const;
   [[nodiscard]] Expected<APInt> zext(std::uint32_t NewBitWidth) const;
   [[nodiscard]] Expected<APInt> sext(std::uint32_t NewBitWidth) const;

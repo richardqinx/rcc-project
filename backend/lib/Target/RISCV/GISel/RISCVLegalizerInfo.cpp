@@ -4,6 +4,7 @@
 
 #include "RISCVImmediateMaterialization.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/CodeGen/GlobalISel/GISelChangeObserver.h"
 #include "rcc/CodeGen/GlobalISel/LegalizerHelper.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -1093,6 +1094,69 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
 
   MachineFunction &Function = Helper.MIRBuilder.function();
   const TargetDescription &Target = Helper.MIRBuilder.target();
+  if (Instruction.opcode() == opcode(GenericOpcode::G_ADD) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_SUB)) {
+    auto XLenType = LowLevelType::makeCategoryNeutralScalar(64);
+    if (!XLenType)
+      return std::unexpected(XLenType.error());
+
+    Helper.Observer.changingInstr(Instruction);
+    if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 1, GenericOpcode::G_ANYEXT);
+        !Widened)
+      return std::unexpected(Widened.error());
+    if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 2, GenericOpcode::G_ANYEXT);
+        !Widened)
+      return std::unexpected(Widened.error());
+
+    auto ALUDestination = Function.registerInfo().createVirtualRegister(*XLenType);
+    if (!ALUDestination)
+      return std::unexpected(ALUDestination.error());
+    auto SignExtendedDestination = Function.registerInfo().createVirtualRegister(*XLenType);
+    if (!SignExtendedDestination)
+      return std::unexpected(SignExtendedDestination.error());
+
+    MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    if (Destination == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V word arithmetic requires a register destination");
+    const Register OriginalDestination = *Destination;
+    if (auto Point = Helper.MIRBuilder.setInsertPointAfter(Instruction); !Point)
+      return std::unexpected(Point.error());
+    if (auto Built =
+            Helper.MIRBuilder.buildSExtInReg(*SignExtendedDestination, *ALUDestination, 32);
+        !Built)
+      return std::unexpected(Built.error());
+    if (auto Built = Helper.MIRBuilder.buildTrunc(OriginalDestination, *SignExtendedDestination);
+        !Built)
+      return std::unexpected(Built.error());
+    if (auto Changed = DestinationOperand->setRegister(*ALUDestination); !Changed)
+      return std::unexpected(Changed.error());
+    Helper.Observer.changedInstr(Instruction);
+    return {};
+  }
+  if (Instruction.opcode() == opcode(GenericOpcode::G_SEXT_INREG)) {
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const MachineOperand *SizeOperand = Instruction.operandAt(2);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    const std::int64_t *Size =
+        SizeOperand == nullptr ? nullptr : SizeOperand->getIf<std::int64_t>();
+    if (Destination == nullptr || Size == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V G_SEXT_INREG has invalid operands");
+    auto DestinationType = Function.registerInfo().getType(*Destination);
+    if (!DestinationType)
+      return std::unexpected(DestinationType.error());
+    if (DestinationType->minimumBitWidth() == 64 && *Size == 32)
+      return {};
+    return Helper.lower(Instruction, LegalizationDecision{
+                                         .Action = LegalizationAction::Lower,
+                                         .TypeIndex = 0,
+                                         .NewType = {},
+                                     });
+  }
   if (Instruction.opcode() == opcode(GenericOpcode::G_ICMP))
     return lowerIntegerCompare(Instruction, Function, Target);
   if (Instruction.opcode() == opcode(GenericOpcode::G_ATOMIC_CMPXCHG))

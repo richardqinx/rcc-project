@@ -708,6 +708,23 @@ Expected<MachineInstrBuilder> MachineIRBuilder::buildInstr(Opcode InstructionOpc
   return MachineInstrBuilder(*Function, *Target, *Descriptor, *InsertBlock, InsertBefore);
 }
 
+Expected<MachineInstr *>
+MachineIRBuilder::buildInstr(Opcode InstructionOpcode, std::initializer_list<Register> Destinations,
+                             std::initializer_list<Register> Sources) const {
+  auto Pending = buildInstr(InstructionOpcode);
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  for (Register Destination : Destinations) {
+    if (auto Added = Pending->addDef(Destination); !Added)
+      return std::unexpected(Added.error());
+  }
+  for (Register Source : Sources) {
+    if (auto Added = Pending->addUse(Source); !Added)
+      return std::unexpected(Added.error());
+  }
+  return Pending->build();
+}
+
 Expected<LowLevelType> MachineIRBuilder::registerType(Register Reg) const {
   if (!Reg.isVirtual())
     return makeUnexpected(ErrorCode::InvalidArgument,
@@ -722,8 +739,7 @@ Expected<LowLevelType> MachineIRBuilder::registerType(Register Reg) const {
 }
 
 Expected<MachineInstr *> MachineIRBuilder::buildUnary(Opcode InstructionOpcode,
-                                                      Register Destination,
-                                                      Register Source) const {
+                                                      Register Destination, Register Source) const {
   auto Pending = buildInstr(InstructionOpcode);
   if (!Pending)
     return std::unexpected(Pending.error());
@@ -749,13 +765,11 @@ Expected<MachineInstr *> MachineIRBuilder::buildBinary(Opcode InstructionOpcode,
   return Pending->build();
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildTrunc(Register Destination,
-                                                      Register Source) const {
+Expected<MachineInstr *> MachineIRBuilder::buildTrunc(Register Destination, Register Source) const {
   return buildUnary(opcode(GenericOpcode::G_TRUNC), Destination, Source);
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildCopy(Register Destination,
-                                                     Register Source) const {
+Expected<MachineInstr *> MachineIRBuilder::buildCopy(Register Destination, Register Source) const {
   return buildUnary(opcode(GenericOpcode::COPY), Destination, Source);
 }
 
@@ -773,14 +787,16 @@ Expected<MachineInstr *> MachineIRBuilder::buildAnyExt(Register Destination,
   return buildUnary(opcode(GenericOpcode::G_ANYEXT), Destination, Source);
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildZExt(Register Destination,
-                                                     Register Source) const {
+Expected<MachineInstr *> MachineIRBuilder::buildZExt(Register Destination, Register Source) const {
   return buildUnary(opcode(GenericOpcode::G_ZEXT), Destination, Source);
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildSExt(Register Destination,
-                                                     Register Source) const {
+Expected<MachineInstr *> MachineIRBuilder::buildSExt(Register Destination, Register Source) const {
   return buildUnary(opcode(GenericOpcode::G_SEXT), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildUndef(Register Destination) const {
+  return buildImplicitDef(Destination);
 }
 
 Expected<MachineInstr *> MachineIRBuilder::buildExtOrTrunc(Opcode ExtensionOpcode,
@@ -807,12 +823,11 @@ Expected<MachineInstr *> MachineIRBuilder::buildAnyExtOrTrunc(Register Destinati
 }
 
 Expected<MachineInstr *> MachineIRBuilder::buildSExtOrTrunc(Register Destination,
-                                                           Register Source) const {
+                                                            Register Source) const {
   return buildExtOrTrunc(opcode(GenericOpcode::G_SEXT), Destination, Source);
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildConstant(Register Destination,
-                                                         APInt Value) const {
+Expected<MachineInstr *> MachineIRBuilder::buildConstant(Register Destination, APInt Value) const {
   auto Pending = buildInstr(opcode(GenericOpcode::G_CONSTANT));
   if (!Pending)
     return std::unexpected(Pending.error());
@@ -834,8 +849,7 @@ Expected<MachineInstr *> MachineIRBuilder::buildConstant(Register Destination,
   return buildConstant(Destination, std::move(*Immediate));
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildSExtInReg(Register Destination,
-                                                          Register Source,
+Expected<MachineInstr *> MachineIRBuilder::buildSExtInReg(Register Destination, Register Source,
                                                           std::uint32_t Width) const {
   auto Pending = buildInstr(opcode(GenericOpcode::G_SEXT_INREG));
   if (!Pending)
@@ -854,8 +868,94 @@ Expected<MachineInstr *> MachineIRBuilder::buildAnd(Register Destination, Regist
   return buildBinary(opcode(GenericOpcode::G_AND), Destination, Left, Right);
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildMergeValues(
-    Register Destination, const std::vector<Register> &Sources) const {
+Expected<MachineInstr *> MachineIRBuilder::buildOr(Register Destination, Register Left,
+                                                   Register Right) const {
+  return buildBinary(opcode(GenericOpcode::G_OR), Destination, Left, Right);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildAdd(Register Destination, Register Left,
+                                                    Register Right) const {
+  return buildBinary(opcode(GenericOpcode::G_ADD), Destination, Left, Right);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildSub(Register Destination, Register Left,
+                                                    Register Right) const {
+  return buildBinary(opcode(GenericOpcode::G_SUB), Destination, Left, Right);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildShl(Register Destination, Register Left,
+                                                    Register Right) const {
+  return buildBinary(opcode(GenericOpcode::G_SHL), Destination, Left, Right);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildLShr(Register Destination, Register Left,
+                                                     Register Right) const {
+  return buildBinary(opcode(GenericOpcode::G_LSHR), Destination, Left, Right);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildAShr(Register Destination, Register Left,
+                                                     Register Right) const {
+  return buildBinary(opcode(GenericOpcode::G_ASHR), Destination, Left, Right);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildPtrToInt(Register Destination,
+                                                         Register Source) const {
+  return buildUnary(opcode(GenericOpcode::G_PTRTOINT), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildIntToPtr(Register Destination,
+                                                         Register Source) const {
+  return buildUnary(opcode(GenericOpcode::G_INTTOPTR), Destination, Source);
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildICmp(IntegerPredicate Predicate,
+                                                     Register Destination, Register Left,
+                                                     Register Right) const {
+  auto Pending = buildInstr(opcode(GenericOpcode::G_ICMP));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addIntegerPredicate(Predicate); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Left); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Right); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
+}
+
+Expected<MachineInstr *>
+MachineIRBuilder::buildMergeLikeInstr(Register Destination,
+                                      const std::vector<Register> &Sources) const {
+  auto DestinationType = registerType(Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  if (!DestinationType->isVector())
+    return buildMergeValues(Destination, Sources);
+  if (Sources.empty())
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "merge-like instruction requires source registers");
+  auto SourceType = registerType(Sources.front());
+  if (!SourceType)
+    return std::unexpected(SourceType.error());
+  const GenericOpcode MergeOpcode =
+      SourceType->isVector() ? GenericOpcode::G_CONCAT_VECTORS : GenericOpcode::G_BUILD_VECTOR;
+  auto Pending = buildInstr(opcode(MergeOpcode));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  for (Register Source : Sources) {
+    if (auto Added = Pending->addUse(Source); !Added)
+      return std::unexpected(Added.error());
+  }
+  return Pending->build();
+}
+
+Expected<MachineInstr *>
+MachineIRBuilder::buildMergeValues(Register Destination,
+                                   const std::vector<Register> &Sources) const {
   auto Pending = buildInstr(opcode(GenericOpcode::G_MERGE_VALUES));
   if (!Pending)
     return std::unexpected(Pending.error());
@@ -868,8 +968,9 @@ Expected<MachineInstr *> MachineIRBuilder::buildMergeValues(
   return Pending->build();
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildUnmergeValues(
-    const std::vector<Register> &Destinations, Register Source) const {
+Expected<MachineInstr *>
+MachineIRBuilder::buildUnmergeValues(const std::vector<Register> &Destinations,
+                                     Register Source) const {
   auto Pending = buildInstr(opcode(GenericOpcode::G_UNMERGE_VALUES));
   if (!Pending)
     return std::unexpected(Pending.error());
@@ -882,8 +983,7 @@ Expected<MachineInstr *> MachineIRBuilder::buildUnmergeValues(
   return Pending->build();
 }
 
-Expected<MachineInstr *> MachineIRBuilder::buildExtract(Register Destination,
-                                                        Register Source,
+Expected<MachineInstr *> MachineIRBuilder::buildExtract(Register Destination, Register Source,
                                                         std::uint64_t Offset) const {
   if (Offset > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
     return makeUnexpected(ErrorCode::InvalidArgument,
@@ -894,6 +994,26 @@ Expected<MachineInstr *> MachineIRBuilder::buildExtract(Register Destination,
   if (auto Added = Pending->addDef(Destination); !Added)
     return std::unexpected(Added.error());
   if (auto Added = Pending->addUse(Source); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addImmediate(static_cast<std::int64_t>(Offset)); !Added)
+    return std::unexpected(Added.error());
+  return Pending->build();
+}
+
+Expected<MachineInstr *> MachineIRBuilder::buildInsert(Register Destination, Register Source,
+                                                       Register Inserted,
+                                                       std::uint64_t Offset) const {
+  if (Offset > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "generic insert offset does not fit a machine immediate");
+  auto Pending = buildInstr(opcode(GenericOpcode::G_INSERT));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Source); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Inserted); !Added)
     return std::unexpected(Added.error());
   if (auto Added = Pending->addImmediate(static_cast<std::int64_t>(Offset)); !Added)
     return std::unexpected(Added.error());

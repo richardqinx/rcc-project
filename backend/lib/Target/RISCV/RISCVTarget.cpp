@@ -241,8 +241,12 @@ Expected<TargetDescription> createTargetDescription() {
   TargetMIRTextInfoDesc MIRText;
   appendGeneratedMIRTextInfo(MIRText);
   configureFunctionInfoMIRSchema(MIRText);
+  TargetBooleanContentInfo BooleanInfo{
+      .ScalarInteger = BooleanContent::ZeroOrOne,
+      .ScalarFloatingPoint = BooleanContent::ZeroOrOne,
+  };
   return TargetDescription::create(std::move(*Instructions), std::move(*Registers),
-                                   std::move(MIRText));
+                                   std::move(MIRText), BooleanInfo);
 }
 
 std::shared_ptr<const RegisterMask> createCallPreservedMask(CallingConvention Convention) {
