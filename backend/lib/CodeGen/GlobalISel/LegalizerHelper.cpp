@@ -688,20 +688,14 @@ Expected<void> LegalizerHelper::widenScalarSrc(MachineInstr &Instruction, LowLev
     return makeUnexpected(ErrorCode::VerificationError,
                           "scalar widening source is not a virtual-register use");
 
-  auto WideSource = MRI.createVirtualRegister(WideType);
-  if (!WideSource)
-    return std::unexpected(WideSource.error());
   if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
     return std::unexpected(Point.error());
-  auto Extension = MIRBuilder.buildInstr(opcode(ExtensionOpcode));
+  auto Extension = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {WideType}, {*Source});
   if (!Extension)
     return std::unexpected(Extension.error());
-  if (auto Added = Extension->addDef(*WideSource); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = Extension->addUse(*Source); !Added)
-    return std::unexpected(Added.error());
-  if (auto Built = Extension->build(); !Built)
-    return std::unexpected(Built.error());
+  auto WideSource = resultRegister(**Extension);
+  if (!WideSource)
+    return std::unexpected(WideSource.error());
   return Operand->setRegister(*WideSource);
 }
 
@@ -1436,6 +1430,86 @@ Expected<void> LegalizerHelper::narrowScalarBasic(MachineInstr &Instruction, std
   return Block->removeInstruction(Instruction);
 }
 
+Expected<void> LegalizerHelper::narrowScalarSelect(MachineInstr &Instruction, std::size_t TypeIndex,
+                                                   LowLevelType NarrowType) {
+  if (TypeIndex != 0 || Instruction.operandCount() != 4)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "select narrowing requires type index zero and three sources");
+
+  const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+  const Register *Condition = Instruction.operandAt(1)->getIf<Register>();
+  const Register *TrueSource = Instruction.operandAt(2)->getIf<Register>();
+  const Register *FalseSource = Instruction.operandAt(3)->getIf<Register>();
+  if (Destination == nullptr || Condition == nullptr || TrueSource == nullptr ||
+      FalseSource == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "select narrowing requires register operands");
+  }
+  auto DestinationType = MRI.getType(*Destination);
+  auto ConditionType = MRI.getType(*Condition);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  if (!ConditionType)
+    return std::unexpected(ConditionType.error());
+  if (ConditionType->isVector())
+    return makeUnexpected(ErrorCode::Unsupported, "vector select narrowing is not implemented");
+
+  LowLevelType LeftoverType;
+  LowLevelType UnusedType;
+  std::vector<Register> TrueParts;
+  std::vector<Register> TrueLeftovers;
+  std::vector<Register> FalseParts;
+  std::vector<Register> FalseLeftovers;
+  auto TrueExtracted = extractParts(*TrueSource, *DestinationType, NarrowType, LeftoverType,
+                                    TrueParts, TrueLeftovers, MIRBuilder, MRI);
+  if (!TrueExtracted)
+    return std::unexpected(TrueExtracted.error());
+  auto FalseExtracted = extractParts(*FalseSource, *DestinationType, NarrowType, UnusedType,
+                                     FalseParts, FalseLeftovers, MIRBuilder, MRI);
+  if (!FalseExtracted)
+    return std::unexpected(FalseExtracted.error());
+  if (!*TrueExtracted || !*FalseExtracted || TrueParts.size() != FalseParts.size() ||
+      TrueLeftovers.size() != FalseLeftovers.size()) {
+    return makeUnexpected(ErrorCode::Unsupported, "select operands cannot be split consistently");
+  }
+
+  std::vector<Register> DestinationParts;
+  DestinationParts.reserve(TrueParts.size());
+  for (std::size_t Index = 0; Index != TrueParts.size(); ++Index) {
+    auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {NarrowType},
+                                       {*Condition, TrueParts[Index], FalseParts[Index]});
+    if (!Built)
+      return std::unexpected(Built.error());
+    auto Result = resultRegister(**Built);
+    if (!Result)
+      return std::unexpected(Result.error());
+    DestinationParts.push_back(*Result);
+  }
+
+  std::vector<Register> DestinationLeftovers;
+  DestinationLeftovers.reserve(TrueLeftovers.size());
+  for (std::size_t Index = 0; Index != TrueLeftovers.size(); ++Index) {
+    auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {LeftoverType},
+                                       {*Condition, TrueLeftovers[Index], FalseLeftovers[Index]});
+    if (!Built)
+      return std::unexpected(Built.error());
+    auto Result = resultRegister(**Built);
+    if (!Result)
+      return std::unexpected(Result.error());
+    DestinationLeftovers.push_back(*Result);
+  }
+
+  if (auto Inserted = insertParts(*Destination, *DestinationType, NarrowType, DestinationParts,
+                                  LeftoverType, DestinationLeftovers);
+      !Inserted) {
+    return std::unexpected(Inserted.error());
+  }
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "G_SELECT became detached during narrowing");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                              LowLevelType NarrowType) {
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
@@ -1589,6 +1663,8 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   case GenericOpcode::G_OR:
   case GenericOpcode::G_XOR:
     return narrowScalarBasic(Instruction, TypeIndex, NarrowType);
+  case GenericOpcode::G_SELECT:
+    return narrowScalarSelect(Instruction, TypeIndex, NarrowType);
   default:
     return makeUnexpected(ErrorCode::Unsupported,
                           "scalar narrowing is not implemented for this opcode");

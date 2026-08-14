@@ -72,6 +72,8 @@ private:
                                                  LowLevelType NarrowType);
   [[nodiscard]] Expected<void> narrowScalarExt(MachineInstr &Instruction, std::size_t TypeIndex,
                                                LowLevelType NarrowType);
+  [[nodiscard]] Expected<void> narrowScalarSelect(MachineInstr &Instruction, std::size_t TypeIndex,
+                                                  LowLevelType NarrowType);
   [[nodiscard]] Expected<void> widenScalarAddSubOverflow(MachineInstr &Instruction,
                                                          std::size_t TypeIndex,
                                                          LowLevelType WideType);
