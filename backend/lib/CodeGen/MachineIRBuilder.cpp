@@ -858,6 +858,11 @@ Expected<MachineInstr *> MachineIRBuilder::buildAnyExtOrTrunc(MachineIRBuilderRe
   return buildExtOrTrunc(opcode(GenericOpcode::G_ANYEXT), Destination, Source);
 }
 
+Expected<MachineInstr *> MachineIRBuilder::buildZExtOrTrunc(MachineIRBuilderResult Destination,
+                                                            Register Source) const {
+  return buildExtOrTrunc(opcode(GenericOpcode::G_ZEXT), Destination, Source);
+}
+
 Expected<MachineInstr *> MachineIRBuilder::buildSExtOrTrunc(MachineIRBuilderResult Destination,
                                                             Register Source) const {
   return buildExtOrTrunc(opcode(GenericOpcode::G_SEXT), Destination, Source);

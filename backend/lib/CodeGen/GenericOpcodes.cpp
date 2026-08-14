@@ -1403,8 +1403,9 @@ void configureGenericOpcodes(DescriptorRegistry &Registry) {
                      1);
 
   Registry.configure({GO::G_CTTZ, GO::G_CTTZ_ZERO_POISON, GO::G_CTLZ, GO::G_CTLZ_ZERO_POISON,
-                      GO::G_CTLS, GO::G_CTPOP, GO::G_BSWAP, GO::G_BITREVERSE},
-                     {IntDef0, IntUse0}, 1);
+                      GO::G_CTLS, GO::G_CTPOP},
+                     {IntDef0, IntUse1}, 1);
+  Registry.configure({GO::G_BSWAP, GO::G_BITREVERSE}, {IntDef0, IntUse0}, 1);
   Registry.configure({GO::G_ADDRSPACE_CAST}, {PointerDef0, PointerUse1}, 1);
   Registry.configure({GO::G_BLOCK_ADDR},
                      {ScalarPointerDef0, kind(MachineOperand::Kind::BlockAddress)}, 1);

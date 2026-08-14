@@ -55,6 +55,73 @@ namespace {
   return Left.bitwiseAnd(Right);
 }
 
+[[nodiscard]] Expected<APInt> addMasks(const APInt &Left, const APInt &Right) {
+  if (Left.bitWidth() == 0 || Left.bitWidth() != Right.bitWidth())
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "known-bits add operands must have the same nonzero width");
+  std::vector<std::uint64_t> Words(Left.words().size(), 0);
+  unsigned __int128 Carry = 0;
+  for (std::size_t Index = 0; Index != Words.size(); ++Index) {
+    const unsigned __int128 Sum = static_cast<unsigned __int128>(Left.word(Index)) +
+                                  static_cast<unsigned __int128>(Right.word(Index)) + Carry;
+    Words[Index] = static_cast<std::uint64_t>(Sum);
+    Carry = Sum >> 64U;
+  }
+  return APInt::create(Left.bitWidth(), Words);
+}
+
+struct MaskProduct final {
+  APInt Value;
+  bool Overflow = false;
+};
+
+[[nodiscard]] Expected<MaskProduct> multiplyMasks(const APInt &Left, const APInt &Right) {
+  if (Left.bitWidth() == 0 || Left.bitWidth() != Right.bitWidth())
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "known-bits multiply operands must have the same nonzero width");
+
+  const std::size_t WordCount = Left.words().size();
+  std::vector<std::uint64_t> Product(WordCount * 2U, 0);
+  for (std::size_t LeftIndex = 0; LeftIndex != WordCount; ++LeftIndex) {
+    for (std::size_t RightIndex = 0; RightIndex != WordCount; ++RightIndex) {
+      const std::size_t ProductIndex = LeftIndex + RightIndex;
+      const unsigned __int128 Partial = static_cast<unsigned __int128>(Left.word(LeftIndex)) *
+                                        static_cast<unsigned __int128>(Right.word(RightIndex));
+      unsigned __int128 Sum = static_cast<unsigned __int128>(Product[ProductIndex]) +
+                              static_cast<std::uint64_t>(Partial);
+      Product[ProductIndex] = static_cast<std::uint64_t>(Sum);
+      unsigned __int128 Carry = (Partial >> 64U) + (Sum >> 64U);
+      for (std::size_t Index = ProductIndex + 1U; Carry != 0 && Index != Product.size(); ++Index) {
+        Sum = static_cast<unsigned __int128>(Product[Index]) + static_cast<std::uint64_t>(Carry);
+        Product[Index] = static_cast<std::uint64_t>(Sum);
+        Carry = (Carry >> 64U) + (Sum >> 64U);
+      }
+    }
+  }
+
+  bool Overflow = false;
+  for (std::size_t Index = WordCount; Index != Product.size(); ++Index)
+    Overflow |= Product[Index] != 0;
+  const std::uint32_t HighBits = Left.bitWidth() % 64U;
+  if (HighBits != 0) {
+    const std::uint64_t HighMask = (std::uint64_t{1} << HighBits) - 1U;
+    Overflow |= (Product[WordCount - 1U] & ~HighMask) != 0;
+    Product[WordCount - 1U] &= HighMask;
+  }
+  Product.resize(WordCount);
+  auto Value = APInt::create(Left.bitWidth(), Product);
+  if (!Value)
+    return std::unexpected(Value.error());
+  return MaskProduct{.Value = std::move(*Value), .Overflow = Overflow};
+}
+
+[[nodiscard]] std::uint32_t countTrailingOnes(const APInt &Value) noexcept {
+  std::uint32_t Count = 0;
+  while (Count != Value.bitWidth() && Value.testBit(Count))
+    ++Count;
+  return Count;
+}
+
 [[nodiscard]] Expected<APInt> constantAtWidth(const APInt &Value, std::uint32_t BitWidth) {
   return resizeMask(Value, BitWidth);
 }
@@ -320,6 +387,138 @@ Expected<GISelValueTracking::KnownBits> GISelValueTracking::getKnownBits(Registe
     if (!LeftOneRightZero)
       return std::unexpected(LeftOneRightZero.error());
     auto KnownOne = mergeMasks(*LeftZeroRightOne, *LeftOneRightZero);
+    if (!KnownOne)
+      return std::unexpected(KnownOne.error());
+    return KnownBits{.Zero = std::move(*KnownZero), .One = std::move(*KnownOne)};
+  }
+
+  if (Opcode == GenericOpcode::G_ADD) {
+    const auto Right = registerOperand(*Definition, 2);
+    if (!Right)
+      return Unknown;
+    auto LeftBits = getKnownBits(*Source, Depth + 1U);
+    if (!LeftBits)
+      return std::unexpected(LeftBits.error());
+    auto RightBits = getKnownBits(*Right, Depth + 1U);
+    if (!RightBits)
+      return std::unexpected(RightBits.error());
+
+    auto LeftMaximum = LeftBits->Zero.bitwiseNot();
+    if (!LeftMaximum)
+      return std::unexpected(LeftMaximum.error());
+    auto RightMaximum = RightBits->Zero.bitwiseNot();
+    if (!RightMaximum)
+      return std::unexpected(RightMaximum.error());
+    auto PossibleSumZero = addMasks(*LeftMaximum, *RightMaximum);
+    if (!PossibleSumZero)
+      return std::unexpected(PossibleSumZero.error());
+    auto PossibleSumOne = addMasks(LeftBits->One, RightBits->One);
+    if (!PossibleSumOne)
+      return std::unexpected(PossibleSumOne.error());
+
+    auto CarryKnownZero = PossibleSumZero->bitwiseXor(LeftBits->Zero);
+    if (!CarryKnownZero)
+      return std::unexpected(CarryKnownZero.error());
+    CarryKnownZero = CarryKnownZero->bitwiseXor(RightBits->Zero);
+    if (!CarryKnownZero)
+      return std::unexpected(CarryKnownZero.error());
+    CarryKnownZero = CarryKnownZero->bitwiseNot();
+    if (!CarryKnownZero)
+      return std::unexpected(CarryKnownZero.error());
+    auto CarryKnownOne = PossibleSumOne->bitwiseXor(LeftBits->One);
+    if (!CarryKnownOne)
+      return std::unexpected(CarryKnownOne.error());
+    CarryKnownOne = CarryKnownOne->bitwiseXor(RightBits->One);
+    if (!CarryKnownOne)
+      return std::unexpected(CarryKnownOne.error());
+
+    auto LeftKnown = mergeMasks(LeftBits->Zero, LeftBits->One);
+    if (!LeftKnown)
+      return std::unexpected(LeftKnown.error());
+    auto RightKnown = mergeMasks(RightBits->Zero, RightBits->One);
+    if (!RightKnown)
+      return std::unexpected(RightKnown.error());
+    auto CarryKnown = mergeMasks(*CarryKnownZero, *CarryKnownOne);
+    if (!CarryKnown)
+      return std::unexpected(CarryKnown.error());
+    auto Known = intersectMasks(*LeftKnown, *RightKnown);
+    if (!Known)
+      return std::unexpected(Known.error());
+    Known = intersectMasks(*Known, *CarryKnown);
+    if (!Known)
+      return std::unexpected(Known.error());
+
+    auto NotPossibleSumZero = PossibleSumZero->bitwiseNot();
+    if (!NotPossibleSumZero)
+      return std::unexpected(NotPossibleSumZero.error());
+    auto KnownZero = intersectMasks(*NotPossibleSumZero, *Known);
+    if (!KnownZero)
+      return std::unexpected(KnownZero.error());
+    auto KnownOne = intersectMasks(*PossibleSumOne, *Known);
+    if (!KnownOne)
+      return std::unexpected(KnownOne.error());
+    return KnownBits{.Zero = std::move(*KnownZero), .One = std::move(*KnownOne)};
+  }
+
+  if (Opcode == GenericOpcode::G_MUL) {
+    const auto Right = registerOperand(*Definition, 2);
+    if (!Right)
+      return Unknown;
+    auto LeftBits = getKnownBits(*Source, Depth + 1U);
+    if (!LeftBits)
+      return std::unexpected(LeftBits.error());
+    auto RightBits = getKnownBits(*Right, Depth + 1U);
+    if (!RightBits)
+      return std::unexpected(RightBits.error());
+
+    auto LeftMaximum = LeftBits->Zero.bitwiseNot();
+    if (!LeftMaximum)
+      return std::unexpected(LeftMaximum.error());
+    auto RightMaximum = RightBits->Zero.bitwiseNot();
+    if (!RightMaximum)
+      return std::unexpected(RightMaximum.error());
+    auto MaximumProduct = multiplyMasks(*LeftMaximum, *RightMaximum);
+    if (!MaximumProduct)
+      return std::unexpected(MaximumProduct.error());
+    const std::uint32_t LeadingZeroes =
+        MaximumProduct->Overflow
+            ? 0
+            : BitWidth - static_cast<std::uint32_t>(MaximumProduct->Value.activeBitWidth());
+
+    auto LeftKnown = mergeMasks(LeftBits->Zero, LeftBits->One);
+    if (!LeftKnown)
+      return std::unexpected(LeftKnown.error());
+    auto RightKnown = mergeMasks(RightBits->Zero, RightBits->One);
+    if (!RightKnown)
+      return std::unexpected(RightKnown.error());
+    const std::uint32_t LeftTrailingKnown = countTrailingOnes(*LeftKnown);
+    const std::uint32_t RightTrailingKnown = countTrailingOnes(*RightKnown);
+    const std::uint32_t LeftTrailingZeroes = countTrailingOnes(LeftBits->Zero);
+    const std::uint32_t RightTrailingZeroes = countTrailingOnes(RightBits->Zero);
+    const std::uint32_t TrailingZeroes = LeftTrailingZeroes + RightTrailingZeroes;
+    const std::uint32_t SmallestOperand =
+        std::min(LeftTrailingKnown - LeftTrailingZeroes, RightTrailingKnown - RightTrailingZeroes);
+    const std::uint32_t ResultBitsKnown = std::min(SmallestOperand + TrailingZeroes, BitWidth);
+
+    auto BottomKnown = multiplyMasks(LeftBits->One, RightBits->One);
+    if (!BottomKnown)
+      return std::unexpected(BottomKnown.error());
+    auto LowMask = APInt::getLowBitsSet(BitWidth, ResultBitsKnown);
+    if (!LowMask)
+      return std::unexpected(LowMask.error());
+    auto NotBottomKnown = BottomKnown->Value.bitwiseNot();
+    if (!NotBottomKnown)
+      return std::unexpected(NotBottomKnown.error());
+    auto KnownZero = intersectMasks(*NotBottomKnown, *LowMask);
+    if (!KnownZero)
+      return std::unexpected(KnownZero.error());
+    auto HighZero = highBitsMask(BitWidth, BitWidth - LeadingZeroes);
+    if (!HighZero)
+      return std::unexpected(HighZero.error());
+    KnownZero = mergeMasks(*KnownZero, *HighZero);
+    if (!KnownZero)
+      return std::unexpected(KnownZero.error());
+    auto KnownOne = intersectMasks(BottomKnown->Value, *LowMask);
     if (!KnownOne)
       return std::unexpected(KnownOne.error());
     return KnownBits{.Zero = std::move(*KnownZero), .One = std::move(*KnownOne)};

@@ -244,6 +244,8 @@ public:
   [[nodiscard]] Expected<MachineInstr *> buildUndef(MachineIRBuilderResult Destination) const;
   [[nodiscard]] Expected<MachineInstr *> buildAnyExtOrTrunc(MachineIRBuilderResult Destination,
                                                             Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildZExtOrTrunc(MachineIRBuilderResult Destination,
+                                                          Register Source) const;
   [[nodiscard]] Expected<MachineInstr *> buildSExtOrTrunc(MachineIRBuilderResult Destination,
                                                           Register Source) const;
   [[nodiscard]] virtual Expected<MachineInstr *> buildConstant(MachineIRBuilderResult Destination,

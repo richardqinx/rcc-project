@@ -109,6 +109,50 @@ struct ScalarLayout final {
   return resultRegister(**Built);
 }
 
+[[nodiscard]] Expected<Register>
+buildFlaggedBinaryInstruction(MachineIRBuilder &Builder, GenericOpcode Generic, LowLevelType Type,
+                              Register Left, Register Right, MachineInstrFlags Flags) {
+  auto Destination = Builder.function().registerInfo().createVirtualRegister(Type);
+  if (!Destination)
+    return std::unexpected(Destination.error());
+  auto Pending = Builder.buildInstr(opcode(Generic));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  if (auto Added = Pending->addDef(*Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Left); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Pending->addUse(Right); !Added)
+    return std::unexpected(Added.error());
+  if (auto Set = Pending->setFlags(Flags); !Set)
+    return std::unexpected(Set.error());
+  if (auto Built = Pending->build(); !Built)
+    return std::unexpected(Built.error());
+  return *Destination;
+}
+
+[[nodiscard]] Expected<APInt> repeatedByte(std::uint32_t BitWidth, std::uint8_t Byte) {
+  if (BitWidth == 0 || BitWidth > APInt::MaxBitWidth || BitWidth % 8U != 0)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "repeated-byte integer has an invalid bit width");
+  constexpr std::uint64_t ByteSplat = 0x0101010101010101ULL;
+  std::vector<std::uint64_t> Words((static_cast<std::size_t>(BitWidth) + 63U) / 64U,
+                                   ByteSplat * Byte);
+  const std::uint32_t HighBits = BitWidth % 64U;
+  if (HighBits != 0)
+    Words.back() &= (std::uint64_t{1} << HighBits) - 1U;
+  return APInt::create(BitWidth, Words);
+}
+
+[[nodiscard]] Expected<APInt> oneBitSet(std::uint32_t BitWidth, std::uint32_t Bit) {
+  if (BitWidth == 0 || BitWidth > APInt::MaxBitWidth || Bit >= BitWidth)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "single-bit integer has an invalid bit position");
+  std::vector<std::uint64_t> Words((static_cast<std::size_t>(BitWidth) + 63U) / 64U, 0);
+  Words[Bit / 64U] = std::uint64_t{1} << (Bit % 64U);
+  return APInt::create(BitWidth, Words);
+}
+
 [[nodiscard]] Expected<Register> buildICmpRegister(MachineIRBuilder &Builder,
                                                    IntegerPredicate Predicate,
                                                    LowLevelType ResultType, Register Left,
@@ -1118,6 +1162,109 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
+
+  case GenericOpcode::G_CTTZ:
+  case GenericOpcode::G_CTTZ_ZERO_POISON:
+  case GenericOpcode::G_CTLZ:
+  case GenericOpcode::G_CTLZ_ZERO_POISON:
+  case GenericOpcode::G_CTLS:
+  case GenericOpcode::G_CTPOP: {
+    const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+    if (TypeIndex == 0) {
+      if (auto Result = Apply(WidenDestination()); !Result)
+        return Result;
+      break;
+    }
+    if (TypeIndex != 1)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "bit-count widening has an invalid type index");
+
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const MachineOperand *SourceOperand = Instruction.operandAt(1);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+    if (Destination == nullptr || Source == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "bit-count widening requires register operands");
+    auto SourceType = MRI.getType(*Source);
+    if (!SourceType)
+      return std::unexpected(SourceType.error());
+
+    GenericOpcode ExtensionOpcode = GenericOpcode::G_ZEXT;
+    switch (Generic) {
+    case GenericOpcode::G_CTTZ:
+    case GenericOpcode::G_CTTZ_ZERO_POISON:
+    case GenericOpcode::G_CTLZ_ZERO_POISON:
+      ExtensionOpcode = GenericOpcode::G_ANYEXT;
+      break;
+    case GenericOpcode::G_CTLS:
+      ExtensionOpcode = GenericOpcode::G_SEXT;
+      break;
+    default:
+      break;
+    }
+
+    auto WideSource = buildResultInstruction(MIRBuilder, ExtensionOpcode, WideType, {*Source});
+    if (!WideSource)
+      return std::unexpected(WideSource.error());
+    GenericOpcode WideOpcode = Generic;
+    if (Generic == GenericOpcode::G_CTTZ) {
+      auto TopBitValue = oneBitSet(WideType.scalarBitWidth(), SourceType->scalarBitWidth());
+      if (!TopBitValue)
+        return std::unexpected(TopBitValue.error());
+      auto TopBit = buildConstantRegister(MIRBuilder, WideType, std::move(*TopBitValue));
+      if (!TopBit)
+        return std::unexpected(TopBit.error());
+      auto NonZeroSource =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, WideType, {*WideSource, *TopBit});
+      if (!NonZeroSource)
+        return std::unexpected(NonZeroSource.error());
+      WideSource = *NonZeroSource;
+      WideOpcode = GenericOpcode::G_CTTZ_ZERO_POISON;
+    }
+
+    const std::uint32_t SizeDifference = WideType.scalarBitWidth() - SourceType->scalarBitWidth();
+    if (Generic == GenericOpcode::G_CTLZ_ZERO_POISON) {
+      auto ShiftAmount =
+          buildConstantRegister(MIRBuilder, WideType, static_cast<std::int64_t>(SizeDifference));
+      if (!ShiftAmount)
+        return std::unexpected(ShiftAmount.error());
+      auto Shifted = buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, WideType,
+                                            {*WideSource, *ShiftAmount});
+      if (!Shifted)
+        return std::unexpected(Shifted.error());
+      WideSource = *Shifted;
+    }
+
+    auto Result = buildResultInstruction(MIRBuilder, WideOpcode, WideType, {*WideSource});
+    if (!Result)
+      return std::unexpected(Result.error());
+    if (Generic == GenericOpcode::G_CTLZ || Generic == GenericOpcode::G_CTLS) {
+      auto Difference =
+          buildConstantRegister(MIRBuilder, WideType, static_cast<std::int64_t>(SizeDifference));
+      if (!Difference)
+        return std::unexpected(Difference.error());
+      if (Generic == GenericOpcode::G_CTLZ) {
+        Result = buildFlaggedBinaryInstruction(MIRBuilder, GenericOpcode::G_SUB, WideType, *Result,
+                                               *Difference,
+                                               MachineInstrFlags{MachineInstrFlag::NoUnsignedWrap});
+      } else {
+        Result = buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, WideType,
+                                        {*Result, *Difference});
+      }
+      if (!Result)
+        return std::unexpected(Result.error());
+    }
+
+    if (auto Built = MIRBuilder.buildZExtOrTrunc(*Destination, *Result); !Built)
+      return std::unexpected(Built.error());
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "bit-count instruction became detached during widening");
+    return Block->removeInstruction(Instruction);
+  }
 
   case GenericOpcode::G_BSWAP: {
     if (TypeIndex != 0)
@@ -3007,6 +3154,13 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   case GenericOpcode::G_SDIVREM:
   case GenericOpcode::G_UDIVREM:
     return lowerDivRem(Instruction);
+  case GenericOpcode::G_CTLZ_ZERO_POISON:
+  case GenericOpcode::G_CTTZ_ZERO_POISON:
+  case GenericOpcode::G_CTLZ:
+  case GenericOpcode::G_CTTZ:
+  case GenericOpcode::G_CTPOP:
+  case GenericOpcode::G_CTLS:
+    return lowerBitCount(Instruction);
   case GenericOpcode::G_BSWAP:
     return lowerBswap(Instruction);
   case GenericOpcode::G_ROTL:
@@ -3570,6 +3724,379 @@ Expected<void> LegalizerHelper::lowerDivRem(MachineInstr &Instruction) {
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError, "DIVREM became detached during lowering");
   return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerBitCount(MachineInstr &Instruction) {
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  MachineOperand *SourceOperand = Instruction.operandAt(1);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+  if (Destination == nullptr || Source == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "bit-count lowering requires register operands");
+  auto DestinationType = MRI.getType(*Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  auto SourceType = MRI.getType(*Source);
+  if (!SourceType)
+    return std::unexpected(SourceType.error());
+  if (!DestinationType->isCategoryNeutralScalar() || !SourceType->isCategoryNeutralScalar())
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "non-scalar bit-count lowering is not implemented");
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+
+  const auto IsSupported = [this](GenericOpcode Opcode, LowLevelType ResultType,
+                                  LowLevelType OperandType) -> Expected<bool> {
+    auto Decision = Info.getDecision(LegalizationQuery(opcode(Opcode), {ResultType, OperandType}));
+    if (!Decision)
+      return std::unexpected(Decision.error());
+    return Decision->Action == LegalizationAction::Legal ||
+           Decision->Action == LegalizationAction::Libcall ||
+           Decision->Action == LegalizationAction::Custom;
+  };
+  const auto EraseOriginal = [&Instruction]() -> Expected<void> {
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "bit-count instruction became detached during lowering");
+    return Block->removeInstruction(Instruction);
+  };
+
+  switch (Generic) {
+  case GenericOpcode::G_CTLZ_ZERO_POISON:
+  case GenericOpcode::G_CTTZ_ZERO_POISON: {
+    const GenericOpcode Replacement = Generic == GenericOpcode::G_CTLZ_ZERO_POISON
+                                          ? GenericOpcode::G_CTLZ
+                                          : GenericOpcode::G_CTTZ;
+    Observer.changingInstr(Instruction);
+    if (auto Changed = Instruction.setOpcode(opcode(Replacement)); !Changed)
+      return std::unexpected(Changed.error());
+    Observer.changedInstr(Instruction);
+    return {};
+  }
+
+  case GenericOpcode::G_CTLZ: {
+    const std::uint32_t Size = SourceType->scalarBitWidth();
+    auto PoisonSupported =
+        IsSupported(GenericOpcode::G_CTLZ_ZERO_POISON, *DestinationType, *SourceType);
+    if (!PoisonSupported)
+      return std::unexpected(PoisonSupported.error());
+    if (*PoisonSupported) {
+      auto PoisonCount = buildResultInstruction(MIRBuilder, GenericOpcode::G_CTLZ_ZERO_POISON,
+                                                *DestinationType, {*Source});
+      if (!PoisonCount)
+        return std::unexpected(PoisonCount.error());
+      auto Zero = buildConstantRegister(MIRBuilder, *SourceType, 0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      auto ConditionType = booleanTypeFor(*SourceType);
+      if (!ConditionType)
+        return std::unexpected(ConditionType.error());
+      auto IsZero =
+          buildICmpRegister(MIRBuilder, IntegerPredicate::Equal, *ConditionType, *Source, *Zero);
+      if (!IsZero)
+        return std::unexpected(IsZero.error());
+      auto SizeConstant =
+          buildConstantRegister(MIRBuilder, *DestinationType, static_cast<std::int64_t>(Size));
+      if (!SizeConstant)
+        return std::unexpected(SizeConstant.error());
+      if (auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {*Destination},
+                                             {*IsZero, *SizeConstant, *PoisonCount});
+          !Built) {
+        return std::unexpected(Built.error());
+      }
+      return EraseOriginal();
+    }
+
+    Register Value = *Source;
+    const std::uint32_t ExpandedSize = std::bit_ceil(Size);
+    for (std::uint32_t Shift = 1; Shift <= ExpandedSize / 2U; Shift <<= 1U) {
+      auto ShiftAmount =
+          buildConstantRegister(MIRBuilder, *SourceType, static_cast<std::int64_t>(Shift));
+      if (!ShiftAmount)
+        return std::unexpected(ShiftAmount.error());
+      auto Shifted = buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *SourceType,
+                                            {Value, *ShiftAmount});
+      if (!Shifted)
+        return std::unexpected(Shifted.error());
+      auto Propagated =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, *SourceType, {Value, *Shifted});
+      if (!Propagated)
+        return std::unexpected(Propagated.error());
+      Value = *Propagated;
+    }
+    auto Population =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_CTPOP, *DestinationType, {Value});
+    if (!Population)
+      return std::unexpected(Population.error());
+    auto SizeConstant =
+        buildConstantRegister(MIRBuilder, *DestinationType, static_cast<std::int64_t>(Size));
+    if (!SizeConstant)
+      return std::unexpected(SizeConstant.error());
+    if (auto Built = MIRBuilder.buildSub(*Destination, *SizeConstant, *Population); !Built)
+      return std::unexpected(Built.error());
+    return EraseOriginal();
+  }
+
+  case GenericOpcode::G_CTTZ: {
+    const std::uint32_t Size = SourceType->scalarBitWidth();
+    auto PoisonSupported =
+        IsSupported(GenericOpcode::G_CTTZ_ZERO_POISON, *DestinationType, *SourceType);
+    if (!PoisonSupported)
+      return std::unexpected(PoisonSupported.error());
+    if (*PoisonSupported) {
+      auto PoisonCount = buildResultInstruction(MIRBuilder, GenericOpcode::G_CTTZ_ZERO_POISON,
+                                                *DestinationType, {*Source});
+      if (!PoisonCount)
+        return std::unexpected(PoisonCount.error());
+      auto Zero = buildConstantRegister(MIRBuilder, *SourceType, 0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      auto ConditionType = booleanTypeFor(*DestinationType);
+      if (!ConditionType)
+        return std::unexpected(ConditionType.error());
+      auto IsZero =
+          buildICmpRegister(MIRBuilder, IntegerPredicate::Equal, *ConditionType, *Source, *Zero);
+      if (!IsZero)
+        return std::unexpected(IsZero.error());
+      auto SizeConstant =
+          buildConstantRegister(MIRBuilder, *DestinationType, static_cast<std::int64_t>(Size));
+      if (!SizeConstant)
+        return std::unexpected(SizeConstant.error());
+      if (auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {*Destination},
+                                             {*IsZero, *SizeConstant, *PoisonCount});
+          !Built) {
+        return std::unexpected(Built.error());
+      }
+      return EraseOriginal();
+    }
+
+    auto MinusOne = buildConstantRegister(MIRBuilder, *SourceType, -1);
+    if (!MinusOne)
+      return std::unexpected(MinusOne.error());
+    auto Inverted =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_XOR, *SourceType, {*Source, *MinusOne});
+    if (!Inverted)
+      return std::unexpected(Inverted.error());
+    auto Decremented =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, *SourceType, {*Source, *MinusOne});
+    if (!Decremented)
+      return std::unexpected(Decremented.error());
+    auto Masked = buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *SourceType,
+                                         {*Inverted, *Decremented});
+    if (!Masked)
+      return std::unexpected(Masked.error());
+
+    auto PopulationSupported = IsSupported(GenericOpcode::G_CTPOP, *SourceType, *SourceType);
+    if (!PopulationSupported)
+      return std::unexpected(PopulationSupported.error());
+    auto LeadingZeroSupported = IsSupported(GenericOpcode::G_CTLZ, *SourceType, *SourceType);
+    if (!LeadingZeroSupported)
+      return std::unexpected(LeadingZeroSupported.error());
+    if (!*PopulationSupported && *LeadingZeroSupported) {
+      auto SizeConstant =
+          buildConstantRegister(MIRBuilder, *SourceType, static_cast<std::int64_t>(Size));
+      if (!SizeConstant)
+        return std::unexpected(SizeConstant.error());
+      auto LeadingZeros =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_CTLZ, *SourceType, {*Masked});
+      if (!LeadingZeros)
+        return std::unexpected(LeadingZeros.error());
+      if (auto Built = MIRBuilder.buildSub(*Destination, *SizeConstant, *LeadingZeros); !Built)
+        return std::unexpected(Built.error());
+      return EraseOriginal();
+    }
+
+    Observer.changingInstr(Instruction);
+    if (auto Changed = Instruction.setOpcode(opcode(GenericOpcode::G_CTPOP)); !Changed)
+      return std::unexpected(Changed.error());
+    if (auto Changed = SourceOperand->setRegister(*Masked); !Changed)
+      return std::unexpected(Changed.error());
+    Observer.changedInstr(Instruction);
+    return {};
+  }
+
+  case GenericOpcode::G_CTPOP: {
+    const std::uint32_t Size = SourceType->scalarBitWidth();
+    if (Size > 128 || Size % 8U != 0)
+      return makeUnexpected(
+          ErrorCode::Unsupported,
+          "population-count lowering requires a byte-sized scalar up to 128 bits");
+
+    auto One = buildConstantRegister(MIRBuilder, *SourceType, 1);
+    if (!One)
+      return std::unexpected(One.error());
+    auto ShiftedByOne =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *SourceType, {*Source, *One});
+    if (!ShiftedByOne)
+      return std::unexpected(ShiftedByOne.error());
+    auto PairMaskValue = repeatedByte(Size, 0x55);
+    if (!PairMaskValue)
+      return std::unexpected(PairMaskValue.error());
+    auto PairMask = buildConstantRegister(MIRBuilder, *SourceType, std::move(*PairMaskValue));
+    if (!PairMask)
+      return std::unexpected(PairMask.error());
+    auto HighPairBits = buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *SourceType,
+                                               {*ShiftedByOne, *PairMask});
+    if (!HighPairBits)
+      return std::unexpected(HighPairBits.error());
+    auto PairCounts = buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *SourceType,
+                                             {*Source, *HighPairBits});
+    if (!PairCounts)
+      return std::unexpected(PairCounts.error());
+
+    auto Two = buildConstantRegister(MIRBuilder, *SourceType, 2);
+    if (!Two)
+      return std::unexpected(Two.error());
+    auto ShiftedPairs =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *SourceType, {*PairCounts, *Two});
+    if (!ShiftedPairs)
+      return std::unexpected(ShiftedPairs.error());
+    auto NibbleMaskValue = repeatedByte(Size, 0x33);
+    if (!NibbleMaskValue)
+      return std::unexpected(NibbleMaskValue.error());
+    auto NibbleMask = buildConstantRegister(MIRBuilder, *SourceType, std::move(*NibbleMaskValue));
+    if (!NibbleMask)
+      return std::unexpected(NibbleMask.error());
+    auto HighNibbleCounts = buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *SourceType,
+                                                   {*ShiftedPairs, *NibbleMask});
+    if (!HighNibbleCounts)
+      return std::unexpected(HighNibbleCounts.error());
+    auto LowNibbleCounts = buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *SourceType,
+                                                  {*PairCounts, *NibbleMask});
+    if (!LowNibbleCounts)
+      return std::unexpected(LowNibbleCounts.error());
+    auto NibbleCounts = buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, *SourceType,
+                                               {*HighNibbleCounts, *LowNibbleCounts});
+    if (!NibbleCounts)
+      return std::unexpected(NibbleCounts.error());
+
+    auto Four = buildConstantRegister(MIRBuilder, *SourceType, 4);
+    if (!Four)
+      return std::unexpected(Four.error());
+    auto ShiftedNibbles = buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *SourceType,
+                                                 {*NibbleCounts, *Four});
+    if (!ShiftedNibbles)
+      return std::unexpected(ShiftedNibbles.error());
+    auto DirtyByteCounts = buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, *SourceType,
+                                                  {*ShiftedNibbles, *NibbleCounts});
+    if (!DirtyByteCounts)
+      return std::unexpected(DirtyByteCounts.error());
+    auto ByteMaskValue = repeatedByte(Size, 0x0f);
+    if (!ByteMaskValue)
+      return std::unexpected(ByteMaskValue.error());
+    auto ByteMask = buildConstantRegister(MIRBuilder, *SourceType, std::move(*ByteMaskValue));
+    if (!ByteMask)
+      return std::unexpected(ByteMask.error());
+    auto ByteCounts = buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *SourceType,
+                                             {*DirtyByteCounts, *ByteMask});
+    if (!ByteCounts)
+      return std::unexpected(ByteCounts.error());
+
+    if (Size == 16) {
+      auto Eight = buildConstantRegister(MIRBuilder, *SourceType, 8);
+      if (!Eight)
+        return std::unexpected(Eight.error());
+      auto HighByteCount = buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *SourceType,
+                                                  {*ByteCounts, *Eight});
+      if (!HighByteCount)
+        return std::unexpected(HighByteCount.error());
+      auto Sum = buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, *SourceType,
+                                        {*ByteCounts, *HighByteCount});
+      if (!Sum)
+        return std::unexpected(Sum.error());
+      auto ResultMaskValue = APInt::fromUnsigned(Size, 0xff);
+      if (!ResultMaskValue)
+        return std::unexpected(ResultMaskValue.error());
+      auto ResultMask = buildConstantRegister(MIRBuilder, *SourceType, std::move(*ResultMaskValue));
+      if (!ResultMask)
+        return std::unexpected(ResultMask.error());
+      if (auto Built = MIRBuilder.buildAnd(*Destination, *Sum, *ResultMask); !Built)
+        return std::unexpected(Built.error());
+      return EraseOriginal();
+    }
+
+    auto MultiplyMaskValue = repeatedByte(Size, 0x01);
+    if (!MultiplyMaskValue)
+      return std::unexpected(MultiplyMaskValue.error());
+    auto MultiplyMask =
+        buildConstantRegister(MIRBuilder, *SourceType, std::move(*MultiplyMaskValue));
+    if (!MultiplyMask)
+      return std::unexpected(MultiplyMask.error());
+    auto FinalShift =
+        buildConstantRegister(MIRBuilder, *SourceType, static_cast<std::int64_t>(Size - 8U));
+    if (!FinalShift)
+      return std::unexpected(FinalShift.error());
+
+    auto MultiplyDecision =
+        Info.getDecision(LegalizationQuery(opcode(GenericOpcode::G_MUL), {*SourceType}));
+    if (!MultiplyDecision)
+      return std::unexpected(MultiplyDecision.error());
+    const bool IsMultiplySupported = MultiplyDecision->Action == LegalizationAction::Legal ||
+                                     MultiplyDecision->Action == LegalizationAction::WidenScalar ||
+                                     MultiplyDecision->Action == LegalizationAction::Custom;
+    if (IsMultiplySupported) {
+      auto Product = buildResultInstruction(MIRBuilder, GenericOpcode::G_MUL, *SourceType,
+                                            {*ByteCounts, *MultiplyMask});
+      if (!Product)
+        return std::unexpected(Product.error());
+      if (auto Built = MIRBuilder.buildLShr(*Destination, *Product, *FinalShift); !Built)
+        return std::unexpected(Built.error());
+    } else {
+      Register Sum = *ByteCounts;
+      for (std::uint32_t Shift = 8; Shift < Size; Shift *= 2U) {
+        auto ShiftAmount =
+            buildConstantRegister(MIRBuilder, *SourceType, static_cast<std::int64_t>(Shift));
+        if (!ShiftAmount)
+          return std::unexpected(ShiftAmount.error());
+        auto Shifted = buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, *SourceType,
+                                              {Sum, *ShiftAmount});
+        if (!Shifted)
+          return std::unexpected(Shifted.error());
+        auto NewSum =
+            buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, *SourceType, {Sum, *Shifted});
+        if (!NewSum)
+          return std::unexpected(NewSum.error());
+        Sum = *NewSum;
+      }
+      if (auto Built = MIRBuilder.buildLShr(*Destination, Sum, *FinalShift); !Built)
+        return std::unexpected(Built.error());
+    }
+    return EraseOriginal();
+  }
+
+  case GenericOpcode::G_CTLS: {
+    auto SignIndex = buildConstantRegister(
+        MIRBuilder, *SourceType, static_cast<std::int64_t>(SourceType->scalarBitWidth() - 1U));
+    if (!SignIndex)
+      return std::unexpected(SignIndex.error());
+    auto One = buildConstantRegister(MIRBuilder, *DestinationType, 1);
+    if (!One)
+      return std::unexpected(One.error());
+    auto Sign = buildResultInstruction(MIRBuilder, GenericOpcode::G_ASHR, *SourceType,
+                                       {*Source, *SignIndex});
+    if (!Sign)
+      return std::unexpected(Sign.error());
+    auto DifferentBits =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_XOR, *SourceType, {*Source, *Sign});
+    if (!DifferentBits)
+      return std::unexpected(DifferentBits.error());
+    auto LeadingZeros = buildResultInstruction(MIRBuilder, GenericOpcode::G_CTLZ, *DestinationType,
+                                               {*DifferentBits});
+    if (!LeadingZeros)
+      return std::unexpected(LeadingZeros.error());
+    if (auto Built = MIRBuilder.buildSub(*Destination, *LeadingZeros, *One); !Built)
+      return std::unexpected(Built.error());
+    return EraseOriginal();
+  }
+
+  default:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "bit-count lowering received an unexpected opcode");
+  }
 }
 
 Expected<void> LegalizerHelper::lowerBswap(MachineInstr &Instruction) {

@@ -369,21 +369,36 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
   else
     ByteSwapActions.maxScalar(0, S64).lower();
 
-  getActionDefinitionsBuilder(
-      {opcode(GenericOpcode::G_CTLZ), opcode(GenericOpcode::G_CTTZ), opcode(GenericOpcode::G_CTLS)})
+  auto &CountZerosActions =
+      getActionDefinitionsBuilder({opcode(GenericOpcode::G_CTLZ), opcode(GenericOpcode::G_CTTZ)});
+  auto &CountZerosPoisonActions = getActionDefinitionsBuilder(
+      {opcode(GenericOpcode::G_CTLZ_ZERO_POISON), opcode(GenericOpcode::G_CTTZ_ZERO_POISON)});
+  if (HasZbb) {
+    CountZerosActions.legalFor({{S64, S64}})
+        .customFor({{S32, S32}})
+        .clampScalar(0, S32, S64)
+        .widenScalarToNextPow2(0)
+        .scalarSameSizeAs(1, 0);
+  } else {
+    CountZerosActions.maxScalar(0, S64).scalarSameSizeAs(1, 0).lower();
+    CountZerosPoisonActions.maxScalar(0, S64).scalarSameSizeAs(1, 0);
+  }
+  CountZerosPoisonActions.lower();
+
+  getActionDefinitionsBuilder(opcode(GenericOpcode::G_CTLS))
       .maxScalar(0, S64)
       .scalarSameSizeAs(1, 0)
       .lower();
-  getActionDefinitionsBuilder(
-      {opcode(GenericOpcode::G_CTLZ_ZERO_POISON), opcode(GenericOpcode::G_CTTZ_ZERO_POISON)})
-      .maxScalar(0, S64)
-      .scalarSameSizeAs(1, 0)
-      .lower();
-  getActionDefinitionsBuilder(opcode(GenericOpcode::G_CTPOP))
-      .widenScalarToNextPow2(0, 8)
-      .clampScalar(0, S8, S64)
-      .scalarSameSizeAs(1, 0)
-      .lower();
+
+  auto &CountPopulationActions = getActionDefinitionsBuilder(opcode(GenericOpcode::G_CTPOP));
+  if (HasZbb) {
+    CountPopulationActions.legalFor({{S64, S64}}).clampScalar(0, S64, S64).scalarSameSizeAs(1, 0);
+  } else {
+    CountPopulationActions.widenScalarToNextPow2(0, 8)
+        .clampScalar(0, S8, S64)
+        .scalarSameSizeAs(1, 0)
+        .lower();
+  }
 
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_CONSTANT))
       .legalFor({P0})
@@ -812,6 +827,28 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 2, GenericOpcode::G_ANYEXT);
         !Widened)
       return std::unexpected(Widened.error());
+    if (auto Widened = Helper.widenScalarDst(Instruction, *XLenType); !Widened)
+      return std::unexpected(Widened.error());
+    auto WordOpcode = getRISCVWOpcode(static_cast<GenericOpcode>(Instruction.opcode().value()));
+    if (!WordOpcode)
+      return std::unexpected(WordOpcode.error());
+    if (auto Changed = Instruction.setOpcode(*WordOpcode); !Changed)
+      return std::unexpected(Changed.error());
+    Helper.Observer.changedInstr(Instruction);
+    return {};
+  }
+  if (Instruction.opcode() == opcode(GenericOpcode::G_CTLZ) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_CTTZ) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_CTLS)) {
+    auto XLenType = LowLevelType::makeCategoryNeutralScalar(64);
+    if (!XLenType)
+      return std::unexpected(XLenType.error());
+
+    Helper.Observer.changingInstr(Instruction);
+    if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 1, GenericOpcode::G_ANYEXT);
+        !Widened) {
+      return std::unexpected(Widened.error());
+    }
     if (auto Widened = Helper.widenScalarDst(Instruction, *XLenType); !Widened)
       return std::unexpected(Widened.error());
     auto WordOpcode = getRISCVWOpcode(static_cast<GenericOpcode>(Instruction.opcode().value()));
