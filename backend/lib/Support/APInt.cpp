@@ -348,6 +348,26 @@ Expected<APInt> APInt::sext(std::uint32_t NewBitWidth) const {
   return create(NewBitWidth, ResultWords);
 }
 
+Expected<APInt> APInt::logicalShiftRight(std::size_t Amount) const {
+  if (BitWidth == 0)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "APInt logical shift requires a nonzero width");
+  std::vector<std::uint64_t> ResultWords(wordCount(BitWidth), 0);
+  if (Amount >= BitWidth)
+    return create(BitWidth, ResultWords);
+
+  const std::size_t WordOffset = Amount / 64U;
+  const unsigned BitOffset = static_cast<unsigned>(Amount % 64U);
+  for (std::size_t Index = 0; Index + WordOffset < Words.size(); ++Index) {
+    std::uint64_t Value = Words[Index + WordOffset] >> BitOffset;
+    if (BitOffset != 0 && Index + WordOffset + 1U < Words.size())
+      Value |= Words[Index + WordOffset + 1U] << (64U - BitOffset);
+    ResultWords[Index] = Value;
+  }
+  ResultWords.back() &= highWordMask(BitWidth);
+  return create(BitWidth, ResultWords);
+}
+
 int APInt::compare(const APInt &Other) const noexcept {
   const std::size_t LeftCount = significantWordCount(Words);
   const std::size_t RightCount = significantWordCount(Other.Words);

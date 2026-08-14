@@ -693,54 +693,50 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
   auto &StoreRules = getActionDefinitionsBuilder(opcode(GenericOpcode::G_STORE));
   auto &ExtLoadRules = getActionDefinitionsBuilder(
       {opcode(GenericOpcode::G_SEXTLOAD), opcode(GenericOpcode::G_ZEXTLOAD)});
-  const std::uint64_t Align8 =
-      Subtarget.features().has(RISCVSubtargetOption::UnalignedScalarMemory) ? 8 : 8;
-  const std::uint64_t Align16 =
-      Subtarget.features().has(RISCVSubtargetOption::UnalignedScalarMemory) ? 8 : 16;
-  const std::uint64_t Align32 =
-      Subtarget.features().has(RISCVSubtargetOption::UnalignedScalarMemory) ? 8 : 32;
-  const std::uint64_t Align64 =
-      Subtarget.features().has(RISCVSubtargetOption::UnalignedScalarMemory) ? 8 : 64;
+  const auto GetScalarMemAlign = [&Subtarget](std::uint64_t Size) {
+    return Subtarget.features().has(RISCVSubtargetOption::UnalignedScalarMemory) ? 8 : Size;
+  };
   LoadRules
-      .legalForTypesWithMemDesc({{S16, P0, S8, Align8},
-                                 {S32, P0, S8, Align8},
-                                 {S16, P0, S16, Align16},
-                                 {S32, P0, S16, Align16},
-                                 {S32, P0, S32, Align32},
-                                 {S64, P0, S8, Align8},
-                                 {S64, P0, S16, Align16},
-                                 {S64, P0, S32, Align32},
-                                 {S64, P0, S64, Align64},
-                                 {P0, P0, S64, Align64}})
+      .legalForTypesWithMemDesc({{S16, P0, S8, GetScalarMemAlign(8)},
+                                 {S32, P0, S8, GetScalarMemAlign(8)},
+                                 {S16, P0, S16, GetScalarMemAlign(16)},
+                                 {S32, P0, S16, GetScalarMemAlign(16)},
+                                 {S32, P0, S32, GetScalarMemAlign(32)},
+                                 {S64, P0, S8, GetScalarMemAlign(8)},
+                                 {S64, P0, S16, GetScalarMemAlign(16)},
+                                 {S64, P0, S32, GetScalarMemAlign(32)},
+                                 {S64, P0, S64, GetScalarMemAlign(64)},
+                                 {P0, P0, S64, GetScalarMemAlign(64)}})
       .widenScalarToNextPow2(0, 8)
       .lowerIfMemSizeNotByteSizePow2()
       .clampScalar(0, S16, S64)
       .lower();
   StoreRules
-      .legalForTypesWithMemDesc({{S16, P0, S8, Align8},
-                                 {S32, P0, S8, Align8},
-                                 {S16, P0, S16, Align16},
-                                 {S32, P0, S16, Align16},
-                                 {S32, P0, S32, Align32},
-                                 {S64, P0, S8, Align8},
-                                 {S64, P0, S16, Align16},
-                                 {S64, P0, S32, Align32},
-                                 {S64, P0, S64, Align64},
-                                 {P0, P0, S64, Align64}})
+      .legalForTypesWithMemDesc({{S16, P0, S8, GetScalarMemAlign(8)},
+                                 {S32, P0, S8, GetScalarMemAlign(8)},
+                                 {S16, P0, S16, GetScalarMemAlign(16)},
+                                 {S32, P0, S16, GetScalarMemAlign(16)},
+                                 {S32, P0, S32, GetScalarMemAlign(32)},
+                                 {S64, P0, S8, GetScalarMemAlign(8)},
+                                 {S64, P0, S16, GetScalarMemAlign(16)},
+                                 {S64, P0, S32, GetScalarMemAlign(32)},
+                                 {S64, P0, S64, GetScalarMemAlign(64)},
+                                 {P0, P0, S64, GetScalarMemAlign(64)}})
       .clampScalar(0, S16, S64)
       .lowerIfMemSizeNotByteSizePow2()
       .lower();
   ExtLoadRules
-      .legalForTypesWithMemDesc(
-          {{S64, P0, S8, Align8}, {S64, P0, S16, Align16}, {S64, P0, S32, Align32}})
+      .legalForTypesWithMemDesc({{S64, P0, S8, GetScalarMemAlign(8)},
+                                 {S64, P0, S16, GetScalarMemAlign(16)},
+                                 {S64, P0, S32, GetScalarMemAlign(32)}})
       .widenScalarToNextPow2(0)
       .clampScalar(0, S64, S64)
       .lower();
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_FPEXTLOAD))
-      .legalForTypesWithMemDesc({{S64, P0, S32, Align32}})
+      .legalForTypesWithMemDesc({{S64, P0, S32, GetScalarMemAlign(32)}})
       .lower();
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_FPTRUNCSTORE))
-      .legalForTypesWithMemDesc({{S64, P0, S32, Align32}})
+      .legalForTypesWithMemDesc({{S64, P0, S32, GetScalarMemAlign(32)}})
       .lower();
 
   getActionDefinitionsBuilder({opcode(GenericOpcode::G_PTR_ADD), opcode(GenericOpcode::G_PTRMASK)})
@@ -1096,8 +1092,14 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     if (Immediate != nullptr && Type && Type->isCategoryNeutralScalar() &&
         Type->scalarBitWidth() == 64) {
       auto Value = signedImmediate(*Immediate);
-      if (Value && shouldUseRV64IntegerConstantPool(*Value))
-        return lowerConstantToPool(Instruction, Function, Target);
+      if (Value && shouldUseRV64IntegerConstantPool(*Value)) {
+        Helper.Observer.changingInstr(Instruction);
+        auto Lowered = lowerConstantToPool(Instruction, Function, Target);
+        if (!Lowered)
+          return std::unexpected(Lowered.error());
+        Helper.Observer.changedInstr(Instruction);
+        return {};
+      }
       return {};
     }
     return makeUnexpected(ErrorCode::Unsupported,

@@ -54,6 +54,7 @@ public:
   [[nodiscard]] Expected<APInt> trunc(std::uint32_t NewBitWidth) const;
   [[nodiscard]] Expected<APInt> zext(std::uint32_t NewBitWidth) const;
   [[nodiscard]] Expected<APInt> sext(std::uint32_t NewBitWidth) const;
+  [[nodiscard]] Expected<APInt> logicalShiftRight(std::size_t Amount) const;
   [[nodiscard]] int compare(const APInt &Other) const noexcept;
   [[nodiscard]] int compareToShifted(const APInt &Other, std::size_t OtherShift) const noexcept;
 

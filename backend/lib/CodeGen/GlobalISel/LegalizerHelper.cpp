@@ -928,6 +928,14 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     break;
   }
 
+  case GenericOpcode::G_IMPLICIT_DEF:
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "implicit definition widening has an invalid type index");
+    if (auto Result = Apply(WidenDestination()); !Result)
+      return Result;
+    break;
+
   case GenericOpcode::G_SADDO:
   case GenericOpcode::G_SSUBO:
   case GenericOpcode::G_UADDO:
@@ -1357,6 +1365,137 @@ Expected<void> LegalizerHelper::narrowScalarExt(MachineInstr &Instruction, std::
 Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                              LowLevelType NarrowType) {
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
+  case GenericOpcode::G_IMPLICIT_DEF: {
+    const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+    if (Destination == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_IMPLICIT_DEF narrowing requires a register destination");
+    auto DestinationType = MRI.getType(*Destination);
+    if (!DestinationType)
+      return std::unexpected(DestinationType.error());
+
+    const std::uint64_t DestinationSize = DestinationType->minimumBitWidth();
+    const std::uint64_t NarrowSize = NarrowType.minimumBitWidth();
+    if (NarrowSize == 0 || NarrowSize >= DestinationSize)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_IMPLICIT_DEF narrowing requires a smaller nonzero type");
+
+    if (DestinationSize % NarrowSize != 0) {
+      LowLevelType ImplicitType = NarrowType;
+      if (DestinationType->isVector()) {
+        auto VectorType =
+            DestinationType->isScalableVector()
+                ? LowLevelType::makeScalableVector(DestinationType->minimumElementCount(),
+                                                   NarrowType)
+                : LowLevelType::makeFixedVector(DestinationType->minimumElementCount(), NarrowType);
+        if (!VectorType)
+          return std::unexpected(VectorType.error());
+        ImplicitType = *VectorType;
+      }
+      auto Implicit = MIRBuilder.buildUndef(ImplicitType);
+      if (!Implicit)
+        return std::unexpected(Implicit.error());
+      auto ImplicitReg = resultRegister(**Implicit);
+      if (!ImplicitReg)
+        return std::unexpected(ImplicitReg.error());
+      if (auto Extended = MIRBuilder.buildAnyExt(*Destination, *ImplicitReg); !Extended)
+        return std::unexpected(Extended.error());
+    } else {
+      const std::size_t PartCount = static_cast<std::size_t>(DestinationSize / NarrowSize);
+      std::vector<Register> Parts;
+      Parts.reserve(PartCount);
+      for (std::size_t Index = 0; Index != PartCount; ++Index) {
+        auto Part = MIRBuilder.buildUndef(NarrowType);
+        if (!Part)
+          return std::unexpected(Part.error());
+        auto PartReg = resultRegister(**Part);
+        if (!PartReg)
+          return std::unexpected(PartReg.error());
+        Parts.push_back(*PartReg);
+      }
+      if (auto Merged = MIRBuilder.buildMergeLikeInstr(*Destination, Parts); !Merged)
+        return std::unexpected(Merged.error());
+    }
+
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "G_IMPLICIT_DEF became detached during narrowing");
+    return Block->removeInstruction(Instruction);
+  }
+  case GenericOpcode::G_CONSTANT: {
+    const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+    const auto *Immediate = Instruction.operandAt(1)->getIf<IntegerImmediateOperand>();
+    if (Destination == nullptr || Immediate == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_CONSTANT narrowing requires register and integer operands");
+    auto DestinationType = MRI.getType(*Destination);
+    if (!DestinationType)
+      return std::unexpected(DestinationType.error());
+
+    const std::uint64_t TotalSize = DestinationType->minimumBitWidth();
+    const std::uint64_t NarrowSize = NarrowType.minimumBitWidth();
+    if (NarrowSize == 0 || NarrowSize >= TotalSize || NarrowSize > APInt::MaxBitWidth ||
+        TotalSize > APInt::MaxBitWidth) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_CONSTANT narrowing requires a smaller representable type");
+    }
+
+    const std::size_t PartCount = static_cast<std::size_t>(TotalSize / NarrowSize);
+    std::vector<Register> Parts;
+    Parts.reserve(PartCount);
+    for (std::size_t Index = 0; Index != PartCount; ++Index) {
+      auto Shifted = Immediate->Value.logicalShiftRight(Index * NarrowSize);
+      if (!Shifted)
+        return std::unexpected(Shifted.error());
+      APInt PartValue = std::move(*Shifted);
+      if (PartValue.bitWidth() > NarrowSize) {
+        auto Truncated = PartValue.trunc(static_cast<std::uint32_t>(NarrowSize));
+        if (!Truncated)
+          return std::unexpected(Truncated.error());
+        PartValue = std::move(*Truncated);
+      }
+      auto Part = buildConstantRegister(MIRBuilder, NarrowType, std::move(PartValue));
+      if (!Part)
+        return std::unexpected(Part.error());
+      Parts.push_back(*Part);
+    }
+
+    LowLevelType LeftoverType;
+    std::vector<Register> Leftovers;
+    const std::uint64_t LeftoverBits = TotalSize - PartCount * NarrowSize;
+    if (LeftoverBits != 0) {
+      auto Type = LowLevelType::makeCategoryNeutralScalar(LeftoverBits);
+      if (!Type)
+        return std::unexpected(Type.error());
+      LeftoverType = *Type;
+      auto Shifted = Immediate->Value.logicalShiftRight(PartCount * NarrowSize);
+      if (!Shifted)
+        return std::unexpected(Shifted.error());
+      APInt LeftoverValue = std::move(*Shifted);
+      if (LeftoverValue.bitWidth() > LeftoverBits) {
+        auto Truncated = LeftoverValue.trunc(static_cast<std::uint32_t>(LeftoverBits));
+        if (!Truncated)
+          return std::unexpected(Truncated.error());
+        LeftoverValue = std::move(*Truncated);
+      }
+      auto Leftover = buildConstantRegister(MIRBuilder, LeftoverType, std::move(LeftoverValue));
+      if (!Leftover)
+        return std::unexpected(Leftover.error());
+      Leftovers.push_back(*Leftover);
+    }
+
+    if (auto Inserted =
+            insertParts(*Destination, *DestinationType, NarrowType, Parts, LeftoverType, Leftovers);
+        !Inserted) {
+      return std::unexpected(Inserted.error());
+    }
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "G_CONSTANT became detached during narrowing");
+    return Block->removeInstruction(Instruction);
+  }
   case GenericOpcode::G_ADD:
   case GenericOpcode::G_SUB:
   case GenericOpcode::G_SADDO:
