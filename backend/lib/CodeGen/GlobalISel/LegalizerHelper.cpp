@@ -1011,6 +1011,45 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
       return Result;
     break;
 
+  case GenericOpcode::G_LOAD:
+  case GenericOpcode::G_SEXTLOAD:
+  case GenericOpcode::G_ZEXTLOAD:
+  case GenericOpcode::G_FPEXTLOAD:
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "load widening has an invalid type index");
+    if (auto Result = Apply(WidenDestination()); !Result)
+      return Result;
+    break;
+
+  case GenericOpcode::G_STORE: {
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "store widening has an invalid type index");
+    const Register *Source = Instruction.operandAt(0)->getIf<Register>();
+    if (Source == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "store widening requires a register source");
+    auto SourceType = MRI.getType(*Source);
+    if (!SourceType)
+      return std::unexpected(SourceType.error());
+    if (!SourceType->isCategoryNeutralScalar())
+      return makeUnexpected(ErrorCode::Unsupported, "non-scalar store widening is not implemented");
+    const GenericOpcode ExtensionOpcode =
+        SourceType->scalarBitWidth() == 1 ? GenericOpcode::G_ZEXT : GenericOpcode::G_ANYEXT;
+    if (auto Result = Apply(WidenSource(0, ExtensionOpcode)); !Result)
+      return Result;
+    break;
+  }
+
+  case GenericOpcode::G_FPTRUNCSTORE:
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "floating truncating store widening has an invalid type index");
+    if (auto Result = Apply(WidenSource(0, GenericOpcode::G_FPEXT)); !Result)
+      return Result;
+    break;
+
   case GenericOpcode::G_SADDO:
   case GenericOpcode::G_SSUBO:
   case GenericOpcode::G_UADDO:
