@@ -284,7 +284,7 @@ foldConstantExtension(MachineInstr &Instruction, MachineFunction &Function, Gene
 
 } // namespace
 
-RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
+RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) : Subtarget(Subtarget) {
   const LowLevelType S8 = *LowLevelType::makeCategoryNeutralScalar(8);
   const LowLevelType S16 = *LowLevelType::makeCategoryNeutralScalar(16);
   const LowLevelType S32 = *LowLevelType::makeCategoryNeutralScalar(32);
@@ -753,6 +753,8 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     if (!DestinationType)
       return std::unexpected(DestinationType.error());
     if (DestinationType->minimumBitWidth() == 64 && *Size == 32)
+      return {};
+    if (Subtarget.features().has(RISCVExtension::Zbb) && (*Size == 8 || *Size == 16))
       return {};
     return Helper.lower(Instruction, LegalizationDecision{
                                          .Action = LegalizationAction::Lower,

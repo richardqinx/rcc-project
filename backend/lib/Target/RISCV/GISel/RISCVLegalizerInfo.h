@@ -18,6 +18,9 @@ public:
                                                  MachineInstr &Instruction) const override;
   [[nodiscard]] bool isSExtCheaperThanZExt(LowLevelType SourceType,
                                            LowLevelType DestinationType) const override;
+
+private:
+  const RISCVSubtarget &Subtarget;
 };
 
 } // namespace rcc::riscv
