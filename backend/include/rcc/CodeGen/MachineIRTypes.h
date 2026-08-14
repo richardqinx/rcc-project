@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <span>
 #include <string>
 #include <type_traits>
 
@@ -206,6 +207,8 @@ public:
 
   [[nodiscard]] static Expected<BranchProbability> fromFraction(std::uint32_t Numerator,
                                                                 std::uint32_t Denominator);
+
+  static void normalizeProbabilities(std::span<BranchProbability> Probabilities) noexcept;
 
   [[nodiscard]] constexpr std::uint32_t rawValue() const noexcept {
     return RawValue;

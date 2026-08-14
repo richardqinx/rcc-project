@@ -553,6 +553,36 @@ void testLLVMCompareExchangeMemorySyntax(TestContext &Context) {
                  "canonical LLVM MMOs must omit an absent zero-offset pointer base");
 }
 
+void testUnweightedSuccessorNormalization(TestContext &Context) {
+  auto Target = createTarget();
+  auto Function = createFunction(Context, 9);
+  Context.expect(Target.has_value(), "successor probability target description must be valid");
+  if (!Target || !Function)
+    return;
+
+  const std::string Body = R"(bb.0:
+  successors: %bb.1, %bb.2
+  TEST_NOP
+
+bb.1:
+  TEST_NOP
+
+bb.2:
+  TEST_NOP
+)";
+  rcc::mir::MIParser Parser(*Function, *Target, "successors.mir", Body);
+  const auto Parsed = Parser.parse();
+  Context.expect(Parsed.has_value(), "unweighted MIR successors must parse");
+  if (!Parsed)
+    return;
+
+  const rcc::MachineBasicBlock *Entry = Function->firstBlock();
+  Context.expect(Entry != nullptr && Entry->successors().size() == 2 &&
+                     Entry->successors()[0].Probability.rawValue() == 0x40000000U &&
+                     Entry->successors()[1].Probability.rawValue() == 0x40000000U,
+                 "unweighted successors must receive equal normalized probabilities");
+}
+
 void expectParseError(TestContext &Context, const rcc::TargetDescription &Target, std::string Body,
                       std::string_view Message) {
   auto Function = createFunction(Context, 10);
@@ -604,6 +634,7 @@ int main() {
   testTypedIntegerTruncation(Context);
   testLLVMInlineAsmAndConstantMemorySyntax(Context);
   testLLVMCompareExchangeMemorySyntax(Context);
+  testUnweightedSuccessorNormalization(Context);
   testDiagnostics(Context);
   return Context.result();
 }

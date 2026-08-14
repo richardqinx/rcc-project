@@ -2500,6 +2500,9 @@ bool MIParser::Impl::parseBlockSuccessors(MachineBasicBlock &Block) {
   ExplicitSuccessorBlocks.insert(&Block);
   if (token().isNewlineOrEnd())
     return false;
+
+  std::vector<MachineBasicBlock *> Successors;
+  std::vector<BranchProbability> Probabilities;
   do {
     if (!at(MITokenKind::MachineBasicBlock))
       return fail("expected a machine basic block reference");
@@ -2517,10 +2520,17 @@ bool MIParser::Impl::parseBlockSuccessors(MachineBasicBlock &Block) {
       if (expect(MITokenKind::RightParen, "')' after successor weight"))
         return true;
     }
-    auto Added = Function.cfgUpdater().addSuccessor(Block, *Successor, Probability);
+    Successors.push_back(Successor);
+    Probabilities.push_back(Probability);
+  } while (consume(MITokenKind::Comma));
+
+  BranchProbability::normalizeProbabilities(Probabilities);
+  for (std::size_t Index = 0; Index < Successors.size(); ++Index) {
+    auto Added =
+        Function.cfgUpdater().addSuccessor(Block, *Successors[Index], Probabilities[Index]);
     if (!Added)
       return importError(token(), Added.error());
-  } while (consume(MITokenKind::Comma));
+  }
   return false;
 }
 

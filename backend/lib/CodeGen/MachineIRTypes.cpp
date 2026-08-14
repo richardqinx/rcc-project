@@ -2,7 +2,9 @@
 
 #include "rcc/CodeGen/MachineIRTypes.h"
 
+#include <algorithm>
 #include <bit>
+#include <cstdint>
 
 namespace rcc {
 
@@ -28,6 +30,29 @@ Expected<BranchProbability> BranchProbability::fromFraction(std::uint32_t Numera
   const std::uint64_t Rounded =
       (ScaledNumerator + static_cast<std::uint64_t>(Denominator / 2)) / Denominator;
   return BranchProbability(static_cast<std::uint32_t>(Rounded));
+}
+
+void BranchProbability::normalizeProbabilities(
+    std::span<BranchProbability> Probabilities) noexcept {
+  if (Probabilities.empty())
+    return;
+
+  std::uint64_t Sum = 0;
+  for (const BranchProbability Probability : Probabilities)
+    Sum += Probability.rawValue();
+
+  if (Sum == 0) {
+    const std::uint64_t Count = Probabilities.size();
+    const auto Equal =
+        static_cast<std::uint32_t>((static_cast<std::uint64_t>(MaxRawValue) + Count / 2U) / Count);
+    std::ranges::fill(Probabilities, BranchProbability(Equal));
+    return;
+  }
+
+  for (BranchProbability &Probability : Probabilities) {
+    const std::uint64_t Scaled = static_cast<std::uint64_t>(Probability.rawValue()) * MaxRawValue;
+    Probability = BranchProbability(static_cast<std::uint32_t>((Scaled + Sum / 2U) / Sum));
+  }
 }
 
 MachineInstrFlags::MachineInstrFlags(std::initializer_list<MachineInstrFlag> Flags) noexcept {
