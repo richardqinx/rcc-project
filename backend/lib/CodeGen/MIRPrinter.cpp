@@ -2838,8 +2838,8 @@ Expected<void> BodyPrinter::printInstruction(const MachineInstr &Instruction) {
       continue;
     }
     bool PrintVirtualType = true;
-    if (isGenericOpcode(Instruction.opcode()) && !Descriptor->Flags.has(InstructionFlag::Phi) &&
-        Index < Descriptor->Operands.size()) {
+    if (Descriptor->Flags.has(InstructionFlag::Generic) &&
+        !Descriptor->Flags.has(InstructionFlag::Phi) && Index < Descriptor->Operands.size()) {
       const std::optional<OperandTypeConstraint> &UseConstraint =
           Descriptor->Operands[Index].TypeConstraint;
       if (UseConstraint) {
