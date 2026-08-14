@@ -99,6 +99,7 @@ constexpr std::array OptionNames{
 Expected<RISCVSubtargetFeatures>
 RISCVSubtargetFeatures::fromFeatureList(std::span<const std::string> Features) {
   std::uint16_t Enabled = extensionBit(RISCVExtension::I);
+  std::uint16_t ExplicitlyDisabled = 0;
   std::uint32_t Options = 0;
   for (const std::string &Feature : Features) {
     if (Feature.size() < 2 || (Feature.front() != '+' && Feature.front() != '-')) {
@@ -113,10 +114,13 @@ RISCVSubtargetFeatures::fromFeatureList(std::span<const std::string> Features) {
                             "RISC-V backend does not support target feature '" + Feature + "'");
     }
     if (Extension != nullptr) {
-      if (Feature.front() == '+')
+      if (Feature.front() == '+') {
         Enabled |= extensionBit(Extension->Extension);
-      else
+        ExplicitlyDisabled &= static_cast<std::uint16_t>(~extensionBit(Extension->Extension));
+      } else {
         Enabled &= static_cast<std::uint16_t>(~extensionBit(Extension->Extension));
+        ExplicitlyDisabled |= extensionBit(Extension->Extension);
+      }
     } else if (Feature.front() == '+') {
       Options |= optionBit(Option->Option);
     } else {
@@ -129,16 +133,21 @@ RISCVSubtargetFeatures::fromFeatureList(std::span<const std::string> Features) {
     return makeUnexpected(ErrorCode::InvalidInvocation,
                           "RV64 target feature configuration cannot disable the base I extension");
   }
-  if (Result.has(RISCVExtension::D) && !Result.has(RISCVExtension::F)) {
+  if (Result.has(RISCVExtension::D) &&
+      (ExplicitlyDisabled & extensionBit(RISCVExtension::F)) != 0) {
     return makeUnexpected(ErrorCode::InvalidInvocation,
                           "RISC-V D extension requires the F extension");
   }
+  if (Result.has(RISCVExtension::D))
+    Enabled |= extensionBit(RISCVExtension::F);
   if ((Result.has(RISCVExtension::Zacas) || Result.has(RISCVExtension::Zabha)) &&
-      !Result.has(RISCVExtension::A)) {
+      (ExplicitlyDisabled & extensionBit(RISCVExtension::A)) != 0) {
     return makeUnexpected(ErrorCode::InvalidInvocation,
                           "RISC-V Zacas and Zabha extensions require the A extension");
   }
-  return Result;
+  if (Result.has(RISCVExtension::Zacas) || Result.has(RISCVExtension::Zabha))
+    Enabled |= extensionBit(RISCVExtension::A);
+  return RISCVSubtargetFeatures(Enabled, Options);
 }
 
 RISCVSubtargetFeatures RISCVSubtargetFeatures::rv64gc() noexcept {

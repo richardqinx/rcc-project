@@ -696,8 +696,10 @@ void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::st
 
   if (Command.ShowHelp)
     return Command;
-  if (CodeGenFlags.Triple)
+  if (CodeGenFlags.Triple) {
     Command.Invocation.Triple = normalizeRV64Triple(*CodeGenFlags.Triple);
+    Command.Invocation.Features = {"+i"};
+  }
   if (CodeGenFlags.CPU)
     Command.Invocation.CPU = *CodeGenFlags.CPU;
   if (CodeGenFlags.TuneCPU)
