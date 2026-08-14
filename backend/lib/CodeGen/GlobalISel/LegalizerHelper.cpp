@@ -3029,6 +3029,47 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   }
   case GenericOpcode::G_VAARG:
     return lowerVAArg(Instruction);
+  case GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS: {
+    const Register OldValue = *Instruction.operandAt(0)->getIf<Register>();
+    const Register Success = *Instruction.operandAt(1)->getIf<Register>();
+    const Register Address = *Instruction.operandAt(2)->getIf<Register>();
+    const Register Compare = *Instruction.operandAt(3)->getIf<Register>();
+    const Register NewValue = *Instruction.operandAt(4)->getIf<Register>();
+    auto NewOldValue = MRI.cloneVirtualRegister(OldValue);
+    if (!NewOldValue)
+      return std::unexpected(NewOldValue.error());
+
+    if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+      return std::unexpected(Point.error());
+    auto Atomic = MIRBuilder.buildInstr(opcode(GenericOpcode::G_ATOMIC_CMPXCHG));
+    if (!Atomic)
+      return std::unexpected(Atomic.error());
+    if (auto Added = Atomic->addDef(*NewOldValue); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Atomic->addUse(Address); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Atomic->addUse(Compare); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Atomic->addUse(NewValue); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Atomic->addMemOperand(*Instruction.memOperands().front()); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = Atomic->build(); !Built)
+      return std::unexpected(Built.error());
+    if (auto Built = MIRBuilder.buildICmp(IntegerPredicate::Equal, Success, *NewOldValue, Compare);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = MIRBuilder.buildCopy(OldValue, *NewOldValue); !Built)
+      return std::unexpected(Built.error());
+
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "G_ATOMIC_CMPXCHG_WITH_SUCCESS became detached during lowering");
+    }
+    return Block->removeInstruction(Instruction);
+  }
   case GenericOpcode::G_UADDO: {
     const Register Result = *Instruction.operandAt(0)->getIf<Register>();
     const Register CarryOut = *Instruction.operandAt(1)->getIf<Register>();

@@ -90,12 +90,6 @@ namespace {
   }
 }
 
-[[nodiscard]] std::optional<LowLevelType>
-operandType(const MachineFunction &Function, const MachineInstr &Instruction, std::size_t Index) {
-  const MachineOperand *Operand = Instruction.operandAt(Index);
-  return Operand == nullptr ? std::nullopt : registerType(Function, *Operand);
-}
-
 [[nodiscard]] Expected<APInt>
 extendIntegerImmediate(const APInt &Value, std::uint32_t DestinationWidth, bool SignExtend) {
   if (DestinationWidth == 0 || DestinationWidth > 64)
@@ -189,231 +183,6 @@ foldConstantExtension(MachineInstr &Instruction, MachineFunction &Function, Gene
     // the legalizer worklist transaction has completed.
   }
   return {};
-}
-
-[[nodiscard]] MachineInstr *singleRegisterUse(const MachineFunction &Function, Register Reg) {
-  MachineInstr *UseInstruction = nullptr;
-  auto &RegisterInfo = const_cast<MachineRegisterInfo &>(Function.registerInfo());
-  for (MachineOperand &Operand : RegisterInfo.useOperands(Reg)) {
-    if (Operand.parent() == nullptr)
-      continue;
-    if (UseInstruction != nullptr)
-      return nullptr;
-    UseInstruction = Operand.parent();
-  }
-  return UseInstruction;
-}
-
-[[nodiscard]] Expected<Register> buildUnaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
-                                                  GenericOpcode Generic, LowLevelType Type,
-                                                  Register Source);
-
-[[nodiscard]] Expected<void> eraseInstruction(MachineInstr &Instruction);
-
-[[nodiscard]] Expected<void> rewriteUnary(MachineInstr &Instruction, GenericOpcode Generic,
-                                          Register Destination, Register Source);
-
-[[nodiscard]] Expected<void> widenConstantToRV64(MachineInstr &Instruction,
-                                                 MachineFunction &Function) {
-  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-  const Register *Destination =
-      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-  const MachineOperand *ImmediateOperand = Instruction.operandAt(1);
-  const auto *Immediate =
-      ImmediateOperand == nullptr ? nullptr : ImmediateOperand->getIf<IntegerImmediateOperand>();
-  if (Destination == nullptr || !Destination->isVirtual() || Immediate == nullptr)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V narrow constant legalization has invalid operands");
-  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
-  if (!Type)
-    return std::unexpected(Type.error());
-  auto SetType = Function.registerInfo().setType(*Destination, *Type);
-  if (!SetType)
-    return std::unexpected(SetType.error());
-  auto Extended = extendIntegerImmediate(Immediate->Value, 64, true);
-  if (!Extended)
-    return std::unexpected(Extended.error());
-  auto Erased = Instruction.eraseOperand(1);
-  if (!Erased)
-    return std::unexpected(Erased.error());
-  auto Added = Instruction.addOperand(MachineOperand::integerImmediate(std::move(*Extended)));
-  if (!Added)
-    return std::unexpected(Added.error());
-  return {};
-}
-
-[[nodiscard]] Expected<Register> widenAtomicCompareExchangeSource(MachineInstr &Instruction,
-                                                                  MachineFunction &Function,
-                                                                  MachineIRBuilder &Builder,
-                                                                  Register Source,
-                                                                  LowLevelType WideType) {
-  const auto SourceType = registerType(Function, Source);
-  if (!SourceType)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V compare-exchange source has no scalar type");
-  if (SourceType->scalarBitWidth() == WideType.scalarBitWidth())
-    return Source;
-
-  const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Source);
-  MachineInstr *Def =
-      Definition == nullptr ? nullptr : const_cast<MachineInstr *>(Definition->parent());
-  if (Def != nullptr && Def->opcode() == opcode(GenericOpcode::G_CONSTANT) &&
-      singleRegisterUse(Function, Source) == &Instruction) {
-    auto Widened = widenConstantToRV64(*Def, Function);
-    if (!Widened)
-      return std::unexpected(Widened.error());
-    return Source;
-  }
-  return buildUnaryBefore(Builder, Instruction, GenericOpcode::G_ANYEXT, WideType, Source);
-}
-
-[[nodiscard]] Expected<void> lowerAtomicCompareExchange(MachineInstr &Instruction,
-                                                        MachineFunction &Function,
-                                                        const TargetDescription &Target) {
-  const std::optional<LowLevelType> OriginalType = resultType(Function, Instruction);
-  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-  const MachineOperand *CompareOperand = Instruction.operandAt(2);
-  const MachineOperand *NewValueOperand = Instruction.operandAt(3);
-  const Register *Destination =
-      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-  const Register *Compare = CompareOperand == nullptr ? nullptr : CompareOperand->getIf<Register>();
-  const Register *NewValue =
-      NewValueOperand == nullptr ? nullptr : NewValueOperand->getIf<Register>();
-  if (!OriginalType || Destination == nullptr || Compare == nullptr || NewValue == nullptr ||
-      OriginalType->scalarBitWidth() >= 64)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V narrow compare-exchange has invalid operands");
-  const Register OriginalDestination = *Destination;
-
-  auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
-  if (!WideType)
-    return std::unexpected(WideType.error());
-  MachineIRBuilder Builder(Function, Target);
-  auto WideCompare =
-      widenAtomicCompareExchangeSource(Instruction, Function, Builder, *Compare, *WideType);
-  if (!WideCompare)
-    return std::unexpected(WideCompare.error());
-  auto WideNewValue =
-      widenAtomicCompareExchangeSource(Instruction, Function, Builder, *NewValue, *WideType);
-  if (!WideNewValue)
-    return std::unexpected(WideNewValue.error());
-
-  Register WideDestination;
-  MachineInstr *FoldedExtension = singleRegisterUse(Function, OriginalDestination);
-  if (FoldedExtension != nullptr && FoldedExtension->opcode() == opcode(GenericOpcode::G_ANYEXT) &&
-      operandType(Function, *FoldedExtension, 0)
-          .transform([](LowLevelType Type) { return Type.scalarBitWidth() == 64; })
-          .value_or(false)) {
-    const MachineOperand *WideDestinationOperand = FoldedExtension->operandAt(0);
-    const Register *FoldedDestination =
-        WideDestinationOperand == nullptr ? nullptr : WideDestinationOperand->getIf<Register>();
-    if (FoldedDestination == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V compare-exchange extension has no destination");
-    WideDestination = *FoldedDestination;
-  } else {
-    auto Created = Function.registerInfo().createVirtualRegister(*WideType);
-    if (!Created)
-      return std::unexpected(Created.error());
-    WideDestination = *Created;
-    FoldedExtension = nullptr;
-  }
-
-  if (auto Replaced = Instruction.operandAt(0)->setRegister(WideDestination); !Replaced)
-    return std::unexpected(Replaced.error());
-  if (auto Replaced = Instruction.operandAt(2)->setRegister(*WideCompare); !Replaced)
-    return std::unexpected(Replaced.error());
-  if (auto Replaced = Instruction.operandAt(3)->setRegister(*WideNewValue); !Replaced)
-    return std::unexpected(Replaced.error());
-
-  if (FoldedExtension != nullptr)
-    return eraseInstruction(*FoldedExtension);
-
-  auto Point = Builder.setInsertPointAfter(Instruction);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto Truncation = Builder.buildInstr(opcode(GenericOpcode::G_TRUNC));
-  if (!Truncation)
-    return std::unexpected(Truncation.error());
-  if (auto Added = Truncation->addDef(OriginalDestination); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = Truncation->addUse(WideDestination); !Added)
-    return std::unexpected(Added.error());
-  auto Built = Truncation->build();
-  if (!Built)
-    return std::unexpected(Built.error());
-  return {};
-}
-
-[[nodiscard]] Expected<void>
-lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction &Function,
-                                      const TargetDescription &Target) {
-  const MachineOperand *OldValueOperand = Instruction.operandAt(0);
-  const MachineOperand *SuccessOperand = Instruction.operandAt(1);
-  const MachineOperand *AddressOperand = Instruction.operandAt(2);
-  const MachineOperand *CompareOperand = Instruction.operandAt(3);
-  const MachineOperand *NewValueOperand = Instruction.operandAt(4);
-  const Register *OldValue =
-      OldValueOperand == nullptr ? nullptr : OldValueOperand->getIf<Register>();
-  const Register *Success = SuccessOperand == nullptr ? nullptr : SuccessOperand->getIf<Register>();
-  const Register *Address = AddressOperand == nullptr ? nullptr : AddressOperand->getIf<Register>();
-  const Register *Compare = CompareOperand == nullptr ? nullptr : CompareOperand->getIf<Register>();
-  const Register *NewValue =
-      NewValueOperand == nullptr ? nullptr : NewValueOperand->getIf<Register>();
-  const std::optional<LowLevelType> ValueType = resultType(Function, Instruction);
-  if (OldValue == nullptr || Success == nullptr || Address == nullptr || Compare == nullptr ||
-      NewValue == nullptr || !ValueType || Instruction.memOperands().size() != 1)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V compare-exchange-with-success has invalid operands");
-
-  auto AtomicResult = Function.registerInfo().createVirtualRegister(*ValueType);
-  if (!AtomicResult)
-    return std::unexpected(AtomicResult.error());
-  MachineIRBuilder Builder(Function, Target);
-  auto Point = Builder.setInsertPointBefore(Instruction);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto Atomic = Builder.buildInstr(opcode(GenericOpcode::G_ATOMIC_CMPXCHG));
-  if (!Atomic)
-    return std::unexpected(Atomic.error());
-  if (auto Added = Atomic->addDef(*AtomicResult); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = Atomic->addUse(*Address); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = Atomic->addUse(*Compare); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = Atomic->addUse(*NewValue); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = Atomic->addMemOperand(*Instruction.memOperands().front()); !Added)
-    return std::unexpected(Added.error());
-  auto BuiltAtomic = Atomic->build();
-  if (!BuiltAtomic)
-    return std::unexpected(BuiltAtomic.error());
-
-  Point = Builder.setInsertPointBefore(Instruction);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto CompareResult = Builder.buildInstr(opcode(GenericOpcode::G_ICMP));
-  if (!CompareResult)
-    return std::unexpected(CompareResult.error());
-  if (auto Added = CompareResult->addDef(*Success); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = CompareResult->addIntegerPredicate(IntegerPredicate::Equal); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = CompareResult->addUse(*AtomicResult); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = CompareResult->addUse(*Compare); !Added)
-    return std::unexpected(Added.error());
-  auto BuiltCompare = CompareResult->build();
-  if (!BuiltCompare)
-    return std::unexpected(BuiltCompare.error());
-
-  while (!Instruction.memOperands().empty()) {
-    auto Erased = Instruction.eraseMemOperand(0);
-    if (!Erased)
-      return std::unexpected(Erased.error());
-  }
-  return rewriteUnary(Instruction, GenericOpcode::COPY, *OldValue, *AtomicResult);
 }
 
 [[nodiscard]] Expected<void> lowerConstantToPool(MachineInstr &Instruction,
@@ -511,59 +280,6 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   if (Width < 64 && (Raw & (std::uint64_t{1} << (Width - 1U))) != 0)
     Raw |= ~std::uint64_t{0} << Width;
   return std::bit_cast<std::int64_t>(Raw);
-}
-
-[[nodiscard]] Expected<void> eraseInstruction(MachineInstr &Instruction) {
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V legalizer cannot erase a detached instruction");
-  return Block->removeInstruction(Instruction);
-}
-
-[[nodiscard]] Expected<Register> buildUnaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
-                                                  GenericOpcode Generic, LowLevelType Type,
-                                                  Register Source) {
-  auto Result = Builder.function().registerInfo().createVirtualRegister(Type);
-  if (!Result)
-    return std::unexpected(Result.error());
-  auto Point = Builder.setInsertPointBefore(Anchor);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(opcode(Generic));
-  if (!Pending)
-    return std::unexpected(Pending.error());
-  if (auto Added = Pending->addDef(*Result); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = Pending->addUse(Source); !Added)
-    return std::unexpected(Added.error());
-  auto Built = Pending->build();
-  if (!Built)
-    return std::unexpected(Built.error());
-  return *Result;
-}
-
-[[nodiscard]] Expected<void> rewriteUnary(MachineInstr &Instruction, GenericOpcode Generic,
-                                          Register Destination, Register Source) {
-  auto SetOpcode = Instruction.setOpcode(opcode(Generic));
-  if (!SetOpcode)
-    return std::unexpected(SetOpcode.error());
-  while (Instruction.operandCount() != 0) {
-    auto Erased = Instruction.eraseOperand(Instruction.operandCount() - 1U);
-    if (!Erased)
-      return std::unexpected(Erased.error());
-  }
-  auto Def = MachineOperand::registerOperand(Destination,
-                                             RegisterOperandFlags{RegisterOperandFlag::Define});
-  if (!Def)
-    return std::unexpected(Def.error());
-  if (auto Added = Instruction.addOperand(std::move(*Def)); !Added)
-    return std::unexpected(Added.error());
-  auto Use =
-      MachineOperand::registerOperand(Source, RegisterOperandFlags{RegisterOperandFlag::Use});
-  if (!Use)
-    return std::unexpected(Use.error());
-  return Instruction.addOperand(std::move(*Use));
 }
 
 } // namespace
@@ -918,16 +634,14 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_VASTART)).customFor({P0});
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_VAARG)).clampScalar(0, S64, S64).lower();
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS))
-      .customIf([](const LegalizationQuery &Query) {
-        return Query.Types.size() >= 3 && Query.Types[0].isCategoryNeutralScalar() &&
-               Query.Types[2].isPointer();
+      .lowerIf([S8, S16, S32, S64, P0](const LegalizationQuery &Query) {
+        return Query.Types.size() >= 3 &&
+               (Query.Types[0] == S8 || Query.Types[0] == S16 || Query.Types[0] == S32 ||
+                Query.Types[0] == S64) &&
+               Query.Types[2] == P0;
       });
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_ATOMIC_CMPXCHG))
       .legalFor(HasA, {{S64, P0}})
-      .customIf([](const LegalizationQuery &Query) {
-        return Query.Types.size() >= 2 && Query.Types[0].isCategoryNeutralScalar() &&
-               Query.Types[1].isPointer();
-      })
       .libcallFor(!HasA, {{S8, P0}, {S16, P0}, {S32, P0}, {S64, P0}})
       .clampScalar(0, S64, S64);
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_ATOMICRMW_ADD))
@@ -1104,10 +818,6 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     Helper.Observer.changedInstr(Instruction);
     return {};
   }
-  if (Instruction.opcode() == opcode(GenericOpcode::G_ATOMIC_CMPXCHG))
-    return lowerAtomicCompareExchange(Instruction, Function, Target);
-  if (Instruction.opcode() == opcode(GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS))
-    return lowerAtomicCompareExchangeWithSuccess(Instruction, Function, Target);
   if (Instruction.opcode() == opcode(GenericOpcode::G_ANYEXT) ||
       Instruction.opcode() == opcode(GenericOpcode::G_SEXT) ||
       Instruction.opcode() == opcode(GenericOpcode::G_ZEXT)) {
