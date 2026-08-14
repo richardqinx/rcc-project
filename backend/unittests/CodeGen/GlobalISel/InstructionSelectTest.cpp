@@ -121,9 +121,11 @@ void testPipeline(TestContext &Context) {
                                     rcc::MachineFunctionProperty::TracksLiveness};
   const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
   rcc::MachineFunctionPassManager Pipeline;
-  Context.expect(
-      Pipeline.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo())).has_value(),
-      "legalizer must be accepted by the pass manager");
+  Context.expect(Pipeline
+                     .addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo(),
+                                                               rcc::OptimizationLevel::O2))
+                     .has_value(),
+                 "legalizer must be accepted by the pass manager");
   Context.expect(Pipeline.addPass(std::make_unique<rcc::RegBankSelect>(Subtarget.getRegBankInfo()))
                      .has_value(),
                  "register-bank selector must be accepted by the pass manager");
@@ -327,7 +329,8 @@ void testExtendedRV64GCPipeline(TestContext &Context) {
                                     rcc::MachineFunctionProperty::TracksLiveness};
   const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
   rcc::MachineFunctionPassManager Pipeline;
-  if (!Pipeline.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo())) ||
+  if (!Pipeline.addPass(std::make_unique<rcc::Legalizer>(Subtarget.getLegalizerInfo(),
+                                                         rcc::OptimizationLevel::O2)) ||
       !Pipeline.addPass(std::make_unique<rcc::RegBankSelect>(Subtarget.getRegBankInfo())) ||
       !Pipeline.addPass(
           std::make_unique<rcc::InstructionSelect>(Subtarget.getInstructionSelector()))) {

@@ -101,8 +101,11 @@ public:
       break;
     case GenericOpcode::G_TRUNC:
       Changed = tryCombineTrunc(Instruction, DeadInstructions, UpdatedDefs, Observer);
-      if (Changed && !*Changed)
-        UpdatedDefs.push_back(*Instruction.operandAt(0)->registerValue());
+      if (Changed && !*Changed) {
+        const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+        assert(Destination != nullptr);
+        UpdatedDefs.push_back(*Destination);
+      }
       break;
     }
     if (!Changed)
@@ -377,11 +380,11 @@ private:
     }
   }
 
-  [[nodiscard]] Expected<bool> isInstUnsupported(LegalizationQuery Query) const {
+  [[nodiscard]] Expected<bool> isInstUnsupported(const LegalizationQuery &Query) const {
     return LI.isUnsupported(Query);
   }
 
-  [[nodiscard]] Expected<bool> isInstLegal(LegalizationQuery Query) const {
+  [[nodiscard]] Expected<bool> isInstLegal(const LegalizationQuery &Query) const {
     return LI.isLegal(Query);
   }
 };
@@ -438,12 +441,15 @@ inline Expected<void> LegalizationArtifactCombiner::buildConstant(Register Desti
 
 inline Expected<Register> LegalizationArtifactCombiner::buildConstant(LowLevelType Type,
                                                                       APInt Value) {
-  auto Destination = MRI.createVirtualRegister(Type);
-  if (!Destination)
-    return std::unexpected(Destination.error());
-  auto Built = buildConstant(*Destination, std::move(Value));
+  auto Built = Builder.buildConstant(Type, std::move(Value));
   if (!Built)
     return std::unexpected(Built.error());
+  const MachineOperand *Definition = (*Built)->operandAt(0);
+  const Register *Destination = Definition == nullptr ? nullptr : Definition->getIf<Register>();
+  if (Destination == nullptr || !Definition->isDef()) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "constant builder returned an instruction without a register definition");
+  }
   return *Destination;
 }
 
@@ -1309,7 +1315,11 @@ inline Expected<bool> LegalizationArtifactCombiner::tryCombineUnmergeValues(
       Destinations.reserve(NewDefCount);
       for (std::size_t Index = 0; Index < NewDefCount; ++Index)
         Destinations.push_back(Unmerge.getReg(SourceIndex * NewDefCount + Index));
-      Register SplitSource = *registerOperand(*Merge, SourceIndex + 1);
+      const auto SplitSourceOperand = registerOperand(*Merge, SourceIndex + 1);
+      if (!SplitSourceOperand)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "merge source is not a register operand");
+      Register SplitSource = SplitSourceOperand.value();
       if (ConvertOpcode) {
         auto ConvertedType = divideType(*OperandType, MergeSourceCount);
         if (!ConvertedType)

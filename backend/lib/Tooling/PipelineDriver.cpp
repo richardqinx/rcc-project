@@ -100,9 +100,10 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
              const riscv::RISCVSubtarget &Subtarget, MachinePassManagerOptions Options) {
   MachineFunctionPassManager Pipeline(Options);
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
-    auto Added =
-        riscv::addCanonicalPipeline(Pipeline, Function, Subtarget,
-                                    riscv::RISCVPipelineOptions{.UseTargetCopyInstructions = true});
+    auto Added = riscv::addCanonicalPipeline(
+        Pipeline, Function, Subtarget,
+        riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
+                                    .UseTargetCopyInstructions = true});
     if (!Added)
       return std::unexpected(Added.error());
   } else {
@@ -117,7 +118,8 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
     for (const std::string &Name : Invocation.PassPipeline) {
       auto Pass = riscv::createCanonicalPipelinePass(
           Name, Subtarget,
-          riscv::RISCVPipelineOptions{.UseTargetCopyInstructions = UseTargetCopyInstructions});
+          riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
+                                      .UseTargetCopyInstructions = UseTargetCopyInstructions});
       if (!Pass)
         return std::unexpected(Pass.error());
       auto Added = Pipeline.addPass(std::move(*Pass));

@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_GLOBALISEL_LEGALIZER_H
 #define RCC_CODEGEN_GLOBALISEL_LEGALIZER_H
 
+#include "rcc/CodeGen/CommandFlags.h"
 #include "rcc/CodeGen/GlobalISel/LegalizerInfo.h"
 #include "rcc/CodeGen/MachinePassManager.h"
 
@@ -12,10 +13,12 @@ namespace rcc {
 
 class Legalizer final : public MachineFunctionPass {
 public:
-  explicit Legalizer(const LegalizerInfo *Info) : Info(Info) {}
-  explicit Legalizer(const LegalizerInfo &Info) : Info(&Info) {}
-  explicit Legalizer(std::unique_ptr<LegalizerInfo> Info)
-      : OwnedInfo(std::move(Info)), Info(OwnedInfo.get()) {}
+  Legalizer(const LegalizerInfo *Info, OptimizationLevel Optimization)
+      : Info(Info), Optimization(Optimization) {}
+  Legalizer(const LegalizerInfo &Info, OptimizationLevel Optimization)
+      : Info(&Info), Optimization(Optimization) {}
+  Legalizer(std::unique_ptr<LegalizerInfo> Info, OptimizationLevel Optimization)
+      : OwnedInfo(std::move(Info)), Info(OwnedInfo.get()), Optimization(Optimization) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
@@ -29,6 +32,7 @@ private:
 
   std::unique_ptr<LegalizerInfo> OwnedInfo;
   const LegalizerInfo *Info = nullptr;
+  OptimizationLevel Optimization;
 };
 
 } // namespace rcc

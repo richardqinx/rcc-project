@@ -22,8 +22,7 @@ public:
   virtual void changedInstr(MachineInstr &Instruction) = 0;
 };
 
-class GISelObserverWrapper final : public MachineFunction::Delegate,
-                                   public GISelChangeObserver {
+class GISelObserverWrapper final : public MachineFunction::Delegate, public GISelChangeObserver {
 public:
   GISelObserverWrapper() = default;
   explicit GISelObserverWrapper(GISelChangeObserver &Observer) {
@@ -50,8 +49,7 @@ private:
 
 class MachineFunctionDelegateInstaller final {
 public:
-  MachineFunctionDelegateInstaller(MachineFunction &Function,
-                                   MachineFunction::Delegate &Delegate);
+  MachineFunctionDelegateInstaller(MachineFunction &Function, MachineFunction::Delegate &Delegate);
   MachineFunctionDelegateInstaller(const MachineFunctionDelegateInstaller &) = delete;
   MachineFunctionDelegateInstaller &operator=(const MachineFunctionDelegateInstaller &) = delete;
   ~MachineFunctionDelegateInstaller();

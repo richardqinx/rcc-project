@@ -3,6 +3,8 @@
 #include "rcc/CodeGen/GlobalISel/Legalizer.h"
 
 #include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/CodeGen/GlobalISel/CSEInfo.h"
+#include "rcc/CodeGen/GlobalISel/CSEMIRBuilder.h"
 #include "rcc/CodeGen/GlobalISel/GISelChangeObserver.h"
 #include "rcc/CodeGen/GlobalISel/GISelValueTracking.h"
 #include "rcc/CodeGen/GlobalISel/GISelWorkList.h"
@@ -18,7 +20,9 @@
 #include "rcc/CodeGen/TargetDescription.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -126,7 +130,7 @@ private:
     std::size_t NextSuccessor = 0;
   };
 
-  const auto makeFrame = [](MachineBasicBlock &Block) {
+  const auto MakeFrame = [](MachineBasicBlock &Block) {
     TraversalFrame Frame;
     Frame.Block = &Block;
     for (const MachineSuccessor &Successor : Block.successors()) {
@@ -156,13 +160,13 @@ private:
   for (MachineBasicBlock *Root : Roots) {
     if (!Visited.insert(Root).second)
       continue;
-    Stack.push_back(makeFrame(*Root));
+    Stack.push_back(MakeFrame(*Root));
     while (!Stack.empty()) {
       TraversalFrame &Frame = Stack.back();
       if (Frame.NextSuccessor < Frame.Successors.size()) {
         MachineBasicBlock *Successor = Frame.Successors[Frame.NextSuccessor++];
         if (Visited.insert(Successor).second)
-          Stack.push_back(makeFrame(*Successor));
+          Stack.push_back(MakeFrame(*Successor));
         continue;
       }
       PostOrder.push_back(Frame.Block);
@@ -305,9 +309,17 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
   InstructionWorklist.finalize();
 
   LegalizerWorkListManager WorkListObserver(InstructionWorklist, ArtifactWorklist);
-  GISelObserverWrapper Observer(WorkListObserver);
+  GISelCSEInfo CSEInfo;
+  CSEInfo.setCSEConfig(getStandardCSEConfigForOpt(Optimization));
+  auto CSEAnalysis = CSEInfo.analyze(Function);
+  if (!CSEAnalysis)
+    return std::unexpected(
+        withErrorContext(CSEAnalysis.error(), "GlobalISel CSE analysis failed: "));
+  std::array<GISelChangeObserver *, 2> AuxiliaryObservers{&WorkListObserver, &CSEInfo};
+  GISelObserverWrapper Observer{std::span<GISelChangeObserver *const>(AuxiliaryObservers)};
   MachineFunctionDelegateInstaller ObserverInstaller(Function, Observer);
-  MachineIRBuilder Builder(Function, Target);
+  CSEMIRBuilder Builder(Function, Target);
+  Builder.setCSEInfo(&CSEInfo);
   LegalizerHelper Helper(Function, *Info, Observer, Builder);
   GISelValueTracking ValueTracking(Function, Target);
   LegalizationArtifactCombiner ArtifactCombiner(Builder, Function.registerInfo(), *Info,
@@ -451,6 +463,12 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
       InstructionWorklist.insert(Instruction);
     }
   } while (!InstructionWorklist.empty());
+
+  auto CSEValidation = CSEInfo.verify();
+  if (!CSEValidation) {
+    return std::unexpected(
+        withErrorContext(CSEValidation.error(), "GlobalISel CSE verification failed: "));
+  }
 
   for (MachineInstr *Instruction : layoutInstructions(Function)) {
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());

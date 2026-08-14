@@ -137,6 +137,7 @@ public:
                               std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
   LegalizeRuleSet &legalForTypesWithMemDesc(std::initializer_list<LegalizeMemoryRule> Rules);
 
+  LegalizeRuleSet &custom();
   LegalizeRuleSet &widenScalarToNextPow2(std::size_t TypeIndex, std::uint32_t MinimumBitWidth = 0);
   LegalizeRuleSet &minScalar(std::size_t TypeIndex, LowLevelType MinimumType);
   LegalizeRuleSet &minScalar(bool Enabled, std::size_t TypeIndex, LowLevelType MinimumType);

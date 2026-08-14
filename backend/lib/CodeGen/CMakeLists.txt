@@ -90,6 +90,7 @@ set(
   RCCBackendCodeGenHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CompilationUnit.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CommandFlags.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CSEConfigBase.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalObject.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericOpcodes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/FrameIndexElimination.h"

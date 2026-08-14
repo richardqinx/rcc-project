@@ -295,7 +295,7 @@ LegalizeRuleSet &LegalizeRuleSet::clampScalar(std::size_t TypeIndex, LowLevelTyp
 
 LegalizeRuleSet &LegalizeRuleSet::scalarSameSizeAs(std::size_t TypeIndex,
                                                    std::size_t ReferenceTypeIndex) {
-  const auto changeToReference = [TypeIndex, ReferenceTypeIndex](const LegalizationQuery &Query) {
+  const auto ChangeToReference = [TypeIndex, ReferenceTypeIndex](const LegalizationQuery &Query) {
     return std::pair{TypeIndex, scalarType(Query.Types[ReferenceTypeIndex].scalarBitWidth())};
   };
   widenScalarIf(
@@ -306,7 +306,7 @@ LegalizeRuleSet &LegalizeRuleSet::scalarSameSizeAs(std::size_t TypeIndex,
                Query.Types[TypeIndex].scalarBitWidth() <
                    Query.Types[ReferenceTypeIndex].scalarBitWidth();
       },
-      changeToReference);
+      ChangeToReference);
   return narrowScalarIf(
       [TypeIndex, ReferenceTypeIndex](const LegalizationQuery &Query) {
         return TypeIndex < Query.Types.size() && ReferenceTypeIndex < Query.Types.size() &&
@@ -315,7 +315,7 @@ LegalizeRuleSet &LegalizeRuleSet::scalarSameSizeAs(std::size_t TypeIndex,
                Query.Types[TypeIndex].scalarBitWidth() >
                    Query.Types[ReferenceTypeIndex].scalarBitWidth();
       },
-      changeToReference);
+      ChangeToReference);
 }
 
 LegalizeRuleSet &LegalizeRuleSet::lowerIfMemSizeNotByteSizePow2(std::size_t MemoryIndex) {
@@ -325,6 +325,10 @@ LegalizeRuleSet &LegalizeRuleSet::lowerIfMemSizeNotByteSizePow2(std::size_t Memo
     const MemorySize Size = Query.MemoryOperands[MemoryIndex].Size;
     return !Size.isKnown() || Size.isScalable() || !std::has_single_bit(Size.minimumBytes());
   });
+}
+
+LegalizeRuleSet &LegalizeRuleSet::custom() {
+  return customIf([](const LegalizationQuery &) { return true; });
 }
 
 LegalizeRuleSet &LegalizeRuleSet::alwaysLegal() {
@@ -401,13 +405,15 @@ Expected<LegalizationQuery> LegalizerInfo::buildQuery(const MachineInstr &Instru
     auto Info = Function.registerInfo().virtualRegisterInfo(*Reg);
     if (!Info)
       return std::unexpected(Info.error());
-    if (!Info->get().Type)
+    const std::optional<LowLevelType> &RegisterType = Info->get().Type;
+    if (!RegisterType.has_value())
       return makeUnexpected(ErrorCode::VerificationError,
                             "legalization type operand has no LowLevelType");
-    if (OptionalTypes[TypeIndex] && *OptionalTypes[TypeIndex] != *Info->get().Type)
+    std::optional<LowLevelType> &ExistingType = OptionalTypes[TypeIndex];
+    if (ExistingType.has_value() && ExistingType.value() != RegisterType.value())
       return makeUnexpected(ErrorCode::VerificationError,
                             "legalization type operands disagree within one type index");
-    OptionalTypes[TypeIndex] = *Info->get().Type;
+    ExistingType = RegisterType.value();
     TypeOperands[TypeIndex].push_back(Index);
   }
 

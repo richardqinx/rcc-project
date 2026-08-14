@@ -69,21 +69,41 @@ struct ScalarLayout final {
   return Function.createMemOperand(std::move(Description));
 }
 
+[[nodiscard]] Expected<Register> resultRegister(MachineInstr &Instruction) {
+  const MachineOperand *Definition = Instruction.operandAt(0);
+  const Register *Result = Definition == nullptr ? nullptr : Definition->getIf<Register>();
+  if (Result == nullptr || !Definition->isDef()) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "machine IR builder returned an instruction without a register result");
+  }
+  return *Result;
+}
+
+[[nodiscard]] Expected<Register> buildConstantRegister(MachineIRBuilder &Builder, LowLevelType Type,
+                                                       APInt Value) {
+  auto Built = Builder.buildConstant(Type, std::move(Value));
+  if (!Built)
+    return std::unexpected(Built.error());
+  return resultRegister(**Built);
+}
+
+[[nodiscard]] Expected<Register> buildConstantRegister(MachineIRBuilder &Builder, LowLevelType Type,
+                                                       std::int64_t Value) {
+  auto Immediate = APInt::fromSigned(Type.scalarBitWidth(), Value);
+  if (!Immediate)
+    return std::unexpected(Immediate.error());
+  return buildConstantRegister(Builder, Type, std::move(*Immediate));
+}
+
 [[nodiscard]] Expected<Register> buildConstantBefore(MachineIRBuilder &Builder,
                                                      MachineInstr &Anchor, LowLevelType Type,
                                                      std::uint64_t Value) {
-  auto Result = Builder.function().registerInfo().createVirtualRegister(Type);
-  if (!Result)
-    return std::unexpected(Result.error());
   auto Immediate = APInt::fromUnsigned(Type.scalarBitWidth(), Value);
   if (!Immediate)
     return std::unexpected(Immediate.error());
   if (auto Point = Builder.setInsertPointBefore(Anchor); !Point)
     return std::unexpected(Point.error());
-  auto Built = Builder.buildConstant(*Result, std::move(*Immediate));
-  if (!Built)
-    return std::unexpected(Built.error());
-  return *Result;
+  return buildConstantRegister(Builder, Type, std::move(*Immediate));
 }
 
 [[nodiscard]] Expected<Register> buildBinaryBefore(MachineIRBuilder &Builder, MachineInstr &Anchor,
@@ -152,11 +172,12 @@ Expected<void> LegalizerHelper::widenScalarMergeValues(MachineInstr &Instruction
     return std::unexpected(Point.error());
 
   if (WideSize >= DestinationSize) {
-    auto Result = MRI.createVirtualRegister(WideType);
+    auto BuiltResult = MIRBuilder.buildZExt(WideType, *FirstSource);
+    if (!BuiltResult)
+      return std::unexpected(BuiltResult.error());
+    auto Result = resultRegister(**BuiltResult);
     if (!Result)
       return std::unexpected(Result.error());
-    if (auto Built = MIRBuilder.buildZExt(*Result, *FirstSource); !Built)
-      return std::unexpected(Built.error());
     Register ResultRegister = *Result;
 
     for (std::size_t Index = 2; Index != Instruction.operandCount(); ++Index) {
@@ -171,23 +192,22 @@ Expected<void> LegalizerHelper::widenScalarMergeValues(MachineInstr &Instruction
         return makeUnexpected(ErrorCode::VerificationError,
                               "G_MERGE_VALUES source types are inconsistent");
 
-      auto ExtendedInput = MRI.createVirtualRegister(WideType);
-      auto ShiftAmount = MRI.createVirtualRegister(WideType);
-      auto ShiftedInput = MRI.createVirtualRegister(WideType);
+      auto BuiltExtendedInput = MIRBuilder.buildZExt(WideType, *Source);
+      if (!BuiltExtendedInput)
+        return std::unexpected(BuiltExtendedInput.error());
+      auto ExtendedInput = resultRegister(**BuiltExtendedInput);
       if (!ExtendedInput)
         return std::unexpected(ExtendedInput.error());
+      auto ShiftAmount = buildConstantRegister(MIRBuilder, WideType,
+                                               static_cast<std::int64_t>((Index - 1U) * PartSize));
       if (!ShiftAmount)
         return std::unexpected(ShiftAmount.error());
+      auto BuiltShiftedInput = MIRBuilder.buildShl(WideType, *ExtendedInput, *ShiftAmount);
+      if (!BuiltShiftedInput)
+        return std::unexpected(BuiltShiftedInput.error());
+      auto ShiftedInput = resultRegister(**BuiltShiftedInput);
       if (!ShiftedInput)
         return std::unexpected(ShiftedInput.error());
-      if (auto Built = MIRBuilder.buildZExt(*ExtendedInput, *Source); !Built)
-        return std::unexpected(Built.error());
-      if (auto Built = MIRBuilder.buildConstant(*ShiftAmount,
-                                                static_cast<std::int64_t>((Index - 1U) * PartSize));
-          !Built)
-        return std::unexpected(Built.error());
-      if (auto Built = MIRBuilder.buildShl(*ShiftedInput, *ExtendedInput, *ShiftAmount); !Built)
-        return std::unexpected(Built.error());
 
       Register NextResult = *Destination;
       if (Index + 1U != Instruction.operandCount() || WideType != *DestinationType) {
@@ -240,11 +260,12 @@ Expected<void> LegalizerHelper::widenScalarMergeValues(MachineInstr &Instruction
 
   const std::uint64_t RequiredPartCount = MergeCount * WideSize;
   if (UnmergedRegisters.size() != RequiredPartCount) {
-    auto UndefRegister = MRI.createVirtualRegister(*GCDType);
+    auto BuiltUndef = MIRBuilder.buildUndef(*GCDType);
+    if (!BuiltUndef)
+      return std::unexpected(BuiltUndef.error());
+    auto UndefRegister = resultRegister(**BuiltUndef);
     if (!UndefRegister)
       return std::unexpected(UndefRegister.error());
-    if (auto Built = MIRBuilder.buildUndef(*UndefRegister); !Built)
-      return std::unexpected(Built.error());
     while (UnmergedRegisters.size() != RequiredPartCount)
       UnmergedRegisters.push_back(*UndefRegister);
   }
@@ -256,11 +277,12 @@ Expected<void> LegalizerHelper::widenScalarMergeValues(MachineInstr &Instruction
     std::vector<Register> Parts(
         UnmergedRegisters.begin() + static_cast<std::ptrdiff_t>(Index * PartsPerGCD),
         UnmergedRegisters.begin() + static_cast<std::ptrdiff_t>((Index + 1U) * PartsPerGCD));
-    auto MergeRegister = MRI.createVirtualRegister(WideType);
+    auto BuiltMerge = MIRBuilder.buildMergeLikeInstr(WideType, Parts);
+    if (!BuiltMerge)
+      return std::unexpected(BuiltMerge.error());
+    auto MergeRegister = resultRegister(**BuiltMerge);
     if (!MergeRegister)
       return std::unexpected(MergeRegister.error());
-    if (auto Built = MIRBuilder.buildMergeLikeInstr(*MergeRegister, Parts); !Built)
-      return std::unexpected(Built.error());
     NewMergeRegisters.push_back(*MergeRegister);
   }
 
@@ -268,11 +290,12 @@ Expected<void> LegalizerHelper::widenScalarMergeValues(MachineInstr &Instruction
     if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, NewMergeRegisters); !Built)
       return std::unexpected(Built.error());
   } else {
-    auto FinalMerge = MRI.createVirtualRegister(*WideDestinationType);
+    auto BuiltFinalMerge = MIRBuilder.buildMergeLikeInstr(*WideDestinationType, NewMergeRegisters);
+    if (!BuiltFinalMerge)
+      return std::unexpected(BuiltFinalMerge.error());
+    auto FinalMerge = resultRegister(**BuiltFinalMerge);
     if (!FinalMerge)
       return std::unexpected(FinalMerge.error());
-    if (auto Built = MIRBuilder.buildMergeLikeInstr(*FinalMerge, NewMergeRegisters); !Built)
-      return std::unexpected(Built.error());
     if (auto Built = MIRBuilder.buildTrunc(*Destination, *FinalMerge); !Built)
       return std::unexpected(Built.error());
   }
@@ -347,16 +370,13 @@ Expected<void> LegalizerHelper::widenScalarUnmergeValues(MachineInstr &Instructi
       if (Destination == nullptr)
         return makeUnexpected(ErrorCode::VerificationError,
                               "G_UNMERGE_VALUES requires register destinations");
-      auto ShiftAmount = MRI.createVirtualRegister(*SourceType);
       auto ShiftedSource = MRI.createVirtualRegister(*SourceType);
-      if (!ShiftAmount)
-        return std::unexpected(ShiftAmount.error());
       if (!ShiftedSource)
         return std::unexpected(ShiftedSource.error());
-      if (auto Built = MIRBuilder.buildConstant(*ShiftAmount,
-                                                static_cast<std::int64_t>(DestinationSize * Index));
-          !Built)
-        return std::unexpected(Built.error());
+      auto ShiftAmount = buildConstantRegister(MIRBuilder, *SourceType,
+                                               static_cast<std::int64_t>(DestinationSize * Index));
+      if (!ShiftAmount)
+        return std::unexpected(ShiftAmount.error());
       if (auto Built = MIRBuilder.buildLShr(*ShiftedSource, SourceRegister, *ShiftAmount); !Built)
         return std::unexpected(Built.error());
       if (auto Built = MIRBuilder.buildTrunc(*Destination, *ShiftedSource); !Built)
@@ -553,15 +573,20 @@ Expected<LowLevelType> LegalizerHelper::buildLCMMergePieces(LowLevelType Destina
 
   Register PadRegister;
   if (OriginalSourceCount < PartCount * SubPartCount) {
-    auto NewPad = MRI.createVirtualRegister(GCDType);
-    if (!NewPad)
-      return std::unexpected(NewPad.error());
-    PadRegister = *NewPad;
-    Expected<MachineInstr *> Built = PadStrategy == GenericOpcode::G_ZEXT
-                                         ? MIRBuilder.buildConstant(PadRegister, 0)
-                                         : MIRBuilder.buildUndef(PadRegister);
-    if (!Built)
-      return std::unexpected(Built.error());
+    if (PadStrategy == GenericOpcode::G_ZEXT) {
+      auto Pad = buildConstantRegister(MIRBuilder, GCDType, 0);
+      if (!Pad)
+        return std::unexpected(Pad.error());
+      PadRegister = *Pad;
+    } else {
+      auto Built = MIRBuilder.buildUndef(GCDType);
+      if (!Built)
+        return std::unexpected(Built.error());
+      auto Pad = resultRegister(**Built);
+      if (!Pad)
+        return std::unexpected(Pad.error());
+      PadRegister = *Pad;
+    }
   }
 
   std::vector<Register> Remerge(static_cast<std::size_t>(PartCount));
@@ -580,15 +605,20 @@ Expected<LowLevelType> LegalizerHelper::buildLCMMergePieces(LowLevelType Destina
     }
 
     if (AllMergePartsArePadding && AllPadRegister.isNoRegister()) {
-      auto Pad = MRI.createVirtualRegister(NarrowType);
-      if (!Pad)
-        return std::unexpected(Pad.error());
-      AllPadRegister = *Pad;
-      Expected<MachineInstr *> Built = PadStrategy == GenericOpcode::G_ZEXT
-                                           ? MIRBuilder.buildConstant(AllPadRegister, 0)
-                                           : MIRBuilder.buildUndef(AllPadRegister);
-      if (!Built)
-        return std::unexpected(Built.error());
+      if (PadStrategy == GenericOpcode::G_ZEXT) {
+        auto Pad = buildConstantRegister(MIRBuilder, NarrowType, 0);
+        if (!Pad)
+          return std::unexpected(Pad.error());
+        AllPadRegister = *Pad;
+      } else {
+        auto Built = MIRBuilder.buildUndef(NarrowType);
+        if (!Built)
+          return std::unexpected(Built.error());
+        auto Pad = resultRegister(**Built);
+        if (!Pad)
+          return std::unexpected(Pad.error());
+        AllPadRegister = *Pad;
+      }
     }
     if (!AllPadRegister.isNoRegister()) {
       Remerge[static_cast<std::size_t>(PartIndex)] = AllPadRegister;
@@ -597,12 +627,12 @@ Expected<LowLevelType> LegalizerHelper::buildLCMMergePieces(LowLevelType Destina
     if (SubPartCount == 1) {
       Remerge[static_cast<std::size_t>(PartIndex)] = SubMerge.front();
     } else {
-      auto RemergeRegister = MRI.createVirtualRegister(NarrowType);
-      if (!RemergeRegister)
-        return std::unexpected(RemergeRegister.error());
-      auto Built = MIRBuilder.buildMergeLikeInstr(*RemergeRegister, SubMerge);
+      auto Built = MIRBuilder.buildMergeLikeInstr(NarrowType, SubMerge);
       if (!Built)
         return std::unexpected(Built.error());
+      auto RemergeRegister = resultRegister(**Built);
+      if (!RemergeRegister)
+        return std::unexpected(RemergeRegister.error());
       Remerge[static_cast<std::size_t>(PartIndex)] = *RemergeRegister;
     }
     if (AllMergePartsArePadding && AllPadRegister.isNoRegister())
@@ -701,6 +731,95 @@ Expected<void> LegalizerHelper::widenScalarDst(MachineInstr &Instruction, LowLev
   return Operand->setRegister(*WideDestination);
 }
 
+Expected<void> LegalizerHelper::widenScalarAddSubOverflow(MachineInstr &Instruction,
+                                                          std::size_t TypeIndex,
+                                                          LowLevelType WideType) {
+  if (TypeIndex != 0)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "add/sub overflow widening requires type index zero");
+
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  GenericOpcode ArithmeticOpcode;
+  GenericOpcode ExtensionOpcode;
+  switch (Generic) {
+  case GenericOpcode::G_SADDO:
+    ArithmeticOpcode = GenericOpcode::G_ADD;
+    ExtensionOpcode = GenericOpcode::G_SEXT;
+    break;
+  case GenericOpcode::G_SSUBO:
+    ArithmeticOpcode = GenericOpcode::G_SUB;
+    ExtensionOpcode = GenericOpcode::G_SEXT;
+    break;
+  case GenericOpcode::G_UADDO:
+    ArithmeticOpcode = GenericOpcode::G_ADD;
+    ExtensionOpcode = GenericOpcode::G_ZEXT;
+    break;
+  case GenericOpcode::G_USUBO:
+    ArithmeticOpcode = GenericOpcode::G_SUB;
+    ExtensionOpcode = GenericOpcode::G_ZEXT;
+    break;
+  default:
+    return makeUnexpected(ErrorCode::InternalError,
+                          "unexpected opcode during add/sub overflow widening");
+  }
+
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Overflow = *Instruction.operandAt(1)->getIf<Register>();
+  const Register Left = *Instruction.operandAt(2)->getIf<Register>();
+  const Register Right = *Instruction.operandAt(3)->getIf<Register>();
+  auto OriginalType = MRI.getType(Destination);
+  if (!OriginalType)
+    return std::unexpected(OriginalType.error());
+
+  auto WideLeft = MRI.createVirtualRegister(WideType);
+  auto WideRight = MRI.createVirtualRegister(WideType);
+  auto WideResult = MRI.createVirtualRegister(WideType);
+  auto TruncatedResult = MRI.createVirtualRegister(*OriginalType);
+  auto ExtendedResult = MRI.createVirtualRegister(WideType);
+  if (!WideLeft)
+    return std::unexpected(WideLeft.error());
+  if (!WideRight)
+    return std::unexpected(WideRight.error());
+  if (!WideResult)
+    return std::unexpected(WideResult.error());
+  if (!TruncatedResult)
+    return std::unexpected(TruncatedResult.error());
+  if (!ExtendedResult)
+    return std::unexpected(ExtendedResult.error());
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*WideLeft}, {Left}); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*WideRight}, {Right}); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built =
+          MIRBuilder.buildInstr(opcode(ArithmeticOpcode), {*WideResult}, {*WideLeft, *WideRight});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  if (auto Built = MIRBuilder.buildTrunc(*TruncatedResult, *WideResult); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built =
+          MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*ExtendedResult}, {*TruncatedResult});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  if (auto Built =
+          MIRBuilder.buildICmp(IntegerPredicate::NotEqual, Overflow, *WideResult, *ExtendedResult);
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  if (auto Built = MIRBuilder.buildTrunc(Destination, *WideResult); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "add/sub overflow instruction became detached during widening");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                             LowLevelType WideType) {
   auto Query = LegalizerInfo::buildQuery(Instruction, Function, MIRBuilder.target());
@@ -713,14 +832,14 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
                           "scalar widening has an invalid type index or target type");
   }
 
-  const auto widenSource = [&](std::size_t OperandIndex, GenericOpcode ExtensionOpcode) {
+  const auto WidenSource = [&](std::size_t OperandIndex, GenericOpcode ExtensionOpcode) {
     return widenScalarSrc(Instruction, WideType, OperandIndex, ExtensionOpcode);
   };
-  const auto widenDestination = [&](std::size_t OperandIndex = 0,
+  const auto WidenDestination = [&](std::size_t OperandIndex = 0,
                                     GenericOpcode TruncOpcode = GenericOpcode::G_TRUNC) {
     return widenScalarDst(Instruction, WideType, OperandIndex, TruncOpcode);
   };
-  const auto apply = [](Expected<void> Result) -> Expected<void> {
+  const auto Apply = [](Expected<void> Result) -> Expected<void> {
     if (!Result)
       return std::unexpected(Result.error());
     return {};
@@ -745,9 +864,9 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::VerificationError,
                             "atomic RMW value widening has an invalid type index");
-    if (auto Result = apply(widenSource(2, GenericOpcode::G_ANYEXT)); !Result)
+    if (auto Result = Apply(WidenSource(2, GenericOpcode::G_ANYEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenDestination()); !Result)
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
 
@@ -755,28 +874,28 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::VerificationError,
                             "compare-exchange widening has an invalid type index");
-    if (auto Result = apply(widenSource(2, GenericOpcode::G_ANYEXT)); !Result)
+    if (auto Result = Apply(WidenSource(2, GenericOpcode::G_ANYEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenSource(3, GenericOpcode::G_ANYEXT)); !Result)
+    if (auto Result = Apply(WidenSource(3, GenericOpcode::G_ANYEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenDestination()); !Result)
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
 
   case GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS:
     if (TypeIndex == 0) {
-      if (auto Result = apply(widenSource(3, GenericOpcode::G_ANYEXT)); !Result)
+      if (auto Result = Apply(WidenSource(3, GenericOpcode::G_ANYEXT)); !Result)
         return Result;
-      if (auto Result = apply(widenSource(4, GenericOpcode::G_ANYEXT)); !Result)
+      if (auto Result = Apply(WidenSource(4, GenericOpcode::G_ANYEXT)); !Result)
         return Result;
-      if (auto Result = apply(widenDestination()); !Result)
+      if (auto Result = Apply(WidenDestination()); !Result)
         return Result;
       break;
     }
     if (TypeIndex != 1)
       return makeUnexpected(ErrorCode::VerificationError,
                             "compare-exchange success widening has an invalid type index");
-    if (auto Result = apply(widenDestination(1)); !Result)
+    if (auto Result = Apply(WidenDestination(1)); !Result)
       return Result;
     break;
 
@@ -804,10 +923,16 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
       return std::unexpected(Extended.error());
     if (auto Replaced = SourceOperand->setIntegerImmediate(std::move(*Extended)); !Replaced)
       return std::unexpected(Replaced.error());
-    if (auto Result = apply(widenDestination()); !Result)
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
   }
+
+  case GenericOpcode::G_SADDO:
+  case GenericOpcode::G_SSUBO:
+  case GenericOpcode::G_UADDO:
+  case GenericOpcode::G_USUBO:
+    return widenScalarAddSubOverflow(Instruction, TypeIndex, WideType);
 
   case GenericOpcode::G_ADD:
   case GenericOpcode::G_SUB:
@@ -818,11 +943,11 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::VerificationError,
                             "binary operation widening has an invalid type index");
-    if (auto Result = apply(widenSource(1, GenericOpcode::G_ANYEXT)); !Result)
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_ANYEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenSource(2, GenericOpcode::G_ANYEXT)); !Result)
+    if (auto Result = Apply(WidenSource(2, GenericOpcode::G_ANYEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenDestination()); !Result)
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
 
@@ -834,11 +959,11 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::VerificationError,
                             "signed operation widening has an invalid type index");
-    if (auto Result = apply(widenSource(1, GenericOpcode::G_SEXT)); !Result)
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_SEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenSource(2, GenericOpcode::G_SEXT)); !Result)
+    if (auto Result = Apply(WidenSource(2, GenericOpcode::G_SEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenDestination()); !Result)
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
 
@@ -850,11 +975,11 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::VerificationError,
                             "unsigned operation widening has an invalid type index");
-    if (auto Result = apply(widenSource(1, GenericOpcode::G_ZEXT)); !Result)
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_ZEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenSource(2, GenericOpcode::G_ZEXT)); !Result)
+    if (auto Result = Apply(WidenSource(2, GenericOpcode::G_ZEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenDestination()); !Result)
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
 
@@ -867,16 +992,16 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
         ExtensionOpcode = GenericOpcode::G_ZEXT;
       else if (Instruction.opcode() == opcode(GenericOpcode::G_ASHR))
         ExtensionOpcode = GenericOpcode::G_SEXT;
-      if (auto Result = apply(widenSource(1, ExtensionOpcode)); !Result)
+      if (auto Result = Apply(WidenSource(1, ExtensionOpcode)); !Result)
         return Result;
-      if (auto Result = apply(widenDestination()); !Result)
+      if (auto Result = Apply(WidenDestination()); !Result)
         return Result;
       break;
     }
     if (TypeIndex != 1)
       return makeUnexpected(ErrorCode::VerificationError,
                             "shift widening has an invalid type index");
-    if (auto Result = apply(widenSource(2, GenericOpcode::G_ZEXT)); !Result)
+    if (auto Result = Apply(WidenSource(2, GenericOpcode::G_ZEXT)); !Result)
       return Result;
     break;
 
@@ -884,7 +1009,7 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
   case GenericOpcode::G_ROTR:
     if (TypeIndex != 1)
       return makeUnexpected(ErrorCode::Unsupported, "rotate value widening is not defined");
-    if (auto Result = apply(widenSource(2, GenericOpcode::G_ZEXT)); !Result)
+    if (auto Result = Apply(WidenSource(2, GenericOpcode::G_ZEXT)); !Result)
       return Result;
     break;
 
@@ -893,9 +1018,9 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::VerificationError,
                             "unary operation widening has an invalid type index");
-    if (auto Result = apply(widenSource(1, GenericOpcode::G_ANYEXT)); !Result)
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_ANYEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenDestination()); !Result)
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
 
@@ -903,15 +1028,15 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::VerificationError,
                             "absolute-value widening has an invalid type index");
-    if (auto Result = apply(widenSource(1, GenericOpcode::G_SEXT)); !Result)
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_SEXT)); !Result)
       return Result;
-    if (auto Result = apply(widenDestination()); !Result)
+    if (auto Result = Apply(WidenDestination()); !Result)
       return Result;
     break;
 
   case GenericOpcode::G_ICMP:
     if (TypeIndex == 0) {
-      if (auto Result = apply(widenDestination()); !Result)
+      if (auto Result = Apply(WidenDestination()); !Result)
         return Result;
       break;
     }
@@ -952,27 +1077,27 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
           IsSigned || Info.isSExtCheaperThanZExt(Query->Types[TypeIndex], WideType)
               ? GenericOpcode::G_SEXT
               : GenericOpcode::G_ZEXT;
-      if (auto Result = apply(widenSource(2, ExtensionOpcode)); !Result)
+      if (auto Result = Apply(WidenSource(2, ExtensionOpcode)); !Result)
         return Result;
-      if (auto Result = apply(widenSource(3, ExtensionOpcode)); !Result)
+      if (auto Result = Apply(WidenSource(3, ExtensionOpcode)); !Result)
         return Result;
     }
     break;
 
   case GenericOpcode::G_SELECT:
     if (TypeIndex == 0) {
-      if (auto Result = apply(widenSource(2, GenericOpcode::G_ANYEXT)); !Result)
+      if (auto Result = Apply(WidenSource(2, GenericOpcode::G_ANYEXT)); !Result)
         return Result;
-      if (auto Result = apply(widenSource(3, GenericOpcode::G_ANYEXT)); !Result)
+      if (auto Result = Apply(WidenSource(3, GenericOpcode::G_ANYEXT)); !Result)
         return Result;
-      if (auto Result = apply(widenDestination()); !Result)
+      if (auto Result = Apply(WidenDestination()); !Result)
         return Result;
       break;
     }
     if (TypeIndex != 1)
       return makeUnexpected(ErrorCode::VerificationError,
                             "select widening has an invalid type index");
-    if (auto Result = apply(widenSource(1, GenericOpcode::G_ZEXT)); !Result)
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_ZEXT)); !Result)
       return Result;
     break;
 
@@ -980,7 +1105,7 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (TypeIndex != 1)
       return makeUnexpected(ErrorCode::Unsupported,
                             "floating-point extension destination widening is not defined");
-    if (auto Result = apply(widenSource(1, GenericOpcode::G_FPEXT)); !Result)
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_FPEXT)); !Result)
       return Result;
     break;
 
@@ -990,28 +1115,28 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
   case GenericOpcode::G_INTRINSIC_LLRINT:
   case GenericOpcode::G_IS_FPCLASS:
     if (TypeIndex == 0) {
-      if (auto Result = apply(widenDestination()); !Result)
+      if (auto Result = Apply(WidenDestination()); !Result)
         return Result;
       break;
     }
     if (TypeIndex != 1)
       return makeUnexpected(ErrorCode::VerificationError,
                             "floating-to-integer widening has an invalid type index");
-    if (auto Result = apply(widenSource(1, GenericOpcode::G_FPEXT)); !Result)
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_FPEXT)); !Result)
       return Result;
     break;
 
   case GenericOpcode::G_SITOFP:
   case GenericOpcode::G_UITOFP:
     if (TypeIndex == 0) {
-      if (auto Result = apply(widenDestination(0, GenericOpcode::G_FPTRUNC)); !Result)
+      if (auto Result = Apply(WidenDestination(0, GenericOpcode::G_FPTRUNC)); !Result)
         return Result;
       break;
     }
     if (TypeIndex != 1)
       return makeUnexpected(ErrorCode::VerificationError,
                             "integer-to-floating widening has an invalid type index");
-    if (auto Result = apply(widenSource(1, Instruction.opcode() == opcode(GenericOpcode::G_SITOFP)
+    if (auto Result = Apply(WidenSource(1, Instruction.opcode() == opcode(GenericOpcode::G_SITOFP)
                                                ? GenericOpcode::G_SEXT
                                                : GenericOpcode::G_ZEXT));
         !Result)
@@ -1275,15 +1400,19 @@ Expected<void> LegalizerHelper::lowerVAArg(MachineInstr &Instruction) {
   auto DestinationInfo = MRI.virtualRegisterInfo(*Destination);
   auto PointerInfo = MRI.virtualRegisterInfo(*ListPointer);
   auto RequestedAlignment = signedImmediate(*AlignmentOperand);
-  if (!DestinationInfo || !PointerInfo || !DestinationInfo->get().Type ||
-      !PointerInfo->get().Type || !RequestedAlignment || *RequestedAlignment <= 0 ||
+  if (!DestinationInfo || !PointerInfo)
+    return makeUnexpected(ErrorCode::VerificationError, "G_VAARG has invalid register information");
+  const std::optional<LowLevelType> &DestinationTypeInfo = DestinationInfo->get().Type;
+  const std::optional<LowLevelType> &PointerTypeInfo = PointerInfo->get().Type;
+  if (!DestinationTypeInfo.has_value() || !PointerTypeInfo.has_value() || !RequestedAlignment ||
+      *RequestedAlignment <= 0 ||
       !std::has_single_bit(static_cast<std::uint64_t>(*RequestedAlignment))) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "G_VAARG has invalid type or alignment information");
   }
 
-  const LowLevelType DestinationType = *DestinationInfo->get().Type;
-  const LowLevelType PointerType = *PointerInfo->get().Type;
+  const LowLevelType DestinationType = DestinationTypeInfo.value();
+  const LowLevelType PointerType = PointerTypeInfo.value();
   const auto DestinationLayout = scalarLayout(DestinationType);
   const auto PointerLayout = scalarLayout(PointerType);
   if (!DestinationLayout || !PointerLayout || !PointerType.isPointer()) {
@@ -1415,6 +1544,9 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
       return lowerAbsDiffToMinMax(Instruction);
     return lowerAbsDiffToSelect(Instruction);
   }
+  case GenericOpcode::G_SADDO:
+  case GenericOpcode::G_SSUBO:
+    return lowerSignedAddSubOverflow(Instruction);
   case GenericOpcode::G_SEXT_INREG: {
     const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
     const Register Source = *Instruction.operandAt(1)->getIf<Register>();
@@ -1425,18 +1557,16 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     if (!Type)
       return std::unexpected(Type.error());
 
-    auto ShiftAmount = MRI.createVirtualRegister(*Type);
     auto Temporary = MRI.createVirtualRegister(*Type);
-    if (!ShiftAmount)
-      return std::unexpected(ShiftAmount.error());
     if (!Temporary)
       return std::unexpected(Temporary.error());
 
     if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
       return std::unexpected(Point.error());
     const std::int64_t Shift = static_cast<std::int64_t>(Type->scalarBitWidth()) - *SizeInBits;
-    if (auto Built = MIRBuilder.buildConstant(*ShiftAmount, Shift); !Built)
-      return std::unexpected(Built.error());
+    auto ShiftAmount = buildConstantRegister(MIRBuilder, *Type, Shift);
+    if (!ShiftAmount)
+      return std::unexpected(ShiftAmount.error());
     if (auto Built = MIRBuilder.buildShl(*Temporary, Source, *ShiftAmount); !Built)
       return std::unexpected(Built.error());
     if (auto Built = MIRBuilder.buildAShr(Destination, *Temporary, *ShiftAmount); !Built)
@@ -1490,7 +1620,6 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     auto TemporaryResult = MRI.createVirtualRegister(*ResultType);
     auto Carry = MRI.createVirtualRegister(*ConditionType);
     auto ExtendedCarryIn = MRI.createVirtualRegister(*ResultType);
-    auto Zero = MRI.createVirtualRegister(*ResultType);
     auto ResultIsZero = MRI.createVirtualRegister(*ConditionType);
     auto SecondCarry = MRI.createVirtualRegister(*ConditionType);
     if (!NewResult)
@@ -1501,8 +1630,6 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
       return std::unexpected(Carry.error());
     if (!ExtendedCarryIn)
       return std::unexpected(ExtendedCarryIn.error());
-    if (!Zero)
-      return std::unexpected(Zero.error());
     if (!ResultIsZero)
       return std::unexpected(ResultIsZero.error());
     if (!SecondCarry)
@@ -1519,8 +1646,9 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
       return std::unexpected(Built.error());
     if (auto Built = MIRBuilder.buildAdd(*NewResult, *TemporaryResult, *ExtendedCarryIn); !Built)
       return std::unexpected(Built.error());
-    if (auto Built = MIRBuilder.buildConstant(*Zero, 0); !Built)
-      return std::unexpected(Built.error());
+    auto Zero = buildConstantRegister(MIRBuilder, *ResultType, 0);
+    if (!Zero)
+      return std::unexpected(Zero.error());
     if (auto Built =
             MIRBuilder.buildICmp(IntegerPredicate::Equal, *ResultIsZero, *NewResult, *Zero);
         !Built)
@@ -1569,7 +1697,6 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     auto TemporaryResult = MRI.createVirtualRegister(*ResultType);
     auto Borrow = MRI.createVirtualRegister(*ConditionType);
     auto ExtendedBorrowIn = MRI.createVirtualRegister(*ResultType);
-    auto Zero = MRI.createVirtualRegister(*ResultType);
     auto TemporaryResultIsZero = MRI.createVirtualRegister(*ConditionType);
     auto SecondBorrow = MRI.createVirtualRegister(*ConditionType);
     if (!TemporaryResult)
@@ -1578,8 +1705,6 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
       return std::unexpected(Borrow.error());
     if (!ExtendedBorrowIn)
       return std::unexpected(ExtendedBorrowIn.error());
-    if (!Zero)
-      return std::unexpected(Zero.error());
     if (!TemporaryResultIsZero)
       return std::unexpected(TemporaryResultIsZero.error());
     if (!SecondBorrow)
@@ -1596,8 +1721,9 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
       return std::unexpected(Built.error());
     if (auto Built = MIRBuilder.buildSub(Result, *TemporaryResult, *ExtendedBorrowIn); !Built)
       return std::unexpected(Built.error());
-    if (auto Built = MIRBuilder.buildConstant(*Zero, 0); !Built)
-      return std::unexpected(Built.error());
+    auto Zero = buildConstantRegister(MIRBuilder, *ResultType, 0);
+    if (!Zero)
+      return std::unexpected(Zero.error());
     if (auto Built = MIRBuilder.buildICmp(IntegerPredicate::Equal, *TemporaryResultIsZero,
                                           *TemporaryResult, *Zero);
         !Built)
@@ -1630,11 +1756,8 @@ Expected<void> LegalizerHelper::lowerAbsToAddXor(MachineInstr &Instruction) {
   if (!Type)
     return std::unexpected(Type.error());
 
-  auto ShiftAmount = MRI.createVirtualRegister(*Type);
   auto Shift = MRI.createVirtualRegister(*Type);
   auto Add = MRI.createVirtualRegister(*Type);
-  if (!ShiftAmount)
-    return std::unexpected(ShiftAmount.error());
   if (!Shift)
     return std::unexpected(Shift.error());
   if (!Add)
@@ -1642,8 +1765,10 @@ Expected<void> LegalizerHelper::lowerAbsToAddXor(MachineInstr &Instruction) {
 
   if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
     return std::unexpected(Point.error());
-  if (auto Built = MIRBuilder.buildConstant(*ShiftAmount, Type->scalarBitWidth() - 1U); !Built)
-    return std::unexpected(Built.error());
+  auto ShiftAmount = buildConstantRegister(MIRBuilder, *Type,
+                                           static_cast<std::int64_t>(Type->scalarBitWidth() - 1U));
+  if (!ShiftAmount)
+    return std::unexpected(ShiftAmount.error());
   if (auto Built = MIRBuilder.buildAShr(*Shift, Source, *ShiftAmount); !Built)
     return std::unexpected(Built.error());
   if (auto Built = MIRBuilder.buildAdd(*Add, Source, *Shift); !Built)
@@ -1733,6 +1858,76 @@ Expected<void> LegalizerHelper::lowerAbsDiffToMinMax(MachineInstr &Instruction) 
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError,
                           "G_ABDS/G_ABDU became detached during min/max lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerSignedAddSubOverflow(MachineInstr &Instruction) {
+  const bool IsAdd = Instruction.opcode() == opcode(GenericOpcode::G_SADDO);
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Overflow = *Instruction.operandAt(1)->getIf<Register>();
+  const Register Left = *Instruction.operandAt(2)->getIf<Register>();
+  const Register Right = *Instruction.operandAt(3)->getIf<Register>();
+  auto Type = MRI.getType(Destination);
+  auto BooleanType = MRI.getType(Overflow);
+  if (!Type)
+    return std::unexpected(Type.error());
+  if (!BooleanType)
+    return std::unexpected(BooleanType.error());
+
+  auto Result = MRI.cloneVirtualRegister(Destination);
+  auto FirstComparison = MRI.createVirtualRegister(*BooleanType);
+  auto SecondComparison = MRI.createVirtualRegister(*BooleanType);
+  if (!Result)
+    return std::unexpected(Result.error());
+  if (!FirstComparison)
+    return std::unexpected(FirstComparison.error());
+  if (!SecondComparison)
+    return std::unexpected(SecondComparison.error());
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = IsAdd ? MIRBuilder.buildAdd(*Result, Left, Right)
+                         : MIRBuilder.buildSub(*Result, Left, Right);
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  auto Zero = buildConstantRegister(MIRBuilder, *Type, 0);
+  if (!Zero)
+    return std::unexpected(Zero.error());
+  if (IsAdd) {
+    if (auto Built =
+            MIRBuilder.buildICmp(IntegerPredicate::SignedLessThan, *FirstComparison, *Result, Left);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built =
+            MIRBuilder.buildICmp(IntegerPredicate::SignedLessThan, *SecondComparison, Right, *Zero);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = MIRBuilder.buildXor(Overflow, *SecondComparison, *FirstComparison); !Built)
+      return std::unexpected(Built.error());
+  } else {
+    if (auto Built =
+            MIRBuilder.buildICmp(IntegerPredicate::SignedLessThan, *FirstComparison, Left, Right);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = MIRBuilder.buildICmp(IntegerPredicate::SignedLessThan, *SecondComparison,
+                                          *Result, *Zero);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = MIRBuilder.buildXor(Overflow, *FirstComparison, *SecondComparison); !Built)
+      return std::unexpected(Built.error());
+  }
+  if (auto Built = MIRBuilder.buildCopy(Destination, *Result); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "signed add/sub overflow instruction became detached during lowering");
   return Block->removeInstruction(Instruction);
 }
 

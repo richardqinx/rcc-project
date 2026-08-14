@@ -20,7 +20,9 @@ public:
   [[nodiscard]] Register getReg(std::size_t Index) const {
     const MachineOperand *Operand = operandAt(Index);
     assert(Operand != nullptr && Operand->isRegister());
-    return *Operand->registerValue();
+    const Register *Reg = Operand->getIf<Register>();
+    assert(Reg != nullptr);
+    return *Reg;
   }
 
   [[nodiscard]] static bool classof(const MachineInstr *Instruction) noexcept {
@@ -99,8 +101,7 @@ template <typename InstructionT>
 }
 
 template <typename InstructionT>
-[[nodiscard]] const InstructionT &
-castGenericMachineInstr(const MachineInstr &Instruction) {
+[[nodiscard]] const InstructionT &castGenericMachineInstr(const MachineInstr &Instruction) {
   assert(InstructionT::classof(&Instruction));
   return static_cast<const InstructionT &>(Instruction);
 }

@@ -33,12 +33,13 @@ template <typename PassT, typename... ArgumentT>
 }
 
 [[nodiscard]] Expected<void> addInitialPipeline(MachineFunctionPassManager &Pipeline,
-                                                const RISCVSubtarget &Subtarget) {
+                                                const RISCVSubtarget &Subtarget,
+                                                RISCVPipelineOptions Options) {
   auto Added = addPass<MachineCombinerPass>(Pipeline, machineCombinerInfo(),
                                             MachineCombinerStage::PreLegalizer);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo());
+  Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<RegBankSelect>(Pipeline, Subtarget.getRegBankInfo());
@@ -67,7 +68,7 @@ template <typename PassT, typename... ArgumentT>
 [[nodiscard]] Expected<void> addCompleteRegistry(MachineFunctionPassManager &Pipeline,
                                                  const RISCVSubtarget &Subtarget,
                                                  RISCVPipelineOptions Options) {
-  auto Added = addInitialPipeline(Pipeline, Subtarget);
+  auto Added = addInitialPipeline(Pipeline, Subtarget, Options);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addSSAExitPipeline(Pipeline);
@@ -92,7 +93,7 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
                                               MachineCombinerStage::PreLegalizer);
     if (!Added)
       return std::unexpected(Added.error());
-    Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo());
+    Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization);
     if (!Added)
       return std::unexpected(Added.error());
   }

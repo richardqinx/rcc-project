@@ -3,6 +3,7 @@
 #ifndef RCC_TARGET_RISCV_RISCVPIPELINE_H
 #define RCC_TARGET_RISCV_RISCVPIPELINE_H
 
+#include "rcc/CodeGen/CommandFlags.h"
 #include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/Support/Error.h"
 #include "rcc/Target/RISCV/RISCVSubtarget.h"
@@ -20,6 +21,7 @@ class TargetDescription;
 namespace riscv {
 
 struct RISCVPipelineOptions final {
+  OptimizationLevel Optimization = OptimizationLevel::O2;
   bool UseTargetCopyInstructions = false;
 };
 

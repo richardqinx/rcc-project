@@ -14,6 +14,7 @@
 #include <initializer_list>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,7 +25,9 @@ class MachineBasicBlock;
 class MachineFunction;
 class MachineInstr;
 class MachineMemOperand;
+class MachineRegisterInfo;
 class RegisterMask;
+class GISelCSEInfo;
 
 class MachineInstrBuilder final {
 public:
@@ -143,7 +146,32 @@ private:
   friend class MachineIRBuilder;
 };
 
-class MachineIRBuilder final {
+class MachineIRBuilderResult final {
+public:
+  enum class Kind : std::uint8_t {
+    Register,
+    Type,
+  };
+
+  MachineIRBuilderResult(Register Reg) noexcept : Reg(Reg), ResultKind(Kind::Register) {}
+  MachineIRBuilderResult(LowLevelType Type) noexcept : Type(Type), ResultKind(Kind::Type) {}
+
+  [[nodiscard]] Kind kind() const noexcept {
+    return ResultKind;
+  }
+
+  [[nodiscard]] Register reg() const noexcept;
+  [[nodiscard]] LowLevelType type() const noexcept;
+  [[nodiscard]] Expected<LowLevelType> type(const MachineRegisterInfo &MRI) const;
+  [[nodiscard]] Expected<void> addDef(MachineRegisterInfo &MRI, MachineInstrBuilder &Builder) const;
+
+private:
+  Register Reg;
+  LowLevelType Type;
+  Kind ResultKind;
+};
+
+class MachineIRBuilder {
 public:
   MachineIRBuilder(MachineFunction &Function, const TargetDescription &Target) noexcept
       : Function(&Function), Target(&Target) {}
@@ -151,12 +179,13 @@ public:
   MachineIRBuilder &operator=(const MachineIRBuilder &) = delete;
   MachineIRBuilder(MachineIRBuilder &&) = delete;
   MachineIRBuilder &operator=(MachineIRBuilder &&) = delete;
+  virtual ~MachineIRBuilder() = default;
 
   [[nodiscard]] MachineFunction &function() noexcept {
     return *Function;
   }
 
-  [[nodiscard]] const MachineFunction &function() const noexcept {
+  [[nodiscard]] MachineFunction &function() const noexcept {
     return *Function;
   }
 
@@ -166,6 +195,22 @@ public:
 
   [[nodiscard]] MachineBasicBlock *insertionBlock() const noexcept {
     return InsertBlock;
+  }
+
+  [[nodiscard]] MachineInstr *insertionInstruction() const noexcept {
+    return InsertBefore;
+  }
+
+  [[nodiscard]] GISelCSEInfo *getCSEInfo() noexcept {
+    return CSEInfo;
+  }
+
+  [[nodiscard]] GISelCSEInfo *getCSEInfo() const noexcept {
+    return CSEInfo;
+  }
+
+  void setCSEInfo(GISelCSEInfo *Info) noexcept {
+    CSEInfo = Info;
   }
 
   [[nodiscard]] Expected<void> verifyInsertPoint() const;
@@ -179,63 +224,79 @@ public:
   }
 
   [[nodiscard]] Expected<MachineInstrBuilder> buildInstr(Opcode InstructionOpcode) const;
-  [[nodiscard]] Expected<MachineInstr *> buildInstr(Opcode InstructionOpcode,
-                                                    std::initializer_list<Register> Destinations,
-                                                    std::initializer_list<Register> Sources) const;
-  [[nodiscard]] Expected<MachineInstr *> buildTrunc(Register Destination, Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildCopy(Register Destination, Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildImplicitDef(Register Destination) const;
-  [[nodiscard]] Expected<MachineInstr *> buildAnyExt(Register Destination, Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildZExt(Register Destination, Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildSExt(Register Destination, Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildUndef(Register Destination) const;
-  [[nodiscard]] Expected<MachineInstr *> buildAnyExtOrTrunc(Register Destination,
+  [[nodiscard]] Expected<MachineInstr *>
+  buildInstr(Opcode InstructionOpcode, std::initializer_list<MachineIRBuilderResult> Destinations,
+             std::initializer_list<Register> Sources) const;
+  [[nodiscard]] virtual Expected<MachineInstr *>
+  buildInstr(Opcode InstructionOpcode, std::span<const MachineIRBuilderResult> Destinations,
+             std::span<const Register> Sources) const;
+  [[nodiscard]] Expected<MachineInstr *> buildTrunc(MachineIRBuilderResult Destination,
+                                                    Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildCopy(MachineIRBuilderResult Destination,
+                                                   Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildImplicitDef(MachineIRBuilderResult Destination) const;
+  [[nodiscard]] Expected<MachineInstr *> buildAnyExt(MachineIRBuilderResult Destination,
+                                                     Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildZExt(MachineIRBuilderResult Destination,
+                                                   Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildSExt(MachineIRBuilderResult Destination,
+                                                   Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildUndef(MachineIRBuilderResult Destination) const;
+  [[nodiscard]] Expected<MachineInstr *> buildAnyExtOrTrunc(MachineIRBuilderResult Destination,
                                                             Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildSExtOrTrunc(Register Destination,
+  [[nodiscard]] Expected<MachineInstr *> buildSExtOrTrunc(MachineIRBuilderResult Destination,
                                                           Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildConstant(Register Destination, APInt Value) const;
-  [[nodiscard]] Expected<MachineInstr *> buildConstant(Register Destination,
+  [[nodiscard]] virtual Expected<MachineInstr *> buildConstant(MachineIRBuilderResult Destination,
+                                                               APInt Value) const;
+  [[nodiscard]] Expected<MachineInstr *> buildConstant(MachineIRBuilderResult Destination,
                                                        std::int64_t Value) const;
-  [[nodiscard]] Expected<MachineInstr *> buildSExtInReg(Register Destination, Register Source,
-                                                        std::uint32_t Width) const;
-  [[nodiscard]] Expected<MachineInstr *> buildAnd(Register Destination, Register Left,
+  [[nodiscard]] virtual Expected<MachineInstr *>
+  buildSExtInReg(MachineIRBuilderResult Destination, Register Source, std::uint32_t Width) const;
+  [[nodiscard]] Expected<MachineInstr *> buildAnd(MachineIRBuilderResult Destination, Register Left,
                                                   Register Right) const;
-  [[nodiscard]] Expected<MachineInstr *> buildOr(Register Destination, Register Left,
+  [[nodiscard]] Expected<MachineInstr *> buildOr(MachineIRBuilderResult Destination, Register Left,
                                                  Register Right) const;
-  [[nodiscard]] Expected<MachineInstr *> buildXor(Register Destination, Register Left,
+  [[nodiscard]] Expected<MachineInstr *> buildXor(MachineIRBuilderResult Destination, Register Left,
                                                   Register Right) const;
-  [[nodiscard]] Expected<MachineInstr *> buildAdd(Register Destination, Register Left,
+  [[nodiscard]] Expected<MachineInstr *> buildAdd(MachineIRBuilderResult Destination, Register Left,
                                                   Register Right) const;
-  [[nodiscard]] Expected<MachineInstr *> buildSub(Register Destination, Register Left,
+  [[nodiscard]] Expected<MachineInstr *> buildSub(MachineIRBuilderResult Destination, Register Left,
                                                   Register Right) const;
-  [[nodiscard]] Expected<MachineInstr *> buildShl(Register Destination, Register Left,
+  [[nodiscard]] Expected<MachineInstr *> buildShl(MachineIRBuilderResult Destination, Register Left,
                                                   Register Right) const;
-  [[nodiscard]] Expected<MachineInstr *> buildLShr(Register Destination, Register Left,
-                                                   Register Right) const;
-  [[nodiscard]] Expected<MachineInstr *> buildAShr(Register Destination, Register Left,
-                                                   Register Right) const;
-  [[nodiscard]] Expected<MachineInstr *> buildPtrToInt(Register Destination, Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildIntToPtr(Register Destination, Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildICmp(IntegerPredicate Predicate, Register Destination,
+  [[nodiscard]] Expected<MachineInstr *> buildLShr(MachineIRBuilderResult Destination,
+                                                   Register Left, Register Right) const;
+  [[nodiscard]] Expected<MachineInstr *> buildAShr(MachineIRBuilderResult Destination,
+                                                   Register Left, Register Right) const;
+  [[nodiscard]] Expected<MachineInstr *> buildPtrToInt(MachineIRBuilderResult Destination,
+                                                       Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildIntToPtr(MachineIRBuilderResult Destination,
+                                                       Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildICmp(IntegerPredicate Predicate,
+                                                   MachineIRBuilderResult Destination,
                                                    Register Left, Register Right) const;
   [[nodiscard]] Expected<MachineInstr *>
-  buildMergeLikeInstr(Register Destination, const std::vector<Register> &Sources) const;
+  buildMergeLikeInstr(MachineIRBuilderResult Destination,
+                      const std::vector<Register> &Sources) const;
   [[nodiscard]] Expected<MachineInstr *>
-  buildMergeValues(Register Destination, const std::vector<Register> &Sources) const;
+  buildMergeValues(MachineIRBuilderResult Destination, const std::vector<Register> &Sources) const;
   [[nodiscard]] Expected<MachineInstr *>
   buildUnmergeValues(const std::vector<Register> &Destinations, Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildExtract(Register Destination, Register Source,
-                                                      std::uint64_t Offset) const;
-  [[nodiscard]] Expected<MachineInstr *> buildInsert(Register Destination, Register Source,
-                                                     Register Inserted, std::uint64_t Offset) const;
+  [[nodiscard]] virtual Expected<MachineInstr *>
+  buildExtract(MachineIRBuilderResult Destination, Register Source, std::uint64_t Offset) const;
+  [[nodiscard]] Expected<MachineInstr *> buildInsert(MachineIRBuilderResult Destination,
+                                                     Register Source, Register Inserted,
+                                                     std::uint64_t Offset) const;
 
 private:
-  [[nodiscard]] Expected<MachineInstr *> buildUnary(Opcode InstructionOpcode, Register Destination,
-                                                    Register Source) const;
-  [[nodiscard]] Expected<MachineInstr *> buildBinary(Opcode InstructionOpcode, Register Destination,
-                                                     Register Left, Register Right) const;
   [[nodiscard]] Expected<MachineInstr *>
-  buildExtOrTrunc(Opcode ExtensionOpcode, Register Destination, Register Source) const;
+  buildUnary(Opcode InstructionOpcode, MachineIRBuilderResult Destination, Register Source) const;
+  [[nodiscard]] Expected<MachineInstr *> buildBinary(Opcode InstructionOpcode,
+                                                     MachineIRBuilderResult Destination,
+                                                     Register Left, Register Right) const;
+  [[nodiscard]] Expected<MachineInstr *> buildExtOrTrunc(Opcode ExtensionOpcode,
+                                                         MachineIRBuilderResult Destination,
+                                                         Register Source) const;
   [[nodiscard]] Expected<LowLevelType> registerType(Register Reg) const;
   [[nodiscard]] Expected<void> validateBlock(const MachineBasicBlock &Block) const;
   [[nodiscard]] Expected<void> validateInstruction(const MachineInstr &Instruction) const;
@@ -244,6 +305,7 @@ private:
   const TargetDescription *Target;
   MachineBasicBlock *InsertBlock = nullptr;
   MachineInstr *InsertBefore = nullptr;
+  GISelCSEInfo *CSEInfo = nullptr;
 };
 
 } // namespace rcc
