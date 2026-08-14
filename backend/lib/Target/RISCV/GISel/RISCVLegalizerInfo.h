@@ -16,8 +16,8 @@ public:
                                               const LegalizationDecision &Decision) const override;
   [[nodiscard]] Expected<bool> legalizeIntrinsic(LegalizerHelper &Helper,
                                                  MachineInstr &Instruction) const override;
-
-private:
+  [[nodiscard]] bool isSExtCheaperThanZExt(LowLevelType SourceType,
+                                           LowLevelType DestinationType) const override;
 };
 
 } // namespace rcc::riscv

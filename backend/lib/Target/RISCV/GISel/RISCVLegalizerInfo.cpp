@@ -416,174 +416,6 @@ lowerAtomicCompareExchangeWithSuccess(MachineInstr &Instruction, MachineFunction
   return rewriteUnary(Instruction, GenericOpcode::COPY, *OldValue, *AtomicResult);
 }
 
-[[nodiscard]] Expected<Register> widenIntegerCompareSource(MachineInstr &Instruction,
-                                                           MachineFunction &Function,
-                                                           MachineIRBuilder &Builder,
-                                                           Register Source, LowLevelType WideType) {
-  const auto SourceType = registerType(Function, Source);
-  if (!SourceType)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V integer compare source has no scalar type");
-  if (SourceType->scalarBitWidth() == WideType.scalarBitWidth())
-    return Source;
-
-  const MachineOperand *Definition = Function.registerInfo().getUniqueVRegDef(Source);
-  MachineInstr *Def =
-      Definition == nullptr ? nullptr : const_cast<MachineInstr *>(Definition->parent());
-  std::optional<Register> ExistingExtension;
-  bool AmbiguousExtension = false;
-  auto &RegisterInfo = Function.registerInfo();
-  for (MachineOperand &Use : RegisterInfo.useOperands(Source)) {
-    MachineInstr *User = Use.parent();
-    if (User == nullptr || User == &Instruction || User->parent() == nullptr ||
-        (User->opcode() != opcode(GenericOpcode::G_ANYEXT) &&
-         User->opcode() != opcode(GenericOpcode::G_SEXT))) {
-      continue;
-    }
-    const MachineOperand *ExtendedOperand = User->operandAt(0);
-    const Register *Extended =
-        ExtendedOperand == nullptr ? nullptr : ExtendedOperand->getIf<Register>();
-    const std::optional<LowLevelType> ExtendedType =
-        ExtendedOperand == nullptr ? std::nullopt : registerType(Function, *ExtendedOperand);
-    if (Extended == nullptr || !ExtendedType || *ExtendedType != WideType ||
-        (Def == nullptr || (Def->opcode() != opcode(GenericOpcode::G_CONSTANT) &&
-                            User->opcode() != opcode(GenericOpcode::G_SEXT)))) {
-      continue;
-    }
-    if (ExistingExtension) {
-      AmbiguousExtension = true;
-      break;
-    }
-    ExistingExtension = *Extended;
-  }
-  if (ExistingExtension && !AmbiguousExtension)
-    return *ExistingExtension;
-  if (Def != nullptr && Def->opcode() == opcode(GenericOpcode::G_CONSTANT) &&
-      singleRegisterUse(Function, Source) == &Instruction) {
-    auto Widened = widenConstantToRV64(*Def, Function);
-    if (!Widened)
-      return std::unexpected(Widened.error());
-    return Source;
-  }
-
-  if (Def != nullptr && Def->opcode() == opcode(GenericOpcode::G_TRUNC) &&
-      Def->operandCount() == 2) {
-    const MachineOperand *WideOperand = Def->operandAt(1);
-    const Register *WideSource = WideOperand == nullptr ? nullptr : WideOperand->getIf<Register>();
-    const std::optional<LowLevelType> ExistingWideType =
-        WideOperand == nullptr ? std::nullopt : registerType(Function, *WideOperand);
-    if (WideSource != nullptr && ExistingWideType && *ExistingWideType == WideType) {
-      auto Result = Function.registerInfo().createVirtualRegister(WideType);
-      if (!Result)
-        return std::unexpected(Result.error());
-      auto Point = Builder.setInsertPointBefore(Instruction);
-      if (!Point)
-        return std::unexpected(Point.error());
-      auto Pending = Builder.buildInstr(opcode(GenericOpcode::G_SEXT_INREG));
-      if (!Pending)
-        return std::unexpected(Pending.error());
-      if (auto Added = Pending->addDef(*Result); !Added)
-        return std::unexpected(Added.error());
-      if (auto Added = Pending->addUse(*WideSource); !Added)
-        return std::unexpected(Added.error());
-      if (auto Added =
-              Pending->addImmediate(static_cast<std::int64_t>(SourceType->scalarBitWidth()));
-          !Added) {
-        return std::unexpected(Added.error());
-      }
-      auto Built = Pending->build();
-      if (!Built)
-        return std::unexpected(Built.error());
-      return *Result;
-    }
-  }
-  return buildUnaryBefore(Builder, Instruction, GenericOpcode::G_SEXT, WideType, Source);
-}
-
-[[nodiscard]] Expected<void> lowerIntegerCompare(MachineInstr &Instruction,
-                                                 MachineFunction &Function,
-                                                 const TargetDescription &Target) {
-  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-  const MachineOperand *LeftOperand = Instruction.operandAt(2);
-  const MachineOperand *RightOperand = Instruction.operandAt(3);
-  const Register *Destination =
-      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-  const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
-  const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-  if (Destination == nullptr || Left == nullptr || Right == nullptr)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V integer compare has invalid register operands");
-  const Register OriginalDestination = *Destination;
-  const Register OriginalLeft = *Left;
-  const Register OriginalRight = *Right;
-
-  auto WideType = LowLevelType::makeCategoryNeutralScalar(64);
-  if (!WideType)
-    return std::unexpected(WideType.error());
-  MachineIRBuilder Builder(Function, Target);
-  auto WideLeft =
-      widenIntegerCompareSource(Instruction, Function, Builder, OriginalLeft, *WideType);
-  if (!WideLeft)
-    return std::unexpected(WideLeft.error());
-  auto WideRight =
-      widenIntegerCompareSource(Instruction, Function, Builder, OriginalRight, *WideType);
-  if (!WideRight)
-    return std::unexpected(WideRight.error());
-  if (auto Replaced = Instruction.operandAt(2)->setRegister(*WideLeft); !Replaced)
-    return std::unexpected(Replaced.error());
-  if (auto Replaced = Instruction.operandAt(3)->setRegister(*WideRight); !Replaced)
-    return std::unexpected(Replaced.error());
-
-  const auto DestinationType = registerType(Function, OriginalDestination);
-  if (!DestinationType)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V integer compare destination has no scalar type");
-  if (DestinationType->scalarBitWidth() == 64)
-    return {};
-
-  MachineInstr *FoldedExtension = singleRegisterUse(Function, OriginalDestination);
-  if (FoldedExtension != nullptr &&
-      (FoldedExtension->opcode() == opcode(GenericOpcode::G_ANYEXT) ||
-       FoldedExtension->opcode() == opcode(GenericOpcode::G_SEXT) ||
-       FoldedExtension->opcode() == opcode(GenericOpcode::G_ZEXT)) &&
-      operandType(Function, *FoldedExtension, 0)
-          .transform([](LowLevelType Type) { return Type.scalarBitWidth() == 64; })
-          .value_or(false)) {
-    const MachineOperand *ExtendedOperand = FoldedExtension->operandAt(0);
-    const Register *Extended =
-        ExtendedOperand == nullptr ? nullptr : ExtendedOperand->getIf<Register>();
-    if (Extended == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V integer compare extension has no destination");
-    const Register WideDestination = *Extended;
-    if (auto Replaced = Instruction.operandAt(0)->setRegister(WideDestination); !Replaced)
-      return std::unexpected(Replaced.error());
-    return eraseInstruction(*FoldedExtension);
-  }
-
-  auto WideDestination = Function.registerInfo().createVirtualRegister(*WideType);
-  if (!WideDestination)
-    return std::unexpected(WideDestination.error());
-  if (auto Replaced = Instruction.operandAt(0)->setRegister(*WideDestination); !Replaced)
-    return std::unexpected(Replaced.error());
-  if (Function.registerInfo().useEmpty(OriginalDestination))
-    return {};
-  auto Point = Builder.setInsertPointAfter(Instruction);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto Truncation = Builder.buildInstr(opcode(GenericOpcode::G_TRUNC));
-  if (!Truncation)
-    return std::unexpected(Truncation.error());
-  if (auto Added = Truncation->addDef(OriginalDestination); !Added)
-    return std::unexpected(Added.error());
-  if (auto Added = Truncation->addUse(*WideDestination); !Added)
-    return std::unexpected(Added.error());
-  auto Built = Truncation->build();
-  if (!Built)
-    return std::unexpected(Built.error());
-  return {};
-}
-
 [[nodiscard]] Expected<void> lowerConstantToPool(MachineInstr &Instruction,
                                                  MachineFunction &Function,
                                                  const TargetDescription &Target) {
@@ -747,6 +579,7 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
   const bool HasA = Subtarget.features().has(RISCVExtension::A);
   const bool HasF = Subtarget.features().has(RISCVExtension::F);
   const bool HasD = Subtarget.features().has(RISCVExtension::D);
+  const bool HasZbb = Subtarget.features().has(RISCVExtension::Zbb);
 
   getActionDefinitionsBuilder({opcode(GenericOpcode::G_ASSERT_SEXT),
                                opcode(GenericOpcode::G_ASSERT_ZEXT),
@@ -847,10 +680,9 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
 
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_ICMP))
       .legalFor({{S64, S64}, {S64, P0}})
-      .customIf([](const LegalizationQuery &Query) {
-        return Query.Types.size() == 2 && Query.Types[0].isCategoryNeutralScalar() &&
-               (Query.Types[1].isCategoryNeutralScalar() || Query.Types[1].isPointer());
-      });
+      .widenScalarToNextPow2(1, 8)
+      .clampScalar(1, S64, S64)
+      .clampScalar(0, S64, S64);
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_SELECT))
       .legalFor({{S32, S64}, {S64, S64}, {P0, S64}})
       .widenScalarToNextPow2(0)
@@ -978,10 +810,14 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
       .lower();
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_ABS)).lower();
   getActionDefinitionsBuilder({opcode(GenericOpcode::G_ABDS), opcode(GenericOpcode::G_ABDU)})
+      .minScalar(HasZbb, 0, S64)
       .lower();
   getActionDefinitionsBuilder({opcode(GenericOpcode::G_UMAX), opcode(GenericOpcode::G_UMIN),
-                               opcode(GenericOpcode::G_SMAX), opcode(GenericOpcode::G_SMIN),
-                               opcode(GenericOpcode::G_SCMP), opcode(GenericOpcode::G_UCMP)})
+                               opcode(GenericOpcode::G_SMAX), opcode(GenericOpcode::G_SMIN)})
+      .legalFor(HasZbb, {S64})
+      .minScalar(HasZbb, 0, S64)
+      .lower();
+  getActionDefinitionsBuilder({opcode(GenericOpcode::G_SCMP), opcode(GenericOpcode::G_UCMP)})
       .lower();
   getActionDefinitionsBuilder({opcode(GenericOpcode::G_MEMCPY), opcode(GenericOpcode::G_MEMMOVE),
                                opcode(GenericOpcode::G_MEMSET)})
@@ -1244,8 +1080,6 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     Helper.Observer.changedInstr(Instruction);
     return {};
   }
-  if (Instruction.opcode() == opcode(GenericOpcode::G_ICMP))
-    return lowerIntegerCompare(Instruction, Function, Target);
   if (Instruction.opcode() == opcode(GenericOpcode::G_ATOMIC_CMPXCHG))
     return lowerAtomicCompareExchange(Instruction, Function, Target);
   if (Instruction.opcode() == opcode(GenericOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS))
@@ -1390,6 +1224,12 @@ Expected<bool> RISCVLegalizerInfo::legalizeIntrinsic(LegalizerHelper &Helper,
   if (auto Removed = Block->removeInstruction(Instruction); !Removed)
     return std::unexpected(Removed.error());
   return true;
+}
+
+bool RISCVLegalizerInfo::isSExtCheaperThanZExt(LowLevelType SourceType,
+                                               LowLevelType DestinationType) const {
+  return SourceType.isCategoryNeutralScalar() && DestinationType.isCategoryNeutralScalar() &&
+         SourceType.scalarBitWidth() == 32 && DestinationType.scalarBitWidth() == 64;
 }
 
 } // namespace rcc::riscv

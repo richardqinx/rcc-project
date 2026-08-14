@@ -29,6 +29,8 @@ public:
   [[nodiscard]] Expected<void> lower(MachineInstr &Instruction,
                                      const LegalizationDecision &Decision);
   [[nodiscard]] Expected<void> lowerAbsToAddXor(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerAbsDiffToSelect(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerAbsDiffToMinMax(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerVAArg(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> widenScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                            LowLevelType WideType);

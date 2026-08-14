@@ -184,6 +184,10 @@ public:
 
   [[nodiscard]] virtual GenericOpcode getExtOpcodeForWideningConstant(LowLevelType SmallType) const;
 
+  [[nodiscard]] virtual bool isSExtCheaperThanZExt(LowLevelType, LowLevelType) const {
+    return false;
+  }
+
   // This hook performs read-only target checks before a lowering mutation is committed.
   [[nodiscard]] virtual Expected<void> validateLowering(const MachineInstr &,
                                                         const MachineFunction &,

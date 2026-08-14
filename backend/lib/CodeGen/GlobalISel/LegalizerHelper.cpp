@@ -909,6 +909,56 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
       return Result;
     break;
 
+  case GenericOpcode::G_ICMP:
+    if (TypeIndex == 0) {
+      if (auto Result = apply(widenDestination()); !Result)
+        return Result;
+      break;
+    }
+    if (TypeIndex != 1)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "integer comparison widening has an invalid type index");
+    {
+      const MachineOperand *PredicateMachineOperand = Instruction.operandAt(1);
+      const auto *Predicate = PredicateMachineOperand == nullptr
+                                  ? nullptr
+                                  : PredicateMachineOperand->getIf<PredicateOperand>();
+      const IntegerPredicate *Integer =
+          Predicate == nullptr ? nullptr : Predicate->integerPredicate();
+      if (Integer == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "G_ICMP widening requires an integer predicate");
+
+      bool IsSigned = false;
+      switch (*Integer) {
+      case IntegerPredicate::SignedGreaterThan:
+      case IntegerPredicate::SignedGreaterEqual:
+      case IntegerPredicate::SignedLessThan:
+      case IntegerPredicate::SignedLessEqual:
+        IsSigned = true;
+        break;
+      case IntegerPredicate::Equal:
+      case IntegerPredicate::NotEqual:
+      case IntegerPredicate::UnsignedGreaterThan:
+      case IntegerPredicate::UnsignedGreaterEqual:
+      case IntegerPredicate::UnsignedLessThan:
+      case IntegerPredicate::UnsignedLessEqual:
+        break;
+      case IntegerPredicate::Count:
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "G_ICMP widening received an invalid integer predicate");
+      }
+      const GenericOpcode ExtensionOpcode =
+          IsSigned || Info.isSExtCheaperThanZExt(Query->Types[TypeIndex], WideType)
+              ? GenericOpcode::G_SEXT
+              : GenericOpcode::G_ZEXT;
+      if (auto Result = apply(widenSource(2, ExtensionOpcode)); !Result)
+        return Result;
+      if (auto Result = apply(widenSource(3, ExtensionOpcode)); !Result)
+        return Result;
+    }
+    break;
+
   case GenericOpcode::G_SELECT:
     if (TypeIndex == 0) {
       if (auto Result = apply(widenSource(2, GenericOpcode::G_ANYEXT)); !Result)
@@ -1345,6 +1395,26 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
   case GenericOpcode::G_ABS:
     return lowerAbsToAddXor(Instruction);
+  case GenericOpcode::G_ABDS:
+  case GenericOpcode::G_ABDU: {
+    const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_ABDS);
+    const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+    auto Type = MRI.getType(Destination);
+    if (!Type)
+      return std::unexpected(Type.error());
+
+    const GenericOpcode MinOpcode = IsSigned ? GenericOpcode::G_SMIN : GenericOpcode::G_UMIN;
+    const GenericOpcode MaxOpcode = IsSigned ? GenericOpcode::G_SMAX : GenericOpcode::G_UMAX;
+    auto MinLegal = Info.isLegal(LegalizationQuery(opcode(MinOpcode), {*Type}));
+    if (!MinLegal)
+      return std::unexpected(MinLegal.error());
+    auto MaxLegal = Info.isLegal(LegalizationQuery(opcode(MaxOpcode), {*Type}));
+    if (!MaxLegal)
+      return std::unexpected(MaxLegal.error());
+    if (*MinLegal && *MaxLegal)
+      return lowerAbsDiffToMinMax(Instruction);
+    return lowerAbsDiffToSelect(Instruction);
+  }
   case GenericOpcode::G_SEXT_INREG: {
     const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
     const Register Source = *Instruction.operandAt(1)->getIf<Register>();
@@ -1584,6 +1654,85 @@ Expected<void> LegalizerHelper::lowerAbsToAddXor(MachineInstr &Instruction) {
   MachineBasicBlock *Block = Instruction.parent();
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError, "G_ABS became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerAbsDiffToSelect(MachineInstr &Instruction) {
+  const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_ABDS);
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Left = *Instruction.operandAt(1)->getIf<Register>();
+  const Register Right = *Instruction.operandAt(2)->getIf<Register>();
+  auto Type = MRI.getType(Left);
+  if (!Type)
+    return std::unexpected(Type.error());
+  auto ConditionType = LowLevelType::makeCategoryNeutralScalar(1);
+  if (!ConditionType)
+    return std::unexpected(ConditionType.error());
+
+  auto LeftSub = MRI.createVirtualRegister(*Type);
+  auto RightSub = MRI.createVirtualRegister(*Type);
+  auto Condition = MRI.createVirtualRegister(*ConditionType);
+  if (!LeftSub)
+    return std::unexpected(LeftSub.error());
+  if (!RightSub)
+    return std::unexpected(RightSub.error());
+  if (!Condition)
+    return std::unexpected(Condition.error());
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = MIRBuilder.buildSub(*LeftSub, Left, Right); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildSub(*RightSub, Right, Left); !Built)
+    return std::unexpected(Built.error());
+  const IntegerPredicate Predicate =
+      IsSigned ? IntegerPredicate::SignedGreaterThan : IntegerPredicate::UnsignedGreaterThan;
+  if (auto Built = MIRBuilder.buildICmp(Predicate, *Condition, Left, Right); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {Destination},
+                                         {*Condition, *LeftSub, *RightSub});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "G_ABDS/G_ABDU became detached during select lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerAbsDiffToMinMax(MachineInstr &Instruction) {
+  const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_ABDS);
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Left = *Instruction.operandAt(1)->getIf<Register>();
+  const Register Right = *Instruction.operandAt(2)->getIf<Register>();
+  auto Type = MRI.getType(Left);
+  if (!Type)
+    return std::unexpected(Type.error());
+
+  auto Maximum = MRI.createVirtualRegister(*Type);
+  auto Minimum = MRI.createVirtualRegister(*Type);
+  if (!Maximum)
+    return std::unexpected(Maximum.error());
+  if (!Minimum)
+    return std::unexpected(Minimum.error());
+
+  const GenericOpcode MaxOpcode = IsSigned ? GenericOpcode::G_SMAX : GenericOpcode::G_UMAX;
+  const GenericOpcode MinOpcode = IsSigned ? GenericOpcode::G_SMIN : GenericOpcode::G_UMIN;
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = MIRBuilder.buildInstr(opcode(MaxOpcode), {*Maximum}, {Left, Right}); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildInstr(opcode(MinOpcode), {*Minimum}, {Left, Right}); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildSub(Destination, *Maximum, *Minimum); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "G_ABDS/G_ABDU became detached during min/max lowering");
   return Block->removeInstruction(Instruction);
 }
 
