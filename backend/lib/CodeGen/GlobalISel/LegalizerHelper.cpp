@@ -1167,6 +1167,21 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     }
     break;
 
+  case GenericOpcode::G_FCMP:
+    if (TypeIndex == 0) {
+      if (auto Result = Apply(WidenDestination()); !Result)
+        return Result;
+      break;
+    }
+    if (TypeIndex != 1)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "floating comparison widening has an invalid type index");
+    if (auto Result = Apply(WidenSource(2, GenericOpcode::G_FPEXT)); !Result)
+      return Result;
+    if (auto Result = Apply(WidenSource(3, GenericOpcode::G_FPEXT)); !Result)
+      return Result;
+    break;
+
   case GenericOpcode::G_SELECT:
     if (TypeIndex == 0) {
       if (auto Result = Apply(WidenSource(2, GenericOpcode::G_ANYEXT)); !Result)
@@ -2503,6 +2518,17 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   case GenericOpcode::G_PTRTOINT:
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::Unsupported, "G_PTRTOINT source narrowing is not defined");
+    Observer.changingInstr(Instruction);
+    if (auto Narrowed = narrowScalarDst(Instruction, NarrowType, 0, GenericOpcode::G_ZEXT);
+        !Narrowed) {
+      return std::unexpected(Narrowed.error());
+    }
+    Observer.changedInstr(Instruction);
+    return {};
+  case GenericOpcode::G_FCMP:
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "floating comparison source narrowing is not defined");
     Observer.changingInstr(Instruction);
     if (auto Narrowed = narrowScalarDst(Instruction, NarrowType, 0, GenericOpcode::G_ZEXT);
         !Narrowed) {
