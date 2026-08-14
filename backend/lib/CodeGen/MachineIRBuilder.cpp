@@ -873,6 +873,11 @@ Expected<MachineInstr *> MachineIRBuilder::buildOr(Register Destination, Registe
   return buildBinary(opcode(GenericOpcode::G_OR), Destination, Left, Right);
 }
 
+Expected<MachineInstr *> MachineIRBuilder::buildXor(Register Destination, Register Left,
+                                                    Register Right) const {
+  return buildBinary(opcode(GenericOpcode::G_XOR), Destination, Left, Right);
+}
+
 Expected<MachineInstr *> MachineIRBuilder::buildAdd(Register Destination, Register Left,
                                                     Register Right) const {
   return buildBinary(opcode(GenericOpcode::G_ADD), Destination, Left, Right);

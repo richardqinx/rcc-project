@@ -335,6 +335,15 @@ Expected<void> MachineOperand::setImmediate(std::int64_t Value) {
   return {};
 }
 
+Expected<void> MachineOperand::setIntegerImmediate(APInt Value) {
+  if (OperandKind != Kind::IntegerImmediate) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "setIntegerImmediate requires an integer-immediate operand");
+  }
+  Storage = IntegerImmediateOperand{std::move(Value)};
+  return {};
+}
+
 Expected<void> MachineOperand::setRegisterFlags(RegisterOperandFlags Flags) {
   if (!isRegister()) {
     return makeUnexpected(ErrorCode::InvalidArgument, "register flags require a register operand");

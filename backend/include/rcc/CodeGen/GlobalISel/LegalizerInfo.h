@@ -24,6 +24,7 @@ class MachineFunction;
 class MachineInstr;
 class TargetDescription;
 class LegalizerHelper;
+enum class GenericOpcode : std::uint32_t;
 
 enum class LegalizationAction : std::uint8_t {
   Legal,
@@ -180,6 +181,8 @@ public:
   [[nodiscard]] virtual Expected<bool> legalizeIntrinsic(LegalizerHelper &, MachineInstr &) const {
     return true;
   }
+
+  [[nodiscard]] virtual GenericOpcode getExtOpcodeForWideningConstant(LowLevelType SmallType) const;
 
   // This hook performs read-only target checks before a lowering mutation is committed.
   [[nodiscard]] virtual Expected<void> validateLowering(const MachineInstr &,

@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/GlobalISel/GISelChangeObserver.h"
 #include "rcc/CodeGen/GlobalISel/LegalizerHelper.h"
+#include "rcc/CodeGen/GlobalISel/Utils.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -53,6 +54,40 @@ namespace {
                                                      const MachineInstr &Instruction) {
   const MachineOperand *Result = Instruction.operandAt(0);
   return Result == nullptr ? std::nullopt : registerType(Function, *Result);
+}
+
+[[nodiscard]] Expected<Opcode> getRISCVWOpcode(GenericOpcode Generic) {
+  switch (Generic) {
+  case GenericOpcode::G_ASHR:
+    return instructionOpcode(InstructionOpcode::G_SRAW);
+  case GenericOpcode::G_LSHR:
+    return instructionOpcode(InstructionOpcode::G_SRLW);
+  case GenericOpcode::G_SHL:
+    return instructionOpcode(InstructionOpcode::G_SLLW);
+  case GenericOpcode::G_SDIV:
+    return instructionOpcode(InstructionOpcode::G_DIVW);
+  case GenericOpcode::G_UDIV:
+    return instructionOpcode(InstructionOpcode::G_DIVUW);
+  case GenericOpcode::G_UREM:
+    return instructionOpcode(InstructionOpcode::G_REMUW);
+  case GenericOpcode::G_ROTL:
+    return instructionOpcode(InstructionOpcode::G_ROLW);
+  case GenericOpcode::G_ROTR:
+    return instructionOpcode(InstructionOpcode::G_RORW);
+  case GenericOpcode::G_CTLZ:
+    return instructionOpcode(InstructionOpcode::G_CLZW);
+  case GenericOpcode::G_CTTZ:
+    return instructionOpcode(InstructionOpcode::G_CTZW);
+  case GenericOpcode::G_CTLS:
+    return instructionOpcode(InstructionOpcode::G_CLSW);
+  case GenericOpcode::G_FPTOSI:
+    return instructionOpcode(InstructionOpcode::G_FCVT_W_RV64);
+  case GenericOpcode::G_FPTOUI:
+    return instructionOpcode(InstructionOpcode::G_FCVT_WU_RV64);
+  default:
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "RISC-V word opcode mapping received an unexpected opcode");
+  }
 }
 
 [[nodiscard]] std::optional<LowLevelType>
@@ -1157,6 +1192,57 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
                                          .TypeIndex = 0,
                                          .NewType = {},
                                      });
+  }
+  if (Instruction.opcode() == opcode(GenericOpcode::G_ASHR) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_LSHR) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_SHL)) {
+    auto XLenType = LowLevelType::makeCategoryNeutralScalar(64);
+    if (!XLenType)
+      return std::unexpected(XLenType.error());
+    const MachineOperand *ShiftOperand = Instruction.operandAt(2);
+    const Register *ShiftAmount =
+        ShiftOperand == nullptr ? nullptr : ShiftOperand->getIf<Register>();
+    if (ShiftAmount == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V shift legalization requires a register shift amount");
+
+    const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+    if (getIConstantVRegValWithLookThrough(*ShiftAmount, Function.registerInfo())) {
+      GenericOpcode ExtensionOpcode = GenericOpcode::G_ANYEXT;
+      if (Generic == GenericOpcode::G_ASHR)
+        ExtensionOpcode = GenericOpcode::G_SEXT;
+      else if (Generic == GenericOpcode::G_LSHR)
+        ExtensionOpcode = GenericOpcode::G_ZEXT;
+
+      Helper.Observer.changingInstr(Instruction);
+      if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 1, ExtensionOpcode);
+          !Widened)
+        return std::unexpected(Widened.error());
+      if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 2, GenericOpcode::G_ZEXT);
+          !Widened)
+        return std::unexpected(Widened.error());
+      if (auto Widened = Helper.widenScalarDst(Instruction, *XLenType); !Widened)
+        return std::unexpected(Widened.error());
+      Helper.Observer.changedInstr(Instruction);
+      return {};
+    }
+
+    Helper.Observer.changingInstr(Instruction);
+    if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 1, GenericOpcode::G_ANYEXT);
+        !Widened)
+      return std::unexpected(Widened.error());
+    if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 2, GenericOpcode::G_ANYEXT);
+        !Widened)
+      return std::unexpected(Widened.error());
+    if (auto Widened = Helper.widenScalarDst(Instruction, *XLenType); !Widened)
+      return std::unexpected(Widened.error());
+    auto WordOpcode = getRISCVWOpcode(Generic);
+    if (!WordOpcode)
+      return std::unexpected(WordOpcode.error());
+    if (auto Changed = Instruction.setOpcode(*WordOpcode); !Changed)
+      return std::unexpected(Changed.error());
+    Helper.Observer.changedInstr(Instruction);
+    return {};
   }
   if (Instruction.opcode() == opcode(GenericOpcode::G_ICMP))
     return lowerIntegerCompare(Instruction, Function, Target);

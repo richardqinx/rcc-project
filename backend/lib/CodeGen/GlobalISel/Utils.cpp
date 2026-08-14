@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 namespace rcc {
@@ -144,6 +145,90 @@ namespace {
 }
 
 } // namespace
+
+std::optional<ValueAndVReg> getIConstantVRegValWithLookThrough(Register VReg,
+                                                               const MachineRegisterInfo &MRI,
+                                                               bool LookThroughInstrs) {
+  std::vector<std::pair<GenericOpcode, std::uint32_t>> SeenOpcodes;
+  const MachineInstr *Instruction = nullptr;
+
+  while ((Instruction = MRI.getVRegDef(VReg)) != nullptr &&
+         Instruction->opcode() != opcode(GenericOpcode::G_CONSTANT) && LookThroughInstrs) {
+    const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction->opcode().value());
+    switch (Generic) {
+    case GenericOpcode::G_ANYEXT:
+      return std::nullopt;
+    case GenericOpcode::G_TRUNC:
+    case GenericOpcode::G_SEXT:
+    case GenericOpcode::G_ZEXT: {
+      const MachineOperand *DestinationOperand = Instruction->operandAt(0);
+      const MachineOperand *SourceOperand = Instruction->operandAt(1);
+      const Register *Destination =
+          DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+      const Register *Source =
+          SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+      if (Destination == nullptr || Source == nullptr)
+        return std::nullopt;
+      auto Type = MRI.getType(*Destination);
+      if (!Type)
+        return std::nullopt;
+      SeenOpcodes.emplace_back(Generic, Type->scalarBitWidth());
+      VReg = *Source;
+      break;
+    }
+    case GenericOpcode::COPY: {
+      const MachineOperand *SourceOperand = Instruction->operandAt(1);
+      const Register *Source =
+          SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+      if (Source == nullptr || Source->isPhysical())
+        return std::nullopt;
+      VReg = *Source;
+      break;
+    }
+    case GenericOpcode::G_INTTOPTR: {
+      const MachineOperand *SourceOperand = Instruction->operandAt(1);
+      const Register *Source =
+          SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+      if (Source == nullptr)
+        return std::nullopt;
+      VReg = *Source;
+      break;
+    }
+    default:
+      return std::nullopt;
+    }
+  }
+
+  if (Instruction == nullptr || Instruction->opcode() != opcode(GenericOpcode::G_CONSTANT))
+    return std::nullopt;
+  const MachineOperand *ValueOperand = Instruction->operandAt(1);
+  const auto *Immediate =
+      ValueOperand == nullptr ? nullptr : ValueOperand->getIf<IntegerImmediateOperand>();
+  if (Immediate == nullptr)
+    return std::nullopt;
+
+  APInt Value = Immediate->Value;
+  for (auto Iterator = SeenOpcodes.rbegin(); Iterator != SeenOpcodes.rend(); ++Iterator) {
+    Expected<APInt> Transformed = [&]() -> Expected<APInt> {
+      switch (Iterator->first) {
+      case GenericOpcode::G_TRUNC:
+        return Value.trunc(Iterator->second);
+      case GenericOpcode::G_ANYEXT:
+      case GenericOpcode::G_SEXT:
+        return Value.sext(Iterator->second);
+      case GenericOpcode::G_ZEXT:
+        return Value.zext(Iterator->second);
+      default:
+        return makeUnexpected(ErrorCode::InternalError,
+                              "unexpected opcode in constant look-through chain");
+      }
+    }();
+    if (!Transformed)
+      return std::nullopt;
+    Value = std::move(*Transformed);
+  }
+  return ValueAndVReg{.Value = std::move(Value), .VReg = VReg};
+}
 
 bool isTriviallyDead(const MachineInstr &Instruction, const MachineRegisterInfo &MRI,
                      const TargetDescription &Target) noexcept {

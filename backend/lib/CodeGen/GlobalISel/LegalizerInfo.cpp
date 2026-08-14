@@ -474,4 +474,8 @@ Expected<bool> LegalizerInfo::isUnsupported(const LegalizationQuery &Query) cons
   return Decision->Action == LegalizationAction::Unsupported;
 }
 
+GenericOpcode LegalizerInfo::getExtOpcodeForWideningConstant(LowLevelType SmallType) const {
+  return SmallType.minimumBitWidth() % 8U == 0 ? GenericOpcode::G_SEXT : GenericOpcode::G_ZEXT;
+}
+
 } // namespace rcc

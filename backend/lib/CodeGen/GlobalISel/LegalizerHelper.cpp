@@ -780,6 +780,35 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
       return Result;
     break;
 
+  case GenericOpcode::G_CONSTANT: {
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "constant widening has an invalid type index");
+    MachineOperand *SourceOperand = Instruction.operandAt(1);
+    const auto *Immediate =
+        SourceOperand == nullptr ? nullptr : SourceOperand->getIf<IntegerImmediateOperand>();
+    if (Immediate == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_CONSTANT widening requires an integer immediate");
+    const GenericOpcode ExtensionOpcode =
+        Info.getExtOpcodeForWideningConstant(Query->Types[TypeIndex]);
+    if (ExtensionOpcode != GenericOpcode::G_SEXT && ExtensionOpcode != GenericOpcode::G_ZEXT &&
+        ExtensionOpcode != GenericOpcode::G_ANYEXT) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "constant widening selected an invalid extension opcode");
+    }
+    auto Extended = ExtensionOpcode == GenericOpcode::G_SEXT
+                        ? Immediate->Value.sext(WideType.scalarBitWidth())
+                        : Immediate->Value.zext(WideType.scalarBitWidth());
+    if (!Extended)
+      return std::unexpected(Extended.error());
+    if (auto Replaced = SourceOperand->setIntegerImmediate(std::move(*Extended)); !Replaced)
+      return std::unexpected(Replaced.error());
+    if (auto Result = apply(widenDestination()); !Result)
+      return Result;
+    break;
+  }
+
   case GenericOpcode::G_ADD:
   case GenericOpcode::G_SUB:
   case GenericOpcode::G_MUL:
@@ -1314,6 +1343,42 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "lower received a non-lower legalization action");
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
+  case GenericOpcode::G_ABS:
+    return lowerAbsToAddXor(Instruction);
+  case GenericOpcode::G_SEXT_INREG: {
+    const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+    const Register Source = *Instruction.operandAt(1)->getIf<Register>();
+    auto SizeInBits = signedImmediate(*Instruction.operandAt(2));
+    if (!SizeInBits)
+      return std::unexpected(SizeInBits.error());
+    auto Type = MRI.getType(Destination);
+    if (!Type)
+      return std::unexpected(Type.error());
+
+    auto ShiftAmount = MRI.createVirtualRegister(*Type);
+    auto Temporary = MRI.createVirtualRegister(*Type);
+    if (!ShiftAmount)
+      return std::unexpected(ShiftAmount.error());
+    if (!Temporary)
+      return std::unexpected(Temporary.error());
+
+    if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+      return std::unexpected(Point.error());
+    const std::int64_t Shift = static_cast<std::int64_t>(Type->scalarBitWidth()) - *SizeInBits;
+    if (auto Built = MIRBuilder.buildConstant(*ShiftAmount, Shift); !Built)
+      return std::unexpected(Built.error());
+    if (auto Built = MIRBuilder.buildShl(*Temporary, Source, *ShiftAmount); !Built)
+      return std::unexpected(Built.error());
+    if (auto Built = MIRBuilder.buildAShr(Destination, *Temporary, *ShiftAmount); !Built)
+      return std::unexpected(Built.error());
+
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "G_SEXT_INREG became detached during lowering");
+    }
+    return Block->removeInstruction(Instruction);
+  }
   case GenericOpcode::G_VAARG:
     return lowerVAArg(Instruction);
   case GenericOpcode::G_UADDO: {
@@ -1486,6 +1551,40 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
                               "'");
   }
   }
+}
+
+Expected<void> LegalizerHelper::lowerAbsToAddXor(MachineInstr &Instruction) {
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Source = *Instruction.operandAt(1)->getIf<Register>();
+  auto Type = MRI.getType(Destination);
+  if (!Type)
+    return std::unexpected(Type.error());
+
+  auto ShiftAmount = MRI.createVirtualRegister(*Type);
+  auto Shift = MRI.createVirtualRegister(*Type);
+  auto Add = MRI.createVirtualRegister(*Type);
+  if (!ShiftAmount)
+    return std::unexpected(ShiftAmount.error());
+  if (!Shift)
+    return std::unexpected(Shift.error());
+  if (!Add)
+    return std::unexpected(Add.error());
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = MIRBuilder.buildConstant(*ShiftAmount, Type->scalarBitWidth() - 1U); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildAShr(*Shift, Source, *ShiftAmount); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildAdd(*Add, Source, *Shift); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildXor(Destination, *Add, *Shift); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "G_ABS became detached during lowering");
+  return Block->removeInstruction(Instruction);
 }
 
 Expected<void> LegalizerHelper::legalize(MachineInstr &Instruction,

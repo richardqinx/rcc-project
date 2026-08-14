@@ -3,6 +3,7 @@
 #include "rcc/CodeGen/GlobalISel/GISelValueTracking.h"
 
 #include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/CodeGen/GlobalISel/Utils.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
@@ -60,15 +61,10 @@ namespace {
 
 [[nodiscard]] std::optional<std::uint32_t>
 constantShiftAmount(Register Reg, const MachineRegisterInfo &MRI, std::uint32_t BitWidth) {
-  const MachineInstr *Definition = MRI.getVRegDef(Reg);
-  if (Definition == nullptr || Definition->opcode() != opcode(GenericOpcode::G_CONSTANT))
+  const auto Constant = getIConstantVRegValWithLookThrough(Reg, MRI);
+  if (!Constant || Constant->Value.activeBitWidth() > 32)
     return std::nullopt;
-  const MachineOperand *ValueOperand = Definition->operandAt(1);
-  const auto *Immediate =
-      ValueOperand == nullptr ? nullptr : ValueOperand->getIf<IntegerImmediateOperand>();
-  if (Immediate == nullptr || Immediate->Value.activeBitWidth() > 32)
-    return std::nullopt;
-  const std::uint64_t Amount = Immediate->Value.word(0);
+  const std::uint64_t Amount = Constant->Value.word(0);
   if (Amount >= BitWidth)
     return std::nullopt;
   return static_cast<std::uint32_t>(Amount);
@@ -400,6 +396,7 @@ Expected<std::uint32_t> GISelValueTracking::computeNumSignBits(Register Reg, uns
   if (Definition == nullptr)
     return 1U;
   const auto Opcode = static_cast<GenericOpcode>(Definition->opcode().value());
+  std::uint32_t FirstAnswer = 1U;
 
   if (Opcode == GenericOpcode::G_CONSTANT) {
     const MachineOperand *ValueOperand = Definition->operandAt(1);
@@ -451,8 +448,20 @@ Expected<std::uint32_t> GISelValueTracking::computeNumSignBits(Register Reg, uns
         if (!RightSignBits)
           return std::unexpected(RightSignBits.error());
         if (*RightSignBits != 1)
-          return std::min(*LeftSignBits, *RightSignBits);
+          FirstAnswer = std::min(*LeftSignBits, *RightSignBits);
       }
+    }
+  }
+
+  if (Opcode == GenericOpcode::G_ASHR && Source) {
+    const auto Right = registerOperand(*Definition, 2);
+    if (Right) {
+      auto SourceSignBits = computeNumSignBits(*Source, Depth + 1U);
+      if (!SourceSignBits)
+        return std::unexpected(SourceSignBits.error());
+      FirstAnswer = *SourceSignBits;
+      if (const auto Amount = constantShiftAmount(*Right, MRI, BitWidth))
+        FirstAnswer = std::min(BitWidth, FirstAnswer + *Amount);
     }
   }
 
@@ -508,7 +517,7 @@ Expected<std::uint32_t> GISelValueTracking::computeNumSignBits(Register Reg, uns
     KnownSignBits = static_cast<std::uint32_t>(Known->Zero.countlOne());
   else if (Known->One.testBit(BitWidth - 1U))
     KnownSignBits = static_cast<std::uint32_t>(Known->One.countlOne());
-  return std::max(1U, KnownSignBits);
+  return std::max(FirstAnswer, std::max(1U, KnownSignBits));
 }
 
 } // namespace rcc

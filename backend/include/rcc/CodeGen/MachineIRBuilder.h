@@ -202,6 +202,8 @@ public:
                                                   Register Right) const;
   [[nodiscard]] Expected<MachineInstr *> buildOr(Register Destination, Register Left,
                                                  Register Right) const;
+  [[nodiscard]] Expected<MachineInstr *> buildXor(Register Destination, Register Left,
+                                                  Register Right) const;
   [[nodiscard]] Expected<MachineInstr *> buildAdd(Register Destination, Register Left,
                                                   Register Right) const;
   [[nodiscard]] Expected<MachineInstr *> buildSub(Register Destination, Register Left,
