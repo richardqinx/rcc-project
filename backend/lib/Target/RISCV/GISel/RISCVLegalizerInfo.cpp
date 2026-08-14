@@ -363,7 +363,11 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
       .customFor(HasZbb, {{S32, S32}})
       .lower();
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_BITREVERSE)).maxScalar(0, S64).lower();
-  getActionDefinitionsBuilder(opcode(GenericOpcode::G_BSWAP)).maxScalar(0, S64).lower();
+  auto &ByteSwapActions = getActionDefinitionsBuilder(opcode(GenericOpcode::G_BSWAP));
+  if (HasZbb)
+    ByteSwapActions.legalFor({S64}).clampScalar(0, S64, S64);
+  else
+    ByteSwapActions.maxScalar(0, S64).lower();
 
   getActionDefinitionsBuilder(
       {opcode(GenericOpcode::G_CTLZ), opcode(GenericOpcode::G_CTTZ), opcode(GenericOpcode::G_CTLS)})

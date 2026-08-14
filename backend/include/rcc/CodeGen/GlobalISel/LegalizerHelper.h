@@ -36,6 +36,7 @@ public:
   [[nodiscard]] Expected<void> lowerMinMax(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerThreewayCompare(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerDivRem(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerBswap(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerRotate(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerVAArg(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> libcall(MachineInstr &Instruction);

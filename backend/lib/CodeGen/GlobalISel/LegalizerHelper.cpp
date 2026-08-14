@@ -1119,6 +1119,44 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
       return Result;
     break;
 
+  case GenericOpcode::G_BSWAP: {
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "byte-swap widening has an invalid type index");
+    MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    if (Destination == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "byte-swap widening requires a register destination");
+    const Register OriginalDestination = *Destination;
+    auto OriginalType = MRI.getType(OriginalDestination);
+    if (!OriginalType)
+      return std::unexpected(OriginalType.error());
+    auto WideDestination = MRI.createVirtualRegister(WideType);
+    auto Shifted = MRI.createVirtualRegister(WideType);
+    if (!WideDestination)
+      return std::unexpected(WideDestination.error());
+    if (!Shifted)
+      return std::unexpected(Shifted.error());
+    if (auto Result = Apply(WidenSource(1, GenericOpcode::G_ANYEXT)); !Result)
+      return Result;
+    if (auto Replaced = DestinationOperand->setRegister(*WideDestination); !Replaced)
+      return std::unexpected(Replaced.error());
+
+    if (auto Point = MIRBuilder.setInsertPointAfter(Instruction); !Point)
+      return std::unexpected(Point.error());
+    const std::uint32_t Difference = WideType.scalarBitWidth() - OriginalType->scalarBitWidth();
+    auto ShiftAmount = buildConstantRegister(MIRBuilder, WideType, Difference);
+    if (!ShiftAmount)
+      return std::unexpected(ShiftAmount.error());
+    if (auto Built = MIRBuilder.buildLShr(*Shifted, *WideDestination, *ShiftAmount); !Built)
+      return std::unexpected(Built.error());
+    if (auto Built = MIRBuilder.buildTrunc(OriginalDestination, *Shifted); !Built)
+      return std::unexpected(Built.error());
+    break;
+  }
+
   case GenericOpcode::G_LOAD:
   case GenericOpcode::G_SEXTLOAD:
   case GenericOpcode::G_ZEXTLOAD:
@@ -2969,6 +3007,8 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   case GenericOpcode::G_SDIVREM:
   case GenericOpcode::G_UDIVREM:
     return lowerDivRem(Instruction);
+  case GenericOpcode::G_BSWAP:
+    return lowerBswap(Instruction);
   case GenericOpcode::G_ROTL:
   case GenericOpcode::G_ROTR:
     return lowerRotate(Instruction);
@@ -3529,6 +3569,94 @@ Expected<void> LegalizerHelper::lowerDivRem(MachineInstr &Instruction) {
   MachineBasicBlock *Block = Instruction.parent();
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError, "DIVREM became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerBswap(MachineInstr &Instruction) {
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Source = *Instruction.operandAt(1)->getIf<Register>();
+  auto Type = MRI.getType(Source);
+  if (!Type)
+    return std::unexpected(Type.error());
+
+  const std::uint32_t SizeInBytes = (Type->scalarBitWidth() + 7U) / 8U;
+  const std::uint32_t BaseShiftAmount = (SizeInBytes - 1U) * 8U;
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  auto ShiftAmount = buildConstantRegister(MIRBuilder, *Type, BaseShiftAmount);
+  if (!ShiftAmount)
+    return std::unexpected(ShiftAmount.error());
+  auto LowByteShiftedLeft =
+      buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, *Type, {Source, *ShiftAmount});
+  auto HighByteShiftedRight =
+      buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *Type, {Source, *ShiftAmount});
+  if (!LowByteShiftedLeft)
+    return std::unexpected(LowByteShiftedLeft.error());
+  if (!HighByteShiftedRight)
+    return std::unexpected(HighByteShiftedRight.error());
+
+  Register Result;
+  if (SizeInBytes == 2U) {
+    if (auto Built = MIRBuilder.buildOr(Destination, *HighByteShiftedRight, *LowByteShiftedLeft);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    Result = Destination;
+  } else {
+    auto OuterBytes = buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, *Type,
+                                             {*HighByteShiftedRight, *LowByteShiftedLeft});
+    if (!OuterBytes)
+      return std::unexpected(OuterBytes.error());
+    Result = *OuterBytes;
+  }
+
+  for (std::uint32_t Index = 1; Index < SizeInBytes / 2U; ++Index) {
+    const std::uint32_t MaskBits = std::uint32_t{0xff} << (Index * 8U);
+    const std::int64_t MaskValue = static_cast<std::int32_t>(MaskBits);
+    auto Mask = buildConstantRegister(MIRBuilder, *Type, MaskValue);
+    auto InnerShiftAmount = buildConstantRegister(MIRBuilder, *Type, BaseShiftAmount - 16U * Index);
+    if (!Mask)
+      return std::unexpected(Mask.error());
+    if (!InnerShiftAmount)
+      return std::unexpected(InnerShiftAmount.error());
+
+    auto LowByte = buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *Type, {Source, *Mask});
+    if (!LowByte)
+      return std::unexpected(LowByte.error());
+    auto LowByteShifted = buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, *Type,
+                                                 {*LowByte, *InnerShiftAmount});
+    if (!LowByteShifted)
+      return std::unexpected(LowByteShifted.error());
+    auto WithLowByte =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, *Type, {Result, *LowByteShifted});
+    if (!WithLowByte)
+      return std::unexpected(WithLowByte.error());
+
+    auto SourceShifted = buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *Type,
+                                                {Source, *InnerShiftAmount});
+    if (!SourceShifted)
+      return std::unexpected(SourceShifted.error());
+    auto HighByte =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *Type, {*SourceShifted, *Mask});
+    if (!HighByte)
+      return std::unexpected(HighByte.error());
+
+    if (Index + 1U == SizeInBytes / 2U) {
+      if (auto Built = MIRBuilder.buildOr(Destination, *WithLowByte, *HighByte); !Built)
+        return std::unexpected(Built.error());
+      Result = Destination;
+    } else {
+      auto Combined =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, *Type, {*WithLowByte, *HighByte});
+      if (!Combined)
+        return std::unexpected(Combined.error());
+      Result = *Combined;
+    }
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "G_BSWAP became detached during lowering");
   return Block->removeInstruction(Instruction);
 }
 
