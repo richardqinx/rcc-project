@@ -115,6 +115,21 @@ struct ScalarLayout final {
   return resultRegister(**Built);
 }
 
+[[nodiscard]] IntegerPredicate minMaxToCompare(GenericOpcode Generic) {
+  switch (Generic) {
+  case GenericOpcode::G_SMIN:
+    return IntegerPredicate::SignedLessThan;
+  case GenericOpcode::G_SMAX:
+    return IntegerPredicate::SignedGreaterThan;
+  case GenericOpcode::G_UMIN:
+    return IntegerPredicate::UnsignedLessThan;
+  case GenericOpcode::G_UMAX:
+    return IntegerPredicate::UnsignedGreaterThan;
+  default:
+    std::unreachable();
+  }
+}
+
 [[nodiscard]] Expected<Register> buildConstantBefore(MachineIRBuilder &Builder,
                                                      MachineInstr &Anchor, LowLevelType Type,
                                                      std::uint64_t Value) {
@@ -2850,6 +2865,11 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
   case GenericOpcode::G_ABS:
     return lowerAbsToAddXor(Instruction);
+  case GenericOpcode::G_SMIN:
+  case GenericOpcode::G_SMAX:
+  case GenericOpcode::G_UMIN:
+  case GenericOpcode::G_UMAX:
+    return lowerMinMax(Instruction);
   case GenericOpcode::G_ABDS:
   case GenericOpcode::G_ABDU: {
     const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_ABDS);
@@ -3184,6 +3204,52 @@ Expected<void> LegalizerHelper::lowerAbsDiffToMinMax(MachineInstr &Instruction) 
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError,
                           "G_ABDS/G_ABDU became detached during min/max lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerMinMax(MachineInstr &Instruction) {
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Left = *Instruction.operandAt(1)->getIf<Register>();
+  const Register Right = *Instruction.operandAt(2)->getIf<Register>();
+
+  auto DestinationType = MRI.getType(Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  auto BooleanElementType = LowLevelType::makeCategoryNeutralScalar(1);
+  if (!BooleanElementType)
+    return std::unexpected(BooleanElementType.error());
+
+  LowLevelType ConditionType = *BooleanElementType;
+  if (DestinationType->isVector()) {
+    auto VectorType = DestinationType->isScalableVector()
+                          ? LowLevelType::makeScalableVector(DestinationType->minimumElementCount(),
+                                                             *BooleanElementType)
+                          : LowLevelType::makeFixedVector(DestinationType->minimumElementCount(),
+                                                          *BooleanElementType);
+    if (!VectorType)
+      return std::unexpected(VectorType.error());
+    ConditionType = *VectorType;
+  }
+
+  auto Condition = MRI.createVirtualRegister(ConditionType);
+  if (!Condition)
+    return std::unexpected(Condition.error());
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  const auto Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (auto Built = MIRBuilder.buildICmp(minMaxToCompare(Generic), *Condition, Left, Right); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {Destination},
+                                         {*Condition, Left, Right});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "integer min/max became detached during lowering");
   return Block->removeInstruction(Instruction);
 }
 
