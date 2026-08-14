@@ -643,6 +643,8 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) {
   getActionDefinitionsBuilder({opcode(GenericOpcode::G_FSHL), opcode(GenericOpcode::G_FSHR)})
       .lower();
   getActionDefinitionsBuilder({opcode(GenericOpcode::G_ROTR), opcode(GenericOpcode::G_ROTL)})
+      .legalFor(HasZbb, {{S64, S64}})
+      .customFor(HasZbb, {{S32, S32}})
       .lower();
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_BITREVERSE)).maxScalar(0, S64).lower();
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_BSWAP)).maxScalar(0, S64).lower();
@@ -1069,6 +1071,32 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     if (auto Widened = Helper.widenScalarDst(Instruction, *XLenType); !Widened)
       return std::unexpected(Widened.error());
     auto WordOpcode = getRISCVWOpcode(Generic);
+    if (!WordOpcode)
+      return std::unexpected(WordOpcode.error());
+    if (auto Changed = Instruction.setOpcode(*WordOpcode); !Changed)
+      return std::unexpected(Changed.error());
+    Helper.Observer.changedInstr(Instruction);
+    return {};
+  }
+  if (Instruction.opcode() == opcode(GenericOpcode::G_SDIV) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_UDIV) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_UREM) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_ROTL) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_ROTR)) {
+    auto XLenType = LowLevelType::makeCategoryNeutralScalar(64);
+    if (!XLenType)
+      return std::unexpected(XLenType.error());
+
+    Helper.Observer.changingInstr(Instruction);
+    if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 1, GenericOpcode::G_ANYEXT);
+        !Widened)
+      return std::unexpected(Widened.error());
+    if (auto Widened = Helper.widenScalarSrc(Instruction, *XLenType, 2, GenericOpcode::G_ANYEXT);
+        !Widened)
+      return std::unexpected(Widened.error());
+    if (auto Widened = Helper.widenScalarDst(Instruction, *XLenType); !Widened)
+      return std::unexpected(Widened.error());
+    auto WordOpcode = getRISCVWOpcode(static_cast<GenericOpcode>(Instruction.opcode().value()));
     if (!WordOpcode)
       return std::unexpected(WordOpcode.error());
     if (auto Changed = Instruction.setOpcode(*WordOpcode); !Changed)

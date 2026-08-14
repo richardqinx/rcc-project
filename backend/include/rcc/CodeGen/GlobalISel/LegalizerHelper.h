@@ -33,6 +33,7 @@ public:
   [[nodiscard]] Expected<void> lowerAbsDiffToMinMax(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerMinMax(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerThreewayCompare(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerRotate(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerVAArg(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> widenScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                            LowLevelType WideType);
