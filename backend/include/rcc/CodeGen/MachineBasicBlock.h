@@ -99,6 +99,9 @@ public:
                                                        MachineInstr &Instruction);
   [[nodiscard]] Expected<void> insertInstructionAfter(MachineInstr &Position,
                                                       MachineInstr &Instruction);
+  // Reorder linked instructions without reporting removal or insertion to the delegate.
+  [[nodiscard]] Expected<void> spliceInstructionBefore(MachineInstr &Position,
+                                                       MachineInstr &Instruction);
   [[nodiscard]] Expected<void> removeInstruction(MachineInstr &Instruction);
   void clearInstructions() noexcept;
 

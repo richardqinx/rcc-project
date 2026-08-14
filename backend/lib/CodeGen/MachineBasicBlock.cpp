@@ -99,6 +99,34 @@ Expected<void> MachineBasicBlock::insertInstructionAfter(MachineInstr &Position,
   return {};
 }
 
+Expected<void> MachineBasicBlock::spliceInstructionBefore(MachineInstr &Position,
+                                                          MachineInstr &Instruction) {
+  if (Position.parent() != this || Instruction.parent() != this) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "instruction splice requires two instructions in this block");
+  }
+  if (&Position == &Instruction || Instruction.NextInstruction == &Position)
+    return {};
+
+  if (Instruction.PreviousInstruction != nullptr)
+    Instruction.PreviousInstruction->NextInstruction = Instruction.NextInstruction;
+  else
+    FirstInstruction = Instruction.NextInstruction;
+  if (Instruction.NextInstruction != nullptr)
+    Instruction.NextInstruction->PreviousInstruction = Instruction.PreviousInstruction;
+  else
+    LastInstruction = Instruction.PreviousInstruction;
+
+  Instruction.PreviousInstruction = Position.PreviousInstruction;
+  Instruction.NextInstruction = &Position;
+  if (Position.PreviousInstruction != nullptr)
+    Position.PreviousInstruction->NextInstruction = &Instruction;
+  else
+    FirstInstruction = &Instruction;
+  Position.PreviousInstruction = &Instruction;
+  return {};
+}
+
 Expected<void> MachineBasicBlock::removeInstruction(MachineInstr &Instruction) {
   if (Instruction.parent() != this) {
     return makeUnexpected(ErrorCode::InvalidArgument, "instruction does not belong to this block");

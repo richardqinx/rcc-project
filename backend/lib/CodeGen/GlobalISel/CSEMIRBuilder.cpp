@@ -53,13 +53,7 @@ Expected<void> CSEMIRBuilder::makeInstructionDominate(MachineInstr &Instruction)
   }
   if (InsertBefore == nullptr || dominatesInsertionPoint(Instruction))
     return {};
-  auto Removed = Block->removeInstruction(Instruction);
-  if (!Removed)
-    return std::unexpected(Removed.error());
-  auto Inserted = Block->insertInstructionBefore(*InsertBefore, Instruction);
-  if (!Inserted)
-    return std::unexpected(Inserted.error());
-  return {};
+  return Block->spliceInstructionBefore(*InsertBefore, Instruction);
 }
 
 Expected<MachineInstr *>
