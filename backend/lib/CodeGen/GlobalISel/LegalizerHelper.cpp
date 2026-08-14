@@ -1362,6 +1362,80 @@ Expected<void> LegalizerHelper::narrowScalarExt(MachineInstr &Instruction, std::
   return Block->removeInstruction(Instruction);
 }
 
+Expected<void> LegalizerHelper::narrowScalarBasic(MachineInstr &Instruction, std::size_t TypeIndex,
+                                                  LowLevelType NarrowType) {
+  if (TypeIndex != 0 || Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "basic scalar narrowing requires type index zero and two sources");
+
+  const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+  const Register *FirstSource = Instruction.operandAt(1)->getIf<Register>();
+  const Register *SecondSource = Instruction.operandAt(2)->getIf<Register>();
+  if (Destination == nullptr || FirstSource == nullptr || SecondSource == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "basic scalar narrowing requires register operands");
+  auto DestinationType = MRI.getType(*Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+
+  LowLevelType LeftoverType;
+  LowLevelType UnusedType;
+  std::vector<Register> FirstParts;
+  std::vector<Register> FirstLeftovers;
+  std::vector<Register> SecondParts;
+  std::vector<Register> SecondLeftovers;
+  auto FirstExtracted = extractParts(*FirstSource, *DestinationType, NarrowType, LeftoverType,
+                                     FirstParts, FirstLeftovers, MIRBuilder, MRI);
+  if (!FirstExtracted)
+    return std::unexpected(FirstExtracted.error());
+  auto SecondExtracted = extractParts(*SecondSource, *DestinationType, NarrowType, UnusedType,
+                                      SecondParts, SecondLeftovers, MIRBuilder, MRI);
+  if (!SecondExtracted)
+    return std::unexpected(SecondExtracted.error());
+  if (!*FirstExtracted || !*SecondExtracted || FirstParts.size() != SecondParts.size() ||
+      FirstLeftovers.size() != SecondLeftovers.size()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "basic scalar operands cannot be split consistently");
+  }
+
+  std::vector<Register> DestinationParts;
+  DestinationParts.reserve(FirstParts.size());
+  for (std::size_t Index = 0; Index != FirstParts.size(); ++Index) {
+    auto Built = MIRBuilder.buildInstr(Instruction.opcode(), {NarrowType},
+                                       {FirstParts[Index], SecondParts[Index]});
+    if (!Built)
+      return std::unexpected(Built.error());
+    auto Result = resultRegister(**Built);
+    if (!Result)
+      return std::unexpected(Result.error());
+    DestinationParts.push_back(*Result);
+  }
+
+  std::vector<Register> DestinationLeftovers;
+  DestinationLeftovers.reserve(FirstLeftovers.size());
+  for (std::size_t Index = 0; Index != FirstLeftovers.size(); ++Index) {
+    auto Built = MIRBuilder.buildInstr(Instruction.opcode(), {LeftoverType},
+                                       {FirstLeftovers[Index], SecondLeftovers[Index]});
+    if (!Built)
+      return std::unexpected(Built.error());
+    auto Result = resultRegister(**Built);
+    if (!Result)
+      return std::unexpected(Result.error());
+    DestinationLeftovers.push_back(*Result);
+  }
+
+  if (auto Inserted = insertParts(*Destination, *DestinationType, NarrowType, DestinationParts,
+                                  LeftoverType, DestinationLeftovers);
+      !Inserted) {
+    return std::unexpected(Inserted.error());
+  }
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "basic scalar instruction became detached during narrowing");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                              LowLevelType NarrowType) {
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
@@ -1511,6 +1585,10 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   case GenericOpcode::G_ZEXT:
   case GenericOpcode::G_ANYEXT:
     return narrowScalarExt(Instruction, TypeIndex, NarrowType);
+  case GenericOpcode::G_AND:
+  case GenericOpcode::G_OR:
+  case GenericOpcode::G_XOR:
+    return narrowScalarBasic(Instruction, TypeIndex, NarrowType);
   default:
     return makeUnexpected(ErrorCode::Unsupported,
                           "scalar narrowing is not implemented for this opcode");
