@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_MACHINEIRBUILDER_H
 #define RCC_CODEGEN_MACHINEIRBUILDER_H
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/Register.h"
@@ -241,6 +242,7 @@ public:
                                                    Register Source) const;
   [[nodiscard]] Expected<MachineInstr *> buildSExt(MachineIRBuilderResult Destination,
                                                    Register Source) const;
+  [[nodiscard]] GenericOpcode getBoolExtOp(bool IsVector, bool IsFloatingPoint) const noexcept;
   [[nodiscard]] Expected<MachineInstr *> buildUndef(MachineIRBuilderResult Destination) const;
   [[nodiscard]] Expected<MachineInstr *> buildAnyExtOrTrunc(MachineIRBuilderResult Destination,
                                                             Register Source) const;

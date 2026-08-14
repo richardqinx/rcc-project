@@ -84,6 +84,38 @@ struct ScalarLayout final {
   return *Result;
 }
 
+[[nodiscard]] Expected<void> setInsertPointAtFirstTerminator(MachineIRBuilder &Builder,
+                                                             MachineBasicBlock &Block) {
+  for (MachineInstr *Instruction = Block.firstInstruction(); Instruction != nullptr;
+       Instruction = Instruction->next()) {
+    const InstructionDescriptor *Descriptor =
+        Builder.target().instructionDescriptor(Instruction->opcode());
+    if (Descriptor == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "PHI predecessor contains an unknown instruction");
+    if (Descriptor->Flags.has(InstructionFlag::Terminator))
+      return Builder.setInsertPointBefore(*Instruction);
+  }
+  return Builder.setInsertPoint(Block);
+}
+
+[[nodiscard]] Expected<void> setInsertPointAfterPHIs(MachineIRBuilder &Builder,
+                                                     MachineBasicBlock &Block) {
+  for (MachineInstr *Instruction = Block.firstInstruction(); Instruction != nullptr;
+       Instruction = Instruction->next()) {
+    const InstructionDescriptor *Descriptor =
+        Builder.target().instructionDescriptor(Instruction->opcode());
+    if (Descriptor == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "PHI block contains an unknown instruction");
+    if (!Descriptor->Flags.has(InstructionFlag::Phi) &&
+        !Descriptor->Flags.has(InstructionFlag::Meta)) {
+      return Builder.setInsertPointBefore(*Instruction);
+    }
+  }
+  return Builder.setInsertPoint(Block);
+}
+
 [[nodiscard]] Expected<Register> buildConstantRegister(MachineIRBuilder &Builder, LowLevelType Type,
                                                        APInt Value) {
   auto Built = Builder.buildConstant(Type, std::move(Value));
@@ -1163,6 +1195,14 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
       return Result;
     break;
 
+  case GenericOpcode::G_BRCOND:
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_BRCOND widening requires type index zero");
+    if (auto Result = Apply(WidenSource(0, MIRBuilder.getBoolExtOp(false, false))); !Result)
+      return Result;
+    break;
+
   case GenericOpcode::G_CTTZ:
   case GenericOpcode::G_CTTZ_ZERO_POISON:
   case GenericOpcode::G_CTLZ:
@@ -1530,6 +1570,57 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     if (auto Result = Apply(WidenSource(1, GenericOpcode::G_ZEXT)); !Result)
       return Result;
     break;
+
+  case GenericOpcode::G_PHI: {
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_PHI widening requires type index zero");
+    if (Instruction.operandCount() < 3 || Instruction.operandCount() % 2U == 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_PHI widening requires incoming value/block pairs");
+
+    for (std::size_t Index = 1; Index < Instruction.operandCount(); Index += 2) {
+      MachineOperand *ValueOperand = Instruction.operandAt(Index);
+      const MachineOperand *BlockOperand = Instruction.operandAt(Index + 1U);
+      const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
+      const auto *Incoming =
+          BlockOperand == nullptr ? nullptr : BlockOperand->getIf<BasicBlockOperand>();
+      if (Value == nullptr || Incoming == nullptr || Incoming->Block == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "G_PHI widening has an invalid incoming pair");
+      if (auto Point = setInsertPointAtFirstTerminator(MIRBuilder, *Incoming->Block); !Point)
+        return std::unexpected(Point.error());
+      auto Extension = MIRBuilder.buildInstr(opcode(GenericOpcode::G_ANYEXT), {WideType}, {*Value});
+      if (!Extension)
+        return std::unexpected(Extension.error());
+      auto WideValue = resultRegister(**Extension);
+      if (!WideValue)
+        return std::unexpected(WideValue.error());
+      if (auto Changed = ValueOperand->setRegister(*WideValue); !Changed)
+        return std::unexpected(Changed.error());
+    }
+
+    MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Destination == nullptr || Block == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_PHI widening has an invalid destination");
+    const Register OriginalDestination = *Destination;
+    auto WideDestination = MRI.createVirtualRegister(WideType);
+    if (!WideDestination)
+      return std::unexpected(WideDestination.error());
+    if (auto Changed = DestinationOperand->setRegister(*WideDestination); !Changed)
+      return std::unexpected(Changed.error());
+    if (auto Point = setInsertPointAfterPHIs(MIRBuilder, *Block); !Point)
+      return std::unexpected(Point.error());
+    if (auto Truncation = MIRBuilder.buildTrunc(OriginalDestination, *WideDestination);
+        !Truncation) {
+      return std::unexpected(Truncation.error());
+    }
+    break;
+  }
 
   case GenericOpcode::G_FPEXT:
     if (TypeIndex != 1)
@@ -2857,6 +2948,94 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
     }
     Observer.changedInstr(Instruction);
     return {};
+  case GenericOpcode::G_PHI: {
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::Unsupported, "G_PHI narrowing requires type index zero");
+    if (Instruction.operandCount() < 3 || Instruction.operandCount() % 2U == 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_PHI narrowing requires incoming value/block pairs");
+    MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    if (Destination == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_PHI narrowing requires a register destination");
+    auto DestinationType = MRI.getType(*Destination);
+    if (!DestinationType)
+      return std::unexpected(DestinationType.error());
+    const std::uint64_t DestinationSize = DestinationType->minimumBitWidth();
+    const std::uint64_t NarrowSize = NarrowType.minimumBitWidth();
+    if (NarrowSize == 0 || NarrowSize >= DestinationSize || DestinationSize % NarrowSize != 0)
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "G_PHI narrowing requires an exact scalar split");
+
+    const std::size_t PartCount = static_cast<std::size_t>(DestinationSize / NarrowSize);
+    const std::size_t IncomingCount = (Instruction.operandCount() - 1U) / 2U;
+    std::vector<std::vector<Register>> IncomingParts(IncomingCount);
+    Observer.changingInstr(Instruction);
+    for (std::size_t Index = 1; Index < Instruction.operandCount(); Index += 2) {
+      const MachineOperand *ValueOperand = Instruction.operandAt(Index);
+      const MachineOperand *BlockOperand = Instruction.operandAt(Index + 1U);
+      const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
+      const auto *Incoming =
+          BlockOperand == nullptr ? nullptr : BlockOperand->getIf<BasicBlockOperand>();
+      if (Value == nullptr || Incoming == nullptr || Incoming->Block == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "G_PHI narrowing has an invalid incoming pair");
+      if (auto Point = setInsertPointAtFirstTerminator(MIRBuilder, *Incoming->Block); !Point)
+        return std::unexpected(Point.error());
+      auto &Parts = IncomingParts[Index / 2U];
+      Parts.reserve(PartCount);
+      for (std::size_t PartIndex = 0; PartIndex != PartCount; ++PartIndex) {
+        auto Part = MRI.createVirtualRegister(NarrowType);
+        if (!Part)
+          return std::unexpected(Part.error());
+        Parts.push_back(*Part);
+      }
+      if (auto Unmerged = MIRBuilder.buildUnmergeValues(Parts, *Value); !Unmerged)
+        return std::unexpected(Unmerged.error());
+    }
+
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "G_PHI became detached during narrowing");
+    if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+      return std::unexpected(Point.error());
+    std::vector<Register> Destinations;
+    Destinations.reserve(PartCount);
+    for (std::size_t PartIndex = 0; PartIndex != PartCount; ++PartIndex) {
+      auto DestinationPart = MRI.createVirtualRegister(NarrowType);
+      if (!DestinationPart)
+        return std::unexpected(DestinationPart.error());
+      auto Phi = MIRBuilder.buildInstr(opcode(GenericOpcode::G_PHI));
+      if (!Phi)
+        return std::unexpected(Phi.error());
+      if (auto Added = Phi->addDef(*DestinationPart); !Added)
+        return std::unexpected(Added.error());
+      for (std::size_t IncomingIndex = 0; IncomingIndex != IncomingCount; ++IncomingIndex) {
+        const MachineOperand *BlockOperand = Instruction.operandAt(IncomingIndex * 2U + 2U);
+        const auto *Incoming =
+            BlockOperand == nullptr ? nullptr : BlockOperand->getIf<BasicBlockOperand>();
+        if (Incoming == nullptr || Incoming->Block == nullptr)
+          return makeUnexpected(ErrorCode::VerificationError,
+                                "G_PHI narrowing has an invalid incoming block");
+        if (auto Added = Phi->addUse(IncomingParts[IncomingIndex][PartIndex]); !Added)
+          return std::unexpected(Added.error());
+        if (auto Added = Phi->addBasicBlock(*Incoming->Block); !Added)
+          return std::unexpected(Added.error());
+      }
+      if (auto Built = Phi->build(); !Built)
+        return std::unexpected(Built.error());
+      Destinations.push_back(*DestinationPart);
+    }
+
+    if (auto Point = setInsertPointAfterPHIs(MIRBuilder, *Block); !Point)
+      return std::unexpected(Point.error());
+    if (auto Merged = MIRBuilder.buildMergeLikeInstr(*Destination, Destinations); !Merged)
+      return std::unexpected(Merged.error());
+    Observer.changedInstr(Instruction);
+    return Block->removeInstruction(Instruction);
+  }
   case GenericOpcode::G_FCMP:
     if (TypeIndex != 0)
       return makeUnexpected(ErrorCode::Unsupported,

@@ -831,6 +831,18 @@ Expected<MachineInstr *> MachineIRBuilder::buildSExt(MachineIRBuilderResult Dest
   return buildUnary(opcode(GenericOpcode::G_SEXT), Destination, Source);
 }
 
+GenericOpcode MachineIRBuilder::getBoolExtOp(bool IsVector, bool IsFloatingPoint) const noexcept {
+  switch (Target->getBooleanContents(IsVector, IsFloatingPoint)) {
+  case BooleanContent::ZeroOrNegativeOne:
+    return GenericOpcode::G_SEXT;
+  case BooleanContent::ZeroOrOne:
+    return GenericOpcode::G_ZEXT;
+  case BooleanContent::Undefined:
+    return GenericOpcode::G_ANYEXT;
+  }
+  return GenericOpcode::G_ANYEXT;
+}
+
 Expected<MachineInstr *> MachineIRBuilder::buildUndef(MachineIRBuilderResult Destination) const {
   return buildImplicitDef(Destination);
 }
