@@ -15,6 +15,7 @@
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/IR/DataLayout.h"
 #include "rcc/Target/RISCV/RISCVSubtarget.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
@@ -1184,6 +1185,125 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
   }
   return makeUnexpected(ErrorCode::Unsupported,
                         "RISC-V legalizer has no lowering rule for this instruction");
+}
+
+Expected<bool> RISCVLegalizerInfo::legalizeIntrinsic(LegalizerHelper &Helper,
+                                                     MachineInstr &Instruction) const {
+  const MachineOperand *IntrinsicMachineOperand = Instruction.operandAt(0);
+  const auto *Intrinsic = IntrinsicMachineOperand == nullptr
+                              ? nullptr
+                              : IntrinsicMachineOperand->getIf<rcc::IntrinsicOperand>();
+  if (Intrinsic == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V intrinsic legalization requires an intrinsic operand");
+  if (Intrinsic->ID != intrinsicID(GenericIntrinsic::VACopy))
+    return false;
+  if (Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "llvm.va_copy requires destination and source operands");
+
+  const MachineOperand *DestinationOperand = Instruction.operandAt(1);
+  const MachineOperand *SourceOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+  if (Destination == nullptr || Source == nullptr || !Destination->isVirtual() ||
+      !Source->isVirtual()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "llvm.va_copy requires virtual-register pointer operands");
+  }
+
+  MachineFunction &Function = Helper.MIRBuilder.function();
+  auto DestinationType = Function.registerInfo().getType(*Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  auto SourceType = Function.registerInfo().getType(*Source);
+  if (!SourceType)
+    return std::unexpected(SourceType.error());
+  if (!DestinationType->isPointer() || !SourceType->isPointer() ||
+      *DestinationType != *SourceType || DestinationType->scalarBitWidth() == 0) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "llvm.va_copy operands must have the same scalar pointer type");
+  }
+
+  const auto AddressSpace = DestinationType->addressSpace();
+  if (!AddressSpace)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "llvm.va_copy pointer type has no address space");
+  auto Layout = DataLayout::parse(TargetDataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
+  const GenericConstantType PointerType = GenericConstantType::pointer(*AddressSpace);
+  auto PointerWidth = Layout->getPointerSizeInBits(*AddressSpace);
+  if (!PointerWidth)
+    return std::unexpected(PointerWidth.error());
+  if (*PointerWidth != DestinationType->scalarBitWidth())
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "llvm.va_copy pointer type disagrees with the target data layout");
+  auto ABIAlignment = Layout->getABITypeAlign(PointerType);
+  if (!ABIAlignment)
+    return std::unexpected(ABIAlignment.error());
+  auto Size = MemorySize::fixed((static_cast<std::uint64_t>(*PointerWidth) + 7U) / 8U);
+  auto Alignment = rcc::Alignment::create(*ABIAlignment);
+  if (!Size || !Alignment)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "llvm.va_copy pointer type has an invalid memory layout");
+
+  MachineMemOperandDesc LoadDescription;
+  LoadDescription.Accesses = {MemoryAccessFlag::Load};
+  LoadDescription.Size = *Size;
+  LoadDescription.MemoryType = *DestinationType;
+  LoadDescription.Align = *Alignment;
+  auto LoadMemory = Function.createMemOperand(std::move(LoadDescription));
+  if (!LoadMemory)
+    return std::unexpected(LoadMemory.error());
+
+  MachineMemOperandDesc StoreDescription;
+  StoreDescription.Accesses = {MemoryAccessFlag::Store};
+  StoreDescription.Size = *Size;
+  StoreDescription.MemoryType = *DestinationType;
+  StoreDescription.Align = *Alignment;
+  auto StoreMemory = Function.createMemOperand(std::move(StoreDescription));
+  if (!StoreMemory)
+    return std::unexpected(StoreMemory.error());
+
+  auto Temporary = Function.registerInfo().createVirtualRegister(*DestinationType);
+  if (!Temporary)
+    return std::unexpected(Temporary.error());
+
+  if (auto Point = Helper.MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  auto LoadBuilder = Helper.MIRBuilder.buildInstr(opcode(GenericOpcode::G_LOAD));
+  if (!LoadBuilder)
+    return std::unexpected(LoadBuilder.error());
+  if (auto Added = LoadBuilder->addDef(*Temporary); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = LoadBuilder->addUse(*Source); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = LoadBuilder->addMemOperand(**LoadMemory); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = LoadBuilder->build(); !Built)
+    return std::unexpected(Built.error());
+
+  auto StoreBuilder = Helper.MIRBuilder.buildInstr(opcode(GenericOpcode::G_STORE));
+  if (!StoreBuilder)
+    return std::unexpected(StoreBuilder.error());
+  if (auto Added = StoreBuilder->addUse(*Temporary); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = StoreBuilder->addUse(*Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = StoreBuilder->addMemOperand(**StoreMemory); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = StoreBuilder->build(); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "llvm.va_copy intrinsic became detached during lowering");
+  if (auto Removed = Block->removeInstruction(Instruction); !Removed)
+    return std::unexpected(Removed.error());
+  return true;
 }
 
 } // namespace rcc::riscv

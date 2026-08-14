@@ -14,6 +14,8 @@ public:
   explicit RISCVLegalizerInfo(const RISCVSubtarget &Subtarget);
   [[nodiscard]] Expected<void> legalizeCustom(LegalizerHelper &Helper, MachineInstr &Instruction,
                                               const LegalizationDecision &Decision) const override;
+  [[nodiscard]] Expected<bool> legalizeIntrinsic(LegalizerHelper &Helper,
+                                                 MachineInstr &Instruction) const override;
 
 private:
 };

@@ -4,8 +4,8 @@
 #define RCC_CODEGEN_GLOBALISEL_LEGALIZERINFO_H
 
 #include "rcc/CodeGen/LowLevelType.h"
-#include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
+#include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
@@ -98,14 +98,12 @@ class LegalizeRuleSet final {
 public:
   LegalizeRuleSet &actionIf(LegalizationAction Action, LegalityPredicate Predicate,
                             LegalizeMutation Mutation = {});
+  LegalizeRuleSet &actionFor(LegalizationAction Action, std::initializer_list<LowLevelType> Types);
   LegalizeRuleSet &actionFor(LegalizationAction Action,
-                             std::initializer_list<LowLevelType> Types);
-  LegalizeRuleSet &actionFor(
-      LegalizationAction Action,
-      std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
-  LegalizeRuleSet &actionFor(
-      LegalizationAction Action,
-      std::initializer_list<std::tuple<LowLevelType, LowLevelType, LowLevelType>> Types);
+                             std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &
+  actionFor(LegalizationAction Action,
+            std::initializer_list<std::tuple<LowLevelType, LowLevelType, LowLevelType>> Types);
   LegalizeRuleSet &legalIf(LegalityPredicate Predicate);
   LegalizeRuleSet &customIf(LegalityPredicate Predicate);
   LegalizeRuleSet &lowerIf(LegalityPredicate Predicate);
@@ -119,38 +117,30 @@ public:
 
   LegalizeRuleSet &legalFor(std::initializer_list<LowLevelType> Types);
   LegalizeRuleSet &legalFor(bool Enabled, std::initializer_list<LowLevelType> Types);
-  LegalizeRuleSet &legalFor(
-      std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
-  LegalizeRuleSet &legalFor(
-      bool Enabled, std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
-  LegalizeRuleSet &legalFor(
-      std::initializer_list<std::tuple<LowLevelType, LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &legalFor(std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &legalFor(bool Enabled,
+                            std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &
+  legalFor(std::initializer_list<std::tuple<LowLevelType, LowLevelType, LowLevelType>> Types);
   LegalizeRuleSet &customFor(std::initializer_list<LowLevelType> Types);
   LegalizeRuleSet &customFor(bool Enabled, std::initializer_list<LowLevelType> Types);
-  LegalizeRuleSet &customFor(
-      std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
-  LegalizeRuleSet &customFor(
-      bool Enabled, std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &customFor(std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &customFor(bool Enabled,
+                             std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
   LegalizeRuleSet &lowerFor(std::initializer_list<LowLevelType> Types);
-  LegalizeRuleSet &lowerFor(
-      std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &lowerFor(std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
   LegalizeRuleSet &libcallFor(std::initializer_list<LowLevelType> Types);
   LegalizeRuleSet &libcallFor(bool Enabled, std::initializer_list<LowLevelType> Types);
-  LegalizeRuleSet &libcallFor(
-      std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
-  LegalizeRuleSet &libcallFor(
-      bool Enabled, std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
-  LegalizeRuleSet &legalForTypesWithMemDesc(
-      std::initializer_list<LegalizeMemoryRule> Rules);
+  LegalizeRuleSet &libcallFor(std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &libcallFor(bool Enabled,
+                              std::initializer_list<std::pair<LowLevelType, LowLevelType>> Types);
+  LegalizeRuleSet &legalForTypesWithMemDesc(std::initializer_list<LegalizeMemoryRule> Rules);
 
-  LegalizeRuleSet &widenScalarToNextPow2(std::size_t TypeIndex,
-                                         std::uint32_t MinimumBitWidth = 0);
+  LegalizeRuleSet &widenScalarToNextPow2(std::size_t TypeIndex, std::uint32_t MinimumBitWidth = 0);
   LegalizeRuleSet &minScalar(std::size_t TypeIndex, LowLevelType MinimumType);
-  LegalizeRuleSet &minScalar(bool Enabled, std::size_t TypeIndex,
-                             LowLevelType MinimumType);
+  LegalizeRuleSet &minScalar(bool Enabled, std::size_t TypeIndex, LowLevelType MinimumType);
   LegalizeRuleSet &maxScalar(std::size_t TypeIndex, LowLevelType MaximumType);
-  LegalizeRuleSet &maxScalar(bool Enabled, std::size_t TypeIndex,
-                             LowLevelType MaximumType);
+  LegalizeRuleSet &maxScalar(bool Enabled, std::size_t TypeIndex, LowLevelType MaximumType);
   LegalizeRuleSet &clampScalar(std::size_t TypeIndex, LowLevelType MinimumType,
                                LowLevelType MaximumType);
   LegalizeRuleSet &scalarSameSizeAs(std::size_t TypeIndex, std::size_t ReferenceTypeIndex);
@@ -159,8 +149,7 @@ public:
   LegalizeRuleSet &lower();
   LegalizeRuleSet &libcall();
 
-  [[nodiscard]] std::optional<LegalizationDecision>
-  apply(const LegalizationQuery &Query) const;
+  [[nodiscard]] std::optional<LegalizationDecision> apply(const LegalizationQuery &Query) const;
 
 private:
   std::vector<LegalizeRule> Rules;
@@ -170,16 +159,15 @@ class LegalizerInfo {
 public:
   virtual ~LegalizerInfo() = default;
 
-  [[nodiscard]] static Expected<LegalizationQuery>
-  buildQuery(const MachineInstr &Instruction, const MachineFunction &Function,
-             const TargetDescription &Target);
+  [[nodiscard]] static Expected<LegalizationQuery> buildQuery(const MachineInstr &Instruction,
+                                                              const MachineFunction &Function,
+                                                              const TargetDescription &Target);
 
-  [[nodiscard]] Expected<LegalizationDecision>
-  getDecision(const MachineInstr &Instruction, const MachineFunction &Function,
-              const TargetDescription &Target) const;
+  [[nodiscard]] Expected<LegalizationDecision> getDecision(const MachineInstr &Instruction,
+                                                           const MachineFunction &Function,
+                                                           const TargetDescription &Target) const;
 
-  [[nodiscard]] Expected<LegalizationDecision>
-  getDecision(const LegalizationQuery &Query) const;
+  [[nodiscard]] Expected<LegalizationDecision> getDecision(const LegalizationQuery &Query) const;
 
   [[nodiscard]] Expected<bool> isLegal(const LegalizationQuery &Query) const;
   [[nodiscard]] Expected<bool> isUnsupported(const LegalizationQuery &Query) const;
@@ -187,6 +175,11 @@ public:
   [[nodiscard]] virtual Expected<void>
   legalizeCustom(LegalizerHelper &Helper, MachineInstr &Instruction,
                  const LegalizationDecision &Decision) const = 0;
+
+  // Target intrinsic lowering runs before the ordinary legality action.
+  [[nodiscard]] virtual Expected<bool> legalizeIntrinsic(LegalizerHelper &, MachineInstr &) const {
+    return true;
+  }
 
   // This hook performs read-only target checks before a lowering mutation is committed.
   [[nodiscard]] virtual Expected<void> validateLowering(const MachineInstr &,

@@ -70,6 +70,18 @@ namespace {
   }
 }
 
+[[nodiscard]] bool isIntrinsicOpcode(Opcode InstructionOpcode) noexcept {
+  switch (static_cast<GenericOpcode>(InstructionOpcode.value())) {
+  default:
+    return false;
+  case GenericOpcode::G_INTRINSIC:
+  case GenericOpcode::G_INTRINSIC_W_SIDE_EFFECTS:
+  case GenericOpcode::G_INTRINSIC_CONVERGENT:
+  case GenericOpcode::G_INTRINSIC_CONVERGENT_W_SIDE_EFFECTS:
+    return true;
+  }
+}
+
 using InstList = GISelWorkList<256>;
 using ArtifactList = GISelWorkList<128>;
 
@@ -327,6 +339,27 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
       if (!Validation) {
         return std::unexpected(
             withErrorContext(Validation.error(), "legalizer input is invalid: "));
+      }
+
+      if (isIntrinsicOpcode(Instruction->opcode())) {
+        auto Accepted = Actions.request("legalize.intrinsic", Function, Instruction->stableID());
+        if (!Accepted)
+          return std::unexpected(Accepted.error());
+        if (!*Accepted)
+          return std::unexpected(passFailure("required intrinsic legalization action was rejected",
+                                             ErrorCode::VerificationError));
+        auto IntrinsicResult = Info->legalizeIntrinsic(Helper, *Instruction);
+        if (!IntrinsicResult)
+          return std::unexpected(IntrinsicResult.error());
+        if (!*IntrinsicResult) {
+          const std::string_view Name = Descriptor->Name;
+          return std::unexpected(passFailure("target legalizer rejected intrinsic instruction '" +
+                                                 std::string(Name) + "'",
+                                             ErrorCode::Unsupported));
+        }
+        Result.Changed = true;
+        Result.Changes.add(MachinePassChange::Instructions);
+        continue;
       }
 
       auto Decision = Info->getDecision(*Instruction, Function, Target);
