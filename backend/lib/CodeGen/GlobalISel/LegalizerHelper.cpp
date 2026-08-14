@@ -2966,6 +2966,9 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   case GenericOpcode::G_SCMP:
   case GenericOpcode::G_UCMP:
     return lowerThreewayCompare(Instruction);
+  case GenericOpcode::G_SDIVREM:
+  case GenericOpcode::G_UDIVREM:
+    return lowerDivRem(Instruction);
   case GenericOpcode::G_ROTL:
   case GenericOpcode::G_ROTR:
     return lowerRotate(Instruction);
@@ -3421,6 +3424,32 @@ Expected<void> LegalizerHelper::lowerThreewayCompare(MachineInstr &Instruction) 
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError,
                           "three-way comparison became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerDivRem(MachineInstr &Instruction) {
+  const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_SDIVREM);
+  const Register Quotient = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Remainder = *Instruction.operandAt(1)->getIf<Register>();
+  const Register Dividend = *Instruction.operandAt(2)->getIf<Register>();
+  const Register Divisor = *Instruction.operandAt(3)->getIf<Register>();
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  const GenericOpcode DivideOpcode = IsSigned ? GenericOpcode::G_SDIV : GenericOpcode::G_UDIV;
+  const GenericOpcode RemainderOpcode = IsSigned ? GenericOpcode::G_SREM : GenericOpcode::G_UREM;
+  if (auto Built = MIRBuilder.buildInstr(opcode(DivideOpcode), {Quotient}, {Dividend, Divisor});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  if (auto Built = MIRBuilder.buildInstr(opcode(RemainderOpcode), {Remainder}, {Dividend, Divisor});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "DIVREM became detached during lowering");
   return Block->removeInstruction(Instruction);
 }
 
