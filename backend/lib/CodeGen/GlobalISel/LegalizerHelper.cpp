@@ -130,6 +130,17 @@ struct ScalarLayout final {
   }
 }
 
+[[nodiscard]] Expected<LowLevelType> booleanTypeFor(LowLevelType Type) {
+  auto BooleanElementType = LowLevelType::makeCategoryNeutralScalar(1);
+  if (!BooleanElementType)
+    return std::unexpected(BooleanElementType.error());
+  if (!Type.isVector())
+    return *BooleanElementType;
+  if (Type.isScalableVector())
+    return LowLevelType::makeScalableVector(Type.minimumElementCount(), *BooleanElementType);
+  return LowLevelType::makeFixedVector(Type.minimumElementCount(), *BooleanElementType);
+}
+
 [[nodiscard]] Expected<Register> buildConstantBefore(MachineIRBuilder &Builder,
                                                      MachineInstr &Anchor, LowLevelType Type,
                                                      std::uint64_t Value) {
@@ -2870,6 +2881,9 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   case GenericOpcode::G_UMIN:
   case GenericOpcode::G_UMAX:
     return lowerMinMax(Instruction);
+  case GenericOpcode::G_SCMP:
+  case GenericOpcode::G_UCMP:
+    return lowerThreewayCompare(Instruction);
   case GenericOpcode::G_ABDS:
   case GenericOpcode::G_ABDU: {
     const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_ABDS);
@@ -3215,23 +3229,11 @@ Expected<void> LegalizerHelper::lowerMinMax(MachineInstr &Instruction) {
   auto DestinationType = MRI.getType(Destination);
   if (!DestinationType)
     return std::unexpected(DestinationType.error());
-  auto BooleanElementType = LowLevelType::makeCategoryNeutralScalar(1);
-  if (!BooleanElementType)
-    return std::unexpected(BooleanElementType.error());
+  auto ConditionType = booleanTypeFor(*DestinationType);
+  if (!ConditionType)
+    return std::unexpected(ConditionType.error());
 
-  LowLevelType ConditionType = *BooleanElementType;
-  if (DestinationType->isVector()) {
-    auto VectorType = DestinationType->isScalableVector()
-                          ? LowLevelType::makeScalableVector(DestinationType->minimumElementCount(),
-                                                             *BooleanElementType)
-                          : LowLevelType::makeFixedVector(DestinationType->minimumElementCount(),
-                                                          *BooleanElementType);
-    if (!VectorType)
-      return std::unexpected(VectorType.error());
-    ConditionType = *VectorType;
-  }
-
-  auto Condition = MRI.createVirtualRegister(ConditionType);
+  auto Condition = MRI.createVirtualRegister(*ConditionType);
   if (!Condition)
     return std::unexpected(Condition.error());
 
@@ -3250,6 +3252,90 @@ Expected<void> LegalizerHelper::lowerMinMax(MachineInstr &Instruction) {
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError,
                           "integer min/max became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerThreewayCompare(MachineInstr &Instruction) {
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Left = *Instruction.operandAt(1)->getIf<Register>();
+  const Register Right = *Instruction.operandAt(2)->getIf<Register>();
+  auto DestinationType = MRI.getType(Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  auto ConditionType = booleanTypeFor(*DestinationType);
+  if (!ConditionType)
+    return std::unexpected(ConditionType.error());
+
+  auto IsGreater = MRI.createVirtualRegister(*ConditionType);
+  auto IsLess = MRI.createVirtualRegister(*ConditionType);
+  if (!IsGreater)
+    return std::unexpected(IsGreater.error());
+  if (!IsLess)
+    return std::unexpected(IsLess.error());
+
+  const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_SCMP);
+  const IntegerPredicate GreaterPredicate =
+      IsSigned ? IntegerPredicate::SignedGreaterThan : IntegerPredicate::UnsignedGreaterThan;
+  const IntegerPredicate LessPredicate =
+      IsSigned ? IntegerPredicate::SignedLessThan : IntegerPredicate::UnsignedLessThan;
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = MIRBuilder.buildICmp(GreaterPredicate, *IsGreater, Left, Right); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildICmp(LessPredicate, *IsLess, Left, Right); !Built)
+    return std::unexpected(Built.error());
+
+  const BooleanContent Contents =
+      MIRBuilder.target().getBooleanContents(DestinationType->isVector(), false);
+  if (Contents == BooleanContent::Undefined) {
+    auto Zero = buildConstantRegister(MIRBuilder, *DestinationType, 0);
+    auto One = buildConstantRegister(MIRBuilder, *DestinationType, 1);
+    auto MinusOne = buildConstantRegister(MIRBuilder, *DestinationType, -1);
+    if (!Zero)
+      return std::unexpected(Zero.error());
+    if (!One)
+      return std::unexpected(One.error());
+    if (!MinusOne)
+      return std::unexpected(MinusOne.error());
+    auto ZeroOrOne = buildResultInstruction(MIRBuilder, GenericOpcode::G_SELECT, *DestinationType,
+                                            {*IsGreater, *One, *Zero});
+    if (!ZeroOrOne)
+      return std::unexpected(ZeroOrOne.error());
+    if (auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {Destination},
+                                           {*IsLess, *MinusOne, *ZeroOrOne});
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+  } else {
+    if (Contents == BooleanContent::ZeroOrNegativeOne)
+      std::swap(IsGreater, IsLess);
+    const GenericOpcode ExtensionOpcode = Contents == BooleanContent::ZeroOrNegativeOne
+                                              ? GenericOpcode::G_SEXT
+                                              : GenericOpcode::G_ZEXT;
+    auto ExtendedGreater = MRI.createVirtualRegister(*DestinationType);
+    auto ExtendedLess = MRI.createVirtualRegister(*DestinationType);
+    if (!ExtendedGreater)
+      return std::unexpected(ExtendedGreater.error());
+    if (!ExtendedLess)
+      return std::unexpected(ExtendedLess.error());
+    if (auto Built =
+            MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*ExtendedGreater}, {*IsGreater});
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*ExtendedLess}, {*IsLess});
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = MIRBuilder.buildSub(Destination, *ExtendedGreater, *ExtendedLess); !Built)
+      return std::unexpected(Built.error());
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "three-way comparison became detached during lowering");
   return Block->removeInstruction(Instruction);
 }
 
