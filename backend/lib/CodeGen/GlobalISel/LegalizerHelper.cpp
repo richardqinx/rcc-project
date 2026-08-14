@@ -3070,6 +3070,44 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     }
     return Block->removeInstruction(Instruction);
   }
+  case GenericOpcode::G_ATOMICRMW_SUB: {
+    const Register Result = *Instruction.operandAt(0)->getIf<Register>();
+    const Register Address = *Instruction.operandAt(1)->getIf<Register>();
+    const Register Value = *Instruction.operandAt(2)->getIf<Register>();
+    auto ValueType = MRI.getType(Value);
+    if (!ValueType)
+      return std::unexpected(ValueType.error());
+
+    if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+      return std::unexpected(Point.error());
+    auto Zero = buildConstantRegister(MIRBuilder, *ValueType, 0);
+    if (!Zero)
+      return std::unexpected(Zero.error());
+    auto Negated =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *ValueType, {*Zero, Value});
+    if (!Negated)
+      return std::unexpected(Negated.error());
+
+    auto AtomicAdd = MIRBuilder.buildInstr(opcode(GenericOpcode::G_ATOMICRMW_ADD));
+    if (!AtomicAdd)
+      return std::unexpected(AtomicAdd.error());
+    if (auto Added = AtomicAdd->addDef(Result); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = AtomicAdd->addUse(Address); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = AtomicAdd->addUse(*Negated); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = AtomicAdd->addMemOperand(*Instruction.memOperands().front()); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = AtomicAdd->build(); !Built)
+      return std::unexpected(Built.error());
+
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "G_ATOMICRMW_SUB became detached during lowering");
+    return Block->removeInstruction(Instruction);
+  }
   case GenericOpcode::G_UADDO: {
     const Register Result = *Instruction.operandAt(0)->getIf<Register>();
     const Register CarryOut = *Instruction.operandAt(1)->getIf<Register>();
