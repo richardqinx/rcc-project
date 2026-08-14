@@ -37,6 +37,8 @@ public:
   [[nodiscard]] Expected<void> widenScalarSrc(MachineInstr &Instruction, LowLevelType WideType,
                                               std::size_t OperandIndex,
                                               GenericOpcode ExtensionOpcode);
+  [[nodiscard]] Expected<void> narrowScalarSrc(MachineInstr &Instruction, LowLevelType NarrowType,
+                                               std::size_t OperandIndex);
   [[nodiscard]] Expected<void> widenScalarDst(MachineInstr &Instruction, LowLevelType WideType,
                                               std::size_t OperandIndex = 0,
                                               GenericOpcode TruncOpcode = GenericOpcode::G_TRUNC);
@@ -74,6 +76,34 @@ private:
                                                LowLevelType NarrowType);
   [[nodiscard]] Expected<void> narrowScalarSelect(MachineInstr &Instruction, std::size_t TypeIndex,
                                                   LowLevelType NarrowType);
+  [[nodiscard]] Expected<void> narrowScalarShift(MachineInstr &Instruction, std::size_t TypeIndex,
+                                                 LowLevelType NarrowType);
+  [[nodiscard]] Expected<void> narrowScalarShiftByConstant(MachineInstr &Instruction,
+                                                           const APInt &Amount,
+                                                           LowLevelType HalfType,
+                                                           LowLevelType AmountType);
+  [[nodiscard]] Expected<void> narrowScalarShiftMultiway(MachineInstr &Instruction,
+                                                         LowLevelType TargetType);
+  [[nodiscard]] Expected<void> narrowScalarShiftByConstantMultiway(MachineInstr &Instruction,
+                                                                   const APInt &Amount,
+                                                                   LowLevelType TargetType,
+                                                                   LowLevelType AmountType);
+
+  struct ShiftParameters final {
+    Register WordShift;
+    Register BitShift;
+    Register InverseBitShift;
+    Register Zero;
+    Register SignBit;
+  };
+
+  [[nodiscard]] Expected<Register>
+  buildConstantShiftPart(GenericOpcode Generic, std::size_t PartIndex, std::size_t PartCount,
+                         const std::vector<Register> &SourceParts,
+                         const ShiftParameters &Parameters, LowLevelType TargetType);
+  [[nodiscard]] Expected<Register>
+  buildVariableShiftPart(GenericOpcode Generic, Register MainOperand, Register ShiftAmount,
+                         LowLevelType TargetType, Register CarryOperand = {});
   [[nodiscard]] Expected<void> widenScalarAddSubOverflow(MachineInstr &Instruction,
                                                          std::size_t TypeIndex,
                                                          LowLevelType WideType);

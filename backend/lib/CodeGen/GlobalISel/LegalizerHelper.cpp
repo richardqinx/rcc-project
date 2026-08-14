@@ -15,6 +15,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <numeric>
 #include <optional>
 #include <span>
@@ -93,6 +94,25 @@ struct ScalarLayout final {
   if (!Immediate)
     return std::unexpected(Immediate.error());
   return buildConstantRegister(Builder, Type, std::move(*Immediate));
+}
+
+[[nodiscard]] Expected<Register> buildResultInstruction(MachineIRBuilder &Builder,
+                                                        GenericOpcode Generic, LowLevelType Type,
+                                                        std::initializer_list<Register> Sources) {
+  auto Built = Builder.buildInstr(opcode(Generic), {Type}, Sources);
+  if (!Built)
+    return std::unexpected(Built.error());
+  return resultRegister(**Built);
+}
+
+[[nodiscard]] Expected<Register> buildICmpRegister(MachineIRBuilder &Builder,
+                                                   IntegerPredicate Predicate,
+                                                   LowLevelType ResultType, Register Left,
+                                                   Register Right) {
+  auto Built = Builder.buildICmp(Predicate, ResultType, Left, Right);
+  if (!Built)
+    return std::unexpected(Built.error());
+  return resultRegister(**Built);
 }
 
 [[nodiscard]] Expected<Register> buildConstantBefore(MachineIRBuilder &Builder,
@@ -578,7 +598,7 @@ Expected<LowLevelType> LegalizerHelper::buildLCMMergePieces(LowLevelType Destina
       if (!Pad)
         return std::unexpected(Pad.error());
       PadRegister = *Pad;
-    } else {
+    } else if (PadStrategy == GenericOpcode::G_ANYEXT) {
       auto Built = MIRBuilder.buildUndef(GCDType);
       if (!Built)
         return std::unexpected(Built.error());
@@ -586,6 +606,25 @@ Expected<LowLevelType> LegalizerHelper::buildLCMMergePieces(LowLevelType Destina
       if (!Pad)
         return std::unexpected(Pad.error());
       PadRegister = *Pad;
+    } else if (PadStrategy == GenericOpcode::G_SEXT) {
+      if (Registers.empty())
+        return makeUnexpected(ErrorCode::InternalError,
+                              "sign-extension padding requires a source part");
+      auto ShiftType = LowLevelType::makeCategoryNeutralScalar(64);
+      if (!ShiftType)
+        return std::unexpected(ShiftType.error());
+      auto ShiftAmount = buildConstantRegister(
+          MIRBuilder, *ShiftType, static_cast<std::int64_t>(GCDType.minimumBitWidth() - 1U));
+      if (!ShiftAmount)
+        return std::unexpected(ShiftAmount.error());
+      auto Pad = buildResultInstruction(MIRBuilder, GenericOpcode::G_ASHR, GCDType,
+                                        {Registers.back(), *ShiftAmount});
+      if (!Pad)
+        return std::unexpected(Pad.error());
+      PadRegister = *Pad;
+    } else {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "LCM merge received an invalid extension strategy");
     }
   }
 
@@ -610,7 +649,7 @@ Expected<LowLevelType> LegalizerHelper::buildLCMMergePieces(LowLevelType Destina
         if (!Pad)
           return std::unexpected(Pad.error());
         AllPadRegister = *Pad;
-      } else {
+      } else if (PadStrategy == GenericOpcode::G_ANYEXT) {
         auto Built = MIRBuilder.buildUndef(NarrowType);
         if (!Built)
           return std::unexpected(Built.error());
@@ -697,6 +736,25 @@ Expected<void> LegalizerHelper::widenScalarSrc(MachineInstr &Instruction, LowLev
   if (!WideSource)
     return std::unexpected(WideSource.error());
   return Operand->setRegister(*WideSource);
+}
+
+Expected<void> LegalizerHelper::narrowScalarSrc(MachineInstr &Instruction, LowLevelType NarrowType,
+                                                std::size_t OperandIndex) {
+  MachineOperand *Operand = Instruction.operandAt(OperandIndex);
+  const Register *Source = Operand == nullptr ? nullptr : Operand->getIf<Register>();
+  if (Source == nullptr || !Source->isVirtual() || !Operand->isUse())
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "scalar narrowing source is not a virtual-register use");
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  auto Truncation = MIRBuilder.buildTrunc(NarrowType, *Source);
+  if (!Truncation)
+    return std::unexpected(Truncation.error());
+  auto NarrowSource = resultRegister(**Truncation);
+  if (!NarrowSource)
+    return std::unexpected(NarrowSource.error());
+  return Operand->setRegister(*NarrowSource);
 }
 
 Expected<void> LegalizerHelper::widenScalarDst(MachineInstr &Instruction, LowLevelType WideType,
@@ -1510,6 +1568,742 @@ Expected<void> LegalizerHelper::narrowScalarSelect(MachineInstr &Instruction, st
   return Block->removeInstruction(Instruction);
 }
 
+Expected<void> LegalizerHelper::narrowScalarShiftByConstant(MachineInstr &Instruction,
+                                                            const APInt &Amount,
+                                                            LowLevelType HalfType,
+                                                            LowLevelType AmountType) {
+  const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+  const Register *Source = Instruction.operandAt(1)->getIf<Register>();
+  if (Destination == nullptr || Source == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "constant shift narrowing requires register operands");
+
+  auto LowPart = MRI.createVirtualRegister(HalfType);
+  auto HighPart = MRI.createVirtualRegister(HalfType);
+  if (!LowPart)
+    return std::unexpected(LowPart.error());
+  if (!HighPart)
+    return std::unexpected(HighPart.error());
+  if (auto Built = MIRBuilder.buildUnmergeValues({*LowPart, *HighPart}, *Source); !Built)
+    return std::unexpected(Built.error());
+
+  if (Amount.isZero()) {
+    if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, {*LowPart, *HighPart}); !Built)
+      return std::unexpected(Built.error());
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "constant shift became detached during narrowing");
+    return Block->removeInstruction(Instruction);
+  }
+
+  const std::uint64_t HalfBits = HalfType.minimumBitWidth();
+  const std::uint64_t TotalBits = HalfBits * 2U;
+  const bool AmountExceeds64Bits = Amount.activeBitWidth() > 64;
+  const std::uint64_t AmountValue = Amount.word(0);
+  const bool ExceedsTotal = AmountExceeds64Bits || AmountValue > TotalBits;
+  const bool ExceedsHalf = AmountExceeds64Bits || AmountValue > HalfBits;
+
+  const auto BuildConstant = [&](LowLevelType Type, std::uint64_t Value) {
+    return buildConstantRegister(MIRBuilder, Type, static_cast<std::int64_t>(Value));
+  };
+  const auto BuildBinary = [&](GenericOpcode Generic, Register Left, Register Right) {
+    return buildResultInstruction(MIRBuilder, Generic, HalfType, {Left, Right});
+  };
+
+  Register LowResult;
+  Register HighResult;
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (Generic == GenericOpcode::G_SHL) {
+    if (ExceedsTotal) {
+      auto Zero = BuildConstant(HalfType, 0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      LowResult = *Zero;
+      HighResult = *Zero;
+    } else if (ExceedsHalf) {
+      auto Zero = BuildConstant(HalfType, 0);
+      auto Shift = BuildConstant(AmountType, AmountValue - HalfBits);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      if (!Shift)
+        return std::unexpected(Shift.error());
+      auto Shifted = BuildBinary(GenericOpcode::G_SHL, *LowPart, *Shift);
+      if (!Shifted)
+        return std::unexpected(Shifted.error());
+      LowResult = *Zero;
+      HighResult = *Shifted;
+    } else if (AmountValue == HalfBits) {
+      auto Zero = BuildConstant(HalfType, 0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      LowResult = *Zero;
+      HighResult = *LowPart;
+    } else {
+      auto Shift = BuildConstant(AmountType, AmountValue);
+      auto InverseShift = BuildConstant(AmountType, HalfBits - AmountValue);
+      if (!Shift)
+        return std::unexpected(Shift.error());
+      if (!InverseShift)
+        return std::unexpected(InverseShift.error());
+      auto LowShift = BuildBinary(GenericOpcode::G_SHL, *LowPart, *Shift);
+      auto HighShift = BuildBinary(GenericOpcode::G_SHL, *HighPart, *Shift);
+      auto Carry = BuildBinary(GenericOpcode::G_LSHR, *LowPart, *InverseShift);
+      if (!LowShift)
+        return std::unexpected(LowShift.error());
+      if (!HighShift)
+        return std::unexpected(HighShift.error());
+      if (!Carry)
+        return std::unexpected(Carry.error());
+      auto Combined = BuildBinary(GenericOpcode::G_OR, *HighShift, *Carry);
+      if (!Combined)
+        return std::unexpected(Combined.error());
+      LowResult = *LowShift;
+      HighResult = *Combined;
+    }
+  } else if (Generic == GenericOpcode::G_LSHR) {
+    if (ExceedsTotal) {
+      auto Zero = BuildConstant(HalfType, 0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      LowResult = *Zero;
+      HighResult = *Zero;
+    } else if (ExceedsHalf) {
+      auto Shift = BuildConstant(AmountType, AmountValue - HalfBits);
+      auto Zero = BuildConstant(HalfType, 0);
+      if (!Shift)
+        return std::unexpected(Shift.error());
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      auto Shifted = BuildBinary(GenericOpcode::G_LSHR, *HighPart, *Shift);
+      if (!Shifted)
+        return std::unexpected(Shifted.error());
+      LowResult = *Shifted;
+      HighResult = *Zero;
+    } else if (AmountValue == HalfBits) {
+      auto Zero = BuildConstant(HalfType, 0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      LowResult = *HighPart;
+      HighResult = *Zero;
+    } else {
+      auto Shift = BuildConstant(AmountType, AmountValue);
+      auto InverseShift = BuildConstant(AmountType, HalfBits - AmountValue);
+      if (!Shift)
+        return std::unexpected(Shift.error());
+      if (!InverseShift)
+        return std::unexpected(InverseShift.error());
+      auto LowShift = BuildBinary(GenericOpcode::G_LSHR, *LowPart, *Shift);
+      auto Carry = BuildBinary(GenericOpcode::G_SHL, *HighPart, *InverseShift);
+      auto HighShift = BuildBinary(GenericOpcode::G_LSHR, *HighPart, *Shift);
+      if (!LowShift)
+        return std::unexpected(LowShift.error());
+      if (!Carry)
+        return std::unexpected(Carry.error());
+      if (!HighShift)
+        return std::unexpected(HighShift.error());
+      auto Combined = BuildBinary(GenericOpcode::G_OR, *LowShift, *Carry);
+      if (!Combined)
+        return std::unexpected(Combined.error());
+      LowResult = *Combined;
+      HighResult = *HighShift;
+    }
+  } else if (Generic == GenericOpcode::G_ASHR) {
+    auto SignShift = BuildConstant(AmountType, HalfBits - 1U);
+    if (!SignShift)
+      return std::unexpected(SignShift.error());
+    auto Sign = BuildBinary(GenericOpcode::G_ASHR, *HighPart, *SignShift);
+    if (!Sign)
+      return std::unexpected(Sign.error());
+    if (ExceedsTotal) {
+      LowResult = *Sign;
+      HighResult = *Sign;
+    } else if (ExceedsHalf) {
+      auto Shift = BuildConstant(AmountType, AmountValue - HalfBits);
+      if (!Shift)
+        return std::unexpected(Shift.error());
+      auto Shifted = BuildBinary(GenericOpcode::G_ASHR, *HighPart, *Shift);
+      if (!Shifted)
+        return std::unexpected(Shifted.error());
+      LowResult = *Shifted;
+      HighResult = *Sign;
+    } else if (AmountValue == HalfBits) {
+      LowResult = *HighPart;
+      HighResult = *Sign;
+    } else {
+      auto Shift = BuildConstant(AmountType, AmountValue);
+      auto InverseShift = BuildConstant(AmountType, HalfBits - AmountValue);
+      if (!Shift)
+        return std::unexpected(Shift.error());
+      if (!InverseShift)
+        return std::unexpected(InverseShift.error());
+      auto LowShift = BuildBinary(GenericOpcode::G_LSHR, *LowPart, *Shift);
+      auto Carry = BuildBinary(GenericOpcode::G_SHL, *HighPart, *InverseShift);
+      auto HighShift = BuildBinary(GenericOpcode::G_ASHR, *HighPart, *Shift);
+      if (!LowShift)
+        return std::unexpected(LowShift.error());
+      if (!Carry)
+        return std::unexpected(Carry.error());
+      if (!HighShift)
+        return std::unexpected(HighShift.error());
+      auto Combined = BuildBinary(GenericOpcode::G_OR, *LowShift, *Carry);
+      if (!Combined)
+        return std::unexpected(Combined.error());
+      LowResult = *Combined;
+      HighResult = *HighShift;
+    }
+  } else {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "constant shift narrowing received a non-shift opcode");
+  }
+
+  if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, {LowResult, HighResult}); !Built)
+    return std::unexpected(Built.error());
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "constant shift became detached during narrowing");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::narrowScalarShift(MachineInstr &Instruction, std::size_t TypeIndex,
+                                                  LowLevelType NarrowType) {
+  if (Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "shift narrowing requires one destination and two sources");
+  if (TypeIndex == 1) {
+    Observer.changingInstr(Instruction);
+    auto Narrowed = narrowScalarSrc(Instruction, NarrowType, 2);
+    if (!Narrowed)
+      return std::unexpected(Narrowed.error());
+    Observer.changedInstr(Instruction);
+    return {};
+  }
+  if (TypeIndex != 0)
+    return makeUnexpected(ErrorCode::Unsupported, "shift narrowing has an invalid type index");
+
+  const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+  const Register *Source = Instruction.operandAt(1)->getIf<Register>();
+  const Register *Amount = Instruction.operandAt(2)->getIf<Register>();
+  if (Destination == nullptr || Source == nullptr || Amount == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "shift narrowing requires register operands");
+  auto DestinationType = MRI.getType(*Destination);
+  auto AmountType = MRI.getType(*Amount);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  if (!AmountType)
+    return std::unexpected(AmountType.error());
+  if (!DestinationType->isCategoryNeutralScalar())
+    return makeUnexpected(ErrorCode::Unsupported, "vector shift narrowing is not implemented");
+
+  const std::uint64_t DestinationBits = DestinationType->scalarBitWidth();
+  if (DestinationBits == 0 || DestinationBits % 2U != 0)
+    return makeUnexpected(ErrorCode::Unsupported, "shift narrowing requires an even scalar width");
+
+  if (NarrowType.isCategoryNeutralScalar() && NarrowType.scalarBitWidth() != 0 &&
+      DestinationBits % NarrowType.scalarBitWidth() == 0 &&
+      DestinationBits / NarrowType.scalarBitWidth() >= 8U) {
+    return narrowScalarShiftMultiway(Instruction, NarrowType);
+  }
+
+  auto HalfType = LowLevelType::makeCategoryNeutralScalar(DestinationBits / 2U);
+  if (!HalfType)
+    return std::unexpected(HalfType.error());
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Constant = getIConstantVRegValWithLookThrough(*Amount, MRI))
+    return narrowScalarShiftByConstant(Instruction, Constant->Value, *HalfType, *AmountType);
+
+  auto HalfBits = buildConstantRegister(MIRBuilder, *AmountType,
+                                        static_cast<std::int64_t>(DestinationBits / 2U));
+  if (!HalfBits)
+    return std::unexpected(HalfBits.error());
+  auto LowPart = MRI.createVirtualRegister(*HalfType);
+  auto HighPart = MRI.createVirtualRegister(*HalfType);
+  if (!LowPart)
+    return std::unexpected(LowPart.error());
+  if (!HighPart)
+    return std::unexpected(HighPart.error());
+  if (auto Built = MIRBuilder.buildUnmergeValues({*LowPart, *HighPart}, *Source); !Built)
+    return std::unexpected(Built.error());
+
+  auto AmountExcess =
+      buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *AmountType, {*Amount, *HalfBits});
+  auto AmountLack =
+      buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *AmountType, {*HalfBits, *Amount});
+  auto ZeroAmount = buildConstantRegister(MIRBuilder, *AmountType, 0);
+  auto ConditionType = LowLevelType::makeCategoryNeutralScalar(1);
+  if (!AmountExcess)
+    return std::unexpected(AmountExcess.error());
+  if (!AmountLack)
+    return std::unexpected(AmountLack.error());
+  if (!ZeroAmount)
+    return std::unexpected(ZeroAmount.error());
+  if (!ConditionType)
+    return std::unexpected(ConditionType.error());
+  auto IsShort = buildICmpRegister(MIRBuilder, IntegerPredicate::UnsignedLessThan, *ConditionType,
+                                   *Amount, *HalfBits);
+  auto IsZero =
+      buildICmpRegister(MIRBuilder, IntegerPredicate::Equal, *ConditionType, *Amount, *ZeroAmount);
+  if (!IsShort)
+    return std::unexpected(IsShort.error());
+  if (!IsZero)
+    return std::unexpected(IsZero.error());
+
+  const auto Build = [&](GenericOpcode Generic, Register Left, Register Right) {
+    return buildResultInstruction(MIRBuilder, Generic, *HalfType, {Left, Right});
+  };
+  const auto Select = [&](Register Condition, Register TrueValue, Register FalseValue) {
+    return buildResultInstruction(MIRBuilder, GenericOpcode::G_SELECT, *HalfType,
+                                  {Condition, TrueValue, FalseValue});
+  };
+
+  Register LowResult;
+  Register HighResult;
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (Generic == GenericOpcode::G_SHL) {
+    auto LowShort = Build(GenericOpcode::G_SHL, *LowPart, *Amount);
+    auto LowCarry = Build(GenericOpcode::G_LSHR, *LowPart, *AmountLack);
+    auto HighShift = Build(GenericOpcode::G_SHL, *HighPart, *Amount);
+    if (!LowShort)
+      return std::unexpected(LowShort.error());
+    if (!LowCarry)
+      return std::unexpected(LowCarry.error());
+    if (!HighShift)
+      return std::unexpected(HighShift.error());
+    auto HighShort = Build(GenericOpcode::G_OR, *LowCarry, *HighShift);
+    auto LowLong = buildConstantRegister(MIRBuilder, *HalfType, 0);
+    auto HighLong = Build(GenericOpcode::G_SHL, *LowPart, *AmountExcess);
+    if (!HighShort)
+      return std::unexpected(HighShort.error());
+    if (!LowLong)
+      return std::unexpected(LowLong.error());
+    if (!HighLong)
+      return std::unexpected(HighLong.error());
+    auto Low = Select(*IsShort, *LowShort, *LowLong);
+    auto HighNonZero = Select(*IsShort, *HighShort, *HighLong);
+    if (!Low)
+      return std::unexpected(Low.error());
+    if (!HighNonZero)
+      return std::unexpected(HighNonZero.error());
+    auto High = Select(*IsZero, *HighPart, *HighNonZero);
+    if (!High)
+      return std::unexpected(High.error());
+    LowResult = *Low;
+    HighResult = *High;
+  } else if (Generic == GenericOpcode::G_LSHR || Generic == GenericOpcode::G_ASHR) {
+    auto HighShort = Build(Generic, *HighPart, *Amount);
+    auto LowShift = Build(GenericOpcode::G_LSHR, *LowPart, *Amount);
+    auto HighCarry = Build(GenericOpcode::G_SHL, *HighPart, *AmountLack);
+    if (!HighShort)
+      return std::unexpected(HighShort.error());
+    if (!LowShift)
+      return std::unexpected(LowShift.error());
+    if (!HighCarry)
+      return std::unexpected(HighCarry.error());
+    auto LowShort = Build(GenericOpcode::G_OR, *LowShift, *HighCarry);
+    if (!LowShort)
+      return std::unexpected(LowShort.error());
+
+    Expected<Register> HighLong =
+        Generic == GenericOpcode::G_LSHR
+            ? buildConstantRegister(MIRBuilder, *HalfType, 0)
+            : buildConstantRegister(MIRBuilder, *AmountType,
+                                    static_cast<std::int64_t>(DestinationBits / 2U - 1U))
+                  .and_then([&](Register Shift) {
+                    return Build(GenericOpcode::G_ASHR, *HighPart, Shift);
+                  });
+    auto LowLong = Build(Generic, *HighPart, *AmountExcess);
+    if (!HighLong)
+      return std::unexpected(HighLong.error());
+    if (!LowLong)
+      return std::unexpected(LowLong.error());
+    auto LowNonZero = Select(*IsShort, *LowShort, *LowLong);
+    if (!LowNonZero)
+      return std::unexpected(LowNonZero.error());
+    auto Low = Select(*IsZero, *LowPart, *LowNonZero);
+    auto High = Select(*IsShort, *HighShort, *HighLong);
+    if (!Low)
+      return std::unexpected(Low.error());
+    if (!High)
+      return std::unexpected(High.error());
+    LowResult = *Low;
+    HighResult = *High;
+  } else {
+    return makeUnexpected(ErrorCode::InternalError, "shift narrowing received a non-shift opcode");
+  }
+
+  if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, {LowResult, HighResult}); !Built)
+    return std::unexpected(Built.error());
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "shift became detached during narrowing");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<Register> LegalizerHelper::buildConstantShiftPart(GenericOpcode Generic,
+                                                           std::size_t PartIndex,
+                                                           std::size_t PartCount,
+                                                           const std::vector<Register> &SourceParts,
+                                                           const ShiftParameters &Parameters,
+                                                           LowLevelType TargetType) {
+  const auto WordShift = getIConstantVRegValWithLookThrough(Parameters.WordShift, MRI, false);
+  const auto BitShift = getIConstantVRegValWithLookThrough(Parameters.BitShift, MRI, false);
+  if (!WordShift || !BitShift || WordShift->Value.activeBitWidth() > 64 ||
+      BitShift->Value.activeBitWidth() > 64) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "multiway shift parameters are not representable constants");
+  }
+  const std::uint64_t ShiftWords = WordShift->Value.word(0);
+  const std::uint64_t ShiftBits = BitShift->Value.word(0);
+  const bool NeedsCarry = ShiftBits != 0;
+  const auto Build = [&](GenericOpcode Opcode, Register Left, Register Right) {
+    return buildResultInstruction(MIRBuilder, Opcode, TargetType, {Left, Right});
+  };
+
+  if (Generic == GenericOpcode::G_SHL) {
+    if (PartIndex < ShiftWords)
+      return Parameters.Zero;
+    const std::size_t SourceIndex = PartIndex - static_cast<std::size_t>(ShiftWords);
+    if (!NeedsCarry)
+      return SourceParts[SourceIndex];
+    auto High = Build(GenericOpcode::G_SHL, SourceParts[SourceIndex], Parameters.BitShift);
+    if (!High)
+      return std::unexpected(High.error());
+    if (SourceIndex == 0)
+      return *High;
+    auto Low =
+        Build(GenericOpcode::G_LSHR, SourceParts[SourceIndex - 1U], Parameters.InverseBitShift);
+    if (!Low)
+      return std::unexpected(Low.error());
+    return Build(GenericOpcode::G_OR, *High, *Low);
+  }
+
+  if (Generic == GenericOpcode::G_LSHR) {
+    const std::uint64_t SourceIndex = PartIndex + ShiftWords;
+    if (SourceIndex >= PartCount)
+      return Parameters.Zero;
+    if (!NeedsCarry)
+      return SourceParts[static_cast<std::size_t>(SourceIndex)];
+    auto Low = Build(GenericOpcode::G_LSHR, SourceParts[static_cast<std::size_t>(SourceIndex)],
+                     Parameters.BitShift);
+    if (!Low)
+      return std::unexpected(Low.error());
+    if (SourceIndex + 1U >= PartCount)
+      return *Low;
+    auto High = Build(GenericOpcode::G_SHL, SourceParts[static_cast<std::size_t>(SourceIndex + 1U)],
+                      Parameters.InverseBitShift);
+    if (!High)
+      return std::unexpected(High.error());
+    return Build(GenericOpcode::G_OR, *Low, *High);
+  }
+
+  if (Generic == GenericOpcode::G_ASHR) {
+    const std::uint64_t SourceIndex = PartIndex + ShiftWords;
+    if (SourceIndex >= PartCount)
+      return Parameters.SignBit;
+    if (!NeedsCarry)
+      return SourceParts[static_cast<std::size_t>(SourceIndex)];
+    const GenericOpcode MainOpcode =
+        SourceIndex + 1U == PartCount ? GenericOpcode::G_ASHR : GenericOpcode::G_LSHR;
+    auto Low =
+        Build(MainOpcode, SourceParts[static_cast<std::size_t>(SourceIndex)], Parameters.BitShift);
+    if (!Low)
+      return std::unexpected(Low.error());
+    const Register HighSource = SourceIndex + 1U < PartCount
+                                    ? SourceParts[static_cast<std::size_t>(SourceIndex + 1U)]
+                                    : Parameters.SignBit;
+    auto High = Build(GenericOpcode::G_SHL, HighSource, Parameters.InverseBitShift);
+    if (!High)
+      return std::unexpected(High.error());
+    return Build(GenericOpcode::G_OR, *Low, *High);
+  }
+
+  return makeUnexpected(ErrorCode::InternalError,
+                        "constant shift part received a non-shift opcode");
+}
+
+Expected<Register> LegalizerHelper::buildVariableShiftPart(GenericOpcode Generic,
+                                                           Register MainOperand,
+                                                           Register ShiftAmount,
+                                                           LowLevelType TargetType,
+                                                           Register CarryOperand) {
+  const GenericOpcode MainOpcode =
+      Generic == GenericOpcode::G_ASHR ? GenericOpcode::G_LSHR : Generic;
+  auto MainShifted =
+      buildResultInstruction(MIRBuilder, MainOpcode, TargetType, {MainOperand, ShiftAmount});
+  if (!MainShifted)
+    return std::unexpected(MainShifted.error());
+  if (CarryOperand.isNoRegister())
+    return *MainShifted;
+
+  auto AmountType = MRI.getType(ShiftAmount);
+  if (!AmountType)
+    return std::unexpected(AmountType.error());
+  auto ZeroAmount = buildConstantRegister(MIRBuilder, *AmountType, 0);
+  auto BoolType = LowLevelType::makeCategoryNeutralScalar(1);
+  if (!ZeroAmount)
+    return std::unexpected(ZeroAmount.error());
+  if (!BoolType)
+    return std::unexpected(BoolType.error());
+  auto IsZero =
+      buildICmpRegister(MIRBuilder, IntegerPredicate::Equal, *BoolType, ShiftAmount, *ZeroAmount);
+  auto TargetBits = buildConstantRegister(MIRBuilder, *AmountType,
+                                          static_cast<std::int64_t>(TargetType.scalarBitWidth()));
+  if (!IsZero)
+    return std::unexpected(IsZero.error());
+  if (!TargetBits)
+    return std::unexpected(TargetBits.error());
+  auto InverseAmount = buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *AmountType,
+                                              {*TargetBits, ShiftAmount});
+  if (!InverseAmount)
+    return std::unexpected(InverseAmount.error());
+
+  const GenericOpcode CarryOpcode =
+      Generic == GenericOpcode::G_SHL ? GenericOpcode::G_LSHR : GenericOpcode::G_SHL;
+  auto CarryBits =
+      buildResultInstruction(MIRBuilder, CarryOpcode, TargetType, {CarryOperand, *InverseAmount});
+  auto Zero = buildConstantRegister(MIRBuilder, TargetType, 0);
+  if (!CarryBits)
+    return std::unexpected(CarryBits.error());
+  if (!Zero)
+    return std::unexpected(Zero.error());
+  auto SafeCarry = buildResultInstruction(MIRBuilder, GenericOpcode::G_SELECT, TargetType,
+                                          {*IsZero, *Zero, *CarryBits});
+  if (!SafeCarry)
+    return std::unexpected(SafeCarry.error());
+  return buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, TargetType,
+                                {*MainShifted, *SafeCarry});
+}
+
+Expected<void> LegalizerHelper::narrowScalarShiftByConstantMultiway(MachineInstr &Instruction,
+                                                                    const APInt &Amount,
+                                                                    LowLevelType TargetType,
+                                                                    LowLevelType AmountType) {
+  const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+  const Register *Source = Instruction.operandAt(1)->getIf<Register>();
+  if (Destination == nullptr || Source == nullptr || Amount.activeBitWidth() > 64)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "constant multiway shift requires representable register operands");
+  auto DestinationType = MRI.getType(*Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  const std::uint64_t DestinationBits = DestinationType->scalarBitWidth();
+  const std::uint64_t TargetBits = TargetType.scalarBitWidth();
+  if (TargetBits == 0 || DestinationBits % TargetBits != 0)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiway shift target type does not divide the destination");
+  const std::size_t PartCount = static_cast<std::size_t>(DestinationBits / TargetBits);
+
+  std::vector<Register> SourceParts;
+  auto Extracted =
+      extractParts(*Source, TargetType, static_cast<int>(PartCount), SourceParts, MIRBuilder, MRI);
+  if (!Extracted)
+    return std::unexpected(Extracted.error());
+  if (Amount.isZero()) {
+    if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, SourceParts); !Built)
+      return std::unexpected(Built.error());
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "constant multiway shift became detached");
+    return Block->removeInstruction(Instruction);
+  }
+
+  const std::uint64_t AmountValue = Amount.word(0);
+  const std::uint64_t ShiftWords = AmountValue / TargetBits;
+  const std::uint64_t ShiftBits = AmountValue % TargetBits;
+  ShiftParameters Parameters;
+  auto WordShift =
+      buildConstantRegister(MIRBuilder, AmountType, static_cast<std::int64_t>(ShiftWords));
+  auto BitShift =
+      buildConstantRegister(MIRBuilder, AmountType, static_cast<std::int64_t>(ShiftBits));
+  auto InverseBitShift = buildConstantRegister(MIRBuilder, AmountType,
+                                               static_cast<std::int64_t>(TargetBits - ShiftBits));
+  auto Zero = buildConstantRegister(MIRBuilder, TargetType, 0);
+  if (!WordShift)
+    return std::unexpected(WordShift.error());
+  if (!BitShift)
+    return std::unexpected(BitShift.error());
+  if (!InverseBitShift)
+    return std::unexpected(InverseBitShift.error());
+  if (!Zero)
+    return std::unexpected(Zero.error());
+  Parameters.WordShift = *WordShift;
+  Parameters.BitShift = *BitShift;
+  Parameters.InverseBitShift = *InverseBitShift;
+  Parameters.Zero = *Zero;
+
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (Generic == GenericOpcode::G_ASHR) {
+    auto SignAmount =
+        buildConstantRegister(MIRBuilder, AmountType, static_cast<std::int64_t>(TargetBits - 1U));
+    if (!SignAmount)
+      return std::unexpected(SignAmount.error());
+    auto SignBit = buildResultInstruction(MIRBuilder, GenericOpcode::G_ASHR, TargetType,
+                                          {SourceParts.back(), *SignAmount});
+    if (!SignBit)
+      return std::unexpected(SignBit.error());
+    Parameters.SignBit = *SignBit;
+  }
+
+  std::vector<Register> DestinationParts;
+  DestinationParts.reserve(PartCount);
+  for (std::size_t Index = 0; Index != PartCount; ++Index) {
+    auto Part =
+        buildConstantShiftPart(Generic, Index, PartCount, SourceParts, Parameters, TargetType);
+    if (!Part)
+      return std::unexpected(Part.error());
+    DestinationParts.push_back(*Part);
+  }
+  if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, DestinationParts); !Built)
+    return std::unexpected(Built.error());
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "constant multiway shift became detached");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::narrowScalarShiftMultiway(MachineInstr &Instruction,
+                                                          LowLevelType TargetType) {
+  const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+  const Register *Source = Instruction.operandAt(1)->getIf<Register>();
+  const Register *Amount = Instruction.operandAt(2)->getIf<Register>();
+  if (Destination == nullptr || Source == nullptr || Amount == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiway shift narrowing requires register operands");
+  auto DestinationType = MRI.getType(*Destination);
+  auto AmountType = MRI.getType(*Amount);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  if (!AmountType)
+    return std::unexpected(AmountType.error());
+  const std::uint64_t DestinationBits = DestinationType->scalarBitWidth();
+  const std::uint64_t TargetBits = TargetType.scalarBitWidth();
+  if (TargetBits == 0 || DestinationBits % TargetBits != 0 || !std::has_single_bit(TargetBits)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiway shift requires a power-of-two divisor type");
+  }
+  const std::size_t PartCount = static_cast<std::size_t>(DestinationBits / TargetBits);
+  if (auto Constant = getIConstantVRegValWithLookThrough(*Amount, MRI)) {
+    return narrowScalarShiftByConstantMultiway(Instruction, Constant->Value, TargetType,
+                                               *AmountType);
+  }
+
+  std::vector<Register> SourceParts;
+  auto Extracted =
+      extractParts(*Source, TargetType, static_cast<int>(PartCount), SourceParts, MIRBuilder, MRI);
+  if (!Extracted)
+    return std::unexpected(Extracted.error());
+
+  auto ZeroAmount = buildConstantRegister(MIRBuilder, *AmountType, 0);
+  auto BoolType = LowLevelType::makeCategoryNeutralScalar(1);
+  if (!ZeroAmount)
+    return std::unexpected(ZeroAmount.error());
+  if (!BoolType)
+    return std::unexpected(BoolType.error());
+  auto IsZero =
+      buildICmpRegister(MIRBuilder, IntegerPredicate::Equal, *BoolType, *Amount, *ZeroAmount);
+  if (!IsZero)
+    return std::unexpected(IsZero.error());
+
+  const auto TargetLog2 = static_cast<std::int64_t>(std::countr_zero(TargetBits));
+  auto Log2 = buildConstantRegister(MIRBuilder, *AmountType, TargetLog2);
+  auto Mask =
+      buildConstantRegister(MIRBuilder, *AmountType, static_cast<std::int64_t>(TargetBits - 1U));
+  if (!Log2)
+    return std::unexpected(Log2.error());
+  if (!Mask)
+    return std::unexpected(Mask.error());
+  auto WordShift =
+      buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *AmountType, {*Amount, *Log2});
+  auto BitShift =
+      buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *AmountType, {*Amount, *Mask});
+  auto Zero = buildConstantRegister(MIRBuilder, TargetType, 0);
+  if (!WordShift)
+    return std::unexpected(WordShift.error());
+  if (!BitShift)
+    return std::unexpected(BitShift.error());
+  if (!Zero)
+    return std::unexpected(Zero.error());
+
+  Register FillValue = *Zero;
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (Generic == GenericOpcode::G_ASHR) {
+    auto SignAmount =
+        buildConstantRegister(MIRBuilder, *AmountType, static_cast<std::int64_t>(TargetBits - 1U));
+    if (!SignAmount)
+      return std::unexpected(SignAmount.error());
+    auto Sign = buildResultInstruction(MIRBuilder, GenericOpcode::G_ASHR, TargetType,
+                                       {SourceParts.back(), *SignAmount});
+    if (!Sign)
+      return std::unexpected(Sign.error());
+    FillValue = *Sign;
+  }
+
+  std::vector<Register> DestinationParts(PartCount);
+  for (std::size_t PartIndex = 0; PartIndex != PartCount; ++PartIndex) {
+    Register InBoundsResult = FillValue;
+    for (std::size_t WordIndex = 0; WordIndex != PartCount; ++WordIndex) {
+      auto WordConstant =
+          buildConstantRegister(MIRBuilder, *AmountType, static_cast<std::int64_t>(WordIndex));
+      if (!WordConstant)
+        return std::unexpected(WordConstant.error());
+      auto IsWord = buildICmpRegister(MIRBuilder, IntegerPredicate::Equal, *BoolType, *WordShift,
+                                      *WordConstant);
+      if (!IsWord)
+        return std::unexpected(IsWord.error());
+
+      std::ptrdiff_t MainIndex;
+      std::ptrdiff_t CarryIndex;
+      if (Generic == GenericOpcode::G_SHL) {
+        MainIndex = static_cast<std::ptrdiff_t>(PartIndex) - static_cast<std::ptrdiff_t>(WordIndex);
+        CarryIndex = MainIndex - 1;
+      } else if (Generic == GenericOpcode::G_LSHR || Generic == GenericOpcode::G_ASHR) {
+        MainIndex = static_cast<std::ptrdiff_t>(PartIndex) + static_cast<std::ptrdiff_t>(WordIndex);
+        CarryIndex = MainIndex + 1;
+      } else {
+        return makeUnexpected(ErrorCode::InternalError,
+                              "multiway shift received a non-shift opcode");
+      }
+
+      Register Result = FillValue;
+      if (MainIndex >= 0 && MainIndex < static_cast<std::ptrdiff_t>(PartCount)) {
+        Register Carry;
+        if (CarryIndex >= 0 && CarryIndex < static_cast<std::ptrdiff_t>(PartCount))
+          Carry = SourceParts[static_cast<std::size_t>(CarryIndex)];
+        else if (Generic == GenericOpcode::G_ASHR &&
+                 CarryIndex >= static_cast<std::ptrdiff_t>(PartCount))
+          Carry = FillValue;
+        auto Shifted =
+            buildVariableShiftPart(Generic, SourceParts[static_cast<std::size_t>(MainIndex)],
+                                   *BitShift, TargetType, Carry);
+        if (!Shifted)
+          return std::unexpected(Shifted.error());
+        Result = *Shifted;
+      }
+
+      auto Selected = buildResultInstruction(MIRBuilder, GenericOpcode::G_SELECT, TargetType,
+                                             {*IsWord, Result, InBoundsResult});
+      if (!Selected)
+        return std::unexpected(Selected.error());
+      InBoundsResult = *Selected;
+    }
+    auto Selected = buildResultInstruction(MIRBuilder, GenericOpcode::G_SELECT, TargetType,
+                                           {*IsZero, SourceParts[PartIndex], InBoundsResult});
+    if (!Selected)
+      return std::unexpected(Selected.error());
+    DestinationParts[PartIndex] = *Selected;
+  }
+
+  if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, DestinationParts); !Built)
+    return std::unexpected(Built.error());
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "multiway shift became detached");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                              LowLevelType NarrowType) {
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
@@ -1659,12 +2453,129 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   case GenericOpcode::G_ZEXT:
   case GenericOpcode::G_ANYEXT:
     return narrowScalarExt(Instruction, TypeIndex, NarrowType);
+  case GenericOpcode::G_SEXT_INREG: {
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "G_SEXT_INREG narrowing requires type index zero");
+
+    MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    MachineOperand *SourceOperand = Instruction.operandAt(1);
+    MachineOperand *WidthOperand = Instruction.operandAt(2);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+    if (Destination == nullptr || Source == nullptr || WidthOperand == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_SEXT_INREG narrowing requires register and width operands");
+    auto SizeInBits = signedImmediate(*WidthOperand);
+    if (!SizeInBits)
+      return std::unexpected(SizeInBits.error());
+    auto DestinationType = MRI.getType(*Destination);
+    if (!DestinationType)
+      return std::unexpected(DestinationType.error());
+
+    const std::uint64_t TotalSize = DestinationType->minimumBitWidth();
+    const std::uint64_t NarrowSize = NarrowType.minimumBitWidth();
+    if (*SizeInBits <= 0 || static_cast<std::uint64_t>(*SizeInBits) > TotalSize ||
+        NarrowSize == 0 || NarrowSize >= TotalSize) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_SEXT_INREG narrowing has invalid scalar widths");
+    }
+
+    if (NarrowSize > static_cast<std::uint64_t>(*SizeInBits)) {
+      const Register OriginalDestination = *Destination;
+      Observer.changingInstr(Instruction);
+      auto NarrowedSource = narrowScalarSrc(Instruction, NarrowType, 1);
+      if (!NarrowedSource)
+        return std::unexpected(NarrowedSource.error());
+      auto NarrowDestination = MRI.createVirtualRegister(NarrowType);
+      if (!NarrowDestination)
+        return std::unexpected(NarrowDestination.error());
+      if (auto Changed = DestinationOperand->setRegister(*NarrowDestination); !Changed)
+        return std::unexpected(Changed.error());
+      if (auto Point = MIRBuilder.setInsertPointAfter(Instruction); !Point)
+        return std::unexpected(Point.error());
+      if (auto Extended = MIRBuilder.buildSExt(OriginalDestination, *NarrowDestination); !Extended)
+        return std::unexpected(Extended.error());
+      Observer.changedInstr(Instruction);
+      return {};
+    }
+
+    if (TotalSize % NarrowSize != 0)
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "G_SEXT_INREG cannot be split evenly to the requested type");
+    const std::size_t PartCount = static_cast<std::size_t>(TotalSize / NarrowSize);
+    std::vector<Register> SourceParts;
+    SourceParts.reserve(PartCount);
+    for (std::size_t Index = 0; Index != PartCount; ++Index) {
+      auto Part = MRI.createVirtualRegister(NarrowType);
+      if (!Part)
+        return std::unexpected(Part.error());
+      SourceParts.push_back(*Part);
+    }
+    if (auto Unmerged = MIRBuilder.buildUnmergeValues(SourceParts, *Source); !Unmerged)
+      return std::unexpected(Unmerged.error());
+
+    auto ShiftAmount =
+        buildConstantRegister(MIRBuilder, NarrowType, static_cast<std::int64_t>(NarrowSize - 1U));
+    if (!ShiftAmount)
+      return std::unexpected(ShiftAmount.error());
+
+    std::vector<Register> DestinationParts;
+    DestinationParts.reserve(PartCount);
+    Register FullExtension;
+    Register PartialExtension;
+    const std::uint64_t ExtensionBits = static_cast<std::uint64_t>(*SizeInBits);
+    for (std::size_t Index = 0; Index != PartCount; ++Index) {
+      if ((Index + 1U) * NarrowSize <= ExtensionBits) {
+        DestinationParts.push_back(SourceParts[Index]);
+        PartialExtension = SourceParts[Index];
+        continue;
+      }
+      if (Index * NarrowSize >= ExtensionBits) {
+        if (PartialExtension.isNoRegister())
+          return makeUnexpected(ErrorCode::InternalError,
+                                "G_SEXT_INREG split has no sign-bearing part");
+        if (FullExtension.isNoRegister()) {
+          auto Extended = buildResultInstruction(MIRBuilder, GenericOpcode::G_ASHR, NarrowType,
+                                                 {PartialExtension, *ShiftAmount});
+          if (!Extended)
+            return std::unexpected(Extended.error());
+          FullExtension = *Extended;
+        }
+        DestinationParts.push_back(FullExtension);
+        continue;
+      }
+
+      auto Extended = MIRBuilder.buildSExtInReg(
+          NarrowType, SourceParts[Index], static_cast<std::uint32_t>(ExtensionBits % NarrowSize));
+      if (!Extended)
+        return std::unexpected(Extended.error());
+      auto ExtendedRegister = resultRegister(**Extended);
+      if (!ExtendedRegister)
+        return std::unexpected(ExtendedRegister.error());
+      DestinationParts.push_back(*ExtendedRegister);
+      PartialExtension = *ExtendedRegister;
+    }
+
+    if (auto Merged = MIRBuilder.buildMergeLikeInstr(*Destination, DestinationParts); !Merged)
+      return std::unexpected(Merged.error());
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "G_SEXT_INREG became detached during narrowing");
+    return Block->removeInstruction(Instruction);
+  }
   case GenericOpcode::G_AND:
   case GenericOpcode::G_OR:
   case GenericOpcode::G_XOR:
     return narrowScalarBasic(Instruction, TypeIndex, NarrowType);
   case GenericOpcode::G_SELECT:
     return narrowScalarSelect(Instruction, TypeIndex, NarrowType);
+  case GenericOpcode::G_SHL:
+  case GenericOpcode::G_LSHR:
+  case GenericOpcode::G_ASHR:
+    return narrowScalarShift(Instruction, TypeIndex, NarrowType);
   default:
     return makeUnexpected(ErrorCode::Unsupported,
                           "scalar narrowing is not implemented for this opcode");
