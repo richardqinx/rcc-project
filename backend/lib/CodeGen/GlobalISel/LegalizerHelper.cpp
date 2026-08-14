@@ -3345,6 +3345,12 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   case GenericOpcode::G_ROTL:
   case GenericOpcode::G_ROTR:
     return lowerRotate(Instruction);
+  case GenericOpcode::G_DYN_STACKALLOC:
+    return lowerDynStackAlloc(Instruction);
+  case GenericOpcode::G_STACKSAVE:
+    return lowerStackSave(Instruction);
+  case GenericOpcode::G_STACKRESTORE:
+    return lowerStackRestore(Instruction);
   case GenericOpcode::G_ABDS:
   case GenericOpcode::G_ABDU: {
     const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_ABDS);
@@ -3647,6 +3653,153 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
                               "'");
   }
   }
+}
+
+Expected<void> LegalizerHelper::lowerDynStackAlloc(MachineInstr &Instruction) {
+  if (Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "G_DYN_STACKALLOC requires destination, size, and alignment operands");
+  if (MIRBuilder.target().stackGrowthDirection() != StackGrowthDirection::Down)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "dynamic stack allocation requires a downward-growing stack");
+
+  const PhysicalRegister StackPointer = MIRBuilder.target().stackPointerRegisterToSaveRestore();
+  if (!StackPointer.isValid())
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "target does not define a stack pointer for dynamic allocation");
+
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *SizeOperand = Instruction.operandAt(1);
+  const MachineOperand *AlignmentOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *AllocationSize =
+      SizeOperand == nullptr ? nullptr : SizeOperand->getIf<Register>();
+  if (Destination == nullptr || AllocationSize == nullptr || AlignmentOperand == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError, "G_DYN_STACKALLOC has invalid operands");
+
+  auto PointerType = MRI.getType(*Destination);
+  auto AllocationSizeType = MRI.getType(*AllocationSize);
+  auto AlignmentValue = signedImmediate(*AlignmentOperand);
+  if (!PointerType)
+    return std::unexpected(PointerType.error());
+  if (!AllocationSizeType)
+    return std::unexpected(AllocationSizeType.error());
+  if (!AlignmentValue)
+    return std::unexpected(AlignmentValue.error());
+  if (!PointerType->isPointer() || !AllocationSizeType->isCategoryNeutralScalar() ||
+      PointerType->scalarBitWidth() != AllocationSizeType->scalarBitWidth()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "G_DYN_STACKALLOC requires pointer-width integer allocation size");
+  }
+  if (*AlignmentValue <= 0 || !std::has_single_bit(static_cast<std::uint64_t>(*AlignmentValue))) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "G_DYN_STACKALLOC alignment must be a positive power of two");
+  }
+
+  auto StackPointerCopy = MRI.createVirtualRegister(*PointerType);
+  auto IntegerStackPointer = MRI.createVirtualRegister(*AllocationSizeType);
+  auto Allocation = MRI.createVirtualRegister(*AllocationSizeType);
+  if (!StackPointerCopy)
+    return std::unexpected(StackPointerCopy.error());
+  if (!IntegerStackPointer)
+    return std::unexpected(IntegerStackPointer.error());
+  if (!Allocation)
+    return std::unexpected(Allocation.error());
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = MIRBuilder.buildCopy(*StackPointerCopy, Register::fromPhysical(StackPointer));
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  if (auto Built = MIRBuilder.buildPtrToInt(*IntegerStackPointer, *StackPointerCopy); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildSub(*Allocation, *IntegerStackPointer, *AllocationSize); !Built)
+    return std::unexpected(Built.error());
+
+  Register AlignedAllocation = *Allocation;
+  if (*AlignmentValue > 1) {
+    auto LowBits = APInt::fromUnsigned(AllocationSizeType->scalarBitWidth(),
+                                       static_cast<std::uint64_t>(*AlignmentValue) - 1U);
+    if (!LowBits)
+      return std::unexpected(LowBits.error());
+    auto AlignmentMask = LowBits->bitwiseNot();
+    if (!AlignmentMask)
+      return std::unexpected(AlignmentMask.error());
+    auto Mask = buildConstantRegister(MIRBuilder, *AllocationSizeType, std::move(*AlignmentMask));
+    if (!Mask)
+      return std::unexpected(Mask.error());
+    auto MaskedAllocation = MRI.createVirtualRegister(*AllocationSizeType);
+    if (!MaskedAllocation)
+      return std::unexpected(MaskedAllocation.error());
+    if (auto Built = MIRBuilder.buildAnd(*MaskedAllocation, *Allocation, *Mask); !Built)
+      return std::unexpected(Built.error());
+    AlignedAllocation = *MaskedAllocation;
+  }
+
+  auto TargetPointer = MRI.createVirtualRegister(*PointerType);
+  if (!TargetPointer)
+    return std::unexpected(TargetPointer.error());
+  if (auto Built = MIRBuilder.buildIntToPtr(*TargetPointer, AlignedAllocation); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = MIRBuilder.buildCopy(Register::fromPhysical(StackPointer), *TargetPointer);
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  if (auto Built = MIRBuilder.buildCopy(*Destination, *TargetPointer); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "G_DYN_STACKALLOC became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerStackSave(MachineInstr &Instruction) {
+  const PhysicalRegister StackPointer = MIRBuilder.target().stackPointerRegisterToSaveRestore();
+  if (!StackPointer.isValid())
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "target does not define a stack pointer for stack save");
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  if (Instruction.operandCount() != 1 || Destination == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "G_STACKSAVE requires one register destination");
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = MIRBuilder.buildCopy(*Destination, Register::fromPhysical(StackPointer));
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "G_STACKSAVE became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerStackRestore(MachineInstr &Instruction) {
+  const PhysicalRegister StackPointer = MIRBuilder.target().stackPointerRegisterToSaveRestore();
+  if (!StackPointer.isValid())
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "target does not define a stack pointer for stack restore");
+  const MachineOperand *SourceOperand = Instruction.operandAt(0);
+  const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+  if (Instruction.operandCount() != 1 || Source == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "G_STACKRESTORE requires one register source");
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = MIRBuilder.buildCopy(Register::fromPhysical(StackPointer), *Source); !Built)
+    return std::unexpected(Built.error());
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "G_STACKRESTORE became detached during lowering");
+  }
+  return Block->removeInstruction(Instruction);
 }
 
 Expected<void> LegalizerHelper::lowerAbsToAddXor(MachineInstr &Instruction) {

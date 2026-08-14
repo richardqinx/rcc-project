@@ -36,6 +36,16 @@ struct TargetBooleanContentInfo final {
   BooleanContent Vector = BooleanContent::Undefined;
 };
 
+enum class StackGrowthDirection : std::uint8_t {
+  Down,
+  Up,
+};
+
+struct TargetStackInfo final {
+  PhysicalRegister StackPointerRegisterToSaveRestore;
+  StackGrowthDirection GrowthDirection = StackGrowthDirection::Down;
+};
+
 class TargetDescription final {
 public:
   TargetDescription(const TargetDescription &) = delete;
@@ -44,9 +54,11 @@ public:
   TargetDescription &operator=(TargetDescription &&) noexcept = default;
   ~TargetDescription() = default;
 
-  [[nodiscard]] static Expected<TargetDescription>
-  create(InstructionSet Instructions, TargetRegisterInfo Registers,
-         TargetMIRTextInfoDesc MIRText = {}, TargetBooleanContentInfo BooleanInfo = {});
+  [[nodiscard]] static Expected<TargetDescription> create(InstructionSet Instructions,
+                                                          TargetRegisterInfo Registers,
+                                                          TargetMIRTextInfoDesc MIRText = {},
+                                                          TargetBooleanContentInfo BooleanInfo = {},
+                                                          TargetStackInfo StackInfo = {});
 
   [[nodiscard]] const InstructionSet &instructions() const noexcept {
     return Instructions;
@@ -65,6 +77,14 @@ public:
     if (IsVector)
       return BooleanInfo.Vector;
     return IsFloatingPoint ? BooleanInfo.ScalarFloatingPoint : BooleanInfo.ScalarInteger;
+  }
+
+  [[nodiscard]] PhysicalRegister stackPointerRegisterToSaveRestore() const noexcept {
+    return StackInfo.StackPointerRegisterToSaveRestore;
+  }
+
+  [[nodiscard]] StackGrowthDirection stackGrowthDirection() const noexcept {
+    return StackInfo.GrowthDirection;
   }
 
   [[nodiscard]] const InstructionDescriptor *
@@ -107,9 +127,10 @@ public:
 
 private:
   TargetDescription(InstructionSet Instructions, TargetRegisterInfo Registers,
-                    TargetMIRTextInfo MIRText, TargetBooleanContentInfo BooleanInfo)
+                    TargetMIRTextInfo MIRText, TargetBooleanContentInfo BooleanInfo,
+                    TargetStackInfo StackInfo)
       : Instructions(std::move(Instructions)), Registers(std::move(Registers)),
-        MIRText(std::move(MIRText)), BooleanInfo(BooleanInfo) {}
+        MIRText(std::move(MIRText)), BooleanInfo(BooleanInfo), StackInfo(StackInfo) {}
 
   [[nodiscard]] Expected<void> validateTargetOperand(const OperandDescriptor *Descriptor,
                                                      const MachineOperand &Operand,
@@ -122,6 +143,7 @@ private:
   TargetRegisterInfo Registers;
   TargetMIRTextInfo MIRText;
   TargetBooleanContentInfo BooleanInfo;
+  TargetStackInfo StackInfo;
 };
 
 } // namespace rcc

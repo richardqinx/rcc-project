@@ -39,6 +39,9 @@ public:
   [[nodiscard]] Expected<void> lowerBitCount(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerBswap(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerRotate(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerDynStackAlloc(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerStackSave(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerStackRestore(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerVAArg(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> libcall(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> widenScalar(MachineInstr &Instruction, std::size_t TypeIndex,

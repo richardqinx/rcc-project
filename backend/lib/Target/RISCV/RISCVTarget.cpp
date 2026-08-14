@@ -245,8 +245,15 @@ Expected<TargetDescription> createTargetDescription() {
       .ScalarInteger = BooleanContent::ZeroOrOne,
       .ScalarFloatingPoint = BooleanContent::ZeroOrOne,
   };
+  auto StackPointer = physicalRegister(PhysicalRegisterID::X2);
+  if (!StackPointer)
+    return std::unexpected(StackPointer.error());
+  TargetStackInfo StackInfo{
+      .StackPointerRegisterToSaveRestore = *StackPointer,
+      .GrowthDirection = StackGrowthDirection::Down,
+  };
   return TargetDescription::create(std::move(*Instructions), std::move(*Registers),
-                                   std::move(MIRText), BooleanInfo);
+                                   std::move(MIRText), BooleanInfo, StackInfo);
 }
 
 std::shared_ptr<const RegisterMask> createCallPreservedMask(CallingConvention Convention) {

@@ -52,10 +52,17 @@ namespace {
 Expected<TargetDescription> TargetDescription::create(InstructionSet Instructions,
                                                       TargetRegisterInfo Registers,
                                                       TargetMIRTextInfoDesc MIRTextDescription,
-                                                      TargetBooleanContentInfo BooleanInfo) {
+                                                      TargetBooleanContentInfo BooleanInfo,
+                                                      TargetStackInfo StackInfo) {
   auto MIRText = TargetMIRTextInfo::create(std::move(MIRTextDescription), Registers);
   if (!MIRText)
     return std::unexpected(MIRText.error());
+
+  if (StackInfo.StackPointerRegisterToSaveRestore.isValid() &&
+      Registers.physicalRegister(StackInfo.StackPointerRegisterToSaveRestore) == nullptr) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "target stack pointer is not a known physical register");
+  }
 
   for (const InstructionDescriptor &Instruction : Instructions.descriptors()) {
     for (const OperandDescriptor &Operand : Instruction.Operands) {
@@ -124,7 +131,7 @@ Expected<TargetDescription> TargetDescription::create(InstructionSet Instruction
   }
 
   return TargetDescription(std::move(Instructions), std::move(Registers), std::move(*MIRText),
-                           BooleanInfo);
+                           BooleanInfo, StackInfo);
 }
 
 Expected<void> TargetDescription::validateVirtualRegister(Register Reg,
