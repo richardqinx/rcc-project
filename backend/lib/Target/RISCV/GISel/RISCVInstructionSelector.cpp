@@ -185,7 +185,10 @@ public:
                                          const TargetDescription &Target) const override {
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW) ||
         Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRAW) ||
-        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRLW)) {
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRLW) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_DIVW) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_DIVUW) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_REMUW)) {
       const std::optional<LowLevelType> Type = resultType(Function, Instruction);
       const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
       const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
@@ -349,6 +352,12 @@ public:
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SRAW));
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRLW))
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SRLW));
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_DIVW))
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::DIVW));
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_DIVUW))
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::DIVUW));
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_REMUW))
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::REMUW));
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 
