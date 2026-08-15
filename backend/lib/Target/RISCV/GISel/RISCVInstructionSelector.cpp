@@ -21,6 +21,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <optional>
 #include <ranges>
@@ -180,7 +181,8 @@ public:
     auto Classification = Subtarget.getLegalizerInfo()->getDecision(Instruction, Function, Target);
     if (!Classification)
       return std::unexpected(Classification.error());
-    if (Classification->Action != LegalizationAction::Legal) {
+    if (Classification->Action != LegalizationAction::Legal &&
+        Classification->Action != LegalizationAction::Custom) {
       std::string Message = "RISC-V selector cannot select opcode '" +
                             std::string(getGenericOpcodeName(Generic)) + "'";
       if (Type)
@@ -555,6 +557,19 @@ private:
     return *Temporary;
   }
 
+  [[nodiscard]] Expected<void>
+  constrainBuilderRegisters(MachineFunction &Function, const TargetDescription &Target,
+                            std::initializer_list<Register> Registers) const {
+    for (Register Reg : Registers) {
+      if (!Reg.isVirtual())
+        continue;
+      auto Constraint = RegisterBanks.constrainRegister(Function, Reg, Target);
+      if (!Constraint)
+        return std::unexpected(Constraint.error());
+    }
+    return {};
+  }
+
   [[nodiscard]] Expected<void> replaceImmediate(MachineInstr &Instruction, std::size_t Index,
                                                 std::int64_t Value) const {
     if (Instruction.operandAt(Index) == nullptr)
@@ -573,6 +588,10 @@ private:
     auto Point = Builder.setInsertPointAfter(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
+    auto RegisterConstraints =
+        constrainBuilderRegisters(Builder.function(), Builder.target(), {Def, Left, Right});
+    if (!RegisterConstraints)
+      return std::unexpected(RegisterConstraints.error());
     auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
     if (!Pending)
       return std::unexpected(Pending.error());
@@ -588,6 +607,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
+    if (!Constraint)
+      return std::unexpected(Constraint.error());
     return *Built;
   }
 
@@ -597,6 +619,10 @@ private:
     auto Point = Builder.setInsertPointAfter(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
+    auto RegisterConstraints =
+        constrainBuilderRegisters(Builder.function(), Builder.target(), {Def, Source});
+    if (!RegisterConstraints)
+      return std::unexpected(RegisterConstraints.error());
     auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
     if (!Pending)
       return std::unexpected(Pending.error());
@@ -612,6 +638,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
+    if (!Constraint)
+      return std::unexpected(Constraint.error());
     return *Built;
   }
 
@@ -621,6 +650,10 @@ private:
     auto Point = Builder.setInsertPointBefore(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
+    auto RegisterConstraints =
+        constrainBuilderRegisters(Builder.function(), Builder.target(), {Def, Source});
+    if (!RegisterConstraints)
+      return std::unexpected(RegisterConstraints.error());
     auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
     if (!Pending)
       return std::unexpected(Pending.error());
@@ -636,6 +669,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
+    if (!Constraint)
+      return std::unexpected(Constraint.error());
     return *Built;
   }
 
@@ -690,6 +726,10 @@ private:
     auto Point = Builder.setInsertPointAfter(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
+    auto RegisterConstraints =
+        constrainBuilderRegisters(Builder.function(), Builder.target(), {Def, Source});
+    if (!RegisterConstraints)
+      return std::unexpected(RegisterConstraints.error());
     auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
     if (!Pending)
       return std::unexpected(Pending.error());
@@ -702,6 +742,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
+    if (!Constraint)
+      return std::unexpected(Constraint.error());
     return *Built;
   }
 
@@ -1448,6 +1491,9 @@ private:
       auto Point = Builder.setInsertPointBefore(Instruction);
       if (!Point)
         return std::unexpected(Point.error());
+      auto RegisterConstraints = constrainBuilderRegisters(Function, Target, {*Negated, *Value});
+      if (!RegisterConstraints)
+        return std::unexpected(RegisterConstraints.error());
       auto Pending = Builder.buildInstr(
           instructionOpcode(IsWord ? InstructionOpcode::SUBW : InstructionOpcode::SUB));
       if (!Pending)
@@ -1464,6 +1510,9 @@ private:
       auto Built = Pending->build();
       if (!Built)
         return std::unexpected(Built.error());
+      auto Constraint = constrainSelectedInstruction(**Built, Function, Target);
+      if (!Constraint)
+        return std::unexpected(Constraint.error());
       SelectedValue = *Negated;
     }
     const auto SelectOpcode = [Generic, IsWord]() -> InstructionOpcode {
@@ -2257,6 +2306,10 @@ private:
     auto Point = Builder.setInsertPointBefore(Instruction);
     if (!Point)
       return std::unexpected(Point.error());
+    auto RegisterConstraints =
+        constrainBuilderRegisters(Function, Target, {*Temporary, ValueRegister});
+    if (!RegisterConstraints)
+      return std::unexpected(RegisterConstraints.error());
     auto Conversion = Builder.buildInstr(instructionOpcode(InstructionOpcode::FCVT_S_D));
     if (!Conversion)
       return std::unexpected(Conversion.error());
@@ -2272,6 +2325,9 @@ private:
     auto Built = Conversion->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto Constraint = constrainSelectedInstruction(**Built, Function, Target);
+    if (!Constraint)
+      return std::unexpected(Constraint.error());
     auto SetValue = Instruction.operandAt(0)->setRegister(*Temporary);
     if (!SetValue)
       return std::unexpected(SetValue.error());
@@ -2375,6 +2431,9 @@ private:
                             "RISC-V generic constant must define a virtual register");
     }
     const Register Destination = *DestinationValue;
+    auto DestinationConstraint = constrainBuilderRegisters(Function, Target, {Destination});
+    if (!DestinationConstraint)
+      return std::unexpected(DestinationConstraint.error());
     const std::int64_t Value = *ImmediateValue;
     const std::uint32_t ImmediateTargetFlags = ImmediateOperand->targetFlags();
     const bool IsWord = Type->isCategoryNeutralScalar() && Type->scalarBitWidth() <= 32;
@@ -2471,6 +2530,9 @@ private:
       auto BuiltShift = Shift->build();
       if (!BuiltShift)
         return std::unexpected(BuiltShift.error());
+      auto ShiftConstraint = constrainSelectedInstruction(**BuiltShift, Function, Target);
+      if (!ShiftConstraint)
+        return std::unexpected(ShiftConstraint.error());
 
       const bool IsFinal = Index == 0;
       Register AddDestination;
@@ -2500,6 +2562,9 @@ private:
       auto BuiltAdd = AddInstruction->build();
       if (!BuiltAdd)
         return std::unexpected(BuiltAdd.error());
+      auto AddConstraint = constrainSelectedInstruction(**BuiltAdd, Function, Target);
+      if (!AddConstraint)
+        return std::unexpected(AddConstraint.error());
       Current = AddDestination;
     }
     return {};
@@ -2565,6 +2630,10 @@ private:
     auto InsertPoint = Builder.setInsertPointAfter(*IntegerDefinition);
     if (!InsertPoint)
       return std::unexpected(InsertPoint.error());
+    auto RegisterConstraints =
+        constrainBuilderRegisters(Function, Target, {DestinationRegister, *Temporary});
+    if (!RegisterConstraints)
+      return std::unexpected(RegisterConstraints.error());
     const InstructionOpcode Move =
         BitWidth == 32 ? InstructionOpcode::FMV_W_X : InstructionOpcode::FMV_D_X;
     auto MoveInstruction = Builder.buildInstr(instructionOpcode(Move));
@@ -2579,6 +2648,9 @@ private:
     auto BuiltMove = MoveInstruction->build();
     if (!BuiltMove)
       return std::unexpected(BuiltMove.error());
+    auto Constraint = constrainSelectedInstruction(**BuiltMove, Function, Target);
+    if (!Constraint)
+      return std::unexpected(Constraint.error());
     return {};
   }
 
