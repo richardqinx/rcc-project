@@ -148,6 +148,16 @@ Expected<CodeGenFileType> parseCodeGenFileType(std::string_view Value) {
   return makeUnexpected(ErrorCode::InvalidInvocation, "unknown file type");
 }
 
+Expected<GlobalISelAbortMode> parseGlobalISelAbortMode(std::string_view Value) {
+  if (Value == "0")
+    return GlobalISelAbortMode::Disable;
+  if (Value == "1")
+    return GlobalISelAbortMode::Enable;
+  if (Value == "2")
+    return GlobalISelAbortMode::DisableWithDiagnostic;
+  return makeUnexpected(ErrorCode::InvalidInvocation, "-global-isel-abort requires 0, 1, or 2");
+}
+
 Expected<bool> parseCodeGenCommandFlag(std::span<const std::string_view> Arguments,
                                        std::size_t &Index, CodeGenCommandFlags &Flags) {
   const std::string_view Argument = Arguments[Index];

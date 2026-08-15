@@ -256,6 +256,16 @@ LegalizeRuleSet &LegalizeRuleSet::widenScalarToNextPow2(std::size_t TypeIndex,
       });
 }
 
+LegalizeRuleSet &LegalizeRuleSet::scalarize(std::size_t TypeIndex) {
+  return fewerElementsIf(
+      [TypeIndex](const LegalizationQuery &Query) {
+        return TypeIndex < Query.Types.size() && Query.Types[TypeIndex].isVector();
+      },
+      [TypeIndex](const LegalizationQuery &Query) {
+        return std::pair{TypeIndex, *Query.Types[TypeIndex].scalarElementType()};
+      });
+}
+
 LegalizeRuleSet &LegalizeRuleSet::minScalar(std::size_t TypeIndex, LowLevelType MinimumType) {
   return widenScalarIf(
       [TypeIndex, MinimumType](const LegalizationQuery &Query) {

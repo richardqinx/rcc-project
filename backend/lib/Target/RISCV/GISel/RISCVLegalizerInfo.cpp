@@ -576,7 +576,8 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) : Subtar
       .lowerFor({S32, S64, S128});
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_FREM))
       .libcallFor({S32, S64, S128})
-      .minScalar(0, S32);
+      .minScalar(0, S32)
+      .scalarize(0);
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_FCOPYSIGN))
       .legalFor(HasF, {{S32, S32}})
       .legalFor(HasD, {{S64, S64}, {S32, S64}, {S64, S32}})

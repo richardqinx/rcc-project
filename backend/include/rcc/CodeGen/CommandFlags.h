@@ -41,6 +41,12 @@ enum class CodeGenFileType : std::uint8_t {
   Null,
 };
 
+enum class GlobalISelAbortMode : std::uint8_t {
+  Disable,
+  Enable,
+  DisableWithDiagnostic,
+};
+
 struct CodeGenCommandFlags final {
   std::optional<std::string> Triple;
   std::optional<std::string> CPU;
@@ -63,6 +69,7 @@ struct CodeGenCommandFlags final {
 [[nodiscard]] Expected<CodeModel> parseCodeModel(std::string_view Value);
 [[nodiscard]] Expected<OptimizationLevel> parseOptimizationLevel(std::string_view Value);
 [[nodiscard]] Expected<CodeGenFileType> parseCodeGenFileType(std::string_view Value);
+[[nodiscard]] Expected<GlobalISelAbortMode> parseGlobalISelAbortMode(std::string_view Value);
 [[nodiscard]] Expected<bool> parseCodeGenCommandFlag(std::span<const std::string_view> Arguments,
                                                      std::size_t &Index,
                                                      CodeGenCommandFlags &Flags);

@@ -258,12 +258,36 @@ const MachinePassContract &Legalizer::contract() const noexcept {
 Expected<MachinePassResult> Legalizer::run(MachineFunction &Function,
                                            const TargetDescription &Target,
                                            MachineFunctionAnalysisManager &Analyses) {
+  if (Function.properties().has(MachineFunctionProperty::FailedISel))
+    return MachinePassResult{
+        .Changed = false,
+        .Changes = {},
+        .Preserved = PreservedAnalyses::all(),
+    };
   if (Info == nullptr)
     return std::unexpected(
         passFailure("legalizer has no target behavior interface", ErrorCode::InvalidArgument));
   auto Required = requireProperties(Function, contract());
   if (!Required)
     return std::unexpected(Required.error());
+
+  if (AbortMode != GlobalISelAbortMode::Enable) {
+    if (AbortMode != GlobalISelAbortMode::Disable &&
+        AbortMode != GlobalISelAbortMode::DisableWithDiagnostic) {
+      return std::unexpected(passFailure("legalizer has an unknown GlobalISel abort mode",
+                                         ErrorCode::InvalidArgument));
+    }
+    MachineActionReplay Actions(Analyses);
+    auto Result = runImplementation(Function, Target, Actions);
+    if (Result || Result.error().code() != ErrorCode::Unsupported)
+      return Result;
+    Function.properties().set(MachineFunctionProperty::FailedISel);
+    return MachinePassResult{
+        .Changed = true,
+        .Changes = {MachinePassChange::Instructions},
+        .Preserved = PreservedAnalyses::none(),
+    };
+  }
 
   auto Trial = cloneMachineFunction(
       Function, Target,

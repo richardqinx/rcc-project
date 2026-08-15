@@ -103,6 +103,8 @@ private:
                                                                    const APInt &Amount,
                                                                    LowLevelType TargetType,
                                                                    LowLevelType AmountType);
+  [[nodiscard]] Expected<void> fewerElements(MachineInstr &Instruction, std::size_t TypeIndex,
+                                             LowLevelType NarrowType);
 
   struct ShiftParameters final {
     Register WordShift;

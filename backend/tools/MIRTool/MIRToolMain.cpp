@@ -371,10 +371,9 @@ void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::st
     if (!GlobalISelAbort)
       return std::unexpected(GlobalISelAbort.error());
     if (*GlobalISelAbort) {
-      if (**GlobalISelAbort != "0" && **GlobalISelAbort != "1" && **GlobalISelAbort != "2") {
-        return rcc::makeUnexpected(ErrorCode::InvalidInvocation,
-                                   "-global-isel-abort requires 0, 1, or 2");
-      }
+      auto Mode = rcc::parseGlobalISelAbortMode(**GlobalISelAbort);
+      if (!Mode)
+        return std::unexpected(Mode.error());
       setBackendOption(Command.Invocation.TargetOptions, "global-isel-abort",
                        std::string(**GlobalISelAbort));
       continue;

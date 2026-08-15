@@ -290,6 +290,12 @@ const MachinePassContract &RegBankSelect::contract() const noexcept {
 Expected<MachinePassResult> RegBankSelect::run(MachineFunction &Function,
                                                const TargetDescription &Target,
                                                MachineFunctionAnalysisManager &) {
+  if (Function.properties().has(MachineFunctionProperty::FailedISel))
+    return MachinePassResult{
+        .Changed = false,
+        .Changes = {},
+        .Preserved = PreservedAnalyses::all(),
+    };
   if (Info == nullptr)
     return std::unexpected(passFailure("register-bank select has no target behavior interface",
                                        ErrorCode::InvalidArgument));

@@ -71,6 +71,8 @@ public:
       : Function(Function), Target(Target), Options(Options) {}
 
   [[nodiscard]] Expected<void> run() {
+    if (Function.properties().has(MachineFunctionProperty::FailedISel))
+      return {};
     if (!Function.stableID().isValid())
       return fail("function identity is invalid");
 

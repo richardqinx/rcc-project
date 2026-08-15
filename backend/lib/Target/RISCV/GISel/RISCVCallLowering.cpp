@@ -839,9 +839,14 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
   return *Extended;
 }
 
-[[nodiscard]] Expected<void> emitOutgoingRegisterAssignment(MachineIRBuilder &Builder,
-                                                            const CCAssignment &Assignment,
-                                                            Register Source) {
+struct OutgoingRegisterValue final {
+  PhysicalRegister Location;
+  Register Value;
+};
+
+[[nodiscard]] Expected<OutgoingRegisterValue>
+prepareOutgoingRegisterAssignment(MachineIRBuilder &Builder, const CCAssignment &Assignment,
+                                  Register Source) {
   if (!Assignment.LocationRegister) {
     return makeUnexpected(ErrorCode::InternalError,
                           "RISC-V register assignment has no location register");
@@ -849,9 +854,20 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
   auto Extended = extendOutgoingRegister(Builder, Source, Assignment);
   if (!Extended)
     return std::unexpected(Extended.error());
-  auto Copy = Builder.buildCopy(Register::fromPhysical(*Assignment.LocationRegister), *Extended);
-  if (!Copy)
-    return std::unexpected(Copy.error());
+  return OutgoingRegisterValue{
+      .Location = *Assignment.LocationRegister,
+      .Value = *Extended,
+  };
+}
+
+[[nodiscard]] Expected<void>
+emitOutgoingRegisterAssignments(MachineIRBuilder &Builder,
+                                std::span<const OutgoingRegisterValue> Assignments) {
+  for (const OutgoingRegisterValue &Assignment : Assignments) {
+    auto Copy = Builder.buildCopy(Register::fromPhysical(Assignment.Location), Assignment.Value);
+    if (!Copy)
+      return std::unexpected(Copy.error());
+  }
   return {};
 }
 
@@ -1348,15 +1364,18 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
   MachineFunction &Function = Builder.function();
   MachineFrameInfo &Frame = Function.frameInfo();
   const auto Assignments = Plan.argumentAssignments();
+  std::vector<OutgoingRegisterValue> RegisterAssignments;
+  RegisterAssignments.reserve(Assignments.size());
   for (std::size_t Index = 0; Index < Assignments.size(); ++Index) {
     const CCAssignment &Assignment = Assignments[Index];
     const auto Replacement = Replacements.find(Index);
     const Register Source =
         Replacement == Replacements.end() ? Assignment.OriginalValue : Replacement->second;
     if (Assignment.LocationRegister) {
-      auto Copy = emitOutgoingRegisterAssignment(Builder, Assignment, Source);
-      if (!Copy)
-        return std::unexpected(Copy.error());
+      auto Prepared = prepareOutgoingRegisterAssignment(Builder, Assignment, Source);
+      if (!Prepared)
+        return std::unexpected(Prepared.error());
+      RegisterAssignments.push_back(*Prepared);
       continue;
     }
 
@@ -1388,7 +1407,8 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
     if (!Store)
       return std::unexpected(Store.error());
   }
-  return {};
+  return emitOutgoingRegisterAssignments(
+      Builder, std::span<const OutgoingRegisterValue>(RegisterAssignments));
 }
 
 [[nodiscard]] Expected<void> addCallTarget(MachineInstrBuilder &Instruction,
@@ -1505,11 +1525,19 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
 }
 
 [[nodiscard]] Expected<void> emitReturn(MachineIRBuilder &Builder, const CallLoweringPlan &Plan) {
+  std::vector<OutgoingRegisterValue> RegisterAssignments;
+  RegisterAssignments.reserve(Plan.returnAssignments().size());
   for (const CCAssignment &Assignment : Plan.returnAssignments()) {
-    auto Copy = emitOutgoingRegisterAssignment(Builder, Assignment, Assignment.OriginalValue);
-    if (!Copy)
-      return std::unexpected(Copy.error());
+    auto Prepared =
+        prepareOutgoingRegisterAssignment(Builder, Assignment, Assignment.OriginalValue);
+    if (!Prepared)
+      return std::unexpected(Prepared.error());
+    RegisterAssignments.push_back(*Prepared);
   }
+  auto Copies = emitOutgoingRegisterAssignments(
+      Builder, std::span<const OutgoingRegisterValue>(RegisterAssignments));
+  if (!Copies)
+    return std::unexpected(Copies.error());
 
   auto Return = Builder.buildInstr(instructionOpcode(InstructionOpcode::PseudoRET));
   if (!Return)

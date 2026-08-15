@@ -23,6 +23,7 @@ namespace riscv {
 struct RISCVPipelineOptions final {
   OptimizationLevel Optimization = OptimizationLevel::O2;
   bool UseTargetCopyInstructions = false;
+  GlobalISelAbortMode GlobalISelAbort = GlobalISelAbortMode::Enable;
 };
 
 [[nodiscard]] Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,

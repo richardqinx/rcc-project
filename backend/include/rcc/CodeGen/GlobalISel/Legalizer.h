@@ -15,15 +15,18 @@ namespace rcc {
 class Legalizer final : public MachineFunctionPass {
 public:
   Legalizer(const LegalizerInfo *Info, OptimizationLevel Optimization,
-            LibcallLoweringInfo Libcalls = {})
-      : Info(Info), Optimization(Optimization), Libcalls(Libcalls) {}
+            LibcallLoweringInfo Libcalls = {},
+            GlobalISelAbortMode AbortMode = GlobalISelAbortMode::Enable)
+      : Info(Info), Optimization(Optimization), Libcalls(Libcalls), AbortMode(AbortMode) {}
   Legalizer(const LegalizerInfo &Info, OptimizationLevel Optimization,
-            LibcallLoweringInfo Libcalls = {})
-      : Info(&Info), Optimization(Optimization), Libcalls(Libcalls) {}
+            LibcallLoweringInfo Libcalls = {},
+            GlobalISelAbortMode AbortMode = GlobalISelAbortMode::Enable)
+      : Info(&Info), Optimization(Optimization), Libcalls(Libcalls), AbortMode(AbortMode) {}
   Legalizer(std::unique_ptr<LegalizerInfo> Info, OptimizationLevel Optimization,
-            LibcallLoweringInfo Libcalls = {})
+            LibcallLoweringInfo Libcalls = {},
+            GlobalISelAbortMode AbortMode = GlobalISelAbortMode::Enable)
       : OwnedInfo(std::move(Info)), Info(OwnedInfo.get()), Optimization(Optimization),
-        Libcalls(Libcalls) {}
+        Libcalls(Libcalls), AbortMode(AbortMode) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
@@ -39,6 +42,7 @@ private:
   const LegalizerInfo *Info = nullptr;
   OptimizationLevel Optimization;
   LibcallLoweringInfo Libcalls;
+  GlobalISelAbortMode AbortMode;
 };
 
 } // namespace rcc

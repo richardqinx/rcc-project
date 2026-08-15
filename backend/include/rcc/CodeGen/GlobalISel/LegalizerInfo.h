@@ -139,6 +139,7 @@ public:
 
   LegalizeRuleSet &custom();
   LegalizeRuleSet &widenScalarToNextPow2(std::size_t TypeIndex, std::uint32_t MinimumBitWidth = 0);
+  LegalizeRuleSet &scalarize(std::size_t TypeIndex);
   LegalizeRuleSet &minScalar(std::size_t TypeIndex, LowLevelType MinimumType);
   LegalizeRuleSet &minScalar(bool Enabled, std::size_t TypeIndex, LowLevelType MinimumType);
   LegalizeRuleSet &maxScalar(std::size_t TypeIndex, LowLevelType MaximumType);

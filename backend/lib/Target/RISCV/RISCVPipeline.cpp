@@ -45,7 +45,7 @@ template <typename PassT, typename... ArgumentT>
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization,
-                             libcallLoweringInfo(Subtarget));
+                             libcallLoweringInfo(Subtarget), Options.GlobalISelAbort);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<RegBankSelect>(Pipeline, Subtarget.getRegBankInfo());
@@ -100,7 +100,7 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
     if (!Added)
       return std::unexpected(Added.error());
     Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization,
-                               libcallLoweringInfo(Subtarget));
+                               libcallLoweringInfo(Subtarget), Options.GlobalISelAbort);
     if (!Added)
       return std::unexpected(Added.error());
   }

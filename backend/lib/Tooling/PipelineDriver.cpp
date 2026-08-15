@@ -98,12 +98,22 @@ struct FunctionRunResult final {
 [[nodiscard]] Expected<MachineFunctionPassManager::PassList>
 createPasses(const MachineFunction &Function, const BackendInvocation &Invocation,
              const riscv::RISCVSubtarget &Subtarget, MachinePassManagerOptions Options) {
+  const auto GlobalISelAbortOption = std::ranges::find(
+      Invocation.TargetOptions, std::string_view{"global-isel-abort"}, &BackendOption::Name);
+  GlobalISelAbortMode GlobalISelAbort = GlobalISelAbortMode::Enable;
+  if (GlobalISelAbortOption != Invocation.TargetOptions.end()) {
+    auto Parsed = parseGlobalISelAbortMode(GlobalISelAbortOption->Value);
+    if (!Parsed)
+      return std::unexpected(Parsed.error());
+    GlobalISelAbort = *Parsed;
+  }
   MachineFunctionPassManager Pipeline(Options);
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
     auto Added = riscv::addCanonicalPipeline(
         Pipeline, Function, Subtarget,
         riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
-                                    .UseTargetCopyInstructions = true});
+                                    .UseTargetCopyInstructions = true,
+                                    .GlobalISelAbort = GlobalISelAbort});
     if (!Added)
       return std::unexpected(Added.error());
   } else {
@@ -119,7 +129,8 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
       auto Pass = riscv::createCanonicalPipelinePass(
           Name, Subtarget,
           riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
-                                      .UseTargetCopyInstructions = UseTargetCopyInstructions});
+                                      .UseTargetCopyInstructions = UseTargetCopyInstructions,
+                                      .GlobalISelAbort = GlobalISelAbort});
       if (!Pass)
         return std::unexpected(Pass.error());
       auto Added = Pipeline.addPass(std::move(*Pass));

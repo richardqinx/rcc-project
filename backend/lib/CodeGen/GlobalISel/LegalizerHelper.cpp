@@ -336,6 +336,25 @@ buildFlaggedBinaryInstruction(MachineIRBuilder &Builder, GenericOpcode Generic, 
   }
 }
 
+[[nodiscard]] Expected<std::string> floatingBinaryLibcallName(GenericOpcode Generic,
+                                                              std::uint32_t BitWidth) {
+  if (Generic != GenericOpcode::G_FREM) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "floating libcall has no runtime function mapping");
+  }
+  switch (BitWidth) {
+  case 32:
+    return "fmodf";
+  case 64:
+    return "fmod";
+  case 128:
+    return "fmodl";
+  default:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "floating libcall requires a 32, 64, or 128-bit scalar");
+  }
+}
+
 [[nodiscard]] Expected<std::string> conversionLibcallName(GenericOpcode Generic,
                                                           std::uint32_t DestinationWidth,
                                                           std::uint32_t SourceWidth) {
@@ -1697,6 +1716,57 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
     }
     break;
   }
+
+  case GenericOpcode::G_FADD:
+  case GenericOpcode::G_FMUL:
+  case GenericOpcode::G_FSUB:
+  case GenericOpcode::G_FMA:
+  case GenericOpcode::G_FMAD:
+  case GenericOpcode::G_FNEG:
+  case GenericOpcode::G_FABS:
+  case GenericOpcode::G_FCANONICALIZE:
+  case GenericOpcode::G_FMINNUM:
+  case GenericOpcode::G_FMAXNUM:
+  case GenericOpcode::G_FMINNUM_IEEE:
+  case GenericOpcode::G_FMAXNUM_IEEE:
+  case GenericOpcode::G_FMINIMUM:
+  case GenericOpcode::G_FMAXIMUM:
+  case GenericOpcode::G_FMINIMUMNUM:
+  case GenericOpcode::G_FMAXIMUMNUM:
+  case GenericOpcode::G_FDIV:
+  case GenericOpcode::G_FREM:
+  case GenericOpcode::G_FCEIL:
+  case GenericOpcode::G_FFLOOR:
+  case GenericOpcode::G_FCOS:
+  case GenericOpcode::G_FSIN:
+  case GenericOpcode::G_FTAN:
+  case GenericOpcode::G_FACOS:
+  case GenericOpcode::G_FASIN:
+  case GenericOpcode::G_FATAN:
+  case GenericOpcode::G_FATAN2:
+  case GenericOpcode::G_FCOSH:
+  case GenericOpcode::G_FSINH:
+  case GenericOpcode::G_FTANH:
+  case GenericOpcode::G_FLOG10:
+  case GenericOpcode::G_FLOG:
+  case GenericOpcode::G_FLOG2:
+  case GenericOpcode::G_FRINT:
+  case GenericOpcode::G_FNEARBYINT:
+  case GenericOpcode::G_FSQRT:
+  case GenericOpcode::G_FEXP:
+  case GenericOpcode::G_FEXP2:
+  case GenericOpcode::G_FEXP10:
+  case GenericOpcode::G_FPOW:
+    if (TypeIndex != 0)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "floating operation widening has an invalid type index");
+    for (std::size_t OperandIndex = 1; OperandIndex < Instruction.operandCount(); ++OperandIndex) {
+      if (auto Result = Apply(WidenSource(OperandIndex, GenericOpcode::G_FPEXT)); !Result)
+        return Result;
+    }
+    if (auto Result = Apply(WidenDestination(0, GenericOpcode::G_FPTRUNC)); !Result)
+      return Result;
+    break;
 
   case GenericOpcode::G_FPEXT:
     if (TypeIndex != 1)
@@ -3252,6 +3322,127 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   }
 }
 
+Expected<void> LegalizerHelper::fewerElements(MachineInstr &Instruction, std::size_t TypeIndex,
+                                              LowLevelType NarrowType) {
+  auto Query = LegalizerInfo::buildQuery(Instruction, Function, MIRBuilder.target());
+  if (!Query)
+    return std::unexpected(Query.error());
+  if (TypeIndex >= Query->Types.size() || TypeIndex >= Query->TypeOperands.size()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "vector legalization has an invalid type index");
+  }
+
+  const LowLevelType VectorType = Query->Types[TypeIndex];
+  const std::optional<LowLevelType> ElementType = VectorType.scalarElementType();
+  if (!VectorType.isVector() || VectorType.isScalableVector() || !ElementType ||
+      *ElementType != NarrowType || !NarrowType.isCategoryNeutralScalar()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "vector legalization requires fixed vectors split into scalar elements");
+  }
+
+  std::size_t ExplicitOperandCount = 0;
+  while (ExplicitOperandCount < Instruction.operandCount() &&
+         !Instruction.operandAt(ExplicitOperandCount)->isImplicit()) {
+    ++ExplicitOperandCount;
+  }
+  const std::vector<std::size_t> &TypedOperands = Query->TypeOperands[TypeIndex];
+  if (TypedOperands.size() != ExplicitOperandCount || TypedOperands.empty()) {
+    return makeUnexpected(
+        ErrorCode::Unsupported,
+        "vector legalization requires all explicit operands to share one vector type");
+  }
+
+  std::vector<std::size_t> DefinitionIndices;
+  std::vector<std::size_t> SourceIndices;
+  DefinitionIndices.reserve(TypedOperands.size());
+  SourceIndices.reserve(TypedOperands.size());
+  for (const std::size_t OperandIndex : TypedOperands) {
+    const MachineOperand *Operand = Instruction.operandAt(OperandIndex);
+    const Register *RegisterOperand = Operand == nullptr ? nullptr : Operand->getIf<Register>();
+    if (RegisterOperand == nullptr || !RegisterOperand->isVirtual()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "vector legalization requires virtual-register operands");
+    }
+    auto OperandType = MRI.getType(*RegisterOperand);
+    if (!OperandType)
+      return std::unexpected(OperandType.error());
+    if (*OperandType != VectorType) {
+      return makeUnexpected(
+          ErrorCode::VerificationError,
+          "vector legalization type operands do not match the requested vector type");
+    }
+    if (Operand->isDef() && !Operand->isUse()) {
+      DefinitionIndices.push_back(OperandIndex);
+    } else if (Operand->isUse() && !Operand->isDef()) {
+      SourceIndices.push_back(OperandIndex);
+    } else {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "vector legalization does not support tied or non-register operands");
+    }
+  }
+  if (DefinitionIndices.empty() || SourceIndices.empty()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "vector legalization requires register definitions and sources");
+  }
+
+  const std::size_t ElementCount = VectorType.minimumElementCount();
+  std::vector<std::vector<Register>> SourceParts;
+  SourceParts.reserve(SourceIndices.size());
+  for (const std::size_t SourceIndex : SourceIndices) {
+    const Register Source = *Instruction.operandAt(SourceIndex)->getIf<Register>();
+    std::vector<Register> Parts;
+    auto Extracted =
+        extractParts(Source, NarrowType, static_cast<int>(ElementCount), Parts, MIRBuilder, MRI);
+    if (!Extracted)
+      return std::unexpected(Extracted.error());
+    SourceParts.push_back(std::move(Parts));
+  }
+
+  std::vector<std::vector<Register>> DestinationParts(DefinitionIndices.size());
+  for (std::vector<Register> &Parts : DestinationParts)
+    Parts.reserve(ElementCount);
+  for (std::size_t ElementIndex = 0; ElementIndex < ElementCount; ++ElementIndex) {
+    auto ScalarInstruction = MIRBuilder.buildInstr(Instruction.opcode());
+    if (!ScalarInstruction)
+      return std::unexpected(ScalarInstruction.error());
+    if (auto SetFlags = ScalarInstruction->setFlags(Instruction.flags()); !SetFlags)
+      return std::unexpected(SetFlags.error());
+    for (std::size_t DefinitionNumber = 0; DefinitionNumber < DefinitionIndices.size();
+         ++DefinitionNumber) {
+      auto Destination = MRI.createVirtualRegister(NarrowType);
+      if (!Destination)
+        return std::unexpected(Destination.error());
+      if (auto Added = ScalarInstruction->addDef(*Destination); !Added)
+        return std::unexpected(Added.error());
+      DestinationParts[DefinitionNumber].push_back(*Destination);
+    }
+    for (const std::vector<Register> &Parts : SourceParts) {
+      if (auto Added = ScalarInstruction->addUse(Parts[ElementIndex]); !Added)
+        return std::unexpected(Added.error());
+    }
+    if (auto Built = ScalarInstruction->build(); !Built)
+      return std::unexpected(Built.error());
+  }
+
+  for (std::size_t DefinitionNumber = 0; DefinitionNumber < DefinitionIndices.size();
+       ++DefinitionNumber) {
+    const Register Destination =
+        *Instruction.operandAt(DefinitionIndices[DefinitionNumber])->getIf<Register>();
+    if (auto Merged =
+            MIRBuilder.buildMergeLikeInstr(Destination, DestinationParts[DefinitionNumber]);
+        !Merged) {
+      return std::unexpected(Merged.error());
+    }
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "vector instruction became detached during legalization");
+  }
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::lowerVAArg(MachineInstr &Instruction) {
   if (Instruction.opcode() != opcode(GenericOpcode::G_VAARG) || Instruction.operandCount() != 3 ||
       !Instruction.memOperands().empty()) {
@@ -4723,6 +4914,7 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
       Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC ||
       Generic == GenericOpcode::G_FPTOSI || Generic == GenericOpcode::G_FPTOUI ||
       Generic == GenericOpcode::G_SITOFP || Generic == GenericOpcode::G_UITOFP;
+  const bool IsFloatingBinary = Generic == GenericOpcode::G_FREM;
   if (Instruction.operandCount() < 2 || (IsConversion && Instruction.operandCount() != 2)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "libcall has an invalid number of operands");
@@ -4744,18 +4936,19 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
   }
 
   Expected<std::string> Name =
-      IsConversion ? conversionLibcallName(Generic, DestinationType->scalarBitWidth(),
-                                           SourceType->scalarBitWidth())
-                   : integerLibcallName(Generic, DestinationType->scalarBitWidth());
+      IsConversion       ? conversionLibcallName(Generic, DestinationType->scalarBitWidth(),
+                                                 SourceType->scalarBitWidth())
+      : IsFloatingBinary ? floatingBinaryLibcallName(Generic, DestinationType->scalarBitWidth())
+                         : integerLibcallName(Generic, DestinationType->scalarBitWidth());
   if (!Name)
     return std::unexpected(Name.error());
 
   const bool DestinationIsFloat =
       Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC ||
-      Generic == GenericOpcode::G_SITOFP || Generic == GenericOpcode::G_UITOFP;
+      Generic == GenericOpcode::G_SITOFP || Generic == GenericOpcode::G_UITOFP || IsFloatingBinary;
   const bool SourceIsFloat =
       Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC ||
-      Generic == GenericOpcode::G_FPTOSI || Generic == GenericOpcode::G_FPTOUI;
+      Generic == GenericOpcode::G_FPTOSI || Generic == GenericOpcode::G_FPTOUI || IsFloatingBinary;
   const ABIValueCategory DestinationCategory =
       DestinationIsFloat ? ABIValueCategory::FloatingPoint : ABIValueCategory::Integer;
   const ABIValueCategory SourceCategory =
@@ -4843,7 +5036,7 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
     }
     if (!IsConversion && *ArgumentType != *DestinationType) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "integer libcall source and destination types must match");
+                            "binary libcall source and destination types must match");
     }
     const ABIExtensionKind Extension =
         ExtensionFor(SourceCategory, false, ArgumentType->scalarBitWidth());
@@ -4974,11 +5167,12 @@ Expected<void> LegalizerHelper::legalize(MachineInstr &Instruction,
     return lower(Instruction, Decision);
   case LegalizationAction::Libcall:
     return libcall(Instruction);
+  case LegalizationAction::FewerElements:
+    return fewerElements(Instruction, Decision.TypeIndex, Decision.NewType);
   case LegalizationAction::Legal:
     return {};
   case LegalizationAction::Unsupported:
   case LegalizationAction::MoreElements:
-  case LegalizationAction::FewerElements:
   case LegalizationAction::Bitcast:
   case LegalizationAction::ChangeElementType:
   case LegalizationAction::ChangeAddressSpace:
