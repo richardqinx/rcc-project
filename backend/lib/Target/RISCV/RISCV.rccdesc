@@ -3666,9 +3666,9 @@ instructions:
     symbol: G_SLLW
     name: G_SLLW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3678,9 +3678,9 @@ instructions:
     symbol: G_SRAW
     name: G_SRAW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3690,9 +3690,9 @@ instructions:
     symbol: G_DIVW
     name: G_DIVW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3702,8 +3702,8 @@ instructions:
     symbol: G_CLZW
     name: G_CLZW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3713,8 +3713,8 @@ instructions:
     symbol: G_CTZW
     name: G_CTZW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3724,8 +3724,8 @@ instructions:
     symbol: G_FCVT_W_RV64
     name: G_FCVT_W_RV64
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 1 }
       - { kinds: [immediate] }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
@@ -3736,8 +3736,8 @@ instructions:
     symbol: G_FCLASS
     name: G_FCLASS
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 1 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3747,9 +3747,9 @@ instructions:
     symbol: G_ROLW
     name: G_ROLW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3759,9 +3759,9 @@ instructions:
     symbol: G_SRLW
     name: G_SRLW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3771,9 +3771,9 @@ instructions:
     symbol: G_DIVUW
     name: G_DIVUW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3783,9 +3783,9 @@ instructions:
     symbol: G_REMUW
     name: G_REMUW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3795,9 +3795,9 @@ instructions:
     symbol: G_RORW
     name: G_RORW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3807,8 +3807,8 @@ instructions:
     symbol: G_BREV8
     name: G_BREV8
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select
@@ -3818,8 +3818,8 @@ instructions:
     symbol: G_FCVT_WU_RV64
     name: G_FCVT_WU_RV64
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 1 }
       - { kinds: [immediate] }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
@@ -3830,8 +3830,8 @@ instructions:
     symbol: G_CLSW
     name: G_CLSW
     operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
     num_explicit_defs: 1
     flags: [generic, pseudo, allowed_pre_legalizer]
     owner: instruction_select

@@ -131,6 +131,7 @@ struct NormalizedOperand final {
   bool VariadicGroup = false;
   bool AllowSubReg = false;
   std::optional<std::uint32_t> Name;
+  std::optional<std::uint16_t> TypeIndex;
   std::uint32_t AllowedTargetFlags = 0;
 };
 

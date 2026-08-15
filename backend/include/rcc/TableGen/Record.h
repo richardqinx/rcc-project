@@ -170,6 +170,7 @@ struct SourceOperand final {
   bool VariadicGroup = false;
   bool AllowSubReg = false;
   std::optional<std::string> NameSymbol;
+  std::optional<std::uint16_t> TypeIndex;
   std::uint32_t AllowedTargetFlags = 0;
   TextRange Range;
 };

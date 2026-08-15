@@ -861,6 +861,25 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     Helper.Observer.changedInstr(Instruction);
     return {};
   }
+  if (Instruction.opcode() == opcode(GenericOpcode::G_FPTOSI) ||
+      Instruction.opcode() == opcode(GenericOpcode::G_FPTOUI)) {
+    auto XLenType = LowLevelType::makeCategoryNeutralScalar(64);
+    if (!XLenType)
+      return std::unexpected(XLenType.error());
+
+    Helper.Observer.changingInstr(Instruction);
+    if (auto Widened = Helper.widenScalarDst(Instruction, *XLenType); !Widened)
+      return std::unexpected(Widened.error());
+    auto WordOpcode = getRISCVWOpcode(static_cast<GenericOpcode>(Instruction.opcode().value()));
+    if (!WordOpcode)
+      return std::unexpected(WordOpcode.error());
+    if (auto Changed = Instruction.setOpcode(*WordOpcode); !Changed)
+      return std::unexpected(Changed.error());
+    if (auto RoundingMode = Instruction.addOperand(MachineOperand::immediate(1)); !RoundingMode)
+      return std::unexpected(RoundingMode.error());
+    Helper.Observer.changedInstr(Instruction);
+    return {};
+  }
   if (Instruction.opcode() == opcode(GenericOpcode::G_ANYEXT) ||
       Instruction.opcode() == opcode(GenericOpcode::G_SEXT) ||
       Instruction.opcode() == opcode(GenericOpcode::G_ZEXT)) {

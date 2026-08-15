@@ -864,7 +864,7 @@ private:
     if (!checkKeys(Node,
                    {"kinds", "role", "register_class", "register_bank", "immediate_predicate",
                     "memory_role", "default_tied_operand", "early_clobber", "optional",
-                    "variadic_group", "allow_subreg", "name", "allowed_target_flags"},
+                    "variadic_group", "allow_subreg", "name", "type_index", "allowed_target_flags"},
                    "instruction operand")) {
       return std::nullopt;
     }
@@ -943,6 +943,16 @@ private:
       if (!Value)
         return std::nullopt;
       Result.NameSymbol = *Value;
+    }
+    if (const yaml::Node *TypeIndex = optionalNode(Node, "type_index")) {
+      const auto Value = unsignedInteger32(*TypeIndex, "instruction operand type_index");
+      if (!Value)
+        return std::nullopt;
+      if (*Value > std::numeric_limits<std::uint16_t>::max()) {
+        fail(TypeIndex->range(), "instruction operand type_index is outside the uint16 range");
+        return std::nullopt;
+      }
+      Result.TypeIndex = static_cast<std::uint16_t>(*Value);
     }
     if (const yaml::Node *TargetFlags = optionalNode(Node, "allowed_target_flags")) {
       const auto Value =

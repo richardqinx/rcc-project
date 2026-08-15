@@ -49,7 +49,16 @@ void emitOperandDescriptor(std::ostream &Output, const NormalizedOperand &Operan
   else
     Output << "std::nullopt";
   Output << ", .TargetOperandType = std::nullopt, .AllowedTargetFlags = "
-         << Operand.AllowedTargetFlags << ", .TypeConstraint = std::nullopt},\n";
+         << Operand.AllowedTargetFlags << ", .TypeConstraint = ";
+  if (Operand.TypeIndex) {
+    Output << "OperandTypeConstraint{LowLevelTypeKindSet{"
+           << "LowLevelType::Kind::CategoryNeutralScalar, LowLevelType::Kind::Pointer, "
+           << "LowLevelType::Kind::Vector, LowLevelType::Kind::VectorPointer}, std::uint16_t{"
+           << *Operand.TypeIndex << "}}";
+  } else {
+    Output << "std::nullopt";
+  }
+  Output << "},\n";
 }
 
 void emitImplicitRegisterList(std::ostream &Output, const NormalizedTargetModel &Model,

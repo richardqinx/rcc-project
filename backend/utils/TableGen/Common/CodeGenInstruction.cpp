@@ -287,6 +287,10 @@ pipelineStageEnumerator(std::string_view Value) noexcept {
     fail(InputOperand.Range, "register definition operands must accept only registers");
     return false;
   }
+  if (InputOperand.TypeIndex && !IsRegisterOnly) {
+    fail(InputOperand.Range, "instruction operand type_index requires exactly one register kind");
+    return false;
+  }
   if (!HasRegisterKind && (InputOperand.RegisterClassSymbol || InputOperand.RegisterBankSymbol ||
                            InputOperand.EarlyClobber || InputOperand.AllowSubReg)) {
     fail(InputOperand.Range, "non-register operands cannot have register constraints");
@@ -337,6 +341,7 @@ pipelineStageEnumerator(std::string_view Value) noexcept {
   Result.Optional = InputOperand.Optional;
   Result.VariadicGroup = InputOperand.VariadicGroup;
   Result.AllowSubReg = InputOperand.AllowSubReg;
+  Result.TypeIndex = InputOperand.TypeIndex;
   Result.AllowedTargetFlags = InputOperand.AllowedTargetFlags;
   return true;
 }
@@ -529,6 +534,14 @@ CodeGenTarget::normalizeImplicitRegisters(const std::vector<SourceImplicitRegist
       return std::ranges::find(Normalized.Flags, Flag) != Normalized.Flags.end();
     };
     const bool IsTerminator = HasFlag("Terminator");
+    if (!HasFlag("Generic") &&
+        std::ranges::any_of(Normalized.Operands, [](const NormalizedOperand &Operand) {
+          return Operand.TypeIndex.has_value();
+        })) {
+      fail(Instruction.Range,
+           "instruction type_index operands require the generic instruction flag");
+      return false;
+    }
     if ((HasFlag("Branch") || HasFlag("Return") || HasFlag("Barrier") ||
          HasFlag("IndirectBranch")) &&
         !IsTerminator) {
