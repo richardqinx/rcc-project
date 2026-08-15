@@ -38,6 +38,7 @@ public:
   [[nodiscard]] Expected<void> lowerDivRem(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerBitCount(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerBswap(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerFunnelShift(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerRotate(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerDynStackAlloc(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerStackSave(MachineInstr &Instruction);

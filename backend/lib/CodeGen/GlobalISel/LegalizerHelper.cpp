@@ -3609,6 +3609,9 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     return lowerBitCount(Instruction);
   case GenericOpcode::G_BSWAP:
     return lowerBswap(Instruction);
+  case GenericOpcode::G_FSHL:
+  case GenericOpcode::G_FSHR:
+    return lowerFunnelShift(Instruction);
   case GenericOpcode::G_ROTL:
   case GenericOpcode::G_ROTR:
     return lowerRotate(Instruction);
@@ -4783,6 +4786,124 @@ Expected<void> LegalizerHelper::lowerBswap(MachineInstr &Instruction) {
   MachineBasicBlock *Block = Instruction.parent();
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError, "G_BSWAP became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerFunnelShift(MachineInstr &Instruction) {
+  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
+  const Register Left = *Instruction.operandAt(1)->getIf<Register>();
+  const Register Right = *Instruction.operandAt(2)->getIf<Register>();
+  const Register Amount = *Instruction.operandAt(3)->getIf<Register>();
+  auto DestinationType = MRI.getType(Destination);
+  auto AmountType = MRI.getType(Amount);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  if (!AmountType)
+    return std::unexpected(AmountType.error());
+
+  const std::uint32_t ElementWidth = DestinationType->scalarBitWidth();
+  const bool IsLeft = Instruction.opcode() == opcode(GenericOpcode::G_FSHL);
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+
+  auto Mask =
+      buildConstantRegister(MIRBuilder, *AmountType, static_cast<std::int64_t>(ElementWidth - 1U));
+  if (!Mask)
+    return std::unexpected(Mask.error());
+
+  Register ShiftAmount;
+  Register InverseShiftAmount;
+  if (std::has_single_bit(ElementWidth)) {
+    auto Shift =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *AmountType, {Amount, *Mask});
+    auto AllOnes = buildConstantRegister(MIRBuilder, *AmountType, -1);
+    if (!Shift)
+      return std::unexpected(Shift.error());
+    if (!AllOnes)
+      return std::unexpected(AllOnes.error());
+    auto Inverted =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_XOR, *AmountType, {Amount, *AllOnes});
+    if (!Inverted)
+      return std::unexpected(Inverted.error());
+    auto Inverse =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, *AmountType, {*Inverted, *Mask});
+    if (!Inverse)
+      return std::unexpected(Inverse.error());
+    ShiftAmount = *Shift;
+    InverseShiftAmount = *Inverse;
+  } else {
+    auto Width =
+        buildConstantRegister(MIRBuilder, *AmountType, static_cast<std::int64_t>(ElementWidth));
+    if (!Width)
+      return std::unexpected(Width.error());
+    auto Shift =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_UREM, *AmountType, {Amount, *Width});
+    if (!Shift)
+      return std::unexpected(Shift.error());
+    auto Inverse =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *AmountType, {*Mask, *Shift});
+    if (!Inverse)
+      return std::unexpected(Inverse.error());
+    ShiftAmount = *Shift;
+    InverseShiftAmount = *Inverse;
+  }
+
+  auto One = buildConstantRegister(MIRBuilder, *AmountType, 1);
+  if (!One)
+    return std::unexpected(One.error());
+
+  Register ShiftedLeft;
+  Register ShiftedRight;
+  if (IsLeft) {
+    auto ShiftLeft = buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, *DestinationType,
+                                            {Left, ShiftAmount});
+    if (!ShiftLeft)
+      return std::unexpected(ShiftLeft.error());
+    auto FirstShiftRight =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *DestinationType, {Right, *One});
+    if (!FirstShiftRight)
+      return std::unexpected(FirstShiftRight.error());
+    auto ShiftRight = buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *DestinationType,
+                                             {*FirstShiftRight, InverseShiftAmount});
+    if (!ShiftRight)
+      return std::unexpected(ShiftRight.error());
+    ShiftedLeft = *ShiftLeft;
+    ShiftedRight = *ShiftRight;
+  } else {
+    auto FirstShiftLeft =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, *DestinationType, {Left, *One});
+    if (!FirstShiftLeft)
+      return std::unexpected(FirstShiftLeft.error());
+    auto ShiftLeft = buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, *DestinationType,
+                                            {*FirstShiftLeft, InverseShiftAmount});
+    if (!ShiftLeft)
+      return std::unexpected(ShiftLeft.error());
+    auto ShiftRight = buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *DestinationType,
+                                             {Right, ShiftAmount});
+    if (!ShiftRight)
+      return std::unexpected(ShiftRight.error());
+    ShiftedLeft = *ShiftLeft;
+    ShiftedRight = *ShiftRight;
+  }
+
+  auto Result = MIRBuilder.buildInstr(opcode(GenericOpcode::G_OR));
+  if (!Result)
+    return std::unexpected(Result.error());
+  if (auto Added = Result->addDef(Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Result->addUse(ShiftedLeft); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = Result->addUse(ShiftedRight); !Added)
+    return std::unexpected(Added.error());
+  if (auto Flags = Result->setFlags({MachineInstrFlag::Disjoint}); !Flags)
+    return std::unexpected(Flags.error());
+  if (auto Built = Result->build(); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr) {
+    return makeUnexpected(ErrorCode::InternalError, "funnel shift became detached during lowering");
+  }
   return Block->removeInstruction(Instruction);
 }
 
