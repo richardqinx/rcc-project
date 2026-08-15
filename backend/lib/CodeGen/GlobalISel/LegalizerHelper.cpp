@@ -207,8 +207,8 @@ deriveMemoryOperand(MachineFunction &Function, const MachineMemOperand &Original
     Description.OffsetRange = MemoryOffsetRange{*Lower, *Upper};
   }
 
-  const Alignment BaseAlignment = Description.BaseAlign.value_or(Description.Align);
-  std::uint64_t EffectiveAlignment = BaseAlignment.bytes();
+  const std::optional<Alignment> BaseAlignment = Description.BaseAlign;
+  std::uint64_t EffectiveAlignment = BaseAlignment.value_or(Description.Align).bytes();
   if (Description.Offset != 0) {
     const auto OffsetBits = static_cast<std::uint64_t>(Description.Offset);
     const std::uint64_t OffsetAlignment = std::uint64_t{1} << std::countr_zero(OffsetBits);
@@ -221,10 +221,7 @@ deriveMemoryOperand(MachineFunction &Function, const MachineMemOperand &Original
   Description.Size = *Size;
   Description.MemoryType = MemoryType;
   Description.Align = *AlignmentValue;
-  if (BaseAlignment == Description.Align)
-    Description.BaseAlign.reset();
-  else
-    Description.BaseAlign = BaseAlignment;
+  Description.BaseAlign = BaseAlignment;
   return Function.createMemOperand(std::move(Description));
 }
 
@@ -4961,6 +4958,8 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     return lowerStackSave(Instruction);
   case GenericOpcode::G_STACKRESTORE:
     return lowerStackRestore(Instruction);
+  case GenericOpcode::G_MEMCPY_INLINE:
+    return lowerMemcpyInline(Instruction);
   case GenericOpcode::G_ABDS:
   case GenericOpcode::G_ABDU: {
     const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_ABDS);
@@ -5446,6 +5445,105 @@ Expected<void> LegalizerHelper::lowerStackRestore(MachineInstr &Instruction) {
     return makeUnexpected(ErrorCode::InternalError,
                           "G_STACKRESTORE became detached during lowering");
   }
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerMemcpyInline(MachineInstr &Instruction) {
+  if (Instruction.operandCount() != 3 || Instruction.memOperands().size() != 2 ||
+      Instruction.memOperands()[0] == nullptr || Instruction.memOperands()[1] == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "G_MEMCPY_INLINE requires destination, source, length, and two MMOs");
+  }
+
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *SourceOperand = Instruction.operandAt(1);
+  const MachineOperand *LengthOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+  const Register *Length = LengthOperand == nullptr ? nullptr : LengthOperand->getIf<Register>();
+  if (Destination == nullptr || Source == nullptr || Length == nullptr ||
+      !Destination->isVirtual() || !Source->isVirtual() || !Length->isVirtual()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "G_MEMCPY_INLINE requires virtual-register operands");
+  }
+
+  const MachineMemOperand &StoreMemory = *Instruction.memOperands()[0];
+  const MachineMemOperand &LoadMemory = *Instruction.memOperands()[1];
+  if (!StoreMemory.isStore() || StoreMemory.isLoad() || !LoadMemory.isLoad() ||
+      LoadMemory.isStore() || StoreMemory.isAtomic() || LoadMemory.isAtomic()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "G_MEMCPY_INLINE requires non-atomic store and load memory operands");
+  }
+
+  const std::optional<ValueAndVReg> ConstantLength =
+      getIConstantVRegValWithLookThrough(*Length, MRI);
+  if (!ConstantLength || ConstantLength->Value.bitWidth() == 0 ||
+      ConstantLength->Value.bitWidth() > 64) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "G_MEMCPY_INLINE requires a constant length no wider than 64 bits");
+  }
+  const std::uint64_t KnownLength = ConstantLength->Value.words().front();
+  if (KnownLength == 0) {
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "G_MEMCPY_INLINE became detached during legalization");
+    return Block->removeInstruction(Instruction);
+  }
+
+  auto ByteType = LowLevelType::makeCategoryNeutralScalar(8);
+  if (!ByteType)
+    return std::unexpected(ByteType.error());
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+
+  MachineFunction &Owner = MIRBuilder.function();
+  for (std::uint64_t Offset = 0; Offset != KnownLength; ++Offset) {
+    auto LoadAddress = buildObjectPointerOffset(MIRBuilder, *Source, Offset);
+    if (!LoadAddress)
+      return std::unexpected(LoadAddress.error());
+    auto ByteLoadMemory = deriveMemoryOperand(Owner, LoadMemory, *ByteType, Offset);
+    if (!ByteLoadMemory)
+      return std::unexpected(ByteLoadMemory.error());
+    auto LoadedByte = MRI.createVirtualRegister(*ByteType);
+    if (!LoadedByte)
+      return std::unexpected(LoadedByte.error());
+    auto Load = MIRBuilder.buildInstr(opcode(GenericOpcode::G_LOAD));
+    if (!Load)
+      return std::unexpected(Load.error());
+    if (auto Added = Load->addDef(*LoadedByte); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Load->addUse(*LoadAddress); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Load->addMemOperand(**ByteLoadMemory); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = Load->build(); !Built)
+      return std::unexpected(Built.error());
+
+    auto StoreAddress = buildObjectPointerOffset(MIRBuilder, *Destination, Offset);
+    if (!StoreAddress)
+      return std::unexpected(StoreAddress.error());
+    auto ByteStoreMemory = deriveMemoryOperand(Owner, StoreMemory, *ByteType, Offset);
+    if (!ByteStoreMemory)
+      return std::unexpected(ByteStoreMemory.error());
+    auto Store = MIRBuilder.buildInstr(opcode(GenericOpcode::G_STORE));
+    if (!Store)
+      return std::unexpected(Store.error());
+    if (auto Added = Store->addUse(*LoadedByte); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Store->addUse(*StoreAddress); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Store->addMemOperand(**ByteStoreMemory); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = Store->build(); !Built)
+      return std::unexpected(Built.error());
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "G_MEMCPY_INLINE became detached during legalization");
   return Block->removeInstruction(Instruction);
 }
 
