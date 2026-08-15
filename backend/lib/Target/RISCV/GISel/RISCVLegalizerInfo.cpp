@@ -9,6 +9,7 @@
 #include "rcc/CodeGen/GlobalISel/Utils.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
+#include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
@@ -18,6 +19,7 @@
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/IR/DataLayout.h"
+#include "rcc/Target/RISCV/RISCVFunctionInfo.h"
 #include "rcc/Target/RISCV/RISCVSubtarget.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
@@ -908,6 +910,87 @@ Expected<void> RISCVLegalizerInfo::legalizeBRJT(MachineInstr &Instruction,
   return Block->removeInstruction(Instruction);
 }
 
+Expected<void> RISCVLegalizerInfo::legalizeVAStart(MachineInstr &Instruction,
+                                                   MachineIRBuilder &MIRBuilder) const {
+  if (Instruction.operandCount() != 1 || Instruction.memOperands().size() != 1 ||
+      Instruction.memOperands().front() == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_VASTART requires one pointer operand and one memory operand");
+  }
+
+  MachineFunction &Function = MIRBuilder.function();
+  const RISCVFunctionInfo *FunctionInfo = Function.getTargetInfo<RISCVFunctionInfo>();
+  if (FunctionInfo == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_VASTART requires RISC-V function information");
+
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  if (Destination == nullptr || !Destination->isVirtual()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_VASTART requires a virtual-register pointer operand");
+  }
+  auto AddressType = Function.registerInfo().getType(*Destination);
+  if (!AddressType)
+    return std::unexpected(AddressType.error());
+
+  const std::int64_t LLVMFrameIndex = FunctionInfo->varArgsFrameIndex();
+  const bool IsFixedObject = LLVMFrameIndex < 0;
+  const std::uint64_t ObjectOrdinal = IsFixedObject
+                                          ? static_cast<std::uint64_t>(-LLVMFrameIndex - 1)
+                                          : static_cast<std::uint64_t>(LLVMFrameIndex);
+  std::optional<FrameIndex> VarArgsFrameIndex;
+  std::uint64_t CurrentOrdinal = 0;
+  for (const StackObject &Object : Function.frameInfo().objects()) {
+    if (Object.isTombstone() || Object.isFixed() != IsFixedObject)
+      continue;
+    if (CurrentOrdinal == ObjectOrdinal) {
+      VarArgsFrameIndex = Object.index();
+      break;
+    }
+    ++CurrentOrdinal;
+  }
+  if (!VarArgsFrameIndex) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_VASTART references a missing varargs frame object");
+  }
+
+  auto VarArgsAddress = Function.registerInfo().createVirtualRegister(*AddressType);
+  if (!VarArgsAddress)
+    return std::unexpected(VarArgsAddress.error());
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+
+  auto FrameIndexBuilder = MIRBuilder.buildInstr(opcode(GenericOpcode::G_FRAME_INDEX));
+  if (!FrameIndexBuilder)
+    return std::unexpected(FrameIndexBuilder.error());
+  if (auto Added = FrameIndexBuilder->addDef(*VarArgsAddress); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = FrameIndexBuilder->addFrameIndex(*VarArgsFrameIndex); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = FrameIndexBuilder->build(); !Built)
+    return std::unexpected(Built.error());
+
+  auto StoreBuilder = MIRBuilder.buildInstr(opcode(GenericOpcode::G_STORE));
+  if (!StoreBuilder)
+    return std::unexpected(StoreBuilder.error());
+  if (auto Added = StoreBuilder->addUse(*VarArgsAddress); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = StoreBuilder->addUse(*Destination); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = StoreBuilder->addMemOperand(*Instruction.memOperands().front()); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = StoreBuilder->build(); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "RISC-V G_VASTART became detached during legalization");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
                                                   MachineInstr &Instruction,
                                                   const LegalizationDecision &Decision) const {
@@ -919,6 +1002,8 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
   const TargetDescription &Target = Helper.MIRBuilder.target();
   if (Instruction.opcode() == opcode(GenericOpcode::G_BRJT))
     return legalizeBRJT(Instruction, Helper.MIRBuilder);
+  if (Instruction.opcode() == opcode(GenericOpcode::G_VASTART))
+    return legalizeVAStart(Instruction, Helper.MIRBuilder);
   if (Instruction.opcode() == opcode(GenericOpcode::G_ADD) ||
       Instruction.opcode() == opcode(GenericOpcode::G_SUB)) {
     auto XLenType = LowLevelType::makeCategoryNeutralScalar(64);

@@ -26,6 +26,8 @@ public:
 private:
   [[nodiscard]] Expected<void> legalizeBRJT(MachineInstr &Instruction,
                                             MachineIRBuilder &MIRBuilder) const;
+  [[nodiscard]] Expected<void> legalizeVAStart(MachineInstr &Instruction,
+                                               MachineIRBuilder &MIRBuilder) const;
 
   const RISCVSubtarget &Subtarget;
 };
