@@ -492,8 +492,7 @@ public:
       return selectSignInjection(Instruction, Type, InstructionOpcode::FSGNJX_S,
                                  InstructionOpcode::FSGNJX_D);
     case GenericOpcode::G_FCOPYSIGN:
-      return selectFloatingMinMax(Instruction, Type, InstructionOpcode::FSGNJ_S,
-                                  InstructionOpcode::FSGNJ_D);
+      return selectCopySign(Instruction, Function, Target, Type);
     case GenericOpcode::G_ANYEXT:
     case GenericOpcode::G_SEXT:
     case GenericOpcode::G_ZEXT:
@@ -2169,6 +2168,47 @@ private:
       return Instruction.setOpcode(instructionOpcode(Double));
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V cannot select this floating min/max type");
+  }
+
+  [[nodiscard]] Expected<void> selectCopySign(MachineInstr &Instruction, MachineFunction &Function,
+                                              const TargetDescription &Target,
+                                              std::optional<LowLevelType> Type) const {
+    const MachineOperand *SignOperand = Instruction.operandAt(2);
+    const Register *SignRegister =
+        SignOperand == nullptr ? nullptr : SignOperand->getIf<Register>();
+    const std::optional<LowLevelType> SignType = operandType(Function, Instruction, 2);
+    if (!Type || !SignType || SignRegister == nullptr || !Type->isCategoryNeutralScalar() ||
+        !SignType->isCategoryNeutralScalar()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V floating copy-sign has invalid operand types");
+    }
+
+    const std::uint32_t ResultWidth = Type->scalarBitWidth();
+    const std::uint32_t SignWidth = SignType->scalarBitWidth();
+    if ((ResultWidth != 32 && ResultWidth != 64) || (SignWidth != 32 && SignWidth != 64)) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "RISC-V cannot select this floating copy-sign type");
+    }
+
+    if (ResultWidth != SignWidth) {
+      auto Temporary = createTemporary(Function, *Type, Target, fprBank());
+      if (!Temporary)
+        return std::unexpected(Temporary.error());
+      MachineIRBuilder Builder(Function, Target);
+      const InstructionOpcode Conversion =
+          ResultWidth == 32 ? InstructionOpcode::FCVT_S_D : InstructionOpcode::FCVT_D_S;
+      const std::int64_t RoundingMode = ResultWidth == 32 ? 7 : 0;
+      auto Built = buildImmediateBefore(Builder, Instruction, Conversion, *Temporary, *SignRegister,
+                                        RoundingMode);
+      if (!Built)
+        return std::unexpected(Built.error());
+      auto ReplaceSign = Instruction.operandAt(2)->setRegister(*Temporary);
+      if (!ReplaceSign)
+        return std::unexpected(ReplaceSign.error());
+    }
+
+    return Instruction.setOpcode(instructionOpcode(ResultWidth == 32 ? InstructionOpcode::FSGNJ_S
+                                                                     : InstructionOpcode::FSGNJ_D));
   }
 
   [[nodiscard]] Expected<void> selectFence(MachineInstr &Instruction) const {

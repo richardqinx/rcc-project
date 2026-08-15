@@ -265,8 +265,8 @@ RISCVRegisterBankInfo::selectBank(const MachineFunction &Function, Register Reg,
   if (!Required)
     return std::unexpected(Required.error());
   const bool IsConstrained = Required->has_value() || Info.Bank.has_value();
-  const RegisterBankID Selected = Required->value_or(gprBank());
-  if (Info.Bank && *Info.Bank != Selected) {
+  const RegisterBankID Selected = Required->value_or(Info.Bank.value_or(gprBank()));
+  if (Info.Bank && Required->has_value() && *Info.Bank != Selected) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V virtual register has a conflicting register bank");
   }
