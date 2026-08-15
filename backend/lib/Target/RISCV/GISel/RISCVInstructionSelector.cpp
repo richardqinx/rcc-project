@@ -403,10 +403,20 @@ public:
                                  InstructionOpcode::SLLW, InstructionOpcode::SLLI,
                                  InstructionOpcode::SLLIW, false, 6, 5);
     case GenericOpcode::G_LSHR:
+      if (auto Selected = selectRV64WordShift(Instruction, Function, Type, Generic); !Selected) {
+        return std::unexpected(Selected.error());
+      } else if (*Selected) {
+        return {};
+      }
       return selectNormalizedIntegerBinary(
           Instruction, Function, Target, Type, InstructionOpcode::SRL, InstructionOpcode::SRLW,
           false, false, InstructionOpcode::SRLI, InstructionOpcode::SRLIW, false, 6, 5);
     case GenericOpcode::G_ASHR:
+      if (auto Selected = selectRV64WordShift(Instruction, Function, Type, Generic); !Selected) {
+        return std::unexpected(Selected.error());
+      } else if (*Selected) {
+        return {};
+      }
       return selectNormalizedIntegerBinary(
           Instruction, Function, Target, Type, InstructionOpcode::SRA, InstructionOpcode::SRAW,
           true, false, InstructionOpcode::SRAI, InstructionOpcode::SRAIW, false, 6, 5);
@@ -2235,6 +2245,65 @@ private:
     auto AddImmediate = Instruction.addOperand(MachineOperand::immediate(*Value));
     if (!AddImmediate)
       return std::unexpected(AddImmediate.error());
+    return true;
+  }
+
+  [[nodiscard]] Expected<bool> selectRV64WordShift(MachineInstr &Instruction,
+                                                   MachineFunction &Function,
+                                                   std::optional<LowLevelType> Type,
+                                                   GenericOpcode Generic) const {
+    if (!Type || !Type->isCategoryNeutralScalar() || Type->scalarBitWidth() != 64)
+      return false;
+    const MachineOperand *LeftOperand = Instruction.operandAt(1);
+    const MachineOperand *RightOperand = Instruction.operandAt(2);
+    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+    if (Left == nullptr || Right == nullptr || !Right->isVirtual())
+      return false;
+    const std::optional<std::int64_t> ShiftAmount =
+        directIntegerConstant(Function.registerInfo(), *Right);
+    if (!ShiftAmount || !fitsIntegerImmediate(*ShiftAmount, false, 5))
+      return false;
+
+    const MachineInstr *LeftDefinition = Function.registerInfo().getVRegDef(*Left);
+    if (LeftDefinition == nullptr)
+      return false;
+    const MachineOperand *SourceOperand = LeftDefinition->operandAt(1);
+    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+    if (Source == nullptr)
+      return false;
+
+    InstructionOpcode Selected = InstructionOpcode::Invalid;
+    if (Generic == GenericOpcode::G_LSHR &&
+        LeftDefinition->opcode() == opcode(GenericOpcode::G_AND)) {
+      const MachineOperand *MaskOperand = LeftDefinition->operandAt(2);
+      const Register *Mask = MaskOperand == nullptr ? nullptr : MaskOperand->getIf<Register>();
+      const std::optional<std::int64_t> MaskValue =
+          Mask == nullptr ? std::nullopt : directIntegerConstant(Function.registerInfo(), *Mask);
+      if (MaskValue && *MaskValue == std::int64_t{0xffffffff})
+        Selected = InstructionOpcode::SRLIW;
+    } else if (Generic == GenericOpcode::G_ASHR &&
+               LeftDefinition->opcode() == opcode(GenericOpcode::G_SEXT_INREG)) {
+      const MachineOperand *WidthOperand = LeftDefinition->operandAt(2);
+      const auto *Width = WidthOperand == nullptr ? nullptr : WidthOperand->getIf<std::int64_t>();
+      if (Width != nullptr && *Width == 32)
+        Selected = InstructionOpcode::SRAIW;
+    }
+    if (Selected == InstructionOpcode::Invalid)
+      return false;
+
+    auto SetLeft = Instruction.operandAt(1)->setRegister(*Source);
+    if (!SetLeft)
+      return std::unexpected(SetLeft.error());
+    auto EraseRight = Instruction.eraseOperand(2);
+    if (!EraseRight)
+      return std::unexpected(EraseRight.error());
+    auto AddImmediate = Instruction.addOperand(MachineOperand::immediate(*ShiftAmount));
+    if (!AddImmediate)
+      return std::unexpected(AddImmediate.error());
+    auto SetOpcode = Instruction.setOpcode(instructionOpcode(Selected));
+    if (!SetOpcode)
+      return std::unexpected(SetOpcode.error());
     return true;
   }
 
