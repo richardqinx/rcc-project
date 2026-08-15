@@ -838,7 +838,9 @@ private:
         return fail("reserved-register list contains invalid or duplicate entries");
     }
 
-    for (const VirtualRegisterInfo &Info : RegInfo.virtualRegisters()) {
+    const auto VirtualRegisters = RegInfo.virtualRegisters();
+    for (std::size_t Index = 0; Index < VirtualRegisters.size(); ++Index) {
+      const VirtualRegisterInfo &Info = VirtualRegisters[Index];
       if (Info.IsTombstone) {
         if (Info.Type || Info.Bank || Info.RegClass || !Info.AllocationHints.empty() ||
             Info.TargetFlags != 0) {
@@ -846,10 +848,16 @@ private:
         }
         continue;
       }
-      HasLiveVirtualRegister = true;
-      MissingVirtualType |= !Info.Type;
-      MissingVirtualBank |= !Info.Bank;
-      MissingVirtualClass |= !Info.RegClass;
+      auto Reg = Register::makeVirtual(Index);
+      if (!Reg)
+        return failWith("virtual register", Reg.error());
+      const auto Operands = RegInfo.regOperands(*Reg);
+      if (Operands.begin() != Operands.end()) {
+        HasLiveVirtualRegister = true;
+        MissingVirtualType |= !Info.Type;
+        MissingVirtualBank |= !Info.Bank;
+        MissingVirtualClass |= !Info.RegClass;
+      }
       if (Info.Type && !Info.Type->isValid())
         return fail("virtual register has an invalid LowLevelType");
 

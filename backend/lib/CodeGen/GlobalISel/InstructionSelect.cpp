@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/GlobalISel/InstructionSelect.h"
 
+#include "rcc/CodeGen/GlobalISel/Utils.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
@@ -240,8 +241,16 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
 
   for (std::size_t Index = 0; Index < Worklist.size(); ++Index) {
     MachineInstr *Instruction = Worklist[Index];
-    if (Instruction->parent() == nullptr)
-      return std::unexpected(passFailure("instruction selector lost its input instruction"));
+    if (Instruction == nullptr || Instruction->parent() == nullptr)
+      continue;
+    if (isTriviallyDead(*Instruction, Function.registerInfo(), Target)) {
+      auto Removed = eraseInstr(*Instruction, Function.registerInfo(), Target);
+      if (!Removed)
+        return std::unexpected(Removed.error());
+      Result.Changed = true;
+      Result.Changes.add(MachinePassChange::Instructions);
+      continue;
+    }
     const InstructionDescriptor *CurrentDescriptor =
         Target.instructionDescriptor(Instruction->opcode());
     if (CurrentDescriptor == nullptr)

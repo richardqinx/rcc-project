@@ -142,6 +142,32 @@ memoryAccessBytes(const MachineInstr &Instruction) noexcept {
   return std::bit_cast<std::int64_t>(Raw);
 }
 
+[[nodiscard]] std::optional<std::int64_t>
+directIntegerConstant(const MachineRegisterInfo &RegisterInfo, Register ValueRegister) {
+  if (!ValueRegister.isVirtual())
+    return std::nullopt;
+  const MachineInstr *Definition = RegisterInfo.getVRegDef(ValueRegister);
+  if (Definition == nullptr || Definition->opcode() != opcode(GenericOpcode::G_CONSTANT))
+    return std::nullopt;
+  const MachineOperand *ValueOperand = Definition->operandAt(1);
+  if (ValueOperand == nullptr)
+    return std::nullopt;
+  auto Value = signedImmediate(*ValueOperand);
+  return Value ? std::optional<std::int64_t>(*Value) : std::nullopt;
+}
+
+[[nodiscard]] bool fitsIntegerImmediate(std::int64_t Value, bool Signed,
+                                        std::uint32_t BitWidth) noexcept {
+  if (BitWidth == 0 || BitWidth >= 64)
+    return BitWidth == 64 && (Signed || Value >= 0);
+  if (Signed) {
+    const std::int64_t Minimum = -(std::int64_t{1} << (BitWidth - 1U));
+    const std::int64_t Maximum = (std::int64_t{1} << (BitWidth - 1U)) - 1;
+    return Value >= Minimum && Value <= Maximum;
+  }
+  return Value >= 0 && static_cast<std::uint64_t>(Value) < (std::uint64_t{1} << BitWidth);
+}
+
 class RISCVInstructionSelector final : public InstructionSelector {
 public:
   RISCVInstructionSelector(const RISCVSubtarget &Subtarget,
@@ -331,8 +357,9 @@ public:
     };
     switch (Generic) {
     case GenericOpcode::G_ADD:
-      return selectIntegerBinary(Instruction, Type, InstructionOpcode::ADD,
-                                 InstructionOpcode::ADDW);
+      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::ADD,
+                                 InstructionOpcode::ADDW, InstructionOpcode::ADDI,
+                                 InstructionOpcode::ADDIW, true, 12, 12);
     case GenericOpcode::G_SUB:
       return selectIntegerBinary(Instruction, Type, InstructionOpcode::SUB,
                                  InstructionOpcode::SUBW);
@@ -360,22 +387,29 @@ public:
     case GenericOpcode::G_UDIVREM:
       return selectDivRem(Instruction, Function, Target, Type, false);
     case GenericOpcode::G_AND:
-      return SelectDirect(InstructionOpcode::AND);
+      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::AND,
+                                 InstructionOpcode::AND, InstructionOpcode::ANDI,
+                                 InstructionOpcode::ANDI, true, 12, 12);
     case GenericOpcode::G_OR:
-      return SelectDirect(InstructionOpcode::OR);
+      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::OR,
+                                 InstructionOpcode::OR, InstructionOpcode::ORI,
+                                 InstructionOpcode::ORI, true, 12, 12);
     case GenericOpcode::G_XOR:
-      return SelectDirect(InstructionOpcode::XOR);
+      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::XOR,
+                                 InstructionOpcode::XOR, InstructionOpcode::XORI,
+                                 InstructionOpcode::XORI, true, 12, 12);
     case GenericOpcode::G_SHL:
-      return selectIntegerBinary(Instruction, Type, InstructionOpcode::SLL,
-                                 InstructionOpcode::SLLW);
+      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::SLL,
+                                 InstructionOpcode::SLLW, InstructionOpcode::SLLI,
+                                 InstructionOpcode::SLLIW, false, 6, 5);
     case GenericOpcode::G_LSHR:
-      return selectNormalizedIntegerBinary(Instruction, Function, Target, Type,
-                                           InstructionOpcode::SRL, InstructionOpcode::SRLW, false,
-                                           false);
+      return selectNormalizedIntegerBinary(
+          Instruction, Function, Target, Type, InstructionOpcode::SRL, InstructionOpcode::SRLW,
+          false, false, InstructionOpcode::SRLI, InstructionOpcode::SRLIW, false, 6, 5);
     case GenericOpcode::G_ASHR:
-      return selectNormalizedIntegerBinary(Instruction, Function, Target, Type,
-                                           InstructionOpcode::SRA, InstructionOpcode::SRAW, true,
-                                           false);
+      return selectNormalizedIntegerBinary(
+          Instruction, Function, Target, Type, InstructionOpcode::SRA, InstructionOpcode::SRAW,
+          true, false, InstructionOpcode::SRAI, InstructionOpcode::SRAIW, false, 6, 5);
     case GenericOpcode::G_PTR_ADD:
       return SelectDirect(InstructionOpcode::ADD);
     case GenericOpcode::G_PTRMASK:
@@ -2183,11 +2217,53 @@ private:
     return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
+  [[nodiscard]] Expected<bool> foldRightConstantToImmediate(MachineInstr &Instruction,
+                                                            const MachineFunction &Function,
+                                                            bool Signed,
+                                                            std::uint32_t BitWidth) const {
+    const MachineOperand *RightOperand = Instruction.operandAt(2);
+    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+    if (Right == nullptr)
+      return false;
+    const std::optional<std::int64_t> Value =
+        directIntegerConstant(Function.registerInfo(), *Right);
+    if (!Value || !fitsIntegerImmediate(*Value, Signed, BitWidth))
+      return false;
+    auto EraseRight = Instruction.eraseOperand(2);
+    if (!EraseRight)
+      return std::unexpected(EraseRight.error());
+    auto AddImmediate = Instruction.addOperand(MachineOperand::immediate(*Value));
+    if (!AddImmediate)
+      return std::unexpected(AddImmediate.error());
+    return true;
+  }
+
   [[nodiscard]] Expected<void>
-  selectNormalizedIntegerBinary(MachineInstr &Instruction, MachineFunction &Function,
-                                const TargetDescription &Target, std::optional<LowLevelType> Type,
-                                InstructionOpcode DoubleWord, InstructionOpcode Word, bool Signed,
-                                bool NormalizeRight) const {
+  selectIntegerBinary(MachineInstr &Instruction, MachineFunction &Function,
+                      std::optional<LowLevelType> Type, InstructionOpcode DoubleWord,
+                      InstructionOpcode Word, InstructionOpcode DoubleWordImmediate,
+                      InstructionOpcode WordImmediate, bool SignedImmediate,
+                      std::uint32_t DoubleWordBits, std::uint32_t WordBits) const {
+    if (!Type || !isSupportedIntegerType(*Type))
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "RISC-V integer instruction requires a supported scalar integer");
+    const bool IsWord = Type->isCategoryNeutralScalar() && Type->scalarBitWidth() <= 32;
+    const auto Folded = foldRightConstantToImmediate(Instruction, Function, SignedImmediate,
+                                                     IsWord ? WordBits : DoubleWordBits);
+    if (!Folded)
+      return std::unexpected(Folded.error());
+    if (*Folded)
+      return Instruction.setOpcode(instructionOpcode(IsWord ? WordImmediate : DoubleWordImmediate));
+    return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
+  }
+
+  [[nodiscard]] Expected<void> selectNormalizedIntegerBinary(
+      MachineInstr &Instruction, MachineFunction &Function, const TargetDescription &Target,
+      std::optional<LowLevelType> Type, InstructionOpcode DoubleWord, InstructionOpcode Word,
+      bool Signed, bool NormalizeRight,
+      std::optional<InstructionOpcode> DoubleWordImmediate = std::nullopt,
+      std::optional<InstructionOpcode> WordImmediate = std::nullopt, bool ImmediateSigned = false,
+      std::uint32_t DoubleWordImmediateBits = 0, std::uint32_t WordImmediateBits = 0) const {
     const MachineOperand *LeftOperand = Instruction.operandAt(1);
     const MachineOperand *RightOperand = Instruction.operandAt(2);
     const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
@@ -2200,10 +2276,20 @@ private:
         normalizeIntegerBefore(Instruction, Function, Target, *Left, *Type, Signed);
     if (!NormalizedLeft)
       return std::unexpected(NormalizedLeft.error());
-    Register SelectedRight = *Right;
-    if (NormalizeRight) {
+    const Register RightRegister = *Right;
+    bool FoldedImmediate = false;
+    if (DoubleWordImmediate && WordImmediate) {
+      auto Folded = foldRightConstantToImmediate(
+          Instruction, Function, ImmediateSigned,
+          Type->scalarBitWidth() <= 32 ? WordImmediateBits : DoubleWordImmediateBits);
+      if (!Folded)
+        return std::unexpected(Folded.error());
+      FoldedImmediate = *Folded;
+    }
+    Register SelectedRight = RightRegister;
+    if (!FoldedImmediate && NormalizeRight) {
       auto NormalizedRight =
-          normalizeIntegerBefore(Instruction, Function, Target, *Right, *Type, Signed);
+          normalizeIntegerBefore(Instruction, Function, Target, RightRegister, *Type, Signed);
       if (!NormalizedRight)
         return std::unexpected(NormalizedRight.error());
       SelectedRight = *NormalizedRight;
@@ -2211,10 +2297,15 @@ private:
     auto SetLeft = Instruction.operandAt(1)->setRegister(*NormalizedLeft);
     if (!SetLeft)
       return std::unexpected(SetLeft.error());
-    auto SetRight = Instruction.operandAt(2)->setRegister(SelectedRight);
-    if (!SetRight)
-      return std::unexpected(SetRight.error());
+    if (!FoldedImmediate) {
+      auto SetRight = Instruction.operandAt(2)->setRegister(SelectedRight);
+      if (!SetRight)
+        return std::unexpected(SetRight.error());
+    }
     const bool IsWord = Type->scalarBitWidth() <= 32;
+    if (FoldedImmediate)
+      return Instruction.setOpcode(
+          instructionOpcode(IsWord ? *WordImmediate : *DoubleWordImmediate));
     return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
