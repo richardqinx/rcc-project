@@ -210,6 +210,35 @@ buildFlaggedBinaryInstruction(MachineIRBuilder &Builder, GenericOpcode Generic, 
   }
 }
 
+[[nodiscard]] bool isEqualityPredicate(IntegerPredicate Predicate) noexcept {
+  return Predicate == IntegerPredicate::Equal || Predicate == IntegerPredicate::NotEqual;
+}
+
+[[nodiscard]] Expected<IntegerPredicate> unsignedPredicate(IntegerPredicate Predicate) {
+  switch (Predicate) {
+  case IntegerPredicate::Equal:
+  case IntegerPredicate::NotEqual:
+  case IntegerPredicate::UnsignedGreaterThan:
+  case IntegerPredicate::UnsignedGreaterEqual:
+  case IntegerPredicate::UnsignedLessThan:
+  case IntegerPredicate::UnsignedLessEqual:
+    return Predicate;
+  case IntegerPredicate::SignedGreaterThan:
+    return IntegerPredicate::UnsignedGreaterThan;
+  case IntegerPredicate::SignedGreaterEqual:
+    return IntegerPredicate::UnsignedGreaterEqual;
+  case IntegerPredicate::SignedLessThan:
+    return IntegerPredicate::UnsignedLessThan;
+  case IntegerPredicate::SignedLessEqual:
+    return IntegerPredicate::UnsignedLessEqual;
+  case IntegerPredicate::Count:
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "integer comparison has an invalid predicate");
+  }
+  return makeUnexpected(ErrorCode::VerificationError,
+                        "integer comparison has an invalid predicate");
+}
+
 [[nodiscard]] Expected<LowLevelType> booleanTypeFor(LowLevelType Type) {
   auto BooleanElementType = LowLevelType::makeCategoryNeutralScalar(1);
   if (!BooleanElementType)
@@ -3316,6 +3345,172 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   case GenericOpcode::G_LSHR:
   case GenericOpcode::G_ASHR:
     return narrowScalarShift(Instruction, TypeIndex, NarrowType);
+  case GenericOpcode::G_ICMP: {
+    if (TypeIndex != 1)
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "G_ICMP narrowing requires the source type index");
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const MachineOperand *PredicateMachineOperand = Instruction.operandAt(1);
+    const MachineOperand *LeftOperand = Instruction.operandAt(2);
+    const MachineOperand *RightOperand = Instruction.operandAt(3);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    const auto *PredicateValue = PredicateMachineOperand == nullptr
+                                     ? nullptr
+                                     : PredicateMachineOperand->getIf<PredicateOperand>();
+    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+    const IntegerPredicate *Predicate =
+        PredicateValue == nullptr ? nullptr : PredicateValue->integerPredicate();
+    if (Destination == nullptr || Left == nullptr || Right == nullptr || Predicate == nullptr) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "G_ICMP narrowing requires an integer predicate and register operands");
+    }
+    auto SourceType = MRI.getType(*Left);
+    auto ResultType = MRI.getType(*Destination);
+    if (!SourceType)
+      return std::unexpected(SourceType.error());
+    if (!ResultType)
+      return std::unexpected(ResultType.error());
+
+    LowLevelType LeftoverType;
+    LowLevelType UnusedType;
+    std::vector<Register> LeftParts;
+    std::vector<Register> LeftLeftovers;
+    std::vector<Register> RightParts;
+    std::vector<Register> RightLeftovers;
+    auto LeftExtracted = extractParts(*Left, *SourceType, NarrowType, LeftoverType, LeftParts,
+                                      LeftLeftovers, MIRBuilder, MRI);
+    if (!LeftExtracted)
+      return std::unexpected(LeftExtracted.error());
+    auto RightExtracted = extractParts(*Right, *SourceType, NarrowType, UnusedType, RightParts,
+                                       RightLeftovers, MIRBuilder, MRI);
+    if (!RightExtracted)
+      return std::unexpected(RightExtracted.error());
+    if (!*LeftExtracted || !*RightExtracted || LeftParts.size() != RightParts.size() ||
+        LeftLeftovers.size() != RightLeftovers.size()) {
+      return makeUnexpected(ErrorCode::Unsupported, "G_ICMP operands cannot be split consistently");
+    }
+
+    if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+      return std::unexpected(Point.error());
+    if (isEqualityPredicate(*Predicate)) {
+      auto Zero = buildConstantRegister(MIRBuilder, NarrowType, 0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+
+      std::vector<Register> Xors;
+      Xors.reserve(LeftParts.size() + LeftLeftovers.size());
+      for (std::size_t Index = 0; Index != LeftParts.size(); ++Index) {
+        auto Xor = buildResultInstruction(MIRBuilder, GenericOpcode::G_XOR, NarrowType,
+                                          {LeftParts[Index], RightParts[Index]});
+        if (!Xor)
+          return std::unexpected(Xor.error());
+        Xors.push_back(*Xor);
+      }
+
+      std::vector<Register> WidenedXors;
+      for (std::size_t Index = 0; Index != LeftLeftovers.size(); ++Index) {
+        auto Xor = buildResultInstruction(MIRBuilder, GenericOpcode::G_XOR, LeftoverType,
+                                          {LeftLeftovers[Index], RightLeftovers[Index]});
+        if (!Xor)
+          return std::unexpected(Xor.error());
+        auto GCDType = extractGCDType(WidenedXors, NarrowType, LeftoverType, *Xor);
+        if (!GCDType)
+          return std::unexpected(GCDType.error());
+        auto LCMType = buildLCMMergePieces(LeftoverType, NarrowType, *GCDType, WidenedXors,
+                                           GenericOpcode::G_ZEXT);
+        if (!LCMType)
+          return std::unexpected(LCMType.error());
+        Xors.insert(Xors.end(), WidenedXors.begin(), WidenedXors.end());
+      }
+
+      if (Xors.size() < 2) {
+        return makeUnexpected(ErrorCode::InternalError,
+                              "G_ICMP narrowing produced fewer than two comparison parts");
+      }
+      auto Combined =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, NarrowType, {Xors[0], Xors[1]});
+      if (!Combined)
+        return std::unexpected(Combined.error());
+      for (std::size_t Index = 2; Index != Xors.size(); ++Index) {
+        auto Next = buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, NarrowType,
+                                           {*Combined, Xors[Index]});
+        if (!Next)
+          return std::unexpected(Next.error());
+        Combined = std::move(Next);
+      }
+      if (auto Built = MIRBuilder.buildICmp(*Predicate, *Destination, *Combined, *Zero); !Built)
+        return std::unexpected(Built.error());
+    } else {
+      Register ComparisonInput;
+      const auto buildComparisonPart = [&](Register LeftPart, Register RightPart,
+                                           bool IsFinal) -> Expected<Register> {
+        IntegerPredicate PartPredicate = *Predicate;
+        if (!IsFinal) {
+          auto Unsigned = unsignedPredicate(*Predicate);
+          if (!Unsigned)
+            return std::unexpected(Unsigned.error());
+          PartPredicate = *Unsigned;
+        }
+        Register ComparisonOutput = *Destination;
+        if (!IsFinal) {
+          auto Temporary = MRI.createVirtualRegister(*ResultType);
+          if (!Temporary)
+            return std::unexpected(Temporary.error());
+          ComparisonOutput = *Temporary;
+        }
+        if (ComparisonInput.isNoRegister()) {
+          auto Built = MIRBuilder.buildICmp(PartPredicate, ComparisonOutput, LeftPart, RightPart);
+          if (!Built)
+            return std::unexpected(Built.error());
+        } else {
+          auto Comparison = MRI.createVirtualRegister(*ResultType);
+          auto Equal = MRI.createVirtualRegister(*ResultType);
+          if (!Comparison)
+            return std::unexpected(Comparison.error());
+          if (!Equal)
+            return std::unexpected(Equal.error());
+          if (auto Built = MIRBuilder.buildICmp(PartPredicate, *Comparison, LeftPart, RightPart);
+              !Built) {
+            return std::unexpected(Built.error());
+          }
+          if (auto Built =
+                  MIRBuilder.buildICmp(IntegerPredicate::Equal, *Equal, LeftPart, RightPart);
+              !Built) {
+            return std::unexpected(Built.error());
+          }
+          if (auto Built =
+                  MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {ComparisonOutput},
+                                        {*Equal, ComparisonInput, *Comparison});
+              !Built) {
+            return std::unexpected(Built.error());
+          }
+        }
+        return ComparisonOutput;
+      };
+
+      for (std::size_t Index = 0; Index != LeftParts.size(); ++Index) {
+        const bool IsFinal = Index + 1U == LeftParts.size() && LeftLeftovers.empty();
+        auto Comparison = buildComparisonPart(LeftParts[Index], RightParts[Index], IsFinal);
+        if (!Comparison)
+          return std::unexpected(Comparison.error());
+        ComparisonInput = *Comparison;
+      }
+      for (std::size_t Index = 0; Index != LeftLeftovers.size(); ++Index) {
+        const bool IsFinal = Index + 1U == LeftLeftovers.size();
+        auto Comparison = buildComparisonPart(LeftLeftovers[Index], RightLeftovers[Index], IsFinal);
+        if (!Comparison)
+          return std::unexpected(Comparison.error());
+        ComparisonInput = *Comparison;
+      }
+    }
+
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "G_ICMP became detached during narrowing");
+    return Block->removeInstruction(Instruction);
+  }
   default:
     return makeUnexpected(ErrorCode::Unsupported,
                           "scalar narrowing is not implemented for this opcode");
