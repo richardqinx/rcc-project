@@ -308,18 +308,94 @@ buildFlaggedBinaryInstruction(MachineIRBuilder &Builder, GenericOpcode Generic, 
   return ABIExtensionKind::AnyExtend;
 }
 
+[[nodiscard]] Expected<std::string_view> integerLibcallTypeCode(std::uint32_t BitWidth) {
+  switch (BitWidth) {
+  case 32:
+    return "si";
+  case 64:
+    return "di";
+  case 128:
+    return "ti";
+  default:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "conversion libcall requires a 32, 64, or 128-bit integer");
+  }
+}
+
+[[nodiscard]] Expected<std::string_view> floatingLibcallTypeCode(std::uint32_t BitWidth) {
+  switch (BitWidth) {
+  case 32:
+    return "sf";
+  case 64:
+    return "df";
+  case 128:
+    return "tf";
+  default:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "conversion libcall requires a 32, 64, or 128-bit float");
+  }
+}
+
+[[nodiscard]] Expected<std::string> conversionLibcallName(GenericOpcode Generic,
+                                                          std::uint32_t DestinationWidth,
+                                                          std::uint32_t SourceWidth) {
+  const bool DestinationIsFloat =
+      Generic == GenericOpcode::G_SITOFP || Generic == GenericOpcode::G_UITOFP ||
+      Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC;
+  const bool SourceIsFloat =
+      Generic == GenericOpcode::G_FPTOSI || Generic == GenericOpcode::G_FPTOUI ||
+      Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC;
+  auto DestinationCode = DestinationIsFloat ? floatingLibcallTypeCode(DestinationWidth)
+                                            : integerLibcallTypeCode(DestinationWidth);
+  auto SourceCode =
+      SourceIsFloat ? floatingLibcallTypeCode(SourceWidth) : integerLibcallTypeCode(SourceWidth);
+  if (!DestinationCode)
+    return std::unexpected(DestinationCode.error());
+  if (!SourceCode)
+    return std::unexpected(SourceCode.error());
+
+  std::string Name;
+  switch (Generic) {
+  case GenericOpcode::G_FPEXT:
+    Name = "__extend";
+    break;
+  case GenericOpcode::G_FPTRUNC:
+    Name = "__trunc";
+    break;
+  case GenericOpcode::G_FPTOSI:
+    Name = "__fix";
+    break;
+  case GenericOpcode::G_FPTOUI:
+    Name = "__fixuns";
+    break;
+  case GenericOpcode::G_SITOFP:
+    Name = "__float";
+    break;
+  case GenericOpcode::G_UITOFP:
+    Name = "__floatun";
+    break;
+  default:
+    return makeUnexpected(ErrorCode::Unsupported, "opcode has no conversion libcall mapping");
+  }
+  Name += *SourceCode;
+  Name += *DestinationCode;
+  if (Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC)
+    Name += '2';
+  return Name;
+}
+
 [[nodiscard]] Expected<ABIValue>
-integerABIValue(Register Value, LowLevelType Type, std::uint32_t OriginalValue,
-                std::uint16_t FragmentIndex, std::uint16_t FragmentCount,
-                std::uint32_t FragmentOffsetBytes, Alignment OriginalAlignment,
-                ABIExtensionKind Extension) {
+libcallABIValue(Register Value, LowLevelType Type, ABIValueCategory Category,
+                std::uint32_t OriginalValue, std::uint16_t FragmentIndex,
+                std::uint16_t FragmentCount, std::uint32_t FragmentOffsetBytes,
+                Alignment OriginalAlignment, ABIExtensionKind Extension) {
   auto OneByte = Alignment::create(1);
   if (!OneByte)
     return std::unexpected(OneByte.error());
   return ABIValue{
       .Value = Value,
       .Type = Type,
-      .Category = ABIValueCategory::Integer,
+      .Category = Category,
       .OriginalValue = OriginalValue,
       .FragmentIndex = FragmentIndex,
       .FragmentCount = FragmentCount,
@@ -4633,37 +4709,87 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
   const Register *Destination =
       DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
   if (Destination == nullptr || !DestinationOperand->isDef()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "integer libcall requires a register destination");
+    return makeUnexpected(ErrorCode::VerificationError, "libcall requires a register destination");
   }
-  auto Type = MRI.getType(*Destination);
-  if (!Type)
-    return std::unexpected(Type.error());
-  if (!Type->isCategoryNeutralScalar()) {
+  auto DestinationType = MRI.getType(*Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  if (!DestinationType->isCategoryNeutralScalar()) {
     return makeUnexpected(ErrorCode::Unsupported,
-                          "integer libcall requires a category-neutral scalar type");
+                          "libcall requires a category-neutral scalar destination");
   }
 
-  const std::uint32_t BitWidth = Type->scalarBitWidth();
-  auto Name = integerLibcallName(Generic, BitWidth);
+  const bool IsConversion =
+      Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC ||
+      Generic == GenericOpcode::G_FPTOSI || Generic == GenericOpcode::G_FPTOUI ||
+      Generic == GenericOpcode::G_SITOFP || Generic == GenericOpcode::G_UITOFP;
+  if (Instruction.operandCount() < 2 || (IsConversion && Instruction.operandCount() != 2)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "libcall has an invalid number of operands");
+  }
+
+  const MachineOperand *FirstSourceOperand = Instruction.operandAt(1);
+  const Register *FirstSource =
+      FirstSourceOperand == nullptr ? nullptr : FirstSourceOperand->getIf<Register>();
+  if (FirstSource == nullptr || !FirstSourceOperand->isUse()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "libcall requires register source operands");
+  }
+  auto SourceType = MRI.getType(*FirstSource);
+  if (!SourceType)
+    return std::unexpected(SourceType.error());
+  if (!SourceType->isCategoryNeutralScalar()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "libcall requires category-neutral scalar sources");
+  }
+
+  Expected<std::string> Name =
+      IsConversion ? conversionLibcallName(Generic, DestinationType->scalarBitWidth(),
+                                           SourceType->scalarBitWidth())
+                   : integerLibcallName(Generic, DestinationType->scalarBitWidth());
   if (!Name)
     return std::unexpected(Name.error());
-  auto OriginalAlignment = Alignment::create(BitWidth == 128 ? 16 : BitWidth / 8U);
-  if (!OriginalAlignment)
-    return std::unexpected(OriginalAlignment.error());
+
+  const bool DestinationIsFloat =
+      Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC ||
+      Generic == GenericOpcode::G_SITOFP || Generic == GenericOpcode::G_UITOFP;
+  const bool SourceIsFloat =
+      Generic == GenericOpcode::G_FPEXT || Generic == GenericOpcode::G_FPTRUNC ||
+      Generic == GenericOpcode::G_FPTOSI || Generic == GenericOpcode::G_FPTOUI;
+  const ABIValueCategory DestinationCategory =
+      DestinationIsFloat ? ABIValueCategory::FloatingPoint : ABIValueCategory::Integer;
+  const ABIValueCategory SourceCategory =
+      SourceIsFloat ? ABIValueCategory::FloatingPoint : ABIValueCategory::Integer;
+  auto ExtensionFor = [&](ABIValueCategory Category, bool IsResult,
+                          std::uint32_t BitWidth) noexcept {
+    if (Category != ABIValueCategory::Integer || BitWidth >= 64)
+      return ABIExtensionKind::None;
+    if (!IsConversion)
+      return integerLibcallExtension(Generic, BitWidth);
+    if ((IsResult && Generic == GenericOpcode::G_FPTOSI) ||
+        (!IsResult && Generic == GenericOpcode::G_SITOFP)) {
+      return ABIExtensionKind::SignExtend;
+    }
+    return ABIExtensionKind::ZeroExtend;
+  };
+
   auto FragmentType = LowLevelType::makeCategoryNeutralScalar(64);
   if (!FragmentType)
     return std::unexpected(FragmentType.error());
   if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
     return std::unexpected(Point.error());
 
-  const ABIExtensionKind Extension = integerLibcallExtension(Generic, BitWidth);
-  auto AppendValue = [&](Register Value, std::uint32_t OriginalValue, bool IsResult,
+  auto AppendValue = [&](Register Value, LowLevelType Type, ABIValueCategory Category,
+                         ABIExtensionKind Extension, std::uint32_t OriginalValue, bool IsResult,
                          std::vector<ABIValue> &Values,
                          std::vector<Register> *Fragments) -> Expected<void> {
+    const std::uint32_t BitWidth = Type.scalarBitWidth();
+    auto OriginalAlignment = Alignment::create((BitWidth + 7U) / 8U);
+    if (!OriginalAlignment)
+      return std::unexpected(OriginalAlignment.error());
     if (BitWidth != 128) {
-      auto ABI =
-          integerABIValue(Value, *Type, OriginalValue, 0, 1, 0, *OriginalAlignment, Extension);
+      auto ABI = libcallABIValue(Value, Type, Category, OriginalValue, 0, 1, 0, *OriginalAlignment,
+                                 Extension);
       if (!ABI)
         return std::unexpected(ABI.error());
       Values.push_back(*ABI);
@@ -4686,9 +4812,9 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
         return std::unexpected(Unmerged.error());
     }
     for (std::uint16_t Index = 0; Index != 2; ++Index) {
-      auto ABI = integerABIValue(PartRegisters[Index], *FragmentType, OriginalValue, Index, 2,
-                                 static_cast<std::uint32_t>(Index) * 8U, *OriginalAlignment,
-                                 ABIExtensionKind::None);
+      auto ABI = libcallABIValue(PartRegisters[Index], *FragmentType, ABIValueCategory::Integer,
+                                 OriginalValue, Index, 2, static_cast<std::uint32_t>(Index) * 8U,
+                                 *OriginalAlignment, ABIExtensionKind::None);
       if (!ABI)
         return std::unexpected(ABI.error());
       Values.push_back(*ABI);
@@ -4699,23 +4825,30 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
   };
 
   std::vector<ABIValue> Arguments;
-  Arguments.reserve((Instruction.operandCount() - 1U) * (BitWidth == 128 ? 2U : 1U));
+  Arguments.reserve((Instruction.operandCount() - 1U) *
+                    (SourceType->scalarBitWidth() == 128 ? 2U : 1U));
   std::uint32_t OriginalArgument = 0;
   for (std::size_t Index = 1; Index != Instruction.operandCount(); ++Index) {
     const MachineOperand *Operand = Instruction.operandAt(Index);
     const Register *Source = Operand == nullptr ? nullptr : Operand->getIf<Register>();
     if (Source == nullptr || !Operand->isUse()) {
       return makeUnexpected(ErrorCode::VerificationError,
-                            "integer libcall requires register source operands");
+                            "libcall requires register source operands");
     }
-    auto SourceType = MRI.getType(*Source);
-    if (!SourceType)
-      return std::unexpected(SourceType.error());
-    if (*SourceType != *Type) {
+    auto ArgumentType = MRI.getType(*Source);
+    if (!ArgumentType)
+      return std::unexpected(ArgumentType.error());
+    if (*ArgumentType != *SourceType) {
+      return makeUnexpected(ErrorCode::VerificationError, "libcall source types must match");
+    }
+    if (!IsConversion && *ArgumentType != *DestinationType) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "integer libcall source and destination types must match");
     }
-    if (auto Appended = AppendValue(*Source, OriginalArgument++, false, Arguments, nullptr);
+    const ABIExtensionKind Extension =
+        ExtensionFor(SourceCategory, false, ArgumentType->scalarBitWidth());
+    if (auto Appended = AppendValue(*Source, *ArgumentType, SourceCategory, Extension,
+                                    OriginalArgument++, false, Arguments, nullptr);
         !Appended) {
       return std::unexpected(Appended.error());
     }
@@ -4723,8 +4856,13 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
 
   std::vector<ABIValue> Results;
   std::vector<Register> ResultFragments;
-  if (auto Appended = AppendValue(*Destination, 0, true, Results, &ResultFragments); !Appended)
+  const ABIExtensionKind ResultExtension =
+      ExtensionFor(DestinationCategory, true, DestinationType->scalarBitWidth());
+  if (auto Appended = AppendValue(*Destination, *DestinationType, DestinationCategory,
+                                  ResultExtension, 0, true, Results, &ResultFragments);
+      !Appended) {
     return std::unexpected(Appended.error());
+  }
 
   auto Callee = MachineCallTarget::externalSymbol(std::move(*Name));
   if (!Callee)
@@ -4738,7 +4876,7 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
   if (auto Lowered = Libcalls->CallLowering->lowerCall(MIRBuilder, Request); !Lowered)
     return std::unexpected(Lowered.error());
 
-  if (BitWidth == 128) {
+  if (DestinationType->scalarBitWidth() == 128) {
     auto Merged = MIRBuilder.buildMergeLikeInstr(*Destination, ResultFragments);
     if (!Merged)
       return std::unexpected(Merged.error());
@@ -4746,8 +4884,7 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
 
   MachineBasicBlock *Block = Instruction.parent();
   if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "integer libcall became detached during legalization");
+    return makeUnexpected(ErrorCode::InternalError, "libcall became detached during legalization");
   return Block->removeInstruction(Instruction);
 }
 

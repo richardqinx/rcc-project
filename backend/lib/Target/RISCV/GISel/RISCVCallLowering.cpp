@@ -801,28 +801,92 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
   return Function.createMemOperand(std::move(Description));
 }
 
-[[nodiscard]] Expected<void> emitCCCopy(MachineIRBuilder &Builder, Register Destination,
-                                        Register Source, CallValueTransform Transform) {
-  const Opcode CopyOpcode = Transform == CallValueTransform::Full
-                                ? opcode(GenericOpcode::COPY)
-                                : instructionOpcode(InstructionOpcode::PseudoCC_COPY);
-  auto Instruction = Builder.buildInstr(CopyOpcode);
-  if (!Instruction)
-    return std::unexpected(Instruction.error());
-  auto Def = Instruction->addDef(Destination);
-  if (!Def)
-    return std::unexpected(Def.error());
-  auto Use = Instruction->addUse(Source);
-  if (!Use)
-    return std::unexpected(Use.error());
-  if (Transform != CallValueTransform::Full) {
-    auto Action = Instruction->addImmediate(static_cast<std::int64_t>(Transform));
-    if (!Action)
-      return std::unexpected(Action.error());
+[[nodiscard]] Expected<Register> extendOutgoingRegister(MachineIRBuilder &Builder, Register Source,
+                                                        const CCAssignment &Assignment) {
+  const std::uint32_t ValueWidth = Assignment.ValueType.scalarBitWidth();
+  const std::uint32_t LocationWidth = Assignment.LocationType.scalarBitWidth();
+  if (ValueWidth == LocationWidth)
+    return Source;
+  if (ValueWidth > LocationWidth) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V ABI register assignment narrows an outgoing value");
   }
-  auto Built = Instruction->build();
+
+  auto Extended = Builder.function().registerInfo().createVirtualRegister(Assignment.LocationType);
+  if (!Extended)
+    return std::unexpected(Extended.error());
+
+  Expected<MachineInstr *> Built = makeUnexpected(
+      ErrorCode::InternalError, "RISC-V ABI outgoing register extension was not initialized");
+  switch (outgoingTransform(Assignment)) {
+  case CallValueTransform::AnyExtend:
+  case CallValueTransform::Bitcast:
+    Built = Builder.buildAnyExt(*Extended, Source);
+    break;
+  case CallValueTransform::SignExtend:
+    Built = Builder.buildSExt(*Extended, Source);
+    break;
+  case CallValueTransform::ZeroExtend:
+    Built = Builder.buildZExt(*Extended, Source);
+    break;
+  case CallValueTransform::Full:
+  case CallValueTransform::Truncate:
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V ABI outgoing register assignment lacks an extension transform");
+  }
   if (!Built)
     return std::unexpected(Built.error());
+  return *Extended;
+}
+
+[[nodiscard]] Expected<void> emitOutgoingRegisterAssignment(MachineIRBuilder &Builder,
+                                                            const CCAssignment &Assignment,
+                                                            Register Source) {
+  if (!Assignment.LocationRegister) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "RISC-V register assignment has no location register");
+  }
+  auto Extended = extendOutgoingRegister(Builder, Source, Assignment);
+  if (!Extended)
+    return std::unexpected(Extended.error());
+  auto Copy = Builder.buildCopy(Register::fromPhysical(*Assignment.LocationRegister), *Extended);
+  if (!Copy)
+    return std::unexpected(Copy.error());
+  return {};
+}
+
+[[nodiscard]] Expected<void> emitIncomingRegisterAssignment(MachineIRBuilder &Builder,
+                                                            const CCAssignment &Assignment) {
+  if (!Assignment.LocationRegister) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "RISC-V register assignment has no location register");
+  }
+
+  const std::uint32_t ValueWidth = Assignment.ValueType.scalarBitWidth();
+  const std::uint32_t LocationWidth = Assignment.LocationType.scalarBitWidth();
+  if (ValueWidth == LocationWidth) {
+    auto Copy = Builder.buildCopy(Assignment.OriginalValue,
+                                  Register::fromPhysical(*Assignment.LocationRegister));
+    if (!Copy)
+      return std::unexpected(Copy.error());
+    return {};
+  }
+  if (ValueWidth > LocationWidth) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V ABI register assignment widens an incoming value");
+  }
+
+  auto LocationValue =
+      Builder.function().registerInfo().createVirtualRegister(Assignment.LocationType);
+  if (!LocationValue)
+    return std::unexpected(LocationValue.error());
+  auto Copy =
+      Builder.buildCopy(*LocationValue, Register::fromPhysical(*Assignment.LocationRegister));
+  if (!Copy)
+    return std::unexpected(Copy.error());
+  auto Truncation = Builder.buildTrunc(Assignment.OriginalValue, *LocationValue);
+  if (!Truncation)
+    return std::unexpected(Truncation.error());
   return {};
 }
 
@@ -970,15 +1034,10 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
 
 [[nodiscard]] Expected<void> verifyRequiredOpcodes(const MachineIRBuilder &Builder) {
   static constexpr std::array Required{
-      InstructionOpcode::PseudoCC_COPY,
-      InstructionOpcode::PseudoLOAD_STACK_ARG,
-      InstructionOpcode::PseudoSTORE_STACK_ARG,
-      InstructionOpcode::PseudoBYVAL_COPY,
-      InstructionOpcode::ADJCALLSTACKDOWN,
-      InstructionOpcode::ADJCALLSTACKUP,
-      InstructionOpcode::PseudoCALL,
-      InstructionOpcode::PseudoTAIL,
-      InstructionOpcode::PseudoRET,
+      InstructionOpcode::PseudoLOAD_STACK_ARG, InstructionOpcode::PseudoSTORE_STACK_ARG,
+      InstructionOpcode::PseudoBYVAL_COPY,     InstructionOpcode::ADJCALLSTACKDOWN,
+      InstructionOpcode::ADJCALLSTACKUP,       InstructionOpcode::PseudoCALL,
+      InstructionOpcode::PseudoTAIL,           InstructionOpcode::PseudoRET,
   };
   for (const InstructionOpcode OpcodeValue : Required) {
     if (Builder.target().instructionDescriptor(instructionOpcode(OpcodeValue)) == nullptr) {
@@ -1085,8 +1144,7 @@ createMemoryOperand(MachineFunction &Function, MemoryAccessFlags Accesses, std::
       auto BlockLiveIn = ensureBlockLiveIn(Entry, Location);
       if (!BlockLiveIn)
         return std::unexpected(BlockLiveIn.error());
-      auto Copy = emitCCCopy(Builder, Assignment.OriginalValue, Register::fromPhysical(Location),
-                             incomingTransform(Assignment));
+      auto Copy = emitIncomingRegisterAssignment(Builder, Assignment);
       if (!Copy)
         return std::unexpected(Copy.error());
       continue;
@@ -1296,8 +1354,7 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
     const Register Source =
         Replacement == Replacements.end() ? Assignment.OriginalValue : Replacement->second;
     if (Assignment.LocationRegister) {
-      auto Copy = emitCCCopy(Builder, Register::fromPhysical(*Assignment.LocationRegister), Source,
-                             outgoingTransform(Assignment));
+      auto Copy = emitOutgoingRegisterAssignment(Builder, Assignment, Source);
       if (!Copy)
         return std::unexpected(Copy.error());
       continue;
@@ -1422,11 +1479,7 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
   }
   if (Plan.tailDecision() == TailCallKind::NotTail) {
     for (const CCAssignment &Assignment : Plan.returnAssignments()) {
-      auto Location = requiredLocationRegister(Assignment);
-      if (!Location)
-        return std::unexpected(Location.error());
-      auto Copy = emitCCCopy(Builder, Assignment.OriginalValue, Register::fromPhysical(*Location),
-                             incomingTransform(Assignment));
+      auto Copy = emitIncomingRegisterAssignment(Builder, Assignment);
       if (!Copy)
         return std::unexpected(Copy.error());
     }
@@ -1453,11 +1506,7 @@ emitOutgoingArguments(MachineIRBuilder &Builder, const CallLoweringPlan &Plan,
 
 [[nodiscard]] Expected<void> emitReturn(MachineIRBuilder &Builder, const CallLoweringPlan &Plan) {
   for (const CCAssignment &Assignment : Plan.returnAssignments()) {
-    auto Location = requiredLocationRegister(Assignment);
-    if (!Location)
-      return std::unexpected(Location.error());
-    auto Copy = emitCCCopy(Builder, Register::fromPhysical(*Location), Assignment.OriginalValue,
-                           outgoingTransform(Assignment));
+    auto Copy = emitOutgoingRegisterAssignment(Builder, Assignment, Assignment.OriginalValue);
     if (!Copy)
       return std::unexpected(Copy.error());
   }

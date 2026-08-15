@@ -3874,18 +3874,6 @@ instructions:
     owner: post_ra_expansion
     deadline: post_ra_finalized
   -
-    id: 1216
-    symbol: PseudoCC_COPY
-    name: PseudoCC_COPY
-    operands:
-      - { kinds: [register], role: def }
-      - { kinds: [register], role: use }
-      - { kinds: [immediate] }
-    num_explicit_defs: 1
-    flags: [pseudo, produces_code, allowed_pre_legalizer]
-    owner: instruction_select
-    deadline: selected
-  -
     id: 1217
     symbol: PseudoLOAD_STACK_ARG
     name: PseudoLOAD_STACK_ARG
