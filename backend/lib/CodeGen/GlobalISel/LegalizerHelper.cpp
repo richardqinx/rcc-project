@@ -4227,6 +4227,41 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   case GenericOpcode::G_SADDE:
   case GenericOpcode::G_SSUBE:
     return lowerSignedAddSubOverflow(Instruction);
+  case GenericOpcode::G_UADDSAT:
+  case GenericOpcode::G_SADDSAT:
+  case GenericOpcode::G_USUBSAT:
+  case GenericOpcode::G_SSUBSAT: {
+    const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+    const bool IsSigned =
+        Generic == GenericOpcode::G_SADDSAT || Generic == GenericOpcode::G_SSUBSAT;
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    if (Destination == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "saturating add/sub lowering requires a register destination");
+    auto Type = MRI.getType(*Destination);
+    if (!Type)
+      return std::unexpected(Type.error());
+
+    const GenericOpcode MinOpcode = IsSigned ? GenericOpcode::G_SMIN : GenericOpcode::G_UMIN;
+    auto MinLegal = Info.isLegal(LegalizationQuery(opcode(MinOpcode), {*Type}));
+    if (!MinLegal)
+      return std::unexpected(MinLegal.error());
+    if (!IsSigned && *MinLegal)
+      return lowerSaturatingAddSubToMinMax(Instruction);
+    if (IsSigned) {
+      auto MaxLegal = Info.isLegal(LegalizationQuery(opcode(GenericOpcode::G_SMAX), {*Type}));
+      if (!MaxLegal)
+        return std::unexpected(MaxLegal.error());
+      if (*MinLegal && *MaxLegal)
+        return lowerSaturatingAddSubToMinMax(Instruction);
+    }
+    return lowerSaturatingAddSubToOverflow(Instruction);
+  }
+  case GenericOpcode::G_SSHLSAT:
+  case GenericOpcode::G_USHLSAT:
+    return lowerSaturatingShiftLeft(Instruction);
   case GenericOpcode::G_SEXT_INREG: {
     const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
     const Register Source = *Instruction.operandAt(1)->getIf<Register>();
@@ -6090,6 +6125,333 @@ Expected<void> LegalizerHelper::lowerSignedAddSubOverflow(MachineInstr &Instruct
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError,
                           "signed add/sub overflow instruction became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerSaturatingAddSubToMinMax(MachineInstr &Instruction) {
+  if (Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "saturating add/sub min/max lowering requires three register operands");
+
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  const bool IsSigned = Generic == GenericOpcode::G_SADDSAT || Generic == GenericOpcode::G_SSUBSAT;
+  const bool IsAdd = Generic == GenericOpcode::G_UADDSAT || Generic == GenericOpcode::G_SADDSAT;
+  const GenericOpcode ArithmeticOpcode = IsAdd ? GenericOpcode::G_ADD : GenericOpcode::G_SUB;
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *LeftOperand = Instruction.operandAt(1);
+  const MachineOperand *RightOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+  const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+  if (Destination == nullptr || Left == nullptr || Right == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "saturating add/sub min/max lowering requires register operands");
+
+  auto Type = MRI.getType(*Destination);
+  if (!Type)
+    return std::unexpected(Type.error());
+  if (!Type->isCategoryNeutralScalar() || Type->scalarBitWidth() == 0)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "saturating add/sub min/max lowering requires a scalar integer type");
+  const std::uint32_t BitWidth = Type->scalarBitWidth();
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (IsSigned) {
+    auto MaximumValue = APInt::getLowBitsSet(BitWidth, BitWidth - 1U);
+    auto MinimumValue = oneBitSet(BitWidth, BitWidth - 1U);
+    if (!MaximumValue)
+      return std::unexpected(MaximumValue.error());
+    if (!MinimumValue)
+      return std::unexpected(MinimumValue.error());
+    auto Maximum = buildConstantRegister(MIRBuilder, *Type, std::move(*MaximumValue));
+    auto Minimum = buildConstantRegister(MIRBuilder, *Type, std::move(*MinimumValue));
+    if (!Maximum)
+      return std::unexpected(Maximum.error());
+    if (!Minimum)
+      return std::unexpected(Minimum.error());
+
+    Register LowerBound;
+    Register UpperBound;
+    if (IsAdd) {
+      auto Zero = buildConstantRegister(MIRBuilder, *Type, 0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      auto LeftMaximum =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_SMAX, *Type, {*Left, *Zero});
+      if (!LeftMaximum)
+        return std::unexpected(LeftMaximum.error());
+      auto High =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *Type, {*Maximum, *LeftMaximum});
+      if (!High)
+        return std::unexpected(High.error());
+      auto LeftMinimum =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_SMIN, *Type, {*Left, *Zero});
+      if (!LeftMinimum)
+        return std::unexpected(LeftMinimum.error());
+      auto Low =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *Type, {*Minimum, *LeftMinimum});
+      if (!Low)
+        return std::unexpected(Low.error());
+      LowerBound = *Low;
+      UpperBound = *High;
+    } else {
+      auto NegativeOne = buildConstantRegister(MIRBuilder, *Type, -1);
+      if (!NegativeOne)
+        return std::unexpected(NegativeOne.error());
+      auto LeftMaximum =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_SMAX, *Type, {*Left, *NegativeOne});
+      if (!LeftMaximum)
+        return std::unexpected(LeftMaximum.error());
+      auto Low =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *Type, {*LeftMaximum, *Maximum});
+      if (!Low)
+        return std::unexpected(Low.error());
+      auto LeftMinimum =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_SMIN, *Type, {*Left, *NegativeOne});
+      if (!LeftMinimum)
+        return std::unexpected(LeftMinimum.error());
+      auto High =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_SUB, *Type, {*LeftMinimum, *Minimum});
+      if (!High)
+        return std::unexpected(High.error());
+      LowerBound = *Low;
+      UpperBound = *High;
+    }
+
+    auto LowerClamped =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_SMAX, *Type, {LowerBound, *Right});
+    if (!LowerClamped)
+      return std::unexpected(LowerClamped.error());
+    auto ClampedRight = buildResultInstruction(MIRBuilder, GenericOpcode::G_SMIN, *Type,
+                                               {*LowerClamped, UpperBound});
+    if (!ClampedRight)
+      return std::unexpected(ClampedRight.error());
+    if (auto Built =
+            MIRBuilder.buildInstr(opcode(ArithmeticOpcode), {*Destination}, {*Left, *ClampedRight});
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+  } else {
+    Register Available;
+    if (IsAdd) {
+      auto AllBits = APInt::getLowBitsSet(BitWidth, BitWidth);
+      if (!AllBits)
+        return std::unexpected(AllBits.error());
+      auto AllOnes = buildConstantRegister(MIRBuilder, *Type, std::move(*AllBits));
+      if (!AllOnes)
+        return std::unexpected(AllOnes.error());
+      auto Inverted =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_XOR, *Type, {*Left, *AllOnes});
+      if (!Inverted)
+        return std::unexpected(Inverted.error());
+      Available = *Inverted;
+    } else {
+      Available = *Left;
+    }
+    auto Minimum =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_UMIN, *Type, {Available, *Right});
+    if (!Minimum)
+      return std::unexpected(Minimum.error());
+    if (auto Built =
+            MIRBuilder.buildInstr(opcode(ArithmeticOpcode), {*Destination}, {*Left, *Minimum});
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "saturating add/sub became detached during min/max lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerSaturatingAddSubToOverflow(MachineInstr &Instruction) {
+  if (Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "saturating add/sub overflow lowering requires three register operands");
+
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  const bool IsSigned = Generic == GenericOpcode::G_SADDSAT || Generic == GenericOpcode::G_SSUBSAT;
+  const bool IsAdd = Generic == GenericOpcode::G_UADDSAT || Generic == GenericOpcode::G_SADDSAT;
+  const GenericOpcode OverflowOpcode =
+      IsAdd ? (IsSigned ? GenericOpcode::G_SADDO : GenericOpcode::G_UADDO)
+            : (IsSigned ? GenericOpcode::G_SSUBO : GenericOpcode::G_USUBO);
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *LeftOperand = Instruction.operandAt(1);
+  const MachineOperand *RightOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+  const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+  if (Destination == nullptr || Left == nullptr || Right == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "saturating add/sub overflow lowering requires register operands");
+
+  auto Type = MRI.getType(*Destination);
+  if (!Type)
+    return std::unexpected(Type.error());
+  if (!Type->isCategoryNeutralScalar() || Type->scalarBitWidth() == 0)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "saturating add/sub overflow lowering requires a scalar integer type");
+  auto BooleanType = booleanTypeFor(*Type);
+  if (!BooleanType)
+    return std::unexpected(BooleanType.error());
+  auto Temporary = MRI.createVirtualRegister(*Type);
+  auto Overflow = MRI.createVirtualRegister(*BooleanType);
+  if (!Temporary)
+    return std::unexpected(Temporary.error());
+  if (!Overflow)
+    return std::unexpected(Overflow.error());
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built =
+          MIRBuilder.buildInstr(opcode(OverflowOpcode), {*Temporary, *Overflow}, {*Left, *Right});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+
+  Register Clamp;
+  if (IsSigned) {
+    const std::uint32_t BitWidth = Type->scalarBitWidth();
+    auto ShiftAmount =
+        buildConstantRegister(MIRBuilder, *Type, static_cast<std::int64_t>(BitWidth - 1U));
+    auto MinimumValue = oneBitSet(BitWidth, BitWidth - 1U);
+    if (!ShiftAmount)
+      return std::unexpected(ShiftAmount.error());
+    if (!MinimumValue)
+      return std::unexpected(MinimumValue.error());
+    auto Sign = buildResultInstruction(MIRBuilder, GenericOpcode::G_ASHR, *Type,
+                                       {*Temporary, *ShiftAmount});
+    auto Minimum = buildConstantRegister(MIRBuilder, *Type, std::move(*MinimumValue));
+    if (!Sign)
+      return std::unexpected(Sign.error());
+    if (!Minimum)
+      return std::unexpected(Minimum.error());
+    auto Saturated =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, *Type, {*Sign, *Minimum});
+    if (!Saturated)
+      return std::unexpected(Saturated.error());
+    Clamp = *Saturated;
+  } else if (IsAdd) {
+    auto AllBits = APInt::getLowBitsSet(Type->scalarBitWidth(), Type->scalarBitWidth());
+    if (!AllBits)
+      return std::unexpected(AllBits.error());
+    auto Saturated = buildConstantRegister(MIRBuilder, *Type, std::move(*AllBits));
+    if (!Saturated)
+      return std::unexpected(Saturated.error());
+    Clamp = *Saturated;
+  } else {
+    auto Saturated = buildConstantRegister(MIRBuilder, *Type, 0);
+    if (!Saturated)
+      return std::unexpected(Saturated.error());
+    Clamp = *Saturated;
+  }
+
+  if (auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {*Destination},
+                                         {*Overflow, Clamp, *Temporary});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "saturating add/sub became detached during overflow lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerSaturatingShiftLeft(MachineInstr &Instruction) {
+  if (Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "saturating shift-left lowering requires three register operands");
+
+  const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_SSHLSAT);
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *LeftOperand = Instruction.operandAt(1);
+  const MachineOperand *RightOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+  const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+  if (Destination == nullptr || Left == nullptr || Right == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "saturating shift-left lowering requires register operands");
+
+  auto Type = MRI.getType(*Destination);
+  if (!Type)
+    return std::unexpected(Type.error());
+  if (!Type->isCategoryNeutralScalar() || Type->scalarBitWidth() == 0)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "saturating shift-left lowering requires a scalar integer type");
+  auto BooleanType = booleanTypeFor(*Type);
+  if (!BooleanType)
+    return std::unexpected(BooleanType.error());
+  const std::uint32_t BitWidth = Type->scalarBitWidth();
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  auto Shifted = buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, *Type, {*Left, *Right});
+  if (!Shifted)
+    return std::unexpected(Shifted.error());
+  auto Restored =
+      buildResultInstruction(MIRBuilder, IsSigned ? GenericOpcode::G_ASHR : GenericOpcode::G_LSHR,
+                             *Type, {*Shifted, *Right});
+  if (!Restored)
+    return std::unexpected(Restored.error());
+
+  Register Saturated;
+  if (IsSigned) {
+    auto MinimumValue = oneBitSet(BitWidth, BitWidth - 1U);
+    auto MaximumValue = APInt::getLowBitsSet(BitWidth, BitWidth - 1U);
+    if (!MinimumValue)
+      return std::unexpected(MinimumValue.error());
+    if (!MaximumValue)
+      return std::unexpected(MaximumValue.error());
+    auto Minimum = buildConstantRegister(MIRBuilder, *Type, std::move(*MinimumValue));
+    auto Maximum = buildConstantRegister(MIRBuilder, *Type, std::move(*MaximumValue));
+    auto Zero = buildConstantRegister(MIRBuilder, *Type, 0);
+    if (!Minimum)
+      return std::unexpected(Minimum.error());
+    if (!Maximum)
+      return std::unexpected(Maximum.error());
+    if (!Zero)
+      return std::unexpected(Zero.error());
+    auto Negative =
+        buildICmpRegister(MIRBuilder, IntegerPredicate::SignedLessThan, *BooleanType, *Left, *Zero);
+    if (!Negative)
+      return std::unexpected(Negative.error());
+    auto SignSaturated = buildResultInstruction(MIRBuilder, GenericOpcode::G_SELECT, *Type,
+                                                {*Negative, *Minimum, *Maximum});
+    if (!SignSaturated)
+      return std::unexpected(SignSaturated.error());
+    Saturated = *SignSaturated;
+  } else {
+    auto AllBits = APInt::getLowBitsSet(BitWidth, BitWidth);
+    if (!AllBits)
+      return std::unexpected(AllBits.error());
+    auto Maximum = buildConstantRegister(MIRBuilder, *Type, std::move(*AllBits));
+    if (!Maximum)
+      return std::unexpected(Maximum.error());
+    Saturated = *Maximum;
+  }
+
+  auto Overflow =
+      buildICmpRegister(MIRBuilder, IntegerPredicate::NotEqual, *BooleanType, *Left, *Restored);
+  if (!Overflow)
+    return std::unexpected(Overflow.error());
+  if (auto Built = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SELECT), {*Destination},
+                                         {*Overflow, Saturated, *Shifted});
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "saturating shift-left became detached during lowering");
   return Block->removeInstruction(Instruction);
 }
 

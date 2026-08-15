@@ -135,6 +135,9 @@ private:
   [[nodiscard]] Expected<void> widenScalarMulo(MachineInstr &Instruction, std::size_t TypeIndex,
                                                LowLevelType WideType);
   [[nodiscard]] Expected<void> lowerSignedAddSubOverflow(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerSaturatingAddSubToMinMax(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerSaturatingAddSubToOverflow(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerSaturatingShiftLeft(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerMulo(MachineInstr &Instruction);
 
   MachineFunction &Function;
