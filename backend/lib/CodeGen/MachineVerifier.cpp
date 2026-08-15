@@ -923,8 +923,9 @@ private:
     }
 
     const bool NeedsTypes = Options.Mode == MachineVerifierMode::PreLegalizer ||
-                            Has(MachineFunctionProperty::Legalized) ||
-                            Has(MachineFunctionProperty::RegBankSelected);
+                            (!Has(MachineFunctionProperty::Selected) &&
+                             (Has(MachineFunctionProperty::Legalized) ||
+                              Has(MachineFunctionProperty::RegBankSelected)));
     if (NeedsTypes && MissingVirtualType)
       return fail("typed pipeline stage has a virtual register without LowLevelType");
 

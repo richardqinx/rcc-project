@@ -326,6 +326,9 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
   if (!RegisterValidation)
     return std::unexpected(withErrorContext(RegisterValidation.error(),
                                             "instruction selection produced invalid registers: "));
+  Function.registerInfo().clearAllVirtualRegisterTypes();
+  Result.Changed = true;
+  Result.Changes.add(MachinePassChange::Registers);
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;
 }
