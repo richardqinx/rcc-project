@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <numeric>
 #include <optional>
 #include <span>
@@ -161,6 +162,101 @@ buildFlaggedBinaryInstruction(MachineIRBuilder &Builder, GenericOpcode Generic, 
   if (auto Built = Pending->build(); !Built)
     return std::unexpected(Built.error());
   return *Destination;
+}
+
+[[nodiscard]] Expected<std::int64_t> addMemoryOffset(std::int64_t Offset,
+                                                     std::uint64_t ByteOffset) {
+  if (ByteOffset > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory split offset exceeds the representable machine memory range");
+  }
+  const auto SignedByteOffset = static_cast<std::int64_t>(ByteOffset);
+  if (Offset > std::numeric_limits<std::int64_t>::max() - SignedByteOffset) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory split offset exceeds the representable machine memory range");
+  }
+  return Offset + SignedByteOffset;
+}
+
+[[nodiscard]] Expected<const MachineMemOperand *>
+deriveMemoryOperand(MachineFunction &Function, const MachineMemOperand &Original,
+                    LowLevelType MemoryType, std::uint64_t ByteOffset) {
+  if (!MemoryType.isScalarValue() || MemoryType.minimumBitWidth() == 0 ||
+      MemoryType.minimumBitWidth() % 8U != 0) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory splitting requires a byte-sized scalar memory type");
+  }
+
+  const std::uint64_t ByteSize = MemoryType.minimumBitWidth() / 8U;
+  auto Size = MemorySize::fixed(ByteSize);
+  if (!Size)
+    return std::unexpected(Size.error());
+
+  MachineMemOperandDesc Description = Original.description();
+  auto Offset = addMemoryOffset(Description.Offset, ByteOffset);
+  if (!Offset)
+    return std::unexpected(Offset.error());
+  Description.Offset = *Offset;
+  if (Description.OffsetRange) {
+    auto Lower = addMemoryOffset(Description.OffsetRange->Lower, ByteOffset);
+    auto Upper = addMemoryOffset(Description.OffsetRange->Upper, ByteOffset);
+    if (!Lower)
+      return std::unexpected(Lower.error());
+    if (!Upper)
+      return std::unexpected(Upper.error());
+    Description.OffsetRange = MemoryOffsetRange{*Lower, *Upper};
+  }
+
+  const Alignment BaseAlignment = Description.BaseAlign.value_or(Description.Align);
+  std::uint64_t EffectiveAlignment = BaseAlignment.bytes();
+  if (Description.Offset != 0) {
+    const auto OffsetBits = static_cast<std::uint64_t>(Description.Offset);
+    const std::uint64_t OffsetAlignment = std::uint64_t{1} << std::countr_zero(OffsetBits);
+    EffectiveAlignment = std::min(EffectiveAlignment, OffsetAlignment);
+  }
+  auto AlignmentValue = Alignment::create(EffectiveAlignment);
+  if (!AlignmentValue)
+    return std::unexpected(AlignmentValue.error());
+
+  Description.Size = *Size;
+  Description.MemoryType = MemoryType;
+  Description.Align = *AlignmentValue;
+  if (BaseAlignment == Description.Align)
+    Description.BaseAlign.reset();
+  else
+    Description.BaseAlign = BaseAlignment;
+  return Function.createMemOperand(std::move(Description));
+}
+
+[[nodiscard]] Expected<Register>
+buildObjectPointerOffset(MachineIRBuilder &Builder, Register Pointer, std::uint64_t ByteOffset) {
+  if (ByteOffset == 0)
+    return Pointer;
+
+  auto PointerType = Builder.function().registerInfo().getType(Pointer);
+  if (!PointerType)
+    return std::unexpected(PointerType.error());
+  if (!PointerType->isPointer()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "memory splitting requires a pointer address operand");
+  }
+  const std::uint32_t PointerBits = PointerType->scalarBitWidth();
+  if (PointerBits < 64U && (ByteOffset >> PointerBits) != 0) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory split offset does not fit the pointer index type");
+  }
+  auto OffsetType = LowLevelType::makeCategoryNeutralScalar(PointerBits);
+  if (!OffsetType)
+    return std::unexpected(OffsetType.error());
+  auto OffsetValue = APInt::fromUnsigned(PointerBits, ByteOffset);
+  if (!OffsetValue)
+    return std::unexpected(OffsetValue.error());
+  auto Offset = buildConstantRegister(Builder, *OffsetType, std::move(*OffsetValue));
+  if (!Offset)
+    return std::unexpected(Offset.error());
+  return buildFlaggedBinaryInstruction(
+      Builder, GenericOpcode::G_PTR_ADD, *PointerType, Pointer, *Offset,
+      MachineInstrFlags{MachineInstrFlag::NoUnsignedWrap, MachineInstrFlag::InBounds});
 }
 
 [[nodiscard]] Expected<APInt> repeatedByte(std::uint32_t BitWidth, std::uint8_t Byte) {
@@ -3332,6 +3428,256 @@ Expected<void> LegalizerHelper::narrowScalarShiftMultiway(MachineInstr &Instruct
   return Block->removeInstruction(Instruction);
 }
 
+Expected<void> LegalizerHelper::narrowScalarLoadStore(MachineInstr &Instruction,
+                                                      std::size_t TypeIndex,
+                                                      LowLevelType NarrowType) {
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (Generic != GenericOpcode::G_LOAD && Generic != GenericOpcode::G_STORE) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "memory scalar narrowing received an unsupported opcode");
+  }
+  if (TypeIndex != 0 || !NarrowType.isCategoryNeutralScalar() ||
+      NarrowType.minimumBitWidth() == 0 || NarrowType.minimumBitWidth() % 8U != 0) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "memory scalar narrowing requires a byte-sized scalar value type");
+  }
+  if (Instruction.operandCount() != 2 || Instruction.memOperands().size() != 1 ||
+      Instruction.memOperands().front() == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "memory scalar narrowing requires one address and one memory operand");
+  }
+
+  const MachineOperand *ValueOperand = Instruction.operandAt(0);
+  const MachineOperand *AddressOperand = Instruction.operandAt(1);
+  const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
+  const Register *Address = AddressOperand == nullptr ? nullptr : AddressOperand->getIf<Register>();
+  if (Value == nullptr || Address == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "memory scalar narrowing requires register value and address operands");
+  }
+  auto ValueType = MRI.getType(*Value);
+  if (!ValueType)
+    return std::unexpected(ValueType.error());
+  if (!ValueType->isCategoryNeutralScalar() ||
+      NarrowType.minimumBitWidth() >= ValueType->minimumBitWidth()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory scalar narrowing requires a smaller integer scalar type");
+  }
+
+  const MachineMemOperand &Memory = *Instruction.memOperands().front();
+  const MachineMemOperandDesc &Description = Memory.description();
+  if (!Description.Size.isKnown() || Description.Size.isScalable() || !Description.MemoryType) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory scalar narrowing requires a fixed typed memory operand");
+  }
+  const std::uint64_t MemorySizeInBits = Description.Size.minimumBytes() * 8U;
+  if (MemorySizeInBits != ValueType->minimumBitWidth()) {
+    if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+      return std::unexpected(Point.error());
+
+    if (Generic == GenericOpcode::G_LOAD) {
+      auto Temporary = MRI.createVirtualRegister(NarrowType);
+      if (!Temporary)
+        return std::unexpected(Temporary.error());
+      auto Load = MIRBuilder.buildInstr(opcode(GenericOpcode::G_LOAD));
+      if (!Load)
+        return std::unexpected(Load.error());
+      if (auto Added = Load->addDef(*Temporary); !Added)
+        return std::unexpected(Added.error());
+      if (auto Added = Load->addUse(*Address); !Added)
+        return std::unexpected(Added.error());
+      if (auto Added = Load->addMemOperand(Memory); !Added)
+        return std::unexpected(Added.error());
+      if (auto Built = Load->build(); !Built)
+        return std::unexpected(Built.error());
+      if (auto Extended = MIRBuilder.buildAnyExt(*Value, *Temporary); !Extended)
+        return std::unexpected(Extended.error());
+    } else {
+      auto Temporary = MRI.createVirtualRegister(NarrowType);
+      if (!Temporary)
+        return std::unexpected(Temporary.error());
+      if (auto Truncated = MIRBuilder.buildTrunc(*Temporary, *Value); !Truncated)
+        return std::unexpected(Truncated.error());
+      auto Store = MIRBuilder.buildInstr(opcode(GenericOpcode::G_STORE));
+      if (!Store)
+        return std::unexpected(Store.error());
+      if (auto Added = Store->addUse(*Temporary); !Added)
+        return std::unexpected(Added.error());
+      if (auto Added = Store->addUse(*Address); !Added)
+        return std::unexpected(Added.error());
+      if (auto Added = Store->addMemOperand(Memory); !Added)
+        return std::unexpected(Added.error());
+      if (auto Built = Store->build(); !Built)
+        return std::unexpected(Built.error());
+    }
+
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "memory instruction became detached during scalar narrowing");
+    }
+    return Block->removeInstruction(Instruction);
+  }
+
+  return reduceLoadStoreWidth(Instruction, TypeIndex, NarrowType);
+}
+
+Expected<void> LegalizerHelper::reduceLoadStoreWidth(MachineInstr &Instruction,
+                                                     std::size_t TypeIndex,
+                                                     LowLevelType NarrowType) {
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (Generic != GenericOpcode::G_LOAD && Generic != GenericOpcode::G_STORE) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "memory width reduction received an unsupported opcode");
+  }
+  if (TypeIndex != 0 || !NarrowType.isCategoryNeutralScalar() ||
+      NarrowType.minimumBitWidth() == 0 || NarrowType.minimumBitWidth() % 8U != 0) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory width reduction requires a byte-sized scalar target type");
+  }
+  if (Instruction.operandCount() != 2 || Instruction.memOperands().size() != 1 ||
+      Instruction.memOperands().front() == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "memory width reduction requires one address and one memory operand");
+  }
+
+  const bool IsLoad = Generic == GenericOpcode::G_LOAD;
+  const MachineOperand *ValueOperand = Instruction.operandAt(0);
+  const MachineOperand *AddressOperand = Instruction.operandAt(1);
+  const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
+  const Register *Address = AddressOperand == nullptr ? nullptr : AddressOperand->getIf<Register>();
+  if (Value == nullptr || Address == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "memory width reduction requires register value and address operands");
+  }
+  auto ValueType = MRI.getType(*Value);
+  if (!ValueType)
+    return std::unexpected(ValueType.error());
+  if (!ValueType->isCategoryNeutralScalar()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory width reduction does not support pointer or vector values");
+  }
+
+  const MachineMemOperand &Memory = *Instruction.memOperands().front();
+  const MachineMemOperandDesc &Description = Memory.description();
+  if (Memory.isAtomic()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory width reduction does not support atomic operations");
+  }
+  if (!Description.Size.isKnown() || Description.Size.isScalable() || !Description.MemoryType ||
+      Description.MemoryType->isVector()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "memory width reduction requires a fixed scalar memory operand");
+  }
+  const std::uint64_t ValueBits = ValueType->minimumBitWidth();
+  if (ValueBits != Description.Size.minimumBytes() * 8U ||
+      NarrowType.minimumBitWidth() >= ValueBits) {
+    return makeUnexpected(
+        ErrorCode::Unsupported,
+        "memory width reduction cannot split the requested value and memory widths");
+  }
+
+  const std::size_t PartCount = static_cast<std::size_t>(ValueBits / NarrowType.minimumBitWidth());
+  const std::uint64_t LeftoverBits = ValueBits - PartCount * NarrowType.minimumBitWidth();
+  LowLevelType ExpectedLeftoverType;
+  if (LeftoverBits != 0) {
+    auto Type = LowLevelType::makeCategoryNeutralScalar(LeftoverBits);
+    if (!Type)
+      return std::unexpected(Type.error());
+    if (LeftoverBits % 8U != 0) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "memory width reduction leaves a non-byte-sized scalar fragment");
+    }
+    ExpectedLeftoverType = *Type;
+  }
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+
+  std::vector<Register> Parts;
+  std::vector<Register> Leftovers;
+  LowLevelType LeftoverType;
+  if (IsLoad) {
+    Parts.reserve(PartCount);
+    for (std::size_t Index = 0; Index != PartCount; ++Index) {
+      auto Part = MRI.createVirtualRegister(NarrowType);
+      if (!Part)
+        return std::unexpected(Part.error());
+      Parts.push_back(*Part);
+    }
+    LeftoverType = ExpectedLeftoverType;
+    if (ExpectedLeftoverType.isValid()) {
+      auto Leftover = MRI.createVirtualRegister(ExpectedLeftoverType);
+      if (!Leftover)
+        return std::unexpected(Leftover.error());
+      Leftovers.push_back(*Leftover);
+    }
+  } else {
+    auto Extracted = extractParts(*Value, *ValueType, NarrowType, LeftoverType, Parts, Leftovers,
+                                  MIRBuilder, MRI);
+    if (!Extracted)
+      return std::unexpected(Extracted.error());
+    if (!*Extracted || Parts.size() != PartCount || LeftoverType != ExpectedLeftoverType ||
+        (ExpectedLeftoverType.isValid() && Leftovers.size() != 1U)) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "memory width reduction cannot split the store value consistently");
+    }
+  }
+
+  const auto SplitPieces = [&](LowLevelType PartType, const std::vector<Register> &Values,
+                               std::uint64_t &Offset) -> Expected<void> {
+    const std::uint64_t PartBytes = PartType.minimumBitWidth() / 8U;
+    for (Register Part : Values) {
+      auto AddressPart = buildObjectPointerOffset(MIRBuilder, *Address, Offset);
+      if (!AddressPart)
+        return std::unexpected(AddressPart.error());
+      auto MemoryPart = deriveMemoryOperand(Function, Memory, PartType, Offset);
+      if (!MemoryPart)
+        return std::unexpected(MemoryPart.error());
+
+      auto Access =
+          MIRBuilder.buildInstr(opcode(IsLoad ? GenericOpcode::G_LOAD : GenericOpcode::G_STORE));
+      if (!Access)
+        return std::unexpected(Access.error());
+      if (IsLoad) {
+        if (auto Added = Access->addDef(Part); !Added)
+          return std::unexpected(Added.error());
+      } else if (auto Added = Access->addUse(Part); !Added) {
+        return std::unexpected(Added.error());
+      }
+      if (auto Added = Access->addUse(*AddressPart); !Added)
+        return std::unexpected(Added.error());
+      if (auto Added = Access->addMemOperand(**MemoryPart); !Added)
+        return std::unexpected(Added.error());
+      if (auto Built = Access->build(); !Built)
+        return std::unexpected(Built.error());
+      Offset += PartBytes;
+    }
+    return {};
+  };
+
+  std::uint64_t Offset = 0;
+  if (auto Split = SplitPieces(NarrowType, Parts, Offset); !Split)
+    return std::unexpected(Split.error());
+  if (LeftoverType.isValid()) {
+    if (auto Split = SplitPieces(LeftoverType, Leftovers, Offset); !Split)
+      return std::unexpected(Split.error());
+  }
+
+  if (IsLoad) {
+    if (auto Inserted = insertParts(*Value, *ValueType, NarrowType, Parts, LeftoverType, Leftovers);
+        !Inserted) {
+      return std::unexpected(Inserted.error());
+    }
+  }
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "memory instruction became detached during width reduction");
+  }
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                              LowLevelType NarrowType) {
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
@@ -3480,6 +3826,9 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   case GenericOpcode::G_MUL:
   case GenericOpcode::G_UMULH:
     return narrowScalarMul(Instruction, TypeIndex, NarrowType);
+  case GenericOpcode::G_LOAD:
+  case GenericOpcode::G_STORE:
+    return narrowScalarLoadStore(Instruction, TypeIndex, NarrowType);
   case GenericOpcode::G_SEXT:
   case GenericOpcode::G_ZEXT:
   case GenericOpcode::G_ANYEXT:
@@ -4156,6 +4505,410 @@ Expected<void> LegalizerHelper::lowerVAArg(MachineInstr &Instruction) {
   return Block->removeInstruction(Instruction);
 }
 
+Expected<void> LegalizerHelper::lowerLoad(MachineInstr &Instruction) {
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (Generic != GenericOpcode::G_LOAD && Generic != GenericOpcode::G_SEXTLOAD &&
+      Generic != GenericOpcode::G_ZEXTLOAD) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "load lowering received an unsupported opcode");
+  }
+  if (Instruction.operandCount() != 2 || Instruction.memOperands().size() != 1 ||
+      Instruction.memOperands().front() == nullptr) {
+    return makeUnexpected(
+        ErrorCode::VerificationError,
+        "load lowering requires one destination, one address, and one memory operand");
+  }
+
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *AddressOperand = Instruction.operandAt(1);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Address = AddressOperand == nullptr ? nullptr : AddressOperand->getIf<Register>();
+  if (Destination == nullptr || Address == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "load lowering requires register destination and address operands");
+  }
+  auto DestinationType = MRI.getType(*Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  if (!DestinationType->isScalarValue()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "load lowering does not support vector result types");
+  }
+
+  const MachineMemOperand &Memory = *Instruction.memOperands().front();
+  const MachineMemOperandDesc &Description = Memory.description();
+  if (Memory.isAtomic())
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "load lowering does not support atomic operations");
+  if (!Description.Size.isKnown() || Description.Size.isScalable() || !Description.MemoryType ||
+      Description.MemoryType->isVector()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "load lowering requires a fixed scalar memory operand");
+  }
+  const LowLevelType MemoryType = *Description.MemoryType;
+  const std::uint64_t MemoryBits = MemoryType.minimumBitWidth();
+  const std::uint64_t MemoryStoreBits = Description.Size.minimumBytes() * 8U;
+  if (MemoryBits == 0 || MemoryBits > MemoryStoreBits) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "load lowering has an inconsistent memory type and size");
+  }
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  const auto BuildLoad = [&](GenericOpcode LoadOpcode, Register Result, Register Pointer,
+                             const MachineMemOperand &LoadMemory) -> Expected<void> {
+    auto Load = MIRBuilder.buildInstr(opcode(LoadOpcode));
+    if (!Load)
+      return std::unexpected(Load.error());
+    if (auto Added = Load->addDef(Result); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Load->addUse(Pointer); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Load->addMemOperand(LoadMemory); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = Load->build(); !Built)
+      return std::unexpected(Built.error());
+    return {};
+  };
+
+  if (MemoryBits != MemoryStoreBits) {
+    if (!MemoryType.isCategoryNeutralScalar()) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "non-byte-sized pointer loads are not supported");
+    }
+    auto WideMemoryType = LowLevelType::makeCategoryNeutralScalar(MemoryStoreBits);
+    if (!WideMemoryType)
+      return std::unexpected(WideMemoryType.error());
+    auto WideMemory = deriveMemoryOperand(Function, Memory, *WideMemoryType, 0);
+    if (!WideMemory)
+      return std::unexpected(WideMemory.error());
+
+    LowLevelType LoadType = *DestinationType;
+    Register LoadDestination = *Destination;
+    if (MemoryStoreBits > DestinationType->minimumBitWidth()) {
+      LoadType = *WideMemoryType;
+      auto Temporary = MRI.createVirtualRegister(LoadType);
+      if (!Temporary)
+        return std::unexpected(Temporary.error());
+      LoadDestination = *Temporary;
+    }
+
+    if (Generic == GenericOpcode::G_SEXTLOAD) {
+      auto Loaded = MRI.createVirtualRegister(LoadType);
+      if (!Loaded)
+        return std::unexpected(Loaded.error());
+      if (auto Built = BuildLoad(GenericOpcode::G_LOAD, *Loaded, *Address, **WideMemory); !Built)
+        return std::unexpected(Built.error());
+      if (auto Extended = MIRBuilder.buildSExtInReg(LoadDestination, *Loaded,
+                                                    static_cast<std::uint32_t>(MemoryBits));
+          !Extended) {
+        return std::unexpected(Extended.error());
+      }
+    } else if (Generic == GenericOpcode::G_ZEXTLOAD || *WideMemoryType == LoadType) {
+      auto Loaded = MRI.createVirtualRegister(LoadType);
+      if (!Loaded)
+        return std::unexpected(Loaded.error());
+      if (auto Built = BuildLoad(GenericOpcode::G_LOAD, *Loaded, *Address, **WideMemory); !Built)
+        return std::unexpected(Built.error());
+      auto Assert = MIRBuilder.buildInstr(opcode(GenericOpcode::G_ASSERT_ZEXT));
+      if (!Assert)
+        return std::unexpected(Assert.error());
+      if (auto Added = Assert->addDef(LoadDestination); !Added)
+        return std::unexpected(Added.error());
+      if (auto Added = Assert->addUse(*Loaded); !Added)
+        return std::unexpected(Added.error());
+      if (auto Added = Assert->addImmediate(static_cast<std::int64_t>(MemoryBits)); !Added)
+        return std::unexpected(Added.error());
+      if (auto Built = Assert->build(); !Built)
+        return std::unexpected(Built.error());
+    } else if (auto Built =
+                   BuildLoad(GenericOpcode::G_LOAD, LoadDestination, *Address, **WideMemory);
+               !Built) {
+      return std::unexpected(Built.error());
+    }
+
+    if (*DestinationType != LoadType) {
+      if (auto Truncated = MIRBuilder.buildTrunc(*Destination, LoadDestination); !Truncated)
+        return std::unexpected(Truncated.error());
+    }
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "load became detached during lowering");
+    return Block->removeInstruction(Instruction);
+  }
+
+  std::uint64_t LargeSplitBits = 0;
+  std::uint64_t SmallSplitBits = 0;
+  if (!std::has_single_bit(MemoryBits)) {
+    LargeSplitBits = std::bit_floor(MemoryBits);
+    SmallSplitBits = MemoryBits - LargeSplitBits;
+  } else {
+    if (MemoryBits < 16U) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "load lowering cannot split a byte-sized memory operation");
+    }
+    LargeSplitBits = MemoryBits / 2U;
+    SmallSplitBits = LargeSplitBits;
+  }
+  if (LargeSplitBits == 0 || SmallSplitBits == 0 || LargeSplitBits % 8U != 0 ||
+      SmallSplitBits % 8U != 0) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "load lowering cannot split the requested memory width into bytes");
+  }
+
+  const std::uint64_t AnyExtBits = std::bit_ceil(DestinationType->minimumBitWidth());
+  if (AnyExtBits == 0 || AnyExtBits > LowLevelType::MaxBitWidth) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "load lowering result width cannot be represented by the machine IR");
+  }
+  auto AnyExtType = LowLevelType::makeCategoryNeutralScalar(AnyExtBits);
+  auto LargeMemoryType = LowLevelType::makeCategoryNeutralScalar(LargeSplitBits);
+  auto SmallMemoryType = LowLevelType::makeCategoryNeutralScalar(SmallSplitBits);
+  if (!AnyExtType)
+    return std::unexpected(AnyExtType.error());
+  if (!LargeMemoryType)
+    return std::unexpected(LargeMemoryType.error());
+  if (!SmallMemoryType)
+    return std::unexpected(SmallMemoryType.error());
+  auto LargeMemory = deriveMemoryOperand(Function, Memory, *LargeMemoryType, 0);
+  auto SmallMemory = deriveMemoryOperand(Function, Memory, *SmallMemoryType, LargeSplitBits / 8U);
+  if (!LargeMemory)
+    return std::unexpected(LargeMemory.error());
+  if (!SmallMemory)
+    return std::unexpected(SmallMemory.error());
+
+  auto LargeLoad = MRI.createVirtualRegister(*AnyExtType);
+  if (!LargeLoad)
+    return std::unexpected(LargeLoad.error());
+  if (auto Built = BuildLoad(GenericOpcode::G_ZEXTLOAD, *LargeLoad, *Address, **LargeMemory);
+      !Built)
+    return std::unexpected(Built.error());
+  auto SmallAddress = buildObjectPointerOffset(MIRBuilder, *Address, LargeSplitBits / 8U);
+  if (!SmallAddress)
+    return std::unexpected(SmallAddress.error());
+  auto SmallLoad = MRI.createVirtualRegister(*AnyExtType);
+  if (!SmallLoad)
+    return std::unexpected(SmallLoad.error());
+  if (auto Built = BuildLoad(Generic, *SmallLoad, *SmallAddress, **SmallMemory); !Built)
+    return std::unexpected(Built.error());
+  auto ShiftAmount =
+      buildConstantRegister(MIRBuilder, *AnyExtType, static_cast<std::int64_t>(LargeSplitBits));
+  if (!ShiftAmount)
+    return std::unexpected(ShiftAmount.error());
+  auto Shifted = buildResultInstruction(MIRBuilder, GenericOpcode::G_SHL, *AnyExtType,
+                                        {*SmallLoad, *ShiftAmount});
+  if (!Shifted)
+    return std::unexpected(Shifted.error());
+
+  if (*AnyExtType == *DestinationType) {
+    if (auto Combined = MIRBuilder.buildOr(*Destination, *Shifted, *LargeLoad); !Combined)
+      return std::unexpected(Combined.error());
+  } else {
+    auto Combined = buildResultInstruction(MIRBuilder, GenericOpcode::G_OR, *AnyExtType,
+                                           {*Shifted, *LargeLoad});
+    if (!Combined)
+      return std::unexpected(Combined.error());
+    if (AnyExtBits != DestinationType->minimumBitWidth()) {
+      if (auto Truncated = MIRBuilder.buildTrunc(*Destination, *Combined); !Truncated)
+        return std::unexpected(Truncated.error());
+    } else if (DestinationType->isPointer()) {
+      if (auto Converted = MIRBuilder.buildIntToPtr(*Destination, *Combined); !Converted)
+        return std::unexpected(Converted.error());
+    } else {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "load lowering produced an incompatible scalar result type");
+    }
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "load became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerStore(MachineInstr &Instruction) {
+  if (Instruction.opcode() != opcode(GenericOpcode::G_STORE)) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "store lowering received an unsupported opcode");
+  }
+  if (Instruction.operandCount() != 2 || Instruction.memOperands().size() != 1 ||
+      Instruction.memOperands().front() == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "store lowering requires one value, one address, and one memory operand");
+  }
+
+  const MachineOperand *ValueOperand = Instruction.operandAt(0);
+  const MachineOperand *AddressOperand = Instruction.operandAt(1);
+  const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
+  const Register *Address = AddressOperand == nullptr ? nullptr : AddressOperand->getIf<Register>();
+  if (Value == nullptr || Address == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "store lowering requires register value and address operands");
+  }
+  auto ValueType = MRI.getType(*Value);
+  if (!ValueType)
+    return std::unexpected(ValueType.error());
+  if (!ValueType->isScalarValue()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "store lowering does not support vector value types");
+  }
+
+  const MachineMemOperand &Memory = *Instruction.memOperands().front();
+  const MachineMemOperandDesc &Description = Memory.description();
+  if (Memory.isAtomic())
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "store lowering does not support atomic operations");
+  if (!Description.Size.isKnown() || Description.Size.isScalable() || !Description.MemoryType ||
+      Description.MemoryType->isVector()) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "store lowering requires a fixed scalar memory operand");
+  }
+  const LowLevelType MemoryType = *Description.MemoryType;
+  const std::uint64_t StoreBits = MemoryType.minimumBitWidth();
+  const std::uint64_t StoreSizeBits = Description.Size.minimumBytes() * 8U;
+  if (StoreBits == 0 || StoreBits > StoreSizeBits) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "store lowering has an inconsistent memory type and size");
+  }
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  const auto BuildStore = [&](Register StoredValue, Register Pointer,
+                              const MachineMemOperand &StoreMemory) -> Expected<void> {
+    auto Store = MIRBuilder.buildInstr(opcode(GenericOpcode::G_STORE));
+    if (!Store)
+      return std::unexpected(Store.error());
+    if (auto Added = Store->addUse(StoredValue); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Store->addUse(Pointer); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = Store->addMemOperand(StoreMemory); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = Store->build(); !Built)
+      return std::unexpected(Built.error());
+    return {};
+  };
+
+  Register Source = *Value;
+  LowLevelType SourceType = *ValueType;
+  if (StoreBits != StoreSizeBits) {
+    if (!MemoryType.isCategoryNeutralScalar() || !SourceType.isCategoryNeutralScalar()) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "non-byte-sized pointer stores are not supported");
+    }
+    auto WideMemoryType = LowLevelType::makeCategoryNeutralScalar(StoreSizeBits);
+    if (!WideMemoryType)
+      return std::unexpected(WideMemoryType.error());
+    if (StoreSizeBits > SourceType.minimumBitWidth()) {
+      auto Extended =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_ANYEXT, *WideMemoryType, {Source});
+      if (!Extended)
+        return std::unexpected(Extended.error());
+      Source = *Extended;
+      SourceType = *WideMemoryType;
+    }
+    auto MaskValue =
+        APInt::getLowBitsSet(SourceType.scalarBitWidth(), static_cast<std::uint32_t>(StoreBits));
+    if (!MaskValue)
+      return std::unexpected(MaskValue.error());
+    auto Mask = buildConstantRegister(MIRBuilder, SourceType, std::move(*MaskValue));
+    if (!Mask)
+      return std::unexpected(Mask.error());
+    auto ZeroExtended =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, SourceType, {Source, *Mask});
+    if (!ZeroExtended)
+      return std::unexpected(ZeroExtended.error());
+    auto WideMemory = deriveMemoryOperand(Function, Memory, *WideMemoryType, 0);
+    if (!WideMemory)
+      return std::unexpected(WideMemory.error());
+    if (auto Built = BuildStore(*ZeroExtended, *Address, **WideMemory); !Built)
+      return std::unexpected(Built.error());
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "store became detached during lowering");
+    return Block->removeInstruction(Instruction);
+  }
+
+  std::uint64_t LargeSplitBits = 0;
+  std::uint64_t SmallSplitBits = 0;
+  if (!std::has_single_bit(StoreBits)) {
+    LargeSplitBits = std::bit_floor(StoreBits);
+    SmallSplitBits = StoreBits - LargeSplitBits;
+  } else {
+    if (StoreBits < 16U) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "store lowering cannot split a byte-sized memory operation");
+    }
+    LargeSplitBits = StoreBits / 2U;
+    SmallSplitBits = LargeSplitBits;
+  }
+  if (LargeSplitBits == 0 || SmallSplitBits == 0 || LargeSplitBits % 8U != 0 ||
+      SmallSplitBits % 8U != 0) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "store lowering cannot split the requested memory width into bytes");
+  }
+
+  const std::uint64_t AnyExtBits = std::bit_ceil(StoreBits);
+  if (AnyExtBits == 0 || AnyExtBits > LowLevelType::MaxBitWidth) {
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "store lowering value width cannot be represented by the machine IR");
+  }
+  auto NewSourceType = LowLevelType::makeCategoryNeutralScalar(AnyExtBits);
+  auto LargeMemoryType = LowLevelType::makeCategoryNeutralScalar(LargeSplitBits);
+  auto SmallMemoryType = LowLevelType::makeCategoryNeutralScalar(SmallSplitBits);
+  if (!NewSourceType)
+    return std::unexpected(NewSourceType.error());
+  if (!LargeMemoryType)
+    return std::unexpected(LargeMemoryType.error());
+  if (!SmallMemoryType)
+    return std::unexpected(SmallMemoryType.error());
+
+  if (SourceType.isPointer()) {
+    auto IntegerPointerType = LowLevelType::makeCategoryNeutralScalar(SourceType.scalarBitWidth());
+    if (!IntegerPointerType)
+      return std::unexpected(IntegerPointerType.error());
+    auto Converted = buildResultInstruction(MIRBuilder, GenericOpcode::G_PTRTOINT,
+                                            *IntegerPointerType, {Source});
+    if (!Converted)
+      return std::unexpected(Converted.error());
+    Source = *Converted;
+    SourceType = *IntegerPointerType;
+  }
+  auto Extended = MIRBuilder.buildAnyExtOrTrunc(*NewSourceType, Source);
+  if (!Extended)
+    return std::unexpected(Extended.error());
+  auto ExtendedValue = resultRegister(**Extended);
+  if (!ExtendedValue)
+    return std::unexpected(ExtendedValue.error());
+  auto ShiftAmount =
+      buildConstantRegister(MIRBuilder, *NewSourceType, static_cast<std::int64_t>(LargeSplitBits));
+  if (!ShiftAmount)
+    return std::unexpected(ShiftAmount.error());
+  auto SmallValue = buildResultInstruction(MIRBuilder, GenericOpcode::G_LSHR, *NewSourceType,
+                                           {*ExtendedValue, *ShiftAmount});
+  if (!SmallValue)
+    return std::unexpected(SmallValue.error());
+  auto SmallAddress = buildObjectPointerOffset(MIRBuilder, *Address, LargeSplitBits / 8U);
+  if (!SmallAddress)
+    return std::unexpected(SmallAddress.error());
+  auto LargeMemory = deriveMemoryOperand(Function, Memory, *LargeMemoryType, 0);
+  auto SmallMemory = deriveMemoryOperand(Function, Memory, *SmallMemoryType, LargeSplitBits / 8U);
+  if (!LargeMemory)
+    return std::unexpected(LargeMemory.error());
+  if (!SmallMemory)
+    return std::unexpected(SmallMemory.error());
+  if (auto Built = BuildStore(*ExtendedValue, *Address, **LargeMemory); !Built)
+    return std::unexpected(Built.error());
+  if (auto Built = BuildStore(*SmallValue, *SmallAddress, **SmallMemory); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "store became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
                                       const LegalizationDecision &Decision) {
   if (Decision.Action != LegalizationAction::Lower)
@@ -4164,6 +4917,12 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   switch (static_cast<GenericOpcode>(Instruction.opcode().value())) {
   case GenericOpcode::G_ABS:
     return lowerAbsToAddXor(Instruction);
+  case GenericOpcode::G_LOAD:
+  case GenericOpcode::G_SEXTLOAD:
+  case GenericOpcode::G_ZEXTLOAD:
+    return lowerLoad(Instruction);
+  case GenericOpcode::G_STORE:
+    return lowerStore(Instruction);
   case GenericOpcode::G_SMIN:
   case GenericOpcode::G_SMAX:
   case GenericOpcode::G_UMIN:

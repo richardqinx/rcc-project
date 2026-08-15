@@ -93,6 +93,12 @@ private:
                                                   LowLevelType NarrowType);
   [[nodiscard]] Expected<void> narrowScalarMul(MachineInstr &Instruction, std::size_t TypeIndex,
                                                LowLevelType NarrowType);
+  [[nodiscard]] Expected<void>
+  narrowScalarLoadStore(MachineInstr &Instruction, std::size_t TypeIndex, LowLevelType NarrowType);
+  [[nodiscard]] Expected<void> reduceLoadStoreWidth(MachineInstr &Instruction,
+                                                    std::size_t TypeIndex, LowLevelType NarrowType);
+  [[nodiscard]] Expected<void> lowerLoad(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerStore(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> narrowScalarBasic(MachineInstr &Instruction, std::size_t TypeIndex,
                                                  LowLevelType NarrowType);
   [[nodiscard]] Expected<void> narrowScalarExt(MachineInstr &Instruction, std::size_t TypeIndex,
