@@ -1026,6 +1026,131 @@ LegalizerHelper::buildWidenedRemergeToDst(Register Destination, LowLevelType LCM
                         "widened remerge has an unsupported type combination");
 }
 
+Expected<void> LegalizerHelper::multiplyRegisters(std::vector<Register> &Destinations,
+                                                  const std::vector<Register> &FirstSources,
+                                                  const std::vector<Register> &SecondSources,
+                                                  LowLevelType NarrowType) {
+  if (FirstSources.empty() || FirstSources.size() != SecondSources.size() ||
+      (Destinations.size() != FirstSources.size() &&
+       Destinations.size() != FirstSources.size() * 2U)) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "multi-precision multiplication has incompatible register parts");
+  }
+  auto BooleanType = LowLevelType::makeCategoryNeutralScalar(1);
+  if (!BooleanType)
+    return std::unexpected(BooleanType.error());
+
+  const auto BuildUAddo = [&](Register Left,
+                              Register Right) -> Expected<std::pair<Register, Register>> {
+    auto Sum = MRI.createVirtualRegister(NarrowType);
+    auto Carry = MRI.createVirtualRegister(*BooleanType);
+    if (!Sum)
+      return std::unexpected(Sum.error());
+    if (!Carry)
+      return std::unexpected(Carry.error());
+    auto Built =
+        MIRBuilder.buildInstr(opcode(GenericOpcode::G_UADDO), {*Sum, *Carry}, {Left, Right});
+    if (!Built)
+      return std::unexpected(Built.error());
+    return std::pair{*Sum, *Carry};
+  };
+
+  const std::size_t SourcePartCount = FirstSources.size();
+  const std::size_t DestinationPartCount = Destinations.size();
+  auto Product = buildResultInstruction(MIRBuilder, GenericOpcode::G_MUL, NarrowType,
+                                        {FirstSources.front(), SecondSources.front()});
+  if (!Product)
+    return std::unexpected(Product.error());
+  Destinations.front() = *Product;
+
+  Register PreviousCarrySum;
+  std::vector<Register> Factors;
+  for (std::size_t DestinationIndex = 1; DestinationIndex != DestinationPartCount;
+       ++DestinationIndex) {
+    // Collect high halves from the preceding product diagonal.
+    const std::size_t HighStart =
+        DestinationIndex < SourcePartCount ? 0 : DestinationIndex - SourcePartCount;
+    const std::size_t HighEnd = std::min(DestinationIndex - 1U, SourcePartCount - 1U);
+    for (std::size_t Index = HighStart; Index <= HighEnd; ++Index) {
+      auto HighProduct = buildResultInstruction(
+          MIRBuilder, GenericOpcode::G_UMULH, NarrowType,
+          {FirstSources[DestinationIndex - 1U - Index], SecondSources[Index]});
+      if (!HighProduct)
+        return std::unexpected(HighProduct.error());
+      Factors.push_back(*HighProduct);
+    }
+
+    // Visit the current low-half diagonal from its low first-source part.
+    const std::size_t LowStart =
+        DestinationIndex + 1U < SourcePartCount ? 0 : DestinationIndex - SourcePartCount + 1U;
+    const std::size_t LowEnd = std::min(DestinationIndex, SourcePartCount - 1U);
+    for (std::size_t ReverseIndex = LowEnd + 1U; ReverseIndex != LowStart; --ReverseIndex) {
+      const std::size_t Index = ReverseIndex - 1U;
+      auto LowProduct =
+          buildResultInstruction(MIRBuilder, GenericOpcode::G_MUL, NarrowType,
+                                 {FirstSources[DestinationIndex - Index], SecondSources[Index]});
+      if (!LowProduct)
+        return std::unexpected(LowProduct.error());
+      Factors.push_back(*LowProduct);
+    }
+    if (DestinationIndex != 1U)
+      Factors.push_back(PreviousCarrySum);
+    if (Factors.size() < 2)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "multi-precision multiplication has too few factors");
+
+    Register FactorSum;
+    Register CarrySum;
+    if (DestinationIndex + 1U != DestinationPartCount) {
+      auto SumAndCarry = BuildUAddo(Factors[0], Factors[1]);
+      if (!SumAndCarry)
+        return std::unexpected(SumAndCarry.error());
+      FactorSum = SumAndCarry->first;
+      auto ExtendedCarry = MRI.createVirtualRegister(NarrowType);
+      if (!ExtendedCarry)
+        return std::unexpected(ExtendedCarry.error());
+      if (auto Built = MIRBuilder.buildZExt(*ExtendedCarry, SumAndCarry->second); !Built)
+        return std::unexpected(Built.error());
+      CarrySum = *ExtendedCarry;
+
+      for (std::size_t Index = 2; Index != Factors.size(); ++Index) {
+        SumAndCarry = BuildUAddo(FactorSum, Factors[Index]);
+        if (!SumAndCarry)
+          return std::unexpected(SumAndCarry.error());
+        FactorSum = SumAndCarry->first;
+        auto ExtendedCarryPart = MRI.createVirtualRegister(NarrowType);
+        if (!ExtendedCarryPart)
+          return std::unexpected(ExtendedCarryPart.error());
+        if (auto Built = MIRBuilder.buildZExt(*ExtendedCarryPart, SumAndCarry->second); !Built)
+          return std::unexpected(Built.error());
+        auto NextCarrySum = buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, NarrowType,
+                                                   {CarrySum, *ExtendedCarryPart});
+        if (!NextCarrySum)
+          return std::unexpected(NextCarrySum.error());
+        CarrySum = *NextCarrySum;
+      }
+    } else {
+      auto Sum = buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, NarrowType,
+                                        {Factors[0], Factors[1]});
+      if (!Sum)
+        return std::unexpected(Sum.error());
+      FactorSum = *Sum;
+      for (std::size_t Index = 2; Index != Factors.size(); ++Index) {
+        Sum = buildResultInstruction(MIRBuilder, GenericOpcode::G_ADD, NarrowType,
+                                     {FactorSum, Factors[Index]});
+        if (!Sum)
+          return std::unexpected(Sum.error());
+        FactorSum = *Sum;
+      }
+    }
+
+    PreviousCarrySum = CarrySum;
+    Destinations[DestinationIndex] = FactorSum;
+    Factors.clear();
+  }
+  return {};
+}
+
 Expected<void> LegalizerHelper::widenScalarSrc(MachineInstr &Instruction, LowLevelType WideType,
                                                std::size_t OperandIndex,
                                                GenericOpcode ExtensionOpcode) {
@@ -2026,6 +2151,72 @@ Expected<void> LegalizerHelper::narrowScalarAddSub(MachineInstr &Instruction, st
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError,
                           "add/sub instruction became detached during narrowing");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::narrowScalarMul(MachineInstr &Instruction, std::size_t TypeIndex,
+                                                LowLevelType NarrowType) {
+  if (TypeIndex != 0 || Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "multiply narrowing requires type index zero and two sources");
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *FirstSourceOperand = Instruction.operandAt(1);
+  const MachineOperand *SecondSourceOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *FirstSource =
+      FirstSourceOperand == nullptr ? nullptr : FirstSourceOperand->getIf<Register>();
+  const Register *SecondSource =
+      SecondSourceOperand == nullptr ? nullptr : SecondSourceOperand->getIf<Register>();
+  if (Destination == nullptr || FirstSource == nullptr || SecondSource == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiply narrowing requires register operands");
+  auto DestinationType = MRI.getType(*Destination);
+  if (!DestinationType)
+    return std::unexpected(DestinationType.error());
+  if (DestinationType->isVector() || !NarrowType.isCategoryNeutralScalar())
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "multiply narrowing requires scalar integer types");
+
+  const std::uint64_t DestinationSize = DestinationType->minimumBitWidth();
+  const std::uint64_t NarrowSize = NarrowType.minimumBitWidth();
+  if (NarrowSize == 0 || NarrowSize >= DestinationSize || DestinationSize % NarrowSize != 0)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "multiply narrowing requires an even smaller scalar type");
+  const std::size_t PartCount = static_cast<std::size_t>(DestinationSize / NarrowSize);
+  const bool IsMultiplyHigh = Instruction.opcode() == opcode(GenericOpcode::G_UMULH);
+  const std::size_t TemporaryPartCount = PartCount * (IsMultiplyHigh ? 2U : 1U);
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  std::vector<Register> FirstParts;
+  std::vector<Register> SecondParts;
+  std::vector<Register> TemporaryDestinations(TemporaryPartCount);
+  if (auto Extracted = extractParts(*FirstSource, NarrowType, static_cast<int>(PartCount),
+                                    FirstParts, MIRBuilder, MRI);
+      !Extracted) {
+    return std::unexpected(Extracted.error());
+  }
+  if (auto Extracted = extractParts(*SecondSource, NarrowType, static_cast<int>(PartCount),
+                                    SecondParts, MIRBuilder, MRI);
+      !Extracted) {
+    return std::unexpected(Extracted.error());
+  }
+  if (auto Multiplied =
+          multiplyRegisters(TemporaryDestinations, FirstParts, SecondParts, NarrowType);
+      !Multiplied) {
+    return std::unexpected(Multiplied.error());
+  }
+
+  std::vector<Register> ResultParts(TemporaryDestinations.end() -
+                                        static_cast<std::ptrdiff_t>(PartCount),
+                                    TemporaryDestinations.end());
+  if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, ResultParts); !Built)
+    return std::unexpected(Built.error());
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "multiply instruction became detached during narrowing");
   return Block->removeInstruction(Instruction);
 }
 
@@ -3100,6 +3291,9 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
   case GenericOpcode::G_UADDE:
   case GenericOpcode::G_USUBE:
     return narrowScalarAddSub(Instruction, TypeIndex, NarrowType);
+  case GenericOpcode::G_MUL:
+  case GenericOpcode::G_UMULH:
+    return narrowScalarMul(Instruction, TypeIndex, NarrowType);
   case GenericOpcode::G_SEXT:
   case GenericOpcode::G_ZEXT:
   case GenericOpcode::G_ANYEXT:
@@ -3795,6 +3989,9 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   case GenericOpcode::G_SDIVREM:
   case GenericOpcode::G_UDIVREM:
     return lowerDivRem(Instruction);
+  case GenericOpcode::G_SMULH:
+  case GenericOpcode::G_UMULH:
+    return lowerHighMultiply(Instruction);
   case GenericOpcode::G_CTLZ_ZERO_POISON:
   case GenericOpcode::G_CTTZ_ZERO_POISON:
   case GenericOpcode::G_CTLZ:
@@ -4520,6 +4717,77 @@ Expected<void> LegalizerHelper::lowerDivRem(MachineInstr &Instruction) {
   MachineBasicBlock *Block = Instruction.parent();
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError, "DIVREM became detached during lowering");
+  return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerHighMultiply(MachineInstr &Instruction) {
+  if (Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "high multiply lowering requires a destination and two sources");
+  const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_SMULH);
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *FirstSourceOperand = Instruction.operandAt(1);
+  const MachineOperand *SecondSourceOperand = Instruction.operandAt(2);
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *FirstSource =
+      FirstSourceOperand == nullptr ? nullptr : FirstSourceOperand->getIf<Register>();
+  const Register *SecondSource =
+      SecondSourceOperand == nullptr ? nullptr : SecondSourceOperand->getIf<Register>();
+  if (Destination == nullptr || FirstSource == nullptr || SecondSource == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "high multiply lowering requires register operands");
+  auto OriginalType = MRI.getType(*Destination);
+  if (!OriginalType)
+    return std::unexpected(OriginalType.error());
+  if (!OriginalType->isCategoryNeutralScalar() || OriginalType->scalarBitWidth() == 0 ||
+      OriginalType->scalarBitWidth() > LowLevelType::MaxBitWidth / 2U) {
+    return makeUnexpected(
+        ErrorCode::Unsupported,
+        "high multiply lowering requires a scalar type with a representable double width");
+  }
+  const std::uint32_t SizeInBits = OriginalType->scalarBitWidth();
+  auto WideType = LowLevelType::makeCategoryNeutralScalar(SizeInBits * 2U);
+  if (!WideType)
+    return std::unexpected(WideType.error());
+
+  auto WideFirstSource = MRI.createVirtualRegister(*WideType);
+  auto WideSecondSource = MRI.createVirtualRegister(*WideType);
+  if (!WideFirstSource)
+    return std::unexpected(WideFirstSource.error());
+  if (!WideSecondSource)
+    return std::unexpected(WideSecondSource.error());
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (auto Built = IsSigned ? MIRBuilder.buildSExt(*WideFirstSource, *FirstSource)
+                            : MIRBuilder.buildZExt(*WideFirstSource, *FirstSource);
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  if (auto Built = IsSigned ? MIRBuilder.buildSExt(*WideSecondSource, *SecondSource)
+                            : MIRBuilder.buildZExt(*WideSecondSource, *SecondSource);
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+  auto Product = buildResultInstruction(MIRBuilder, GenericOpcode::G_MUL, *WideType,
+                                        {*WideFirstSource, *WideSecondSource});
+  if (!Product)
+    return std::unexpected(Product.error());
+  auto ShiftAmount = buildConstantRegister(MIRBuilder, *WideType, SizeInBits);
+  if (!ShiftAmount)
+    return std::unexpected(ShiftAmount.error());
+  auto Shifted =
+      buildResultInstruction(MIRBuilder, IsSigned ? GenericOpcode::G_ASHR : GenericOpcode::G_LSHR,
+                             *WideType, {*Product, *ShiftAmount});
+  if (!Shifted)
+    return std::unexpected(Shifted.error());
+  if (auto Built = MIRBuilder.buildTrunc(*Destination, *Shifted); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "high multiply instruction became detached during lowering");
   return Block->removeInstruction(Instruction);
 }
 

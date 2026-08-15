@@ -36,6 +36,7 @@ public:
   [[nodiscard]] Expected<void> lowerMinMax(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerThreewayCompare(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerDivRem(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerHighMultiply(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerBitCount(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerBswap(MachineInstr &Instruction);
   [[nodiscard]] Expected<void> lowerFunnelShift(MachineInstr &Instruction);
@@ -84,8 +85,14 @@ private:
   [[nodiscard]] Expected<void>
   buildWidenedRemergeToDst(Register Destination, LowLevelType LCMType,
                            const std::vector<Register> &RemergeRegisters);
+  [[nodiscard]] Expected<void> multiplyRegisters(std::vector<Register> &Destinations,
+                                                 const std::vector<Register> &FirstSources,
+                                                 const std::vector<Register> &SecondSources,
+                                                 LowLevelType NarrowType);
   [[nodiscard]] Expected<void> narrowScalarAddSub(MachineInstr &Instruction, std::size_t TypeIndex,
                                                   LowLevelType NarrowType);
+  [[nodiscard]] Expected<void> narrowScalarMul(MachineInstr &Instruction, std::size_t TypeIndex,
+                                               LowLevelType NarrowType);
   [[nodiscard]] Expected<void> narrowScalarBasic(MachineInstr &Instruction, std::size_t TypeIndex,
                                                  LowLevelType NarrowType);
   [[nodiscard]] Expected<void> narrowScalarExt(MachineInstr &Instruction, std::size_t TypeIndex,
