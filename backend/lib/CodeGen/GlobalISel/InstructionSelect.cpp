@@ -169,6 +169,36 @@ void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
 
 } // namespace
 
+Expected<void> InstructionSelector::propagateSelectionFlags(MachineInstr &Output,
+                                                            MachineInstrFlags InputFlags,
+                                                            bool InputMayRaiseFPException,
+                                                            const TargetDescription &Target) const {
+  const InstructionDescriptor *OutputDescriptor = Target.instructionDescriptor(Output.opcode());
+  if (OutputDescriptor == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "instruction selector produced an unknown instruction descriptor");
+  }
+  if (!InputMayRaiseFPException &&
+      OutputDescriptor->Flags.has(InstructionFlag::MayRaiseFPException)) {
+    InputFlags.set(MachineInstrFlag::NoFPExcept);
+  }
+  Output.setFlags(InputFlags);
+  return {};
+}
+
+Expected<void> InstructionSelector::propagateSelectionFlags(MachineInstr &Output,
+                                                            const MachineInstr &Input,
+                                                            const TargetDescription &Target) const {
+  const InstructionDescriptor *InputDescriptor = Target.instructionDescriptor(Input.opcode());
+  if (InputDescriptor == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "instruction selector input has an unknown instruction descriptor");
+  }
+  return propagateSelectionFlags(Output, Input.flags(),
+                                 InputDescriptor->Flags.has(InstructionFlag::MayRaiseFPException),
+                                 Target);
+}
+
 const MachinePassContract &InstructionSelect::contract() const noexcept {
   return instructionSelectContract();
 }
@@ -272,6 +302,9 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
                                              CurrentDescriptor->Name + "'",
                                          ErrorCode::VerificationError));
     }
+    const MachineInstrFlags InputFlags = Instruction->flags();
+    const bool InputMayRaiseFPException =
+        CurrentDescriptor->Flags.has(InstructionFlag::MayRaiseFPException);
     auto Selection = Info->select(*Instruction, Function, Target);
     if (!Selection)
       return std::unexpected(Selection.error());
@@ -279,6 +312,10 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     if (Selected == nullptr)
       return std::unexpected(
           passFailure("instruction selector produced an unknown instruction descriptor"));
+    auto FlagPropagation =
+        Info->propagateSelectionFlags(*Instruction, InputFlags, InputMayRaiseFPException, Target);
+    if (!FlagPropagation)
+      return std::unexpected(FlagPropagation.error());
     auto Constraint = Info->constrainSelectedInstruction(*Instruction, Function, Target);
     if (!Constraint) {
       return std::unexpected(withErrorContext(

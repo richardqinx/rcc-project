@@ -660,6 +660,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto FlagPropagation = propagateSelectionFlags(**Built, Anchor, Builder.target());
+    if (!FlagPropagation)
+      return std::unexpected(FlagPropagation.error());
     auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
     if (!Constraint)
       return std::unexpected(Constraint.error());
@@ -691,6 +694,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto FlagPropagation = propagateSelectionFlags(**Built, Anchor, Builder.target());
+    if (!FlagPropagation)
+      return std::unexpected(FlagPropagation.error());
     auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
     if (!Constraint)
       return std::unexpected(Constraint.error());
@@ -719,6 +725,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto FlagPropagation = propagateSelectionFlags(**Built, Anchor, Builder.target());
+    if (!FlagPropagation)
+      return std::unexpected(FlagPropagation.error());
     auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
     if (!Constraint)
       return std::unexpected(Constraint.error());
@@ -750,6 +759,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto FlagPropagation = propagateSelectionFlags(**Built, Anchor, Builder.target());
+    if (!FlagPropagation)
+      return std::unexpected(FlagPropagation.error());
     auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
     if (!Constraint)
       return std::unexpected(Constraint.error());
@@ -823,6 +835,9 @@ private:
     auto Built = Pending->build();
     if (!Built)
       return std::unexpected(Built.error());
+    auto FlagPropagation = propagateSelectionFlags(**Built, Anchor, Builder.target());
+    if (!FlagPropagation)
+      return std::unexpected(FlagPropagation.error());
     auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
     if (!Constraint)
       return std::unexpected(Constraint.error());

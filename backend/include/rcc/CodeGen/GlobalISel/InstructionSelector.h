@@ -3,6 +3,7 @@
 #ifndef RCC_CODEGEN_GLOBALISEL_INSTRUCTIONSELECTOR_H
 #define RCC_CODEGEN_GLOBALISEL_INSTRUCTIONSELECTOR_H
 
+#include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/Support/Error.h"
 
 namespace rcc {
@@ -28,6 +29,15 @@ public:
   constrainSelectedInstruction(MachineInstr &, MachineFunction &, const TargetDescription &) const {
     return {};
   }
+
+  [[nodiscard]] Expected<void> propagateSelectionFlags(MachineInstr &Output,
+                                                       MachineInstrFlags InputFlags,
+                                                       bool InputMayRaiseFPException,
+                                                       const TargetDescription &Target) const;
+
+  [[nodiscard]] Expected<void> propagateSelectionFlags(MachineInstr &Output,
+                                                       const MachineInstr &Input,
+                                                       const TargetDescription &Target) const;
 };
 
 } // namespace rcc
