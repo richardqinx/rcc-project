@@ -446,7 +446,7 @@ named_operands:
 
 immediate_predicates:
   - { id: 1, symbol: SIMM12, name: simm12, kind: signed, bits: 12 }
-  - { id: 2, symbol: SIMM20, name: simm20, kind: signed, bits: 20 }
+  - { id: 2, symbol: UIMM20, name: uimm20, kind: unsigned, bits: 20 }
   - { id: 3, symbol: UIMM5, name: uimm5, kind: unsigned, bits: 5 }
   - { id: 4, symbol: UIMM6, name: uimm6, kind: unsigned, bits: 6 }
   - { id: 5, symbol: UIMM12, name: uimm12, kind: unsigned, bits: 12 }
@@ -538,7 +538,7 @@ instructions:
     encoding: 5175
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
-      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM20, allowed_target_flags: 32, name: IMM }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: UIMM20, allowed_target_flags: 32, name: IMM }
     num_explicit_defs: 1
     flags: [produces_code, rematerializable]
     scheduling_class: ALU
@@ -552,7 +552,7 @@ instructions:
     encoding: 5143
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
-      - { kinds: [immediate, basic_block, global_symbol, external_symbol, mc_symbol], immediate_predicate: SIMM20, allowed_target_flags: 3, name: IMM }
+      - { kinds: [immediate, basic_block, global_symbol, external_symbol, mc_symbol], immediate_predicate: UIMM20, allowed_target_flags: 3, name: IMM }
     num_explicit_defs: 1
     flags: [produces_code]
     scheduling_class: ALU

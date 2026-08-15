@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "RISCV.h"
+#include "RISCVImmediateMaterialization.h"
 #include "RISCVRegisterBankInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelector.h"
@@ -94,12 +95,6 @@ operandType(const MachineFunction &Function, const MachineInstr &Instruction, st
                           "RISC-V instruction selection requires an assigned register bank");
   }
   return *Info->get().Bank;
-}
-
-[[nodiscard]] bool fitsSigned(std::int64_t Value, std::uint32_t Bits) noexcept {
-  const std::int64_t Minimum = -(std::int64_t{1} << (Bits - 1U));
-  const std::int64_t Maximum = (std::int64_t{1} << (Bits - 1U)) - 1;
-  return Value >= Minimum && Value <= Maximum;
 }
 
 [[nodiscard]] std::optional<std::uint64_t>
@@ -632,6 +627,34 @@ private:
     auto SourceResult = Pending->addUse(Source);
     if (!SourceResult)
       return std::unexpected(SourceResult.error());
+    auto ImmediateResult = Pending->addImmediate(Value);
+    if (!ImmediateResult)
+      return std::unexpected(ImmediateResult.error());
+    auto Built = Pending->build();
+    if (!Built)
+      return std::unexpected(Built.error());
+    auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
+    if (!Constraint)
+      return std::unexpected(Constraint.error());
+    return *Built;
+  }
+
+  [[nodiscard]] Expected<MachineInstr *>
+  buildImmediateOnlyAfter(MachineIRBuilder &Builder, MachineInstr &Anchor, InstructionOpcode Opcode,
+                          Register Def, std::int64_t Value) const {
+    auto Point = Builder.setInsertPointAfter(Anchor);
+    if (!Point)
+      return std::unexpected(Point.error());
+    auto RegisterConstraints =
+        constrainBuilderRegisters(Builder.function(), Builder.target(), {Def});
+    if (!RegisterConstraints)
+      return std::unexpected(RegisterConstraints.error());
+    auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
+    if (!Pending)
+      return std::unexpected(Pending.error());
+    auto DefResult = Pending->addDef(Def);
+    if (!DefResult)
+      return std::unexpected(DefResult.error());
     auto ImmediateResult = Pending->addImmediate(Value);
     if (!ImmediateResult)
       return std::unexpected(ImmediateResult.error());
@@ -2435,137 +2458,75 @@ private:
     if (!DestinationConstraint)
       return std::unexpected(DestinationConstraint.error());
     const std::int64_t Value = *ImmediateValue;
-    const std::uint32_t ImmediateTargetFlags = ImmediateOperand->targetFlags();
-    const bool IsWord = Type->isCategoryNeutralScalar() && Type->scalarBitWidth() <= 32;
-    const InstructionOpcode AddImmediate =
-        IsWord ? InstructionOpcode::ADDIW : InstructionOpcode::ADDI;
-    const InstructionOpcode ShiftLeftImmediate =
-        IsWord ? InstructionOpcode::SLLIW : InstructionOpcode::SLLI;
-    if (fitsSigned(Value, 12)) {
-      auto Zero = physicalRegister(PhysicalRegisterID::X0);
-      if (!Zero)
-        return std::unexpected(Zero.error());
-      auto Source = insertPhysicalRegister(Instruction, 1, *Zero, RegisterOperandFlag::Use);
-      if (!Source)
-        return std::unexpected(Source.error());
-      auto EraseImmediate = Instruction.eraseOperand(2);
-      if (!EraseImmediate)
-        return std::unexpected(EraseImmediate.error());
-      auto NormalizeImmediate =
-          Instruction.insertOperand(2, MachineOperand::immediate(Value, ImmediateTargetFlags));
-      if (!NormalizeImmediate)
-        return std::unexpected(NormalizeImmediate.error());
-      return Instruction.setOpcode(instructionOpcode(AddImmediate));
-    }
-
-    // Recursively decompose the value into signed 12-bit chunks.  The
-    // quotient is computed from an unsigned bit pattern with explicit sign
-    // extension so both INT64_MIN and INT64_MAX remain well-defined.
-    std::uint64_t Remaining = static_cast<std::uint64_t>(Value);
-    std::vector<std::int64_t> Digits;
-    while (!fitsSigned(std::bit_cast<std::int64_t>(Remaining), 12)) {
-      const std::uint64_t LowBits = Remaining & 0xFFFU;
-      std::int64_t Digit = static_cast<std::int64_t>(LowBits);
-      if (Digit >= 0x800)
-        Digit -= 0x1000;
-      Digits.push_back(Digit);
-
-      const std::uint64_t Adjusted = Remaining - static_cast<std::uint64_t>(Digit);
-      std::uint64_t Quotient = Adjusted >> 12U;
-      if ((Remaining & (std::uint64_t{1} << 63U)) != 0)
-        Quotient |= ~std::uint64_t{0} << 52U;
-      Remaining = Quotient;
-    }
-    const std::int64_t Base = std::bit_cast<std::int64_t>(Remaining);
-
-    auto Temporary = createTemporary(Function, *Type, Target);
-    if (!Temporary)
-      return std::unexpected(Temporary.error());
-    auto *Parent = Instruction.parent();
-    if (Parent == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V constant selection received a detached instruction");
-    auto SetOpcode = Instruction.setOpcode(instructionOpcode(AddImmediate));
-    if (!SetOpcode)
-      return std::unexpected(SetOpcode.error());
-    auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
-    if (!SetDestination)
-      return std::unexpected(SetDestination.error());
-    auto EraseImmediate = Instruction.eraseOperand(1);
-    if (!EraseImmediate)
-      return std::unexpected(EraseImmediate.error());
     auto Zero = physicalRegister(PhysicalRegisterID::X0);
     if (!Zero)
       return std::unexpected(Zero.error());
-    auto AddSource = insertPhysicalRegister(Instruction, 1, *Zero, RegisterOperandFlag::Use);
-    if (!AddSource)
-      return std::unexpected(AddSource.error());
-    auto AddBase = appendImmediate(Instruction, Base);
-    if (!AddBase)
-      return std::unexpected(AddBase.error());
+    if (Value == 0) {
+      auto EraseImmediate = Instruction.eraseOperand(1);
+      if (!EraseImmediate)
+        return std::unexpected(EraseImmediate.error());
+      auto Source = insertPhysicalRegister(Instruction, 1, *Zero, RegisterOperandFlag::Use);
+      if (!Source)
+        return std::unexpected(Source.error());
+      return Instruction.setOpcode(opcode(GenericOpcode::COPY));
+    }
+
+    ImmediateMaterializationSequence Sequence =
+        generateRV64IntegerMaterialization(Value, Subtarget.features());
+    if (Sequence.empty()) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "RISC-V integer materialization produced an empty sequence");
+    }
+    Register Current = Destination;
+    if (Sequence.size() != 1) {
+      auto Temporary = createTemporary(Function, *Type, Target);
+      if (!Temporary)
+        return std::unexpected(Temporary.error());
+      Current = *Temporary;
+    }
+
+    const auto SelectHead = [&](const ImmediateMaterializationInstruction &Step,
+                                Register Definition) -> Expected<void> {
+      auto SetOpcode = Instruction.setOpcode(instructionOpcode(Step.Opcode));
+      if (!SetOpcode)
+        return std::unexpected(SetOpcode.error());
+      auto SetDestination = Instruction.operandAt(0)->setRegister(Definition);
+      if (!SetDestination)
+        return std::unexpected(SetDestination.error());
+      auto EraseImmediate = Instruction.eraseOperand(1);
+      if (!EraseImmediate)
+        return std::unexpected(EraseImmediate.error());
+      if (Step.OperandKind == ImmediateMaterializationOperandKind::Immediate)
+        return Instruction.addOperand(MachineOperand::immediate(Step.Immediate));
+      auto Source = insertPhysicalRegister(Instruction, 1, *Zero, RegisterOperandFlag::Use);
+      if (!Source)
+        return std::unexpected(Source.error());
+      return Instruction.addOperand(MachineOperand::immediate(Step.Immediate));
+    };
+    auto Head = SelectHead(Sequence.front(), Current);
+    if (!Head)
+      return std::unexpected(Head.error());
 
     MachineIRBuilder Builder(Function, Target);
-    auto InsertPoint = Builder.setInsertPointAfter(Instruction);
-    if (!InsertPoint)
-      return std::unexpected(InsertPoint.error());
-
-    Register Current = *Temporary;
-    for (std::size_t Reverse = Digits.size(); Reverse != 0; --Reverse) {
-      const std::size_t Index = Reverse - 1U;
-      auto ShiftResult = createTemporary(Function, *Type, Target);
-      if (!ShiftResult)
-        return std::unexpected(ShiftResult.error());
-      auto Shift = Builder.buildInstr(instructionOpcode(ShiftLeftImmediate));
-      if (!Shift)
-        return std::unexpected(Shift.error());
-      auto ShiftDef = Shift->addDef(*ShiftResult);
-      if (!ShiftDef)
-        return std::unexpected(ShiftDef.error());
-      auto ShiftUse = Shift->addUse(Current);
-      if (!ShiftUse)
-        return std::unexpected(ShiftUse.error());
-      auto ShiftAmount = Shift->addImmediate(12);
-      if (!ShiftAmount)
-        return std::unexpected(ShiftAmount.error());
-      auto BuiltShift = Shift->build();
-      if (!BuiltShift)
-        return std::unexpected(BuiltShift.error());
-      auto ShiftConstraint = constrainSelectedInstruction(**BuiltShift, Function, Target);
-      if (!ShiftConstraint)
-        return std::unexpected(ShiftConstraint.error());
-
-      const bool IsFinal = Index == 0;
-      Register AddDestination;
-      if (IsFinal) {
-        AddDestination = Destination;
-      } else {
-        auto AddTemporary = createTemporary(Function, *Type, Target);
-        if (!AddTemporary)
-          return std::unexpected(AddTemporary.error());
-        AddDestination = *AddTemporary;
+    MachineInstr *Anchor = &Instruction;
+    for (std::size_t Index = 1; Index < Sequence.size(); ++Index) {
+      const bool IsFinal = Index + 1U == Sequence.size();
+      Register Next = Destination;
+      if (!IsFinal) {
+        auto Temporary = createTemporary(Function, *Type, Target);
+        if (!Temporary)
+          return std::unexpected(Temporary.error());
+        Next = *Temporary;
       }
-      auto Add = Builder.setInsertPointAfter(**BuiltShift);
-      if (!Add)
-        return std::unexpected(Add.error());
-      auto AddInstruction = Builder.buildInstr(instructionOpcode(AddImmediate));
-      if (!AddInstruction)
-        return std::unexpected(AddInstruction.error());
-      auto AddDef = AddInstruction->addDef(AddDestination);
-      if (!AddDef)
-        return std::unexpected(AddDef.error());
-      auto AddUse = AddInstruction->addUse(*ShiftResult);
-      if (!AddUse)
-        return std::unexpected(AddUse.error());
-      auto AddImmediateResult = AddInstruction->addImmediate(Digits[Index]);
-      if (!AddImmediateResult)
-        return std::unexpected(AddImmediateResult.error());
-      auto BuiltAdd = AddInstruction->build();
-      if (!BuiltAdd)
-        return std::unexpected(BuiltAdd.error());
-      auto AddConstraint = constrainSelectedInstruction(**BuiltAdd, Function, Target);
-      if (!AddConstraint)
-        return std::unexpected(AddConstraint.error());
-      Current = AddDestination;
+      const ImmediateMaterializationInstruction &Step = Sequence[Index];
+      Expected<MachineInstr *> Built =
+          Step.OperandKind == ImmediateMaterializationOperandKind::Immediate
+              ? buildImmediateOnlyAfter(Builder, *Anchor, Step.Opcode, Next, Step.Immediate)
+              : buildImmediateAfter(Builder, *Anchor, Step.Opcode, Next, Current, Step.Immediate);
+      if (!Built)
+        return std::unexpected(Built.error());
+      Anchor = *Built;
+      Current = Next;
     }
     return {};
   }

@@ -1261,7 +1261,7 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     if (Immediate != nullptr && Type && Type->isCategoryNeutralScalar() &&
         Type->scalarBitWidth() == 64) {
       auto Value = signedImmediate(*Immediate);
-      if (Value && shouldUseRV64IntegerConstantPool(*Value)) {
+      if (Value && shouldUseRV64IntegerConstantPool(*Value, Subtarget.features())) {
         Helper.Observer.changingInstr(Instruction);
         auto Lowered = lowerConstantToPool(Instruction, Function, Target);
         if (!Lowered)

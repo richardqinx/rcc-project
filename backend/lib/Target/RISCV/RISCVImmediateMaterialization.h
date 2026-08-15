@@ -5,15 +5,38 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace rcc::riscv {
 
+enum class InstructionOpcode : std::uint32_t;
+class RISCVSubtargetFeatures;
+
+enum class ImmediateMaterializationOperandKind : std::uint8_t {
+  Immediate,
+  RegisterImmediate,
+};
+
+struct ImmediateMaterializationInstruction final {
+  InstructionOpcode Opcode;
+  std::int64_t Immediate = 0;
+  ImmediateMaterializationOperandKind OperandKind =
+      ImmediateMaterializationOperandKind::RegisterImmediate;
+};
+
+using ImmediateMaterializationSequence = std::vector<ImmediateMaterializationInstruction>;
+
 inline constexpr std::size_t DefaultRV64IntegerBuildCost = 5;
 
-[[nodiscard]] std::size_t estimateRV64IntegerBuildCost(std::int64_t Value) noexcept;
+[[nodiscard]] ImmediateMaterializationSequence
+generateRV64IntegerMaterialization(std::int64_t Value, const RISCVSubtargetFeatures &Features);
 
-[[nodiscard]] bool shouldUseRV64IntegerConstantPool(
-    std::int64_t Value, std::size_t MaximumBuildCost = DefaultRV64IntegerBuildCost) noexcept;
+[[nodiscard]] std::size_t estimateRV64IntegerBuildCost(std::int64_t Value,
+                                                       const RISCVSubtargetFeatures &Features);
+
+[[nodiscard]] bool
+shouldUseRV64IntegerConstantPool(std::int64_t Value, const RISCVSubtargetFeatures &Features,
+                                 std::size_t MaximumBuildCost = DefaultRV64IntegerBuildCost);
 
 } // namespace rcc::riscv
 
