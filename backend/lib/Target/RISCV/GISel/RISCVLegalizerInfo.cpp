@@ -618,6 +618,17 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) : Subtar
       .legalFor(HasF, {{S32, S64}})
       .legalFor(HasD, {{S64, S64}})
       .widenScalarToNextPow2(1)
+      .widenScalarIf(
+          [HasF, HasD](const LegalizationQuery &Query) {
+            if (Query.Types.size() < 2 || !Query.Types[0].isCategoryNeutralScalar() ||
+                !Query.Types[1].isCategoryNeutralScalar() ||
+                Query.Types[1].scalarBitWidth() >= 64) {
+              return false;
+            }
+            return (HasF && Query.Types[0].scalarBitWidth() == 32) ||
+                   (HasD && Query.Types[0].scalarBitWidth() == 64);
+          },
+          [S64](const LegalizationQuery &) { return std::pair{std::size_t{1}, S64}; })
       .minScalar(1, S32)
       .libcallFor({{S32, S32},
                    {S64, S32},
