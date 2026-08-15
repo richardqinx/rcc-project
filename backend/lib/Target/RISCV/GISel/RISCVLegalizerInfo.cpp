@@ -285,6 +285,7 @@ foldConstantExtension(MachineInstr &Instruction, MachineFunction &Function, Gene
 } // namespace
 
 RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) : Subtarget(Subtarget) {
+  const LowLevelType S1 = *LowLevelType::makeCategoryNeutralScalar(1);
   const LowLevelType S8 = *LowLevelType::makeCategoryNeutralScalar(8);
   const LowLevelType S16 = *LowLevelType::makeCategoryNeutralScalar(16);
   const LowLevelType S32 = *LowLevelType::makeCategoryNeutralScalar(32);
@@ -593,7 +594,10 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) : Subtar
       .legalFor(HasD, {{S64, S64}})
       .clampScalar(0, S64, S64)
       .libcallFor({{S64, S32}, {S64, S64}, {S64, S128}});
-  getActionDefinitionsBuilder(opcode(GenericOpcode::G_IS_FPCLASS)).lower();
+  getActionDefinitionsBuilder(opcode(GenericOpcode::G_IS_FPCLASS))
+      .customFor(HasF, {{S1, S32}})
+      .customFor(HasD, {{S1, S64}})
+      .lower();
   getActionDefinitionsBuilder(opcode(GenericOpcode::G_FCONSTANT))
       .legalFor(HasF, {S32})
       .legalFor(HasD, {S64})
@@ -891,6 +895,68 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
       return std::unexpected(RoundingMode.error());
     Helper.Observer.changedInstr(Instruction);
     return {};
+  }
+  if (Instruction.opcode() == opcode(GenericOpcode::G_IS_FPCLASS)) {
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const MachineOperand *SourceOperand = Instruction.operandAt(1);
+    const MachineOperand *MaskOperand = Instruction.operandAt(2);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+    if (Destination == nullptr || Source == nullptr || MaskOperand == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V G_IS_FPCLASS has invalid operands");
+    auto Mask = signedImmediate(*MaskOperand);
+    if (!Mask)
+      return std::unexpected(Mask.error());
+    if (*Mask < 0 || *Mask > 0x3ff)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V G_IS_FPCLASS class mask must fit ten bits");
+
+    auto XLenType = LowLevelType::makeCategoryNeutralScalar(64);
+    if (!XLenType)
+      return std::unexpected(XLenType.error());
+    const std::uint64_t ClassMask = static_cast<std::uint64_t>(*Mask);
+    const std::uint64_t RISCVClassMask = (ClassMask >> 2U) | ((ClassMask & 0x3U) << 8U);
+
+    auto FClass = Function.registerInfo().createVirtualRegister(*XLenType);
+    auto MaskConstant = Function.registerInfo().createVirtualRegister(*XLenType);
+    auto Zero = Function.registerInfo().createVirtualRegister(*XLenType);
+    auto And = Function.registerInfo().createVirtualRegister(*XLenType);
+    if (!FClass)
+      return std::unexpected(FClass.error());
+    if (!MaskConstant)
+      return std::unexpected(MaskConstant.error());
+    if (!Zero)
+      return std::unexpected(Zero.error());
+    if (!And)
+      return std::unexpected(And.error());
+    if (auto Point = Helper.MIRBuilder.setInsertPointBefore(Instruction); !Point)
+      return std::unexpected(Point.error());
+    if (auto Built = Helper.MIRBuilder.buildConstant(*MaskConstant,
+                                                     static_cast<std::int64_t>(RISCVClassMask));
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = Helper.MIRBuilder.buildConstant(*Zero, 0); !Built)
+      return std::unexpected(Built.error());
+    if (auto Built = Helper.MIRBuilder.buildInstr(instructionOpcode(InstructionOpcode::G_FCLASS),
+                                                  {*FClass}, {*Source});
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = Helper.MIRBuilder.buildAnd(*And, *FClass, *MaskConstant); !Built)
+      return std::unexpected(Built.error());
+    if (auto Built =
+            Helper.MIRBuilder.buildICmp(IntegerPredicate::NotEqual, *Destination, *And, *Zero);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "RISC-V G_IS_FPCLASS became detached during lowering");
+    return Block->removeInstruction(Instruction);
   }
   if (Instruction.opcode() == opcode(GenericOpcode::G_ANYEXT) ||
       Instruction.opcode() == opcode(GenericOpcode::G_SEXT) ||
