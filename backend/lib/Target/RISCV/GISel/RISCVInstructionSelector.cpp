@@ -157,7 +157,9 @@ public:
   [[nodiscard]] Expected<void> canSelect(const MachineInstr &Instruction,
                                          const MachineFunction &Function,
                                          const TargetDescription &Target) const override {
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW)) {
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRAW) ||
+        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRLW)) {
       const std::optional<LowLevelType> Type = resultType(Function, Instruction);
       const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
       const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
@@ -165,7 +167,7 @@ public:
                      *Left == *Type && *Right == *Type
                  ? Expected<void>{}
                  : makeUnexpected(ErrorCode::Unsupported,
-                                  "RISC-V G_SLLW requires three 64-bit GPR operands");
+                                  "RISC-V word shift pseudo requires three 64-bit GPR operands");
     }
     if (!isGenericOpcode(Instruction.opcode()))
       return {};
@@ -317,6 +319,10 @@ public:
       return std::unexpected(Match.error());
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW))
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SLLW));
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRAW))
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SRAW));
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRLW))
+      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SRLW));
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 
