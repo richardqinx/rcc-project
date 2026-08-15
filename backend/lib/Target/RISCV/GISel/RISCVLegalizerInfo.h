@@ -5,6 +5,10 @@
 
 #include "rcc/CodeGen/GlobalISel/LegalizerInfo.h"
 
+namespace rcc {
+class MachineIRBuilder;
+}
+
 namespace rcc::riscv {
 
 class RISCVSubtarget;
@@ -20,6 +24,9 @@ public:
                                            LowLevelType DestinationType) const override;
 
 private:
+  [[nodiscard]] Expected<void> legalizeBRJT(MachineInstr &Instruction,
+                                            MachineIRBuilder &MIRBuilder) const;
+
   const RISCVSubtarget &Subtarget;
 };
 

@@ -12,6 +12,7 @@
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -711,6 +712,202 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) : Subtar
       .alwaysLegal();
 }
 
+Expected<void> RISCVLegalizerInfo::legalizeBRJT(MachineInstr &Instruction,
+                                                MachineIRBuilder &MIRBuilder) const {
+  if (Instruction.operandCount() != 3)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_BRJT requires table pointer, table index, and index operands");
+
+  const MachineOperand *TablePointerOperand = Instruction.operandAt(0);
+  const MachineOperand *TableIndexOperand = Instruction.operandAt(1);
+  const MachineOperand *IndexOperand = Instruction.operandAt(2);
+  const Register *TablePointer =
+      TablePointerOperand == nullptr ? nullptr : TablePointerOperand->getIf<Register>();
+  const JumpTableOperand *TableIndex =
+      TableIndexOperand == nullptr ? nullptr : TableIndexOperand->getIf<JumpTableOperand>();
+  const Register *Index = IndexOperand == nullptr ? nullptr : IndexOperand->getIf<Register>();
+  if (TablePointer == nullptr || TableIndex == nullptr || Index == nullptr ||
+      !TablePointer->isVirtual() || !Index->isVirtual()) {
+    return makeUnexpected(
+        ErrorCode::VerificationError,
+        "RISC-V G_BRJT requires virtual-register table pointer and index operands");
+  }
+
+  MachineFunction &Function = MIRBuilder.function();
+  const MachineJumpTableEntry *TableEntry = Function.jumpTableInfo().table(TableIndex->Index);
+  const MachineJumpTableDesc *Table = TableEntry == nullptr ? nullptr : TableEntry->description();
+  if (Table == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_BRJT references an undefined jump table");
+  }
+  if (!std::has_single_bit(Table->EntrySize)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_BRJT requires a power-of-two jump table entry size");
+  }
+
+  auto PointerType = Function.registerInfo().getType(*TablePointer);
+  if (!PointerType)
+    return std::unexpected(PointerType.error());
+  auto IndexType = Function.registerInfo().getType(*Index);
+  if (!IndexType)
+    return std::unexpected(IndexType.error());
+  if (!PointerType->isPointer() || !IndexType->isCategoryNeutralScalar()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_BRJT requires scalar pointer and integer index types");
+  }
+  const std::optional<std::uint32_t> AddressSpace = PointerType->addressSpace();
+  if (!AddressSpace) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V G_BRJT table pointer has no address space");
+  }
+
+  auto EntryType = LowLevelType::makeCategoryNeutralScalar(
+      static_cast<std::uint32_t>(Table->EntrySize) * std::uint32_t{8});
+  if (!EntryType)
+    return std::unexpected(EntryType.error());
+  auto EntryMemorySize = MemorySize::fixed(Table->EntrySize);
+  if (!EntryMemorySize)
+    return std::unexpected(EntryMemorySize.error());
+
+  MachineMemOperandDesc LoadDescription;
+  LoadDescription.Accesses = {MemoryAccessFlag::Load};
+  LoadDescription.Size = *EntryMemorySize;
+  LoadDescription.MemoryType = *EntryType;
+  LoadDescription.Align = Table->Align;
+  LoadDescription.AddressSpace = *AddressSpace;
+  LoadDescription.Base = MemoryBase::jumpTablePseudo();
+  auto LoadMemory = Function.createMemOperand(std::move(LoadDescription));
+  if (!LoadMemory)
+    return std::unexpected(LoadMemory.error());
+
+  auto ShiftAmount = Function.registerInfo().createVirtualRegister(*IndexType);
+  if (!ShiftAmount)
+    return std::unexpected(ShiftAmount.error());
+  if (auto Built = MIRBuilder.buildConstant(
+          *ShiftAmount,
+          static_cast<std::int64_t>(std::countr_zero(static_cast<unsigned int>(Table->EntrySize))));
+      !Built) {
+    return std::unexpected(Built.error());
+  }
+
+  auto ScaledIndex = Function.registerInfo().createVirtualRegister(*IndexType);
+  if (!ScaledIndex)
+    return std::unexpected(ScaledIndex.error());
+  if (auto Built = MIRBuilder.buildShl(*ScaledIndex, *Index, *ShiftAmount); !Built)
+    return std::unexpected(Built.error());
+
+  auto EntryAddress = Function.registerInfo().createVirtualRegister(*PointerType);
+  if (!EntryAddress)
+    return std::unexpected(EntryAddress.error());
+  auto AddressBuilder = MIRBuilder.buildInstr(opcode(GenericOpcode::G_PTR_ADD));
+  if (!AddressBuilder)
+    return std::unexpected(AddressBuilder.error());
+  if (auto Added = AddressBuilder->addDef(*EntryAddress); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = AddressBuilder->addUse(*TablePointer); !Added)
+    return std::unexpected(Added.error());
+  if (auto Added = AddressBuilder->addUse(*ScaledIndex); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = AddressBuilder->build(); !Built)
+    return std::unexpected(Built.error());
+
+  Register Target;
+  switch (Table->Encoding) {
+  case JumpTableEntryEncoding::Custom32: {
+    auto LoadedOffset = Function.registerInfo().createVirtualRegister(*IndexType);
+    if (!LoadedOffset)
+      return std::unexpected(LoadedOffset.error());
+    auto LoadBuilder = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SEXTLOAD));
+    if (!LoadBuilder)
+      return std::unexpected(LoadBuilder.error());
+    if (auto Added = LoadBuilder->addDef(*LoadedOffset); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = LoadBuilder->addUse(*EntryAddress); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = LoadBuilder->addMemOperand(**LoadMemory); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = LoadBuilder->build(); !Built)
+      return std::unexpected(Built.error());
+
+    auto TargetPointer = Function.registerInfo().createVirtualRegister(*PointerType);
+    if (!TargetPointer)
+      return std::unexpected(TargetPointer.error());
+    if (auto Built = MIRBuilder.buildIntToPtr(*TargetPointer, *LoadedOffset); !Built)
+      return std::unexpected(Built.error());
+    Target = *TargetPointer;
+    break;
+  }
+  case JumpTableEntryEncoding::LabelDifference32: {
+    auto LoadedOffset = Function.registerInfo().createVirtualRegister(*IndexType);
+    if (!LoadedOffset)
+      return std::unexpected(LoadedOffset.error());
+    auto LoadBuilder = MIRBuilder.buildInstr(opcode(GenericOpcode::G_SEXTLOAD));
+    if (!LoadBuilder)
+      return std::unexpected(LoadBuilder.error());
+    if (auto Added = LoadBuilder->addDef(*LoadedOffset); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = LoadBuilder->addUse(*EntryAddress); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = LoadBuilder->addMemOperand(**LoadMemory); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = LoadBuilder->build(); !Built)
+      return std::unexpected(Built.error());
+
+    auto TargetPointer = Function.registerInfo().createVirtualRegister(*PointerType);
+    if (!TargetPointer)
+      return std::unexpected(TargetPointer.error());
+    auto TargetBuilder = MIRBuilder.buildInstr(opcode(GenericOpcode::G_PTR_ADD));
+    if (!TargetBuilder)
+      return std::unexpected(TargetBuilder.error());
+    if (auto Added = TargetBuilder->addDef(*TargetPointer); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = TargetBuilder->addUse(*TablePointer); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = TargetBuilder->addUse(*LoadedOffset); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = TargetBuilder->build(); !Built)
+      return std::unexpected(Built.error());
+    Target = *TargetPointer;
+    break;
+  }
+  case JumpTableEntryEncoding::BlockAddress: {
+    auto TargetPointer = Function.registerInfo().createVirtualRegister(*PointerType);
+    if (!TargetPointer)
+      return std::unexpected(TargetPointer.error());
+    auto LoadBuilder = MIRBuilder.buildInstr(opcode(GenericOpcode::G_LOAD));
+    if (!LoadBuilder)
+      return std::unexpected(LoadBuilder.error());
+    if (auto Added = LoadBuilder->addDef(*TargetPointer); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = LoadBuilder->addUse(*EntryAddress); !Added)
+      return std::unexpected(Added.error());
+    if (auto Added = LoadBuilder->addMemOperand(**LoadMemory); !Added)
+      return std::unexpected(Added.error());
+    if (auto Built = LoadBuilder->build(); !Built)
+      return std::unexpected(Built.error());
+    Target = *TargetPointer;
+    break;
+  }
+  default:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "RISC-V G_BRJT has an unsupported jump table encoding");
+  }
+
+  auto BranchBuilder = MIRBuilder.buildInstr(opcode(GenericOpcode::G_BRINDIRECT));
+  if (!BranchBuilder)
+    return std::unexpected(BranchBuilder.error());
+  if (auto Added = BranchBuilder->addUse(Target); !Added)
+    return std::unexpected(Added.error());
+  if (auto Built = BranchBuilder->build(); !Built)
+    return std::unexpected(Built.error());
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "RISC-V G_BRJT became detached during legalization");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
                                                   MachineInstr &Instruction,
                                                   const LegalizationDecision &Decision) const {
@@ -720,6 +917,8 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
 
   MachineFunction &Function = Helper.MIRBuilder.function();
   const TargetDescription &Target = Helper.MIRBuilder.target();
+  if (Instruction.opcode() == opcode(GenericOpcode::G_BRJT))
+    return legalizeBRJT(Instruction, Helper.MIRBuilder);
   if (Instruction.opcode() == opcode(GenericOpcode::G_ADD) ||
       Instruction.opcode() == opcode(GenericOpcode::G_SUB)) {
     auto XLenType = LowLevelType::makeCategoryNeutralScalar(64);
