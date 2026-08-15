@@ -2,7 +2,6 @@
 
 #include "rcc/CodeGen/GlobalISel/InstructionSelect.h"
 
-#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
@@ -167,20 +166,6 @@ void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
   return Error(Code, std::move(Message));
 }
 
-[[nodiscard]] Expected<void> repairTrackedLiveness(MachineFunction &Function,
-                                                   const TargetDescription &Target,
-                                                   MachinePassResult &Result) {
-  if (!Result.Changed || !Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
-    return {};
-  }
-  auto Rebuilt = rebuildMachineLiveness(Function, Target);
-  if (!Rebuilt)
-    return std::unexpected(Rebuilt.error());
-  if (*Rebuilt)
-    Result.Changes.add(MachinePassChange::Operands);
-  return {};
-}
-
 } // namespace
 
 const MachinePassContract &InstructionSelect::contract() const noexcept {
@@ -341,11 +326,6 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
   if (!RegisterValidation)
     return std::unexpected(withErrorContext(RegisterValidation.error(),
                                             "instruction selection produced invalid registers: "));
-  auto Liveness = repairTrackedLiveness(Function, Target, Result);
-  if (!Liveness) {
-    return std::unexpected(
-        withErrorContext(Liveness.error(), "instruction-selection liveness repair failed: "));
-  }
   Result.Preserved = Result.Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   return Result;
 }
