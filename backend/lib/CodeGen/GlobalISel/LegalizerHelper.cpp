@@ -1242,13 +1242,10 @@ Expected<void> LegalizerHelper::widenScalarDst(MachineInstr &Instruction, LowLev
 Expected<void> LegalizerHelper::widenScalarAddSubOverflow(MachineInstr &Instruction,
                                                           std::size_t TypeIndex,
                                                           LowLevelType WideType) {
-  if (TypeIndex != 0)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "add/sub overflow widening requires type index zero");
-
   const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
   GenericOpcode ArithmeticOpcode;
   GenericOpcode ExtensionOpcode;
+  bool HasCarryIn = false;
   switch (Generic) {
   case GenericOpcode::G_SADDO:
     ArithmeticOpcode = GenericOpcode::G_ADD;
@@ -1266,18 +1263,72 @@ Expected<void> LegalizerHelper::widenScalarAddSubOverflow(MachineInstr &Instruct
     ArithmeticOpcode = GenericOpcode::G_SUB;
     ExtensionOpcode = GenericOpcode::G_ZEXT;
     break;
+  case GenericOpcode::G_SADDE:
+    ArithmeticOpcode = GenericOpcode::G_UADDE;
+    ExtensionOpcode = GenericOpcode::G_SEXT;
+    HasCarryIn = true;
+    break;
+  case GenericOpcode::G_SSUBE:
+    ArithmeticOpcode = GenericOpcode::G_USUBE;
+    ExtensionOpcode = GenericOpcode::G_SEXT;
+    HasCarryIn = true;
+    break;
+  case GenericOpcode::G_UADDE:
+    ArithmeticOpcode = GenericOpcode::G_UADDE;
+    ExtensionOpcode = GenericOpcode::G_ZEXT;
+    HasCarryIn = true;
+    break;
+  case GenericOpcode::G_USUBE:
+    ArithmeticOpcode = GenericOpcode::G_USUBE;
+    ExtensionOpcode = GenericOpcode::G_ZEXT;
+    HasCarryIn = true;
+    break;
   default:
     return makeUnexpected(ErrorCode::InternalError,
                           "unexpected opcode during add/sub overflow widening");
   }
 
-  const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
-  const Register Overflow = *Instruction.operandAt(1)->getIf<Register>();
-  const Register Left = *Instruction.operandAt(2)->getIf<Register>();
-  const Register Right = *Instruction.operandAt(3)->getIf<Register>();
-  auto OriginalType = MRI.getType(Destination);
+  if (TypeIndex == 1) {
+    if (HasCarryIn) {
+      if (auto Result = widenScalarSrc(Instruction, WideType, 4,
+                                       MIRBuilder.getBoolExtOp(WideType.isVector(), false));
+          !Result) {
+        return Result;
+      }
+    }
+    return widenScalarDst(Instruction, WideType, 1);
+  }
+  if (TypeIndex != 0)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "add/sub overflow widening requires type index zero or one");
+  if (Instruction.operandCount() != (HasCarryIn ? 5U : 4U))
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "add/sub overflow widening has an invalid operand count");
+
+  const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+  const MachineOperand *OverflowOperand = Instruction.operandAt(1);
+  const MachineOperand *LeftOperand = Instruction.operandAt(2);
+  const MachineOperand *RightOperand = Instruction.operandAt(3);
+  const MachineOperand *CarryInOperand = HasCarryIn ? Instruction.operandAt(4) : nullptr;
+  const Register *Destination =
+      DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+  const Register *Overflow =
+      OverflowOperand == nullptr ? nullptr : OverflowOperand->getIf<Register>();
+  const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+  const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+  const Register *CarryIn = CarryInOperand == nullptr ? nullptr : CarryInOperand->getIf<Register>();
+  if (Destination == nullptr || Overflow == nullptr || Left == nullptr || Right == nullptr ||
+      (HasCarryIn && CarryIn == nullptr)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "add/sub overflow widening requires register operands");
+  }
+
+  auto OriginalType = MRI.getType(*Destination);
+  auto OverflowType = MRI.getType(*Overflow);
   if (!OriginalType)
     return std::unexpected(OriginalType.error());
+  if (!OverflowType)
+    return std::unexpected(OverflowType.error());
 
   auto WideLeft = MRI.createVirtualRegister(WideType);
   auto WideRight = MRI.createVirtualRegister(WideType);
@@ -1297,13 +1348,19 @@ Expected<void> LegalizerHelper::widenScalarAddSubOverflow(MachineInstr &Instruct
 
   if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
     return std::unexpected(Point.error());
-  if (auto Built = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*WideLeft}, {Left}); !Built)
+  if (auto Built = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*WideLeft}, {*Left}); !Built)
     return std::unexpected(Built.error());
-  if (auto Built = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*WideRight}, {Right}); !Built)
+  if (auto Built = MIRBuilder.buildInstr(opcode(ExtensionOpcode), {*WideRight}, {*Right}); !Built)
     return std::unexpected(Built.error());
-  if (auto Built =
-          MIRBuilder.buildInstr(opcode(ArithmeticOpcode), {*WideResult}, {*WideLeft, *WideRight});
-      !Built) {
+  if (HasCarryIn) {
+    if (auto Built = MIRBuilder.buildInstr(opcode(ArithmeticOpcode), {*WideResult, *OverflowType},
+                                           {*WideLeft, *WideRight, *CarryIn});
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+  } else if (auto Built = MIRBuilder.buildInstr(opcode(ArithmeticOpcode), {*WideResult},
+                                                {*WideLeft, *WideRight});
+             !Built) {
     return std::unexpected(Built.error());
   }
   if (auto Built = MIRBuilder.buildTrunc(*TruncatedResult, *WideResult); !Built)
@@ -1314,11 +1371,11 @@ Expected<void> LegalizerHelper::widenScalarAddSubOverflow(MachineInstr &Instruct
     return std::unexpected(Built.error());
   }
   if (auto Built =
-          MIRBuilder.buildICmp(IntegerPredicate::NotEqual, Overflow, *WideResult, *ExtendedResult);
+          MIRBuilder.buildICmp(IntegerPredicate::NotEqual, *Overflow, *WideResult, *ExtendedResult);
       !Built) {
     return std::unexpected(Built.error());
   }
-  if (auto Built = MIRBuilder.buildTrunc(Destination, *WideResult); !Built)
+  if (auto Built = MIRBuilder.buildTrunc(*Destination, *WideResult); !Built)
     return std::unexpected(Built.error());
 
   MachineBasicBlock *Block = Instruction.parent();
@@ -1753,6 +1810,10 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
   case GenericOpcode::G_SSUBO:
   case GenericOpcode::G_UADDO:
   case GenericOpcode::G_USUBO:
+  case GenericOpcode::G_SADDE:
+  case GenericOpcode::G_SSUBE:
+  case GenericOpcode::G_UADDE:
+  case GenericOpcode::G_USUBE:
     return widenScalarAddSubOverflow(Instruction, TypeIndex, WideType);
 
   case GenericOpcode::G_SMULO:
@@ -4163,6 +4224,8 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   }
   case GenericOpcode::G_SADDO:
   case GenericOpcode::G_SSUBO:
+  case GenericOpcode::G_SADDE:
+  case GenericOpcode::G_SSUBE:
     return lowerSignedAddSubOverflow(Instruction);
   case GenericOpcode::G_SEXT_INREG: {
     const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
@@ -5862,6 +5925,105 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
 }
 
 Expected<void> LegalizerHelper::lowerSignedAddSubOverflow(MachineInstr &Instruction) {
+  const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
+  if (Generic == GenericOpcode::G_SADDE || Generic == GenericOpcode::G_SSUBE) {
+    if (Instruction.operandCount() != 5)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "signed extended add/sub lowering requires five register operands");
+
+    const bool IsAdd = Generic == GenericOpcode::G_SADDE;
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const MachineOperand *OverflowOperand = Instruction.operandAt(1);
+    const MachineOperand *LeftOperand = Instruction.operandAt(2);
+    const MachineOperand *RightOperand = Instruction.operandAt(3);
+    const MachineOperand *CarryInOperand = Instruction.operandAt(4);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    const Register *Overflow =
+        OverflowOperand == nullptr ? nullptr : OverflowOperand->getIf<Register>();
+    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+    const Register *CarryIn =
+        CarryInOperand == nullptr ? nullptr : CarryInOperand->getIf<Register>();
+    if (Destination == nullptr || Overflow == nullptr || Left == nullptr || Right == nullptr ||
+        CarryIn == nullptr) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "signed extended add/sub lowering requires register operands");
+    }
+
+    auto Type = MRI.getType(*Destination);
+    if (!Type)
+      return std::unexpected(Type.error());
+    auto Result = MRI.cloneVirtualRegister(*Destination);
+    auto ExtendedCarry = MRI.createVirtualRegister(*Type);
+    auto FirstXor = MRI.createVirtualRegister(*Type);
+    auto SecondXor = MRI.createVirtualRegister(*Type);
+    auto OverflowBits = MRI.createVirtualRegister(*Type);
+    if (!Result)
+      return std::unexpected(Result.error());
+    if (!ExtendedCarry)
+      return std::unexpected(ExtendedCarry.error());
+    if (!FirstXor)
+      return std::unexpected(FirstXor.error());
+    if (!SecondXor)
+      return std::unexpected(SecondXor.error());
+    if (!OverflowBits)
+      return std::unexpected(OverflowBits.error());
+
+    if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+      return std::unexpected(Point.error());
+
+    if (IsAdd) {
+      auto Temporary = MRI.createVirtualRegister(*Type);
+      if (!Temporary)
+        return std::unexpected(Temporary.error());
+      if (auto Built = MIRBuilder.buildAdd(*Temporary, *Left, *Right); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildZExt(*ExtendedCarry, *CarryIn); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildAdd(*Result, *Temporary, *ExtendedCarry); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildCopy(*Destination, *Result); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildXor(*FirstXor, *Result, *Left); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildXor(*SecondXor, *Result, *Right); !Built)
+        return std::unexpected(Built.error());
+    } else {
+      auto RightWithCarry = MRI.createVirtualRegister(*Type);
+      if (!RightWithCarry)
+        return std::unexpected(RightWithCarry.error());
+      if (auto Built = MIRBuilder.buildZExt(*ExtendedCarry, *CarryIn); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildAdd(*RightWithCarry, *Right, *ExtendedCarry); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildSub(*Result, *Left, *RightWithCarry); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildCopy(*Destination, *Result); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildXor(*FirstXor, *Left, *Right); !Built)
+        return std::unexpected(Built.error());
+      if (auto Built = MIRBuilder.buildXor(*SecondXor, *Left, *Result); !Built)
+        return std::unexpected(Built.error());
+    }
+    if (auto Built = MIRBuilder.buildAnd(*OverflowBits, *FirstXor, *SecondXor); !Built)
+      return std::unexpected(Built.error());
+    auto Zero = buildConstantRegister(MIRBuilder, *Type, 0);
+    if (!Zero)
+      return std::unexpected(Zero.error());
+    if (auto Built =
+            MIRBuilder.buildICmp(IntegerPredicate::SignedLessThan, *Overflow, *OverflowBits, *Zero);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "signed extended add/sub instruction became detached during lowering");
+    return Block->removeInstruction(Instruction);
+  }
+
   const bool IsAdd = Instruction.opcode() == opcode(GenericOpcode::G_SADDO);
   const Register Destination = *Instruction.operandAt(0)->getIf<Register>();
   const Register Overflow = *Instruction.operandAt(1)->getIf<Register>();
