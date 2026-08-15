@@ -230,11 +230,6 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     if (!Validation)
       return std::unexpected(
           withErrorContext(Validation.error(), "instruction selector input is invalid: "));
-    if (!Descriptor->Flags.has(InstructionFlag::Generic))
-      continue;
-    auto Match = Info->canSelect(*Instruction, Function, Target);
-    if (!Match)
-      return std::unexpected(Match.error());
     Worklist.push_back(Instruction);
     DiscoveredInstructions.insert(Instruction->stableID());
   }
@@ -308,13 +303,8 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
       if (CandidateDescriptor == nullptr)
         return std::unexpected(
             passFailure("instruction selector produced an unknown instruction descriptor"));
-      if (!CandidateDescriptor->Flags.has(InstructionFlag::Generic) ||
-          !DiscoveredInstructions.insert(Candidate->stableID()).second) {
+      if (!DiscoveredInstructions.insert(Candidate->stableID()).second)
         continue;
-      }
-      auto CandidateMatch = Info->canSelect(*Candidate, Function, Target);
-      if (!CandidateMatch)
-        return std::unexpected(CandidateMatch.error());
       Worklist.push_back(Candidate);
     }
   }
