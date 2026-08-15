@@ -518,6 +518,13 @@ RISCVLegalizerInfo::RISCVLegalizerInfo(const RISCVSubtarget &Subtarget) : Subtar
         .lowerFor({S64});
     getActionDefinitionsBuilder({opcode(GenericOpcode::G_SMULO), opcode(GenericOpcode::G_UMULO)})
         .minScalar(0, S64)
+        // Widen s64 to s128 so one libcall provides both the low result and
+        // the high half needed for the overflow check.
+        .widenScalarIf(
+            [S64](const LegalizationQuery &Query) {
+              return !Query.Types.empty() && Query.Types[0] == S64;
+            },
+            [S128](const LegalizationQuery &) { return std::pair{std::size_t{0}, S128}; })
         .lower();
   }
   if (HasM) {

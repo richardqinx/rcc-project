@@ -1328,6 +1328,123 @@ Expected<void> LegalizerHelper::widenScalarAddSubOverflow(MachineInstr &Instruct
   return Block->removeInstruction(Instruction);
 }
 
+Expected<void> LegalizerHelper::widenScalarMulo(MachineInstr &Instruction, std::size_t TypeIndex,
+                                                LowLevelType WideType) {
+  if (TypeIndex == 1)
+    return widenScalarDst(Instruction, WideType, 1);
+  if (TypeIndex != 0)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiply-overflow widening requires type index zero or one");
+  if (Instruction.operandCount() != 4)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiply-overflow widening requires four register operands");
+
+  const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_SMULO);
+  const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
+  const Register *OriginalOverflow = Instruction.operandAt(1)->getIf<Register>();
+  const Register *Left = Instruction.operandAt(2)->getIf<Register>();
+  const Register *Right = Instruction.operandAt(3)->getIf<Register>();
+  if (Destination == nullptr || OriginalOverflow == nullptr || Left == nullptr || Right == nullptr)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiply-overflow widening requires register operands");
+
+  auto SourceType = MRI.getType(*Left);
+  auto OverflowType = MRI.getType(*OriginalOverflow);
+  if (!SourceType)
+    return std::unexpected(SourceType.error());
+  if (!OverflowType)
+    return std::unexpected(OverflowType.error());
+  const std::uint32_t SourceBitWidth = SourceType->scalarBitWidth();
+  if (SourceBitWidth == 0 || !WideType.isCategoryNeutralScalar())
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiply-overflow widening requires scalar types");
+
+  const GenericOpcode ExtensionOpcode = IsSigned ? GenericOpcode::G_SEXT : GenericOpcode::G_ZEXT;
+  auto WideLeft = buildResultInstruction(MIRBuilder, ExtensionOpcode, WideType, {*Left});
+  auto WideRight = buildResultInstruction(MIRBuilder, ExtensionOpcode, WideType, {*Right});
+  if (!WideLeft)
+    return std::unexpected(WideLeft.error());
+  if (!WideRight)
+    return std::unexpected(WideRight.error());
+
+  const bool WideMulCanOverflow = static_cast<std::uint64_t>(WideType.scalarBitWidth()) <
+                                  2U * static_cast<std::uint64_t>(SourceBitWidth);
+  Register Mul;
+  Register WideOverflow;
+  if (WideMulCanOverflow) {
+    auto Built =
+        MIRBuilder.buildInstr(opcode(IsSigned ? GenericOpcode::G_SMULO : GenericOpcode::G_UMULO),
+                              {WideType, *OverflowType}, {*WideLeft, *WideRight});
+    if (!Built)
+      return std::unexpected(Built.error());
+    const MachineOperand *ResultOperand = (*Built)->operandAt(0);
+    const MachineOperand *OverflowOperand = (*Built)->operandAt(1);
+    const Register *Result = ResultOperand == nullptr ? nullptr : ResultOperand->getIf<Register>();
+    const Register *Overflow =
+        OverflowOperand == nullptr ? nullptr : OverflowOperand->getIf<Register>();
+    if (Result == nullptr || Overflow == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "multiply-overflow widening produced invalid results");
+    Mul = *Result;
+    WideOverflow = *Overflow;
+  } else {
+    auto Built =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_MUL, WideType, {*WideLeft, *WideRight});
+    if (!Built)
+      return std::unexpected(Built.error());
+    Mul = *Built;
+  }
+
+  if (auto Built = MIRBuilder.buildTrunc(*Destination, Mul); !Built)
+    return std::unexpected(Built.error());
+
+  Register ExtendedResult;
+  if (IsSigned) {
+    auto Built = MIRBuilder.buildSExtInReg(WideType, Mul, SourceBitWidth);
+    if (!Built)
+      return std::unexpected(Built.error());
+    auto Result = resultRegister(**Built);
+    if (!Result)
+      return std::unexpected(Result.error());
+    ExtendedResult = *Result;
+  } else {
+    auto Mask = APInt::getLowBitsSet(WideType.scalarBitWidth(), SourceBitWidth);
+    if (!Mask)
+      return std::unexpected(Mask.error());
+    auto MaskRegister = buildConstantRegister(MIRBuilder, WideType, std::move(*Mask));
+    if (!MaskRegister)
+      return std::unexpected(MaskRegister.error());
+    auto Built =
+        buildResultInstruction(MIRBuilder, GenericOpcode::G_AND, WideType, {Mul, *MaskRegister});
+    if (!Built)
+      return std::unexpected(Built.error());
+    ExtendedResult = *Built;
+  }
+
+  if (WideMulCanOverflow) {
+    auto Overflow = MRI.createVirtualRegister(*OverflowType);
+    if (!Overflow)
+      return std::unexpected(Overflow.error());
+    if (auto Built =
+            MIRBuilder.buildICmp(IntegerPredicate::NotEqual, *Overflow, Mul, ExtendedResult);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+    if (auto Built = MIRBuilder.buildOr(*OriginalOverflow, WideOverflow, *Overflow); !Built)
+      return std::unexpected(Built.error());
+  } else if (auto Built = MIRBuilder.buildICmp(IntegerPredicate::NotEqual, *OriginalOverflow, Mul,
+                                               ExtendedResult);
+             !Built) {
+    return std::unexpected(Built.error());
+  }
+
+  MachineBasicBlock *Block = Instruction.parent();
+  if (Block == nullptr)
+    return makeUnexpected(ErrorCode::InternalError,
+                          "multiply-overflow instruction became detached during widening");
+  return Block->removeInstruction(Instruction);
+}
+
 Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size_t TypeIndex,
                                             LowLevelType WideType) {
   auto Query = LegalizerInfo::buildQuery(Instruction, Function, MIRBuilder.target());
@@ -1637,6 +1754,14 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
   case GenericOpcode::G_UADDO:
   case GenericOpcode::G_USUBO:
     return widenScalarAddSubOverflow(Instruction, TypeIndex, WideType);
+
+  case GenericOpcode::G_SMULO:
+  case GenericOpcode::G_UMULO:
+    if (TypeIndex != 1)
+      return widenScalarMulo(Instruction, TypeIndex, WideType);
+    if (auto Result = widenScalarMulo(Instruction, TypeIndex, WideType); !Result)
+      return Result;
+    break;
 
   case GenericOpcode::G_ADD:
   case GenericOpcode::G_SUB:
@@ -3992,6 +4117,9 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
   case GenericOpcode::G_SMULH:
   case GenericOpcode::G_UMULH:
     return lowerHighMultiply(Instruction);
+  case GenericOpcode::G_SMULO:
+  case GenericOpcode::G_UMULO:
+    return lowerMulo(Instruction);
   case GenericOpcode::G_CTLZ_ZERO_POISON:
   case GenericOpcode::G_CTTZ_ZERO_POISON:
   case GenericOpcode::G_CTLZ:
@@ -4789,6 +4917,74 @@ Expected<void> LegalizerHelper::lowerHighMultiply(MachineInstr &Instruction) {
     return makeUnexpected(ErrorCode::InternalError,
                           "high multiply instruction became detached during lowering");
   return Block->removeInstruction(Instruction);
+}
+
+Expected<void> LegalizerHelper::lowerMulo(MachineInstr &Instruction) {
+  if (Instruction.operandCount() != 4)
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiply-overflow lowering requires four register operands");
+
+  const bool IsSigned = Instruction.opcode() == opcode(GenericOpcode::G_SMULO);
+  const Register *ResultOperand = Instruction.operandAt(0)->getIf<Register>();
+  const Register *OverflowOperand = Instruction.operandAt(1)->getIf<Register>();
+  const Register *LeftOperand = Instruction.operandAt(2)->getIf<Register>();
+  const Register *RightOperand = Instruction.operandAt(3)->getIf<Register>();
+  if (ResultOperand == nullptr || OverflowOperand == nullptr || LeftOperand == nullptr ||
+      RightOperand == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "multiply-overflow lowering requires register operands");
+  }
+  const Register Result = *ResultOperand;
+  const Register Overflow = *OverflowOperand;
+  const Register Left = *LeftOperand;
+  const Register Right = *RightOperand;
+  auto ResultType = MRI.getType(Result);
+  if (!ResultType)
+    return std::unexpected(ResultType.error());
+  if (!ResultType->isCategoryNeutralScalar() || ResultType->scalarBitWidth() == 0)
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "multiply-overflow lowering requires a scalar result type");
+
+  if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
+    return std::unexpected(Point.error());
+  Observer.changingInstr(Instruction);
+  if (auto Changed = Instruction.setOpcode(opcode(GenericOpcode::G_MUL)); !Changed)
+    return std::unexpected(Changed.error());
+  if (auto Changed = Instruction.eraseOperand(1); !Changed)
+    return std::unexpected(Changed.error());
+  Observer.changedInstr(Instruction);
+
+  auto HighPart =
+      buildResultInstruction(MIRBuilder, IsSigned ? GenericOpcode::G_SMULH : GenericOpcode::G_UMULH,
+                             *ResultType, {Left, Right});
+  if (!HighPart)
+    return std::unexpected(HighPart.error());
+  auto Zero = buildConstantRegister(MIRBuilder, *ResultType, 0);
+  if (!Zero)
+    return std::unexpected(Zero.error());
+
+  if (auto Point = MIRBuilder.setInsertPointAfter(Instruction); !Point)
+    return std::unexpected(Point.error());
+  if (IsSigned) {
+    auto ShiftAmount =
+        buildConstantRegister(MIRBuilder, *ResultType, ResultType->scalarBitWidth() - 1U);
+    if (!ShiftAmount)
+      return std::unexpected(ShiftAmount.error());
+    auto Shifted = buildResultInstruction(MIRBuilder, GenericOpcode::G_ASHR, *ResultType,
+                                          {Result, *ShiftAmount});
+    if (!Shifted)
+      return std::unexpected(Shifted.error());
+    if (auto Built =
+            MIRBuilder.buildICmp(IntegerPredicate::NotEqual, Overflow, *HighPart, *Shifted);
+        !Built) {
+      return std::unexpected(Built.error());
+    }
+  } else if (auto Built =
+                 MIRBuilder.buildICmp(IntegerPredicate::NotEqual, Overflow, *HighPart, *Zero);
+             !Built) {
+    return std::unexpected(Built.error());
+  }
+  return {};
 }
 
 Expected<void> LegalizerHelper::lowerBitCount(MachineInstr &Instruction) {

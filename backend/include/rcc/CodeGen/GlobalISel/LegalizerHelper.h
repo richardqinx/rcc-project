@@ -132,7 +132,10 @@ private:
   [[nodiscard]] Expected<void> widenScalarAddSubOverflow(MachineInstr &Instruction,
                                                          std::size_t TypeIndex,
                                                          LowLevelType WideType);
+  [[nodiscard]] Expected<void> widenScalarMulo(MachineInstr &Instruction, std::size_t TypeIndex,
+                                               LowLevelType WideType);
   [[nodiscard]] Expected<void> lowerSignedAddSubOverflow(MachineInstr &Instruction);
+  [[nodiscard]] Expected<void> lowerMulo(MachineInstr &Instruction);
 
   MachineFunction &Function;
   MachineRegisterInfo &MRI;
