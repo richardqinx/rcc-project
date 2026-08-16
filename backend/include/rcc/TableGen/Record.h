@@ -235,15 +235,26 @@ struct SourceSelectionIntegerPredicate final {
   TextRange Range;
 };
 
+struct SourceSelectionTargetPredicate final {
+  std::string Symbol;
+  TextRange Range;
+};
+
+struct SourceSelectionConstantRange final {
+  std::int64_t Minimum = 0;
+  std::int64_t Maximum = 0;
+  TextRange SourceRange;
+};
+
+struct SourceSelectionOperandImmediatePredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::vector<SourceSelectionConstantRange> Ranges;
+  TextRange Range;
+};
+
 struct SourceSelectionOperandDefConstantPredicate final {
   std::uint32_t OperandIndex = 0;
-  struct ConstantRange final {
-    std::int64_t Minimum = 0;
-    std::int64_t Maximum = 0;
-    TextRange SourceRange;
-  };
-
-  std::vector<ConstantRange> Ranges;
+  std::vector<SourceSelectionConstantRange> Ranges;
   TextRange Range;
 };
 
@@ -294,9 +305,11 @@ struct SourceSelectionRule final {
   std::string MatchOpcodeSymbol;
   std::optional<SourceSelectionTypePredicate> ResultType;
   std::optional<SourceSelectionIntegerPredicate> IntegerPredicate;
+  std::vector<SourceSelectionTargetPredicate> TargetPredicates;
   std::vector<SourceSelectionOperandTypePredicate> OperandTypes;
   std::vector<SourceSelectionOperandBankPredicate> OperandBanks;
   std::vector<SourceSelectionOperandClassPredicate> OperandClasses;
+  std::vector<SourceSelectionOperandImmediatePredicate> OperandImmediates;
   std::vector<SourceSelectionOperandDefConstantPredicate> OperandDefConstants;
   std::vector<SourceSelectionDefUsePredicate> DefUsePredicates;
   std::vector<SourceSelectionTemporary> Temporaries;

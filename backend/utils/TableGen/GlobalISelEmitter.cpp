@@ -42,8 +42,9 @@ void emitTypePredicate(std::ostream &Output, std::uint32_t OperandIndex,
 
 [[nodiscard]] std::size_t instructionCount(const NormalizedSelectionRule &Rule) noexcept {
   std::size_t Count = 2U + (Rule.ResultType ? 1U : 0U) + (Rule.IntegerPredicate ? 1U : 0U) +
-                      Rule.OperandTypes.size() + Rule.OperandBanks.size() +
-                      Rule.OperandClasses.size() + Rule.OperandDefConstants.size() +
+                      Rule.TargetPredicates.size() + Rule.OperandTypes.size() +
+                      Rule.OperandBanks.size() + Rule.OperandClasses.size() +
+                      Rule.OperandImmediates.size() + Rule.OperandDefConstants.size() +
                       Rule.Temporaries.size() + Rule.EraseOperandDefinitions.size();
   for (const NormalizedSelectionDefUsePredicate &Predicate : Rule.DefUsePredicates)
     Count += 1U + Predicate.Captures.size() + Predicate.OperandDefConstants.size();
@@ -60,6 +61,9 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
   for (const NormalizedSelectionRule &Rule : Model.SelectionRules)
     InstructionCount += instructionCount(Rule);
   for (const NormalizedSelectionRule &Rule : Model.SelectionRules) {
+    for (const NormalizedSelectionOperandImmediatePredicate &Predicate : Rule.OperandImmediates) {
+      ConstantRangeCount += Predicate.Ranges.size();
+    }
     for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
          Rule.OperandDefConstants) {
       ConstantRangeCount += Predicate.Ranges.size();
@@ -81,15 +85,19 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
   Output << "constexpr std::array<GIMatchTableConstantRange, " << ConstantRangeCount
          << "> GeneratedGlobalISelConstantRanges = {{\n";
   for (const NormalizedSelectionRule &Rule : Model.SelectionRules) {
+    for (const NormalizedSelectionOperandImmediatePredicate &Predicate : Rule.OperandImmediates) {
+      for (const NormalizedSelectionConstantRange &Range : Predicate.Ranges)
+        Output << "    {" << Range.Minimum << ", " << Range.Maximum << "},\n";
+    }
     for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
          Rule.OperandDefConstants) {
-      for (const NormalizedSelectionOperandDefConstantPredicate::Range &Range : Predicate.Ranges)
+      for (const NormalizedSelectionConstantRange &Range : Predicate.Ranges)
         Output << "    {" << Range.Minimum << ", " << Range.Maximum << "},\n";
     }
     for (const NormalizedSelectionDefUsePredicate &DefUse : Rule.DefUsePredicates) {
       for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
            DefUse.OperandDefConstants) {
-        for (const NormalizedSelectionOperandDefConstantPredicate::Range &Range : Predicate.Ranges)
+        for (const NormalizedSelectionConstantRange &Range : Predicate.Ranges)
           Output << "    {" << Range.Minimum << ", " << Range.Maximum << "},\n";
       }
     }
@@ -106,12 +114,20 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
     if (Rule.IntegerPredicate)
       emitInstruction(Output, "CheckIntegerPredicate", Rule.IntegerPredicate->OperandIndex,
                       Rule.IntegerPredicate->Predicate);
+    for (const std::string &Predicate : Rule.TargetPredicates)
+      emitInstruction(Output, "CheckTargetPredicate", 0, 0, "0", 0, Predicate);
     for (const NormalizedSelectionOperandTypePredicate &Predicate : Rule.OperandTypes)
       emitTypePredicate(Output, Predicate.OperandIndex, Predicate.Type);
     for (const NormalizedSelectionOperandBankPredicate &Predicate : Rule.OperandBanks)
       emitInstruction(Output, "CheckOperandBank", Predicate.OperandIndex, Predicate.Bank);
     for (const NormalizedSelectionOperandClassPredicate &Predicate : Rule.OperandClasses)
       emitInstruction(Output, "CheckOperandClass", Predicate.OperandIndex, Predicate.RegClass);
+    for (const NormalizedSelectionOperandImmediatePredicate &Predicate : Rule.OperandImmediates) {
+      emitInstruction(Output, "CheckOperandImmediateRanges", Predicate.OperandIndex,
+                      static_cast<std::uint32_t>(FirstConstantRange),
+                      std::to_string(Predicate.Ranges.size()));
+      FirstConstantRange += Predicate.Ranges.size();
+    }
     for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
          Rule.OperandDefConstants) {
       emitInstruction(Output, "CheckOperandDefConstantRanges", Predicate.OperandIndex,

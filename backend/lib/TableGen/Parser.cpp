@@ -1173,6 +1173,92 @@ private:
     return true;
   }
 
+  [[nodiscard]] bool
+  parseSelectionTargetPredicates(const yaml::Node &Node,
+                                 std::vector<SourceSelectionTargetPredicate> &Result) {
+    if (!requireSequence(&Node, "selection target predicates"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (Element == nullptr)
+        return false;
+      const auto Symbol = scalar(*Element, "selection target predicate");
+      if (!Symbol)
+        return false;
+      Result.push_back({
+          .Symbol = *Symbol,
+          .Range = Element->range(),
+      });
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseSelectionConstantRanges(const yaml::Node &Node,
+                                                  std::vector<SourceSelectionConstantRange> &Result,
+                                                  std::string_view Context) {
+    if (!requireSequence(&Node, Context) || Node.sequence().empty())
+      return false;
+    for (const yaml::NodeID RangeID : Node.sequence()) {
+      const yaml::Node *Range = Input.node(RangeID);
+      const std::string RangeContext = std::string(Context) + " range";
+      if (!requireMapping(Range, RangeContext) ||
+          !checkKeys(*Range, {"min", "max"}, RangeContext)) {
+        return false;
+      }
+      const yaml::Node *MinimumNode = requiredNode(*Range, "min", RangeContext);
+      const yaml::Node *MaximumNode = requiredNode(*Range, "max", RangeContext);
+      if (MinimumNode == nullptr || MaximumNode == nullptr)
+        return false;
+      const auto Minimum = signedInteger(*MinimumNode, "selection constant range minimum");
+      const auto Maximum = signedInteger(*MaximumNode, "selection constant range maximum");
+      if (!Minimum || !Maximum || *Minimum > *Maximum) {
+        if (Minimum && Maximum)
+          fail(Range->range(), "selection constant range is invalid");
+        return false;
+      }
+      Result.push_back({
+          .Minimum = *Minimum,
+          .Maximum = *Maximum,
+          .SourceRange = Range->range(),
+      });
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
+  parseSelectionOperandImmediates(const yaml::Node &Node,
+                                  std::vector<SourceSelectionOperandImmediatePredicate> &Result) {
+    if (!requireSequence(&Node, "selection operand immediates"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection operand immediate") ||
+          !checkKeys(*Element, {"index", "ranges"}, "selection operand immediate")) {
+        return false;
+      }
+      const yaml::Node *IndexNode = requiredNode(*Element, "index", "selection operand immediate");
+      const yaml::Node *RangesNode =
+          requiredNode(*Element, "ranges", "selection operand immediate");
+      if (IndexNode == nullptr || RangesNode == nullptr)
+        return false;
+      const auto Index = unsignedInteger32(*IndexNode, "selection operand immediate index");
+      if (!Index)
+        return false;
+
+      SourceSelectionOperandImmediatePredicate Predicate{
+          .OperandIndex = *Index,
+          .Ranges = {},
+          .Range = Element->range(),
+      };
+      if (!parseSelectionConstantRanges(*RangesNode, Predicate.Ranges,
+                                        "selection operand immediate ranges")) {
+        return false;
+      }
+      Result.push_back(std::move(Predicate));
+    }
+    return true;
+  }
+
   [[nodiscard]] bool parseSelectionOperandDefConstants(
       const yaml::Node &Node, std::vector<SourceSelectionOperandDefConstantPredicate> &Result) {
     if (!requireSequence(&Node, "selection operand definition constants"))
@@ -1191,8 +1277,7 @@ private:
         return false;
       const auto Index =
           unsignedInteger32(*IndexNode, "selection operand definition constant index");
-      if (!Index || !requireSequence(RangesNode, "selection operand definition constant ranges") ||
-          RangesNode->sequence().empty()) {
+      if (!Index) {
         return false;
       }
 
@@ -1201,30 +1286,9 @@ private:
           .Ranges = {},
           .Range = Element->range(),
       };
-      for (const yaml::NodeID RangeID : RangesNode->sequence()) {
-        const yaml::Node *Range = Input.node(RangeID);
-        if (!requireMapping(Range, "selection operand definition constant range") ||
-            !checkKeys(*Range, {"min", "max"}, "selection operand definition constant range")) {
-          return false;
-        }
-        const yaml::Node *MinimumNode =
-            requiredNode(*Range, "min", "selection operand definition constant range");
-        const yaml::Node *MaximumNode =
-            requiredNode(*Range, "max", "selection operand definition constant range");
-        if (MinimumNode == nullptr || MaximumNode == nullptr)
-          return false;
-        const auto Minimum = signedInteger(*MinimumNode, "selection constant range minimum");
-        const auto Maximum = signedInteger(*MaximumNode, "selection constant range maximum");
-        if (!Minimum || !Maximum || *Minimum > *Maximum) {
-          if (Minimum && Maximum)
-            fail(Range->range(), "selection operand definition constant range is invalid");
-          return false;
-        }
-        Predicate.Ranges.push_back({
-            .Minimum = *Minimum,
-            .Maximum = *Maximum,
-            .SourceRange = Range->range(),
-        });
+      if (!parseSelectionConstantRanges(*RangesNode, Predicate.Ranges,
+                                        "selection operand definition constant ranges")) {
+        return false;
       }
       Result.push_back(std::move(Predicate));
     }
@@ -1472,8 +1536,9 @@ private:
   [[nodiscard]] bool parseSelectionRuleMatch(const yaml::Node &Node, SourceSelectionRule &Result) {
     if (!requireMapping(&Node, "selection rule match") ||
         !checkKeys(Node,
-                   {"opcode", "result_type", "integer_predicate", "operand_types", "operand_banks",
-                    "operand_classes", "operand_def_constants", "def_use"},
+                   {"opcode", "result_type", "integer_predicate", "target_predicates",
+                    "operand_types", "operand_banks", "operand_classes", "operand_immediates",
+                    "operand_def_constants", "def_use"},
                    "selection rule match")) {
       return false;
     }
@@ -1491,6 +1556,10 @@ private:
       if (!parseSelectionIntegerPredicate(*Predicate, Result))
         return false;
     }
+    if (const yaml::Node *TargetPredicates = optionalNode(Node, "target_predicates")) {
+      if (!parseSelectionTargetPredicates(*TargetPredicates, Result.TargetPredicates))
+        return false;
+    }
     if (const yaml::Node *OperandTypes = optionalNode(Node, "operand_types")) {
       if (!parseSelectionOperandTypes(*OperandTypes, Result.OperandTypes))
         return false;
@@ -1501,6 +1570,10 @@ private:
     }
     if (const yaml::Node *OperandClasses = optionalNode(Node, "operand_classes")) {
       if (!parseSelectionOperandClasses(*OperandClasses, Result.OperandClasses))
+        return false;
+    }
+    if (const yaml::Node *OperandImmediates = optionalNode(Node, "operand_immediates")) {
+      if (!parseSelectionOperandImmediates(*OperandImmediates, Result.OperandImmediates))
         return false;
     }
     if (const yaml::Node *OperandDefConstants = optionalNode(Node, "operand_def_constants")) {

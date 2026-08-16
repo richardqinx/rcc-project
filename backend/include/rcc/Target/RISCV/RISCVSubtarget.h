@@ -27,6 +27,7 @@ enum class RISCVExtension : std::uint8_t {
   F,
   D,
   C,
+  Zba,
   Zbb,
   Zicsr,
   Zifencei,

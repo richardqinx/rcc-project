@@ -170,6 +170,36 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       }
       return NormalizedSelectionTypePredicate{.Kind = Kind, .Bits = Source.Bits};
     };
+    const auto NormalizeRanges = [this](const std::vector<SourceSelectionConstantRange> &Ranges,
+                                        TextRange PredicateRange, std::string_view PredicateName)
+        -> std::optional<std::vector<NormalizedSelectionConstantRange>> {
+      if (Ranges.empty()) {
+        fail(PredicateRange, std::string(PredicateName) + " requires at least one range");
+        return std::nullopt;
+      }
+      std::vector<NormalizedSelectionConstantRange> NormalizedRanges;
+      NormalizedRanges.reserve(Ranges.size());
+      for (const SourceSelectionConstantRange &Range : Ranges) {
+        if (Range.Minimum > Range.Maximum) {
+          fail(Range.SourceRange, std::string(PredicateName) + " range is invalid");
+          return std::nullopt;
+        }
+        NormalizedRanges.push_back({
+            .Minimum = Range.Minimum,
+            .Maximum = Range.Maximum,
+        });
+      }
+      std::ranges::sort(NormalizedRanges, {}, &NormalizedSelectionConstantRange::Minimum);
+      for (std::size_t Index = 1; Index < NormalizedRanges.size(); ++Index) {
+        const auto &Previous = NormalizedRanges[Index - 1];
+        const auto &Current = NormalizedRanges[Index];
+        if (Current.Minimum <= Previous.Maximum) {
+          fail(PredicateRange, std::string(PredicateName) + " ranges overlap");
+          return std::nullopt;
+        }
+      }
+      return NormalizedRanges;
+    };
 
     NormalizedSelectionRule Normalized;
     Normalized.Symbol = Rule.Symbol;
@@ -210,6 +240,17 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
           .OperandIndex = Rule.IntegerPredicate->OperandIndex,
           .Predicate = *Predicate,
       };
+      ++Normalized.Specificity;
+    }
+
+    std::unordered_set<std::string> TargetPredicateSymbols;
+    for (const SourceSelectionTargetPredicate &Predicate : Rule.TargetPredicates) {
+      if (!isIdentifier(Predicate.Symbol) ||
+          !TargetPredicateSymbols.insert(Predicate.Symbol).second) {
+        fail(Predicate.Range, "selection target predicates require distinct identifiers");
+        return false;
+      }
+      Normalized.TargetPredicates.push_back(Predicate.Symbol);
       ++Normalized.Specificity;
     }
 
@@ -261,43 +302,40 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       ++Normalized.Specificity;
     }
 
+    std::unordered_set<std::uint32_t> ImmediateOperands;
+    for (const SourceSelectionOperandImmediatePredicate &Predicate : Rule.OperandImmediates) {
+      if (!ImmediateOperands.insert(Predicate.OperandIndex).second) {
+        fail(Predicate.Range, "selection operand immediate predicates require distinct operands");
+        return false;
+      }
+      auto Ranges = NormalizeRanges(Predicate.Ranges, Predicate.Range,
+                                    "selection operand immediate predicate");
+      if (!Ranges)
+        return false;
+      Normalized.OperandImmediates.push_back({
+          .OperandIndex = Predicate.OperandIndex,
+          .Ranges = std::move(*Ranges),
+      });
+      ++Normalized.Specificity;
+    }
+
     std::unordered_set<std::uint32_t> ConstantOperands;
     for (const SourceSelectionOperandDefConstantPredicate &Predicate : Rule.OperandDefConstants) {
       if (!ConstantOperands.insert(Predicate.OperandIndex).second ||
           (MatchInstruction != nullptr &&
-           !isRegisterOperand(*MatchInstruction, Predicate.OperandIndex)) ||
-          Predicate.Ranges.empty()) {
+           !isRegisterOperand(*MatchInstruction, Predicate.OperandIndex))) {
         fail(Predicate.Range,
-             "selection operand definition constant predicates require distinct register "
-             "operands and at least one range");
+             "selection operand definition constant predicates require distinct register operands");
         return false;
       }
-      NormalizedSelectionOperandDefConstantPredicate NormalizedPredicate{
+      auto Ranges = NormalizeRanges(Predicate.Ranges, Predicate.Range,
+                                    "selection operand definition constant predicate");
+      if (!Ranges)
+        return false;
+      Normalized.OperandDefConstants.push_back({
           .OperandIndex = Predicate.OperandIndex,
-          .Ranges = {},
-      };
-      for (const SourceSelectionOperandDefConstantPredicate::ConstantRange &Range :
-           Predicate.Ranges) {
-        if (Range.Minimum > Range.Maximum) {
-          fail(Range.SourceRange, "selection operand definition constant range is invalid");
-          return false;
-        }
-        NormalizedPredicate.Ranges.push_back({
-            .Minimum = Range.Minimum,
-            .Maximum = Range.Maximum,
-        });
-      }
-      std::ranges::sort(NormalizedPredicate.Ranges, {},
-                        &NormalizedSelectionOperandDefConstantPredicate::Range::Minimum);
-      for (std::size_t Index = 1; Index < NormalizedPredicate.Ranges.size(); ++Index) {
-        const auto &Previous = NormalizedPredicate.Ranges[Index - 1];
-        const auto &Current = NormalizedPredicate.Ranges[Index];
-        if (Current.Minimum <= Previous.Maximum) {
-          fail(Predicate.Range, "selection operand definition constant ranges overlap");
-          return false;
-        }
-      }
-      Normalized.OperandDefConstants.push_back(std::move(NormalizedPredicate));
+          .Ranges = std::move(*Ranges),
+      });
       ++Normalized.Specificity;
     }
 
@@ -338,38 +376,18 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       std::unordered_set<std::uint32_t> ConstantOperandsInDef;
       for (const SourceSelectionOperandDefConstantPredicate &Constant :
            Predicate.OperandDefConstants) {
-        if (!ConstantOperandsInDef.insert(Constant.OperandIndex).second ||
-            Constant.Ranges.empty()) {
-          fail(Constant.Range, "selection def-use constant predicates require distinct operands "
-                               "and at least one range");
+        if (!ConstantOperandsInDef.insert(Constant.OperandIndex).second) {
+          fail(Constant.Range, "selection def-use constant predicates require distinct operands");
           return false;
         }
-        NormalizedSelectionOperandDefConstantPredicate NormalizedConstant{
+        auto Ranges = NormalizeRanges(Constant.Ranges, Constant.Range,
+                                      "selection def-use constant predicate");
+        if (!Ranges)
+          return false;
+        NormalizedPredicate.OperandDefConstants.push_back({
             .OperandIndex = Constant.OperandIndex,
-            .Ranges = {},
-        };
-        for (const SourceSelectionOperandDefConstantPredicate::ConstantRange &Range :
-             Constant.Ranges) {
-          if (Range.Minimum > Range.Maximum) {
-            fail(Range.SourceRange, "selection def-use constant range is invalid");
-            return false;
-          }
-          NormalizedConstant.Ranges.push_back({
-              .Minimum = Range.Minimum,
-              .Maximum = Range.Maximum,
-          });
-        }
-        std::ranges::sort(NormalizedConstant.Ranges, {},
-                          &NormalizedSelectionOperandDefConstantPredicate::Range::Minimum);
-        for (std::size_t Index = 1; Index < NormalizedConstant.Ranges.size(); ++Index) {
-          const auto &Previous = NormalizedConstant.Ranges[Index - 1];
-          const auto &Current = NormalizedConstant.Ranges[Index];
-          if (Current.Minimum <= Previous.Maximum) {
-            fail(Constant.Range, "selection def-use constant ranges overlap");
-            return false;
-          }
-        }
-        NormalizedPredicate.OperandDefConstants.push_back(std::move(NormalizedConstant));
+            .Ranges = std::move(*Ranges),
+        });
       }
       Normalized.DefUsePredicates.push_back(std::move(NormalizedPredicate));
       Normalized.Specificity += 1U + static_cast<std::uint32_t>(Predicate.Captures.size()) +

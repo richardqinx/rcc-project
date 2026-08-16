@@ -146,21 +146,15 @@ operandOrDefConstantValue(const MachineInstr &Instruction, const MachineFunction
   return operandDefConstantValue(Instruction, Function, OperandIndex);
 }
 
-[[nodiscard]] Expected<bool> matchesOperandDefConstantRanges(const GIMatchTable &Table,
-                                                             const MachineInstr &Instruction,
-                                                             const MachineFunction &Function,
-                                                             const GIMatchTableInstruction &Step) {
-  const std::size_t First = Step.Value;
-  const std::size_t Count = Step.Auxiliary;
+[[nodiscard]] Expected<bool> matchesConstantRanges(const GIMatchTable &Table, std::size_t First,
+                                                   std::size_t Count,
+                                                   std::optional<std::int64_t> Value) {
   if (Count == 0 || First > Table.ConstantRanges.size() ||
       Count > Table.ConstantRanges.size() - First) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "generated match table has an invalid constant range");
   }
-  auto Value = operandDefConstantValue(Instruction, Function, Step.OperandIndex);
   if (!Value)
-    return std::unexpected(Value.error());
-  if (!*Value)
     return false;
   for (std::size_t Index = First; Index < First + Count; ++Index) {
     const GIMatchTableConstantRange &Range = Table.ConstantRanges[Index];
@@ -168,10 +162,29 @@ operandOrDefConstantValue(const MachineInstr &Instruction, const MachineFunction
       return makeUnexpected(ErrorCode::VerificationError,
                             "generated match table has an inverted constant range");
     }
-    if (**Value >= Range.Minimum && **Value <= Range.Maximum)
+    if (*Value >= Range.Minimum && *Value <= Range.Maximum)
       return true;
   }
   return false;
+}
+
+[[nodiscard]] Expected<bool> matchesOperandImmediateRanges(const GIMatchTable &Table,
+                                                           const MachineInstr &Instruction,
+                                                           const GIMatchTableInstruction &Step) {
+  const MachineOperand *Operand = Instruction.operandAt(Step.OperandIndex);
+  const std::optional<std::int64_t> Value =
+      Operand == nullptr ? std::optional<std::int64_t>{} : immediateValue(*Operand);
+  return matchesConstantRanges(Table, Step.Value, Step.Auxiliary, Value);
+}
+
+[[nodiscard]] Expected<bool> matchesOperandDefConstantRanges(const GIMatchTable &Table,
+                                                             const MachineInstr &Instruction,
+                                                             const MachineFunction &Function,
+                                                             const GIMatchTableInstruction &Step) {
+  auto Value = operandDefConstantValue(Instruction, Function, Step.OperandIndex);
+  if (!Value)
+    return std::unexpected(Value.error());
+  return matchesConstantRanges(Table, Step.Value, Step.Auxiliary, *Value);
 }
 
 [[nodiscard]] const MachineInstr *operandDefinition(const MachineInstr &Instruction,
@@ -201,30 +214,14 @@ matchesOperandDefOperandConstantRanges(const GIMatchTable &Table, const MachineI
     return makeUnexpected(ErrorCode::VerificationError,
                           "generated match table has an invalid def-use constant range count");
   }
-  const std::size_t First = Step.Value;
   const std::size_t Count = static_cast<std::size_t>(Step.Immediate);
-  if (First > Table.ConstantRanges.size() || Count > Table.ConstantRanges.size() - First) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "generated match table has an invalid def-use constant range");
-  }
   const MachineInstr *Definition = operandDefinition(Instruction, Function, Step.OperandIndex);
   if (Definition == nullptr)
     return false;
   auto Value = operandOrDefConstantValue(*Definition, Function, Step.Auxiliary);
   if (!Value)
     return std::unexpected(Value.error());
-  if (!*Value)
-    return false;
-  for (std::size_t Index = First; Index < First + Count; ++Index) {
-    const GIMatchTableConstantRange &Range = Table.ConstantRanges[Index];
-    if (Range.Minimum > Range.Maximum) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "generated match table has an inverted def-use constant range");
-    }
-    if (**Value >= Range.Minimum && **Value <= Range.Maximum)
-      return true;
-  }
-  return false;
+  return matchesConstantRanges(Table, Step.Value, Count, *Value);
 }
 
 [[nodiscard]] Expected<RegisterOperandFlags> registerFlagsFromRaw(std::uint32_t Raw) {
@@ -303,10 +300,11 @@ findCapturedOperand(const std::vector<MatchedRule::CapturedOperand> &Captures, s
   return Position == Captures.end() ? nullptr : &*Position;
 }
 
-[[nodiscard]] Expected<std::optional<MatchedRule>> matchRule(const GIMatchTable &Table,
-                                                             const GIMatchTableRule &Rule,
-                                                             const MachineInstr &Instruction,
-                                                             const MachineFunction &Function) {
+template <typename TargetPredicateMatcher>
+[[nodiscard]] Expected<std::optional<MatchedRule>>
+matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const MachineInstr &Instruction,
+          const MachineFunction &Function, const TargetDescription &Target,
+          TargetPredicateMatcher &&MatchesTargetPredicate) {
   const std::size_t First = Rule.FirstInstruction;
   const std::size_t Count = Rule.InstructionCount;
   if (First > Table.Instructions.size() || Count > Table.Instructions.size() - First) {
@@ -370,6 +368,30 @@ findCapturedOperand(const std::vector<MatchedRule::CapturedOperand> &Captures, s
                               "generated match table performs a predicate after an action");
       }
       auto Matched = matchesIntegerPredicate(Instruction, Step);
+      if (!Matched)
+        return std::unexpected(Matched.error());
+      if (!*Matched)
+        return std::optional<MatchedRule>{};
+      break;
+    }
+    case GIMatchTableOpcode::CheckTargetPredicate: {
+      if (Applying || Step.Symbol.empty()) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table has an invalid target predicate");
+      }
+      auto Matched = MatchesTargetPredicate(Step.Symbol, Instruction, Function, Target);
+      if (!Matched)
+        return std::unexpected(Matched.error());
+      if (!*Matched)
+        return std::optional<MatchedRule>{};
+      break;
+    }
+    case GIMatchTableOpcode::CheckOperandImmediateRanges: {
+      if (Applying) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table performs a predicate after an action");
+      }
+      auto Matched = matchesOperandImmediateRanges(Table, Instruction, Step);
       if (!Matched)
         return std::unexpected(Matched.error());
       if (!*Matched)
@@ -1175,6 +1197,15 @@ Expected<void> GIMatchTableExecutor::finalizeGeneratedInstruction(MachineInstr &
   return {};
 }
 
+Expected<bool> GIMatchTableExecutor::matchesTargetPredicate(std::string_view Name,
+                                                            const MachineInstr &,
+                                                            const MachineFunction &,
+                                                            const TargetDescription &) const {
+  return makeUnexpected(ErrorCode::VerificationError,
+                        "generated match table uses unknown target predicate '" +
+                            std::string(Name) + "'");
+}
+
 Expected<std::optional<GIMatchComplexOperand>>
 GIMatchTableExecutor::renderComplexOperand(std::string_view, const MachineInstr &,
                                            const MachineFunction &, const TargetDescription &,
@@ -1187,7 +1218,12 @@ Expected<bool> GIMatchTableExecutor::match(const GIMatchTable &Table,
                                            const MachineFunction &Function,
                                            const TargetDescription &Target) const {
   for (const GIMatchTableRule &Rule : Table.Rules) {
-    auto Match = matchRule(Table, Rule, Instruction, Function);
+    auto Match = matchRule(Table, Rule, Instruction, Function, Target,
+                           [this](std::string_view Name, const MachineInstr &Input,
+                                  const MachineFunction &InputFunction,
+                                  const TargetDescription &InputTarget) {
+                             return matchesTargetPredicate(Name, Input, InputFunction, InputTarget);
+                           });
     if (!Match)
       return std::unexpected(Match.error());
     if (!*Match)
@@ -1218,7 +1254,12 @@ Expected<bool> GIMatchTableExecutor::select(const GIMatchTable &Table, MachineIn
                                             MachineFunction &Function,
                                             const TargetDescription &Target) const {
   for (const GIMatchTableRule &Rule : Table.Rules) {
-    auto Match = matchRule(Table, Rule, Instruction, Function);
+    auto Match = matchRule(Table, Rule, Instruction, Function, Target,
+                           [this](std::string_view Name, const MachineInstr &Input,
+                                  const MachineFunction &InputFunction,
+                                  const TargetDescription &InputTarget) {
+                             return matchesTargetPredicate(Name, Input, InputFunction, InputTarget);
+                           });
     if (!Match)
       return std::unexpected(Match.error());
     if (!*Match)

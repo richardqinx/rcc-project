@@ -194,14 +194,19 @@ struct NormalizedSelectionIntegerPredicate final {
   std::uint32_t Predicate = 0;
 };
 
-struct NormalizedSelectionOperandDefConstantPredicate final {
-  struct Range final {
-    std::int64_t Minimum = 0;
-    std::int64_t Maximum = 0;
-  };
+struct NormalizedSelectionConstantRange final {
+  std::int64_t Minimum = 0;
+  std::int64_t Maximum = 0;
+};
 
+struct NormalizedSelectionOperandImmediatePredicate final {
   std::uint32_t OperandIndex = 0;
-  std::vector<Range> Ranges;
+  std::vector<NormalizedSelectionConstantRange> Ranges;
+};
+
+struct NormalizedSelectionOperandDefConstantPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::vector<NormalizedSelectionConstantRange> Ranges;
 };
 
 struct NormalizedSelectionDefUseCapture final {
@@ -259,9 +264,11 @@ struct NormalizedSelectionRule final {
   std::uint32_t MatchOpcode = 0;
   std::optional<NormalizedSelectionTypePredicate> ResultType;
   std::optional<NormalizedSelectionIntegerPredicate> IntegerPredicate;
+  std::vector<std::string> TargetPredicates;
   std::vector<NormalizedSelectionOperandTypePredicate> OperandTypes;
   std::vector<NormalizedSelectionOperandBankPredicate> OperandBanks;
   std::vector<NormalizedSelectionOperandClassPredicate> OperandClasses;
+  std::vector<NormalizedSelectionOperandImmediatePredicate> OperandImmediates;
   std::vector<NormalizedSelectionOperandDefConstantPredicate> OperandDefConstants;
   std::vector<NormalizedSelectionDefUsePredicate> DefUsePredicates;
   std::vector<NormalizedSelectionTemporary> Temporaries;

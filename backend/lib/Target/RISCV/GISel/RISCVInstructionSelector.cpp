@@ -147,6 +147,16 @@ public:
                            const RISCVRegisterBankInfo &RegisterBanks)
       : Subtarget(Subtarget), RegisterBanks(RegisterBanks) {}
 
+  [[nodiscard]] Expected<bool> matchesTargetPredicate(std::string_view Name, const MachineInstr &,
+                                                      const MachineFunction &,
+                                                      const TargetDescription &) const override {
+    if (Name == "zba")
+      return Subtarget.features().has(RISCVExtension::Zba);
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V generated GlobalISel rule uses unknown target predicate '" +
+                              std::string(Name) + "'");
+  }
+
   [[nodiscard]] Expected<void>
   constrainSelectedInstruction(MachineInstr &Instruction, MachineFunction &Function,
                                const TargetDescription &Target) const override {
@@ -375,9 +385,6 @@ public:
     case GenericOpcode::G_PTRTOINT:
     case GenericOpcode::G_INTTOPTR:
     case GenericOpcode::G_TRUNC:
-    case GenericOpcode::G_SEXT:
-    case GenericOpcode::G_SEXT_INREG:
-    case GenericOpcode::G_ZEXT:
     case GenericOpcode::G_FCMP:
     case GenericOpcode::G_SMULH:
     case GenericOpcode::G_UMULH:
@@ -456,13 +463,9 @@ public:
     case GenericOpcode::G_INTTOPTR:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
     case GenericOpcode::G_ANYEXT:
-    case GenericOpcode::G_SEXT:
-    case GenericOpcode::G_ZEXT:
-      return selectIntegerExtension(Instruction, Function, Target, Generic, Type);
+      return Instruction.setOpcode(opcode(GenericOpcode::COPY));
     case GenericOpcode::G_TRUNC:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
-    case GenericOpcode::G_SEXT_INREG:
-      return selectSignExtendInRegister(Instruction, Function, Target, Type);
     case GenericOpcode::G_FCMP:
       return selectFloatingCompare(Instruction, Function, Target);
     case GenericOpcode::G_SELECT:
@@ -890,7 +893,6 @@ private:
     return {};
   }
 
-
   [[nodiscard]] Expected<void> selectAtomicRMW(MachineInstr &Instruction, MachineFunction &Function,
                                                const TargetDescription &Target,
                                                std::optional<LowLevelType> Type,
@@ -973,123 +975,6 @@ private:
     if (!SetAddress)
       return std::unexpected(SetAddress.error());
     return Instruction.setOpcode(instructionOpcode(Selected));
-  }
-
-  [[nodiscard]] Expected<void> selectIntegerExtension(MachineInstr &Instruction,
-                                                      MachineFunction &Function,
-                                                      const TargetDescription &Target,
-                                                      GenericOpcode Generic,
-                                                      std::optional<LowLevelType> Type) const {
-    const std::optional<LowLevelType> SourceType = operandType(Function, Instruction, 1);
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const MachineOperand *SourceOperand = Instruction.operandAt(1);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
-    if (!Type || !SourceType || Destination == nullptr || Source == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V integer extension has invalid register operands");
-    const Register DestinationRegister = *Destination;
-    if (Generic == GenericOpcode::G_ANYEXT)
-      return Instruction.setOpcode(opcode(GenericOpcode::COPY));
-
-    const std::uint32_t DestinationBits = Type->scalarBitWidth();
-    const std::uint32_t SourceBits = SourceType->scalarBitWidth();
-    if (Generic == GenericOpcode::G_SEXT && DestinationBits == 64 && SourceBits == 32) {
-      auto ImmediateResult = appendImmediate(Instruction, 0);
-      if (!ImmediateResult)
-        return std::unexpected(ImmediateResult.error());
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::ADDIW));
-    }
-
-    const std::uint32_t ContainerBits = DestinationBits <= 32 ? 32 : 64;
-    const std::int64_t Shift = static_cast<std::int64_t>(ContainerBits - SourceBits);
-    const InstructionOpcode ShiftLeft =
-        ContainerBits == 32 ? InstructionOpcode::SLLIW : InstructionOpcode::SLLI;
-    const InstructionOpcode ShiftRight =
-        Generic == GenericOpcode::G_SEXT
-            ? (ContainerBits == 32 ? InstructionOpcode::SRAIW : InstructionOpcode::SRAI)
-            : (ContainerBits == 32 ? InstructionOpcode::SRLIW : InstructionOpcode::SRLI);
-    auto Temporary = createTemporary(Function, *Type, Target);
-    if (!Temporary)
-      return std::unexpected(Temporary.error());
-    auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
-    if (!SetDestination)
-      return std::unexpected(SetDestination.error());
-    auto SetOpcode = Instruction.setOpcode(instructionOpcode(ShiftLeft));
-    if (!SetOpcode)
-      return std::unexpected(SetOpcode.error());
-    auto ShiftImmediate = appendImmediate(Instruction, Shift);
-    if (!ShiftImmediate)
-      return std::unexpected(ShiftImmediate.error());
-
-    MachineIRBuilder Builder(Function, Target);
-    auto Shifted = buildImmediateAfter(Builder, Instruction, ShiftRight, DestinationRegister,
-                                       *Temporary, Shift);
-    if (!Shifted)
-      return std::unexpected(Shifted.error());
-    return {};
-  }
-
-  [[nodiscard]] Expected<void> selectSignExtendInRegister(MachineInstr &Instruction,
-                                                          MachineFunction &Function,
-                                                          const TargetDescription &Target,
-                                                          std::optional<LowLevelType> Type) const {
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const MachineOperand *SourceOperand = Instruction.operandAt(1);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
-    std::optional<std::int64_t> Width;
-    if (const MachineOperand *WidthOperand = Instruction.operandAt(2); WidthOperand != nullptr) {
-      auto ParsedWidth = signedImmediate(*WidthOperand);
-      if (ParsedWidth)
-        Width = *ParsedWidth;
-    }
-    if (!Type || Destination == nullptr || Source == nullptr || !Width || *Width <= 0 ||
-        static_cast<std::uint64_t>(*Width) > Type->scalarBitWidth())
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V sign-extension-in-register has invalid operands");
-    const Register DestinationRegister = *Destination;
-    if (static_cast<std::uint64_t>(*Width) == Type->scalarBitWidth()) {
-      auto EraseWidth = Instruction.eraseOperand(2);
-      if (!EraseWidth)
-        return std::unexpected(EraseWidth.error());
-      return Instruction.setOpcode(opcode(GenericOpcode::COPY));
-    }
-
-    const std::uint32_t TypeBits = Type->scalarBitWidth();
-    if (TypeBits == 64 && *Width == 32) {
-      auto ImmediateResult = replaceImmediate(Instruction, 2, 0);
-      if (!ImmediateResult)
-        return std::unexpected(ImmediateResult.error());
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::ADDIW));
-    }
-    const std::uint32_t ContainerBits = TypeBits <= 32 ? 32 : 64;
-    const std::int64_t Shift = static_cast<std::int64_t>(ContainerBits) - *Width;
-    const InstructionOpcode ShiftLeft =
-        ContainerBits == 32 ? InstructionOpcode::SLLIW : InstructionOpcode::SLLI;
-    const InstructionOpcode ShiftRight =
-        ContainerBits == 32 ? InstructionOpcode::SRAIW : InstructionOpcode::SRAI;
-    auto Temporary = createTemporary(Function, *Type, Target);
-    if (!Temporary)
-      return std::unexpected(Temporary.error());
-    auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
-    if (!SetDestination)
-      return std::unexpected(SetDestination.error());
-    auto SetOpcode = Instruction.setOpcode(instructionOpcode(ShiftLeft));
-    if (!SetOpcode)
-      return std::unexpected(SetOpcode.error());
-    auto ShiftImmediate = replaceImmediate(Instruction, 2, Shift);
-    if (!ShiftImmediate)
-      return std::unexpected(ShiftImmediate.error());
-
-    MachineIRBuilder Builder(Function, Target);
-    auto Shifted = buildImmediateAfter(Builder, Instruction, ShiftRight, DestinationRegister,
-                                       *Temporary, Shift);
-    if (!Shifted)
-      return std::unexpected(Shifted.error());
-    return {};
   }
 
   [[nodiscard]] Expected<void> selectFloatingCompare(MachineInstr &Instruction,

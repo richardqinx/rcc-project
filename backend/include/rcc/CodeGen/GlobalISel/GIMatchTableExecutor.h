@@ -37,6 +37,8 @@ enum class GIMatchTableOpcode : std::uint8_t {
   CheckOperandBank,
   CheckOperandClass,
   CheckIntegerPredicate,
+  CheckTargetPredicate,
+  CheckOperandImmediateRanges,
   CheckOperandDefConstantRanges,
   CheckOperandDefOpcode,
   CheckOperandDefOperandConstantRanges,
@@ -108,6 +110,10 @@ public:
                                       const TargetDescription &Target) const;
 
 protected:
+  [[nodiscard]] virtual Expected<bool>
+  matchesTargetPredicate(std::string_view Name, const MachineInstr &Instruction,
+                         const MachineFunction &Function, const TargetDescription &Target) const;
+
   [[nodiscard]] virtual Expected<std::optional<GIMatchComplexOperand>>
   renderComplexOperand(std::string_view Name, const MachineInstr &Instruction,
                        const MachineFunction &Function, const TargetDescription &Target,
