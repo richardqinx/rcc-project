@@ -280,6 +280,132 @@ selection_rules:
           root: true
           operands: [{ operand: 0 }, { operand: 1 }, { operand: 1 }]
   -
+    id: select_g_fcopysign_s32_fneg
+    priority: 200
+    match:
+      opcode: G_FCOPYSIGN
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+      def_use:
+        - operand: 2
+          opcode: G_FNEG
+          captures:
+            - { id: sign, operand: 1 }
+    apply:
+      instructions:
+        - opcode: FSGNJN_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_operand: sign }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_fcopysign_s64_fneg
+    priority: 200
+    match:
+      opcode: G_FCOPYSIGN
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+      def_use:
+        - operand: 2
+          opcode: G_FNEG
+          captures:
+            - { id: sign, operand: 1 }
+    apply:
+      instructions:
+        - opcode: FSGNJN_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_operand: sign }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_fcopysign_s32_s32
+    priority: 100
+    match:
+      opcode: G_FCOPYSIGN
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSGNJ_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_fcopysign_s64_s64
+    priority: 100
+    match:
+      opcode: G_FCOPYSIGN
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSGNJ_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_fcopysign_s32_s64
+    priority: 100
+    match:
+      opcode: G_FCOPYSIGN
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSGNJ_S
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 1 }
+            - { complex: fcopysign_to_s32, operand: 2 }
+  -
+    id: select_g_fcopysign_s64_s32
+    priority: 100
+    match:
+      opcode: G_FCOPYSIGN
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSGNJ_D
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 1 }
+            - { complex: fcopysign_to_s64, operand: 2 }
+  -
     id: select_g_fminnum_s32
     priority: 100
     match:

@@ -157,6 +157,34 @@ public:
   renderComplexOperand(std::string_view Name, const MachineInstr &Instruction,
                        const MachineFunction &Function, const TargetDescription &Target,
                        std::uint32_t OperandIndex) const override {
+    if (Name == "fcopysign_to_s32" || Name == "fcopysign_to_s64") {
+      const MachineOperand *SourceOperand = Instruction.operandAt(OperandIndex);
+      const Register *Source =
+          SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+      if (Source == nullptr || !Source->isVirtual())
+        return std::optional<GIMatchComplexOperand>{};
+      const std::uint32_t DestinationWidth = Name == "fcopysign_to_s32" ? 32U : 64U;
+      auto DestinationType = LowLevelType::makeCategoryNeutralScalar(DestinationWidth);
+      if (!DestinationType)
+        return std::unexpected(DestinationType.error());
+      auto SourceUse = MachineOperand::registerOperand(*Source, {RegisterOperandFlag::Use});
+      if (!SourceUse)
+        return std::unexpected(SourceUse.error());
+      std::vector<MachineOperand> Operands;
+      Operands.push_back(std::move(*SourceUse));
+      Operands.push_back(MachineOperand::immediate(DestinationWidth == 32 ? 7 : 0));
+      return GIMatchComplexOperand{
+          .Operand = std::nullopt,
+          .Instruction =
+              GIMatchComplexInstruction{
+                  .ResultOpcode =
+                      instructionOpcode(DestinationWidth == 32 ? InstructionOpcode::FCVT_S_D
+                                                               : InstructionOpcode::FCVT_D_S),
+                  .ResultType = *DestinationType,
+                  .Operands = std::move(Operands),
+              },
+      };
+    }
     const std::uint64_t ShiftWidth = Name == "shift_mask_xlen" ? 64U
                                      : Name == "shift_mask_32" ? 32U
                                                                : 0U;
@@ -329,11 +357,6 @@ public:
     case GenericOpcode::G_BR:
     case GenericOpcode::G_BRCOND:
       return {};
-    case GenericOpcode::G_FCOPYSIGN:
-      if (!Float())
-        return makeUnexpected(ErrorCode::Unsupported,
-                              "RISC-V selector requires f32 or f64 floating values");
-      return {};
     case GenericOpcode::G_FCONSTANT: {
       const MachineOperand *Immediate = Instruction.operandAt(1);
       const auto *Floating =
@@ -447,8 +470,6 @@ public:
     case GenericOpcode::G_PTRTOINT:
     case GenericOpcode::G_INTTOPTR:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
-    case GenericOpcode::G_FCOPYSIGN:
-      return selectCopySign(Instruction, Function, Target, Type);
     case GenericOpcode::G_ANYEXT:
     case GenericOpcode::G_SEXT:
     case GenericOpcode::G_ZEXT:
@@ -1736,47 +1757,6 @@ private:
     }
     return makeUnexpected(ErrorCode::Unsupported,
                           "RISC-V floating comparison predicate is invalid");
-  }
-
-  [[nodiscard]] Expected<void> selectCopySign(MachineInstr &Instruction, MachineFunction &Function,
-                                              const TargetDescription &Target,
-                                              std::optional<LowLevelType> Type) const {
-    const MachineOperand *SignOperand = Instruction.operandAt(2);
-    const Register *SignRegister =
-        SignOperand == nullptr ? nullptr : SignOperand->getIf<Register>();
-    const std::optional<LowLevelType> SignType = operandType(Function, Instruction, 2);
-    if (!Type || !SignType || SignRegister == nullptr || !Type->isCategoryNeutralScalar() ||
-        !SignType->isCategoryNeutralScalar()) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V floating copy-sign has invalid operand types");
-    }
-
-    const std::uint32_t ResultWidth = Type->scalarBitWidth();
-    const std::uint32_t SignWidth = SignType->scalarBitWidth();
-    if ((ResultWidth != 32 && ResultWidth != 64) || (SignWidth != 32 && SignWidth != 64)) {
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V cannot select this floating copy-sign type");
-    }
-
-    if (ResultWidth != SignWidth) {
-      auto Temporary = createTemporary(Function, *Type, Target, fprBank());
-      if (!Temporary)
-        return std::unexpected(Temporary.error());
-      MachineIRBuilder Builder(Function, Target);
-      const InstructionOpcode Conversion =
-          ResultWidth == 32 ? InstructionOpcode::FCVT_S_D : InstructionOpcode::FCVT_D_S;
-      const std::int64_t RoundingMode = ResultWidth == 32 ? 7 : 0;
-      auto Built = buildImmediateBefore(Builder, Instruction, Conversion, *Temporary, *SignRegister,
-                                        RoundingMode);
-      if (!Built)
-        return std::unexpected(Built.error());
-      auto ReplaceSign = Instruction.operandAt(2)->setRegister(*Temporary);
-      if (!ReplaceSign)
-        return std::unexpected(ReplaceSign.error());
-    }
-
-    return Instruction.setOpcode(instructionOpcode(ResultWidth == 32 ? InstructionOpcode::FSGNJ_S
-                                                                     : InstructionOpcode::FSGNJ_D));
   }
 
   [[nodiscard]] Expected<void> selectFence(MachineInstr &Instruction) const {
