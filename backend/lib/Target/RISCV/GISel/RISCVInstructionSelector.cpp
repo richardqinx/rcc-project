@@ -203,8 +203,6 @@ public:
     case GenericOpcode::G_SHL:
     case GenericOpcode::G_LSHR:
     case GenericOpcode::G_ASHR:
-    case GenericOpcode::G_PTR_ADD:
-    case GenericOpcode::G_PTRMASK:
     case GenericOpcode::G_CONSTANT:
       if (!Integer())
         return makeUnexpected(ErrorCode::Unsupported,
@@ -311,9 +309,6 @@ public:
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 
-    const auto SelectDirect = [&Instruction](InstructionOpcode Selected) {
-      return Instruction.setOpcode(instructionOpcode(Selected));
-    };
     switch (Generic) {
     case GenericOpcode::G_ADD:
       return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::ADD,
@@ -379,10 +374,6 @@ public:
       return selectNormalizedIntegerBinary(
           Instruction, Function, Target, Type, InstructionOpcode::SRA, InstructionOpcode::SRAW,
           true, false, InstructionOpcode::SRAI, InstructionOpcode::SRAIW, false, 6, 5);
-    case GenericOpcode::G_PTR_ADD:
-      return SelectDirect(InstructionOpcode::ADD);
-    case GenericOpcode::G_PTRMASK:
-      return SelectDirect(InstructionOpcode::AND);
     case GenericOpcode::G_LOAD:
       return selectLoad(Instruction, Function, Type);
     case GenericOpcode::G_SEXTLOAD:

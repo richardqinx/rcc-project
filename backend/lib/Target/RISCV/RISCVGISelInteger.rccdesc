@@ -1,5 +1,89 @@
 selection_rules:
   -
+    id: select_g_ptr_add_immediate
+    priority: 400
+    match:
+      opcode: G_PTR_ADD
+      result_type: { kind: pointer, bits: 64 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      instructions:
+        - opcode: ADDI
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 1 }
+            - { captured_immediate: 2 }
+      erase_operand_definitions: [2]
+  -
+    id: select_g_ptrmask_immediate
+    priority: 400
+    match:
+      opcode: G_PTRMASK
+      result_type: { kind: pointer, bits: 64 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      instructions:
+        - opcode: ANDI
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 1 }
+            - { captured_immediate: 2 }
+      erase_operand_definitions: [2]
+  -
+    id: select_g_ptr_add_register
+    priority: 100
+    match:
+      opcode: G_PTR_ADD
+      result_type: { kind: pointer, bits: 64 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: ADD
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_ptrmask_register
+    priority: 100
+    match:
+      opcode: G_PTRMASK
+      result_type: { kind: pointer, bits: 64 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AND
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
     id: select_g_sllw
     priority: 100
     match:
