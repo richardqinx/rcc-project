@@ -270,6 +270,23 @@ private:
     return Result;
   }
 
+  [[nodiscard]] std::optional<std::vector<std::uint32_t>>
+  unsignedInteger32Sequence(const yaml::Node &Node, std::string_view Context) {
+    if (!requireSequence(&Node, Context))
+      return std::nullopt;
+    std::vector<std::uint32_t> Result;
+    for (const yaml::NodeID Value : Node.sequence()) {
+      const yaml::Node *Element = Input.node(Value);
+      if (Element == nullptr)
+        return std::nullopt;
+      const auto Parsed = unsignedInteger32(*Element, Context);
+      if (!Parsed)
+        return std::nullopt;
+      Result.push_back(*Parsed);
+    }
+    return Result;
+  }
+
   [[nodiscard]] bool parseTarget(const yaml::Node &Node, SourceTarget &Result) {
     if (!requireMapping(&Node, "target"))
       return false;
@@ -1135,10 +1152,110 @@ private:
     return true;
   }
 
+  [[nodiscard]] bool parseSelectionIntegerPredicate(const yaml::Node &Node,
+                                                    SourceSelectionRule &Result) {
+    if (!requireMapping(&Node, "selection integer predicate") ||
+        !checkKeys(Node, {"index", "value"}, "selection integer predicate")) {
+      return false;
+    }
+    const yaml::Node *IndexNode = requiredNode(Node, "index", "selection integer predicate");
+    const auto Value = requiredScalar(Node, "value", "selection integer predicate");
+    if (IndexNode == nullptr || !Value)
+      return false;
+    const auto Index = unsignedInteger32(*IndexNode, "selection integer predicate index");
+    if (!Index)
+      return false;
+    Result.IntegerPredicate = SourceSelectionIntegerPredicate{
+        .OperandIndex = *Index,
+        .Predicate = *Value,
+        .Range = Node.range(),
+    };
+    return true;
+  }
+
+  [[nodiscard]] bool parseSelectionOperandDefConstants(
+      const yaml::Node &Node, std::vector<SourceSelectionOperandDefConstantPredicate> &Result) {
+    if (!requireSequence(&Node, "selection operand definition constants"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection operand definition constant") ||
+          !checkKeys(*Element, {"index", "value"}, "selection operand definition constant")) {
+        return false;
+      }
+      const yaml::Node *IndexNode =
+          requiredNode(*Element, "index", "selection operand definition constant");
+      const yaml::Node *ValueNode =
+          requiredNode(*Element, "value", "selection operand definition constant");
+      if (IndexNode == nullptr || ValueNode == nullptr)
+        return false;
+      const auto Index =
+          unsignedInteger32(*IndexNode, "selection operand definition constant index");
+      const auto Value = signedInteger(*ValueNode, "selection operand definition constant value");
+      if (!Index || !Value)
+        return false;
+      Result.push_back({
+          .OperandIndex = *Index,
+          .Value = *Value,
+          .Range = Element->range(),
+      });
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
+  parseSelectionOperandRenderers(const yaml::Node &Node,
+                                 std::vector<SourceSelectionOperandRenderer> &Result) {
+    if (!requireSequence(&Node, "selection operand renderers"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection operand renderer") ||
+          !checkKeys(*Element, {"operand", "physical_register", "flags"},
+                     "selection operand renderer")) {
+        return false;
+      }
+      const yaml::Node *OperandNode = optionalNode(*Element, "operand");
+      const yaml::Node *PhysicalRegisterNode = optionalNode(*Element, "physical_register");
+      if ((OperandNode == nullptr) == (PhysicalRegisterNode == nullptr)) {
+        fail(Element->range(), "selection operand renderer requires exactly one of 'operand' or "
+                               "'physical_register'");
+        return false;
+      }
+      SourceSelectionOperandRenderer Renderer{
+          .OperandIndex = std::nullopt,
+          .PhysicalRegisterSymbol = {},
+          .Flags = {},
+          .Range = Element->range(),
+      };
+      if (OperandNode != nullptr) {
+        const auto Index = unsignedInteger32(*OperandNode, "selection operand renderer operand");
+        if (!Index)
+          return false;
+        Renderer.OperandIndex = Index;
+      } else {
+        const auto Symbol =
+            scalar(*PhysicalRegisterNode, "selection operand renderer physical register");
+        if (!Symbol)
+          return false;
+        Renderer.PhysicalRegisterSymbol = *Symbol;
+      }
+      if (const yaml::Node *FlagsNode = optionalNode(*Element, "flags")) {
+        const auto Flags = scalarSequence(*FlagsNode, "selection operand renderer flags");
+        if (!Flags)
+          return false;
+        Renderer.Flags = *Flags;
+      }
+      Result.push_back(std::move(Renderer));
+    }
+    return true;
+  }
+
   [[nodiscard]] bool parseSelectionRuleMatch(const yaml::Node &Node, SourceSelectionRule &Result) {
     if (!requireMapping(&Node, "selection rule match") ||
         !checkKeys(Node,
-                   {"opcode", "result_type", "operand_types", "operand_banks", "operand_classes"},
+                   {"opcode", "result_type", "integer_predicate", "operand_types", "operand_banks",
+                    "operand_classes", "operand_def_constants"},
                    "selection rule match")) {
       return false;
     }
@@ -1152,6 +1269,10 @@ private:
         return false;
       Result.ResultType = std::move(*Parsed);
     }
+    if (const yaml::Node *Predicate = optionalNode(Node, "integer_predicate")) {
+      if (!parseSelectionIntegerPredicate(*Predicate, Result))
+        return false;
+    }
     if (const yaml::Node *OperandTypes = optionalNode(Node, "operand_types")) {
       if (!parseSelectionOperandTypes(*OperandTypes, Result.OperandTypes))
         return false;
@@ -1164,12 +1285,17 @@ private:
       if (!parseSelectionOperandClasses(*OperandClasses, Result.OperandClasses))
         return false;
     }
+    if (const yaml::Node *OperandDefConstants = optionalNode(Node, "operand_def_constants")) {
+      if (!parseSelectionOperandDefConstants(*OperandDefConstants, Result.OperandDefConstants))
+        return false;
+    }
     return true;
   }
 
   [[nodiscard]] bool parseSelectionRuleApply(const yaml::Node &Node, SourceSelectionRule &Result) {
     if (!requireMapping(&Node, "selection rule apply") ||
-        !checkKeys(Node, {"opcode", "append_immediates"}, "selection rule apply")) {
+        !checkKeys(Node, {"opcode", "append_immediates", "operands", "erase_operand_definitions"},
+                   "selection rule apply")) {
       return false;
     }
     const auto Opcode = requiredScalar(Node, "opcode", "selection rule apply");
@@ -1181,6 +1307,18 @@ private:
       if (!Values)
         return false;
       Result.AppendedImmediates = std::move(*Values);
+    }
+    if (const yaml::Node *Operands = optionalNode(Node, "operands")) {
+      std::vector<SourceSelectionOperandRenderer> Renderers;
+      if (!parseSelectionOperandRenderers(*Operands, Renderers))
+        return false;
+      Result.OperandRenderers = std::move(Renderers);
+    }
+    if (const yaml::Node *Erase = optionalNode(Node, "erase_operand_definitions")) {
+      auto Indices = unsignedInteger32Sequence(*Erase, "selection operand definitions");
+      if (!Indices)
+        return false;
+      Result.EraseOperandDefinitions = std::move(*Indices);
     }
     return true;
   }

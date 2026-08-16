@@ -27,8 +27,13 @@ enum class GIMatchTableOpcode : std::uint8_t {
   CheckOperandType,
   CheckOperandBank,
   CheckOperandClass,
+  CheckIntegerPredicate,
+  CheckOperandDefConstant,
   MutateOpcode,
+  RenderOperand,
+  RenderPhysicalRegister,
   AppendImmediate,
+  EraseOperandDefinition,
   Complete,
 };
 

@@ -155,3 +155,24 @@ selection_rules:
         - { index: 0, bank: GPR }
         - { index: 1, bank: FPR }
     apply: { opcode: FCLASS_D }
+  -
+    id: select_g_icmp_ne_zero
+    priority: 200
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ne }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - { index: 3, value: 0 }
+    apply:
+      opcode: SLTU
+      operands:
+        - { operand: 0 }
+        - { physical_register: X0, flags: [use] }
+        - { operand: 2 }
+      erase_operand_definitions: [3]

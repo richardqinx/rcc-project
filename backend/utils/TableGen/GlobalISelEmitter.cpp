@@ -39,8 +39,11 @@ void emitTypePredicate(std::ostream &Output, std::uint32_t OperandIndex,
 }
 
 [[nodiscard]] std::size_t instructionCount(const NormalizedSelectionRule &Rule) noexcept {
-  return 3U + (Rule.ResultType ? 1U : 0U) + Rule.OperandTypes.size() + Rule.OperandBanks.size() +
-         Rule.OperandClasses.size() + Rule.AppendedImmediates.size();
+  return 3U + (Rule.ResultType ? 1U : 0U) + (Rule.IntegerPredicate ? 1U : 0U) +
+         Rule.OperandTypes.size() + Rule.OperandBanks.size() + Rule.OperandClasses.size() +
+         Rule.OperandDefConstants.size() +
+         (Rule.OperandRenderers ? Rule.OperandRenderers->size() : 0U) +
+         Rule.AppendedImmediates.size() + Rule.EraseOperandDefinitions.size();
 }
 
 } // namespace
@@ -62,15 +65,32 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
     emitInstruction(Output, "CheckOpcode", 0, Rule.MatchOpcode);
     if (Rule.ResultType)
       emitTypePredicate(Output, 0, *Rule.ResultType);
+    if (Rule.IntegerPredicate)
+      emitInstruction(Output, "CheckIntegerPredicate", Rule.IntegerPredicate->OperandIndex,
+                      Rule.IntegerPredicate->Predicate);
     for (const NormalizedSelectionOperandTypePredicate &Predicate : Rule.OperandTypes)
       emitTypePredicate(Output, Predicate.OperandIndex, Predicate.Type);
     for (const NormalizedSelectionOperandBankPredicate &Predicate : Rule.OperandBanks)
       emitInstruction(Output, "CheckOperandBank", Predicate.OperandIndex, Predicate.Bank);
     for (const NormalizedSelectionOperandClassPredicate &Predicate : Rule.OperandClasses)
       emitInstruction(Output, "CheckOperandClass", Predicate.OperandIndex, Predicate.RegClass);
+    for (const NormalizedSelectionOperandDefConstantPredicate &Predicate : Rule.OperandDefConstants)
+      emitInstruction(Output, "CheckOperandDefConstant", Predicate.OperandIndex, 0, "0",
+                      Predicate.Value);
     emitInstruction(Output, "MutateOpcode", 0, Rule.ResultOpcode);
+    if (Rule.OperandRenderers) {
+      for (const NormalizedSelectionOperandRenderer &Renderer : *Rule.OperandRenderers) {
+        if (Renderer.SourceKind == NormalizedSelectionOperandRenderer::Kind::Operand)
+          emitInstruction(Output, "RenderOperand", Renderer.Value);
+        else
+          emitInstruction(Output, "RenderPhysicalRegister", 0, Renderer.Value,
+                          std::to_string(Renderer.Flags));
+      }
+    }
     for (const std::int64_t Immediate : Rule.AppendedImmediates)
       emitInstruction(Output, "AppendImmediate", 0, 0, "0", Immediate);
+    for (const std::uint32_t OperandIndex : Rule.EraseOperandDefinitions)
+      emitInstruction(Output, "EraseOperandDefinition", OperandIndex);
     emitInstruction(Output, "Complete", 0);
   }
   Output << "}};\n\n";

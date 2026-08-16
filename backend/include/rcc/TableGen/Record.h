@@ -229,16 +229,39 @@ struct SourceSelectionOperandClassPredicate final {
   TextRange Range;
 };
 
+struct SourceSelectionIntegerPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::string Predicate;
+  TextRange Range;
+};
+
+struct SourceSelectionOperandDefConstantPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::int64_t Value = 0;
+  TextRange Range;
+};
+
+struct SourceSelectionOperandRenderer final {
+  std::optional<std::uint32_t> OperandIndex;
+  std::string PhysicalRegisterSymbol;
+  std::vector<std::string> Flags;
+  TextRange Range;
+};
+
 struct SourceSelectionRule final {
   std::string Symbol;
   std::uint32_t Priority = 0;
   std::string MatchOpcodeSymbol;
   std::optional<SourceSelectionTypePredicate> ResultType;
+  std::optional<SourceSelectionIntegerPredicate> IntegerPredicate;
   std::vector<SourceSelectionOperandTypePredicate> OperandTypes;
   std::vector<SourceSelectionOperandBankPredicate> OperandBanks;
   std::vector<SourceSelectionOperandClassPredicate> OperandClasses;
+  std::vector<SourceSelectionOperandDefConstantPredicate> OperandDefConstants;
   std::string ResultOpcodeSymbol;
+  std::optional<std::vector<SourceSelectionOperandRenderer>> OperandRenderers;
   std::vector<std::int64_t> AppendedImmediates;
+  std::vector<std::uint32_t> EraseOperandDefinitions;
   TextRange Range;
 };
 

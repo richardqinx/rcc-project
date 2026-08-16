@@ -189,17 +189,42 @@ struct NormalizedSelectionOperandClassPredicate final {
   std::uint32_t RegClass = 0;
 };
 
+struct NormalizedSelectionIntegerPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::uint32_t Predicate = 0;
+};
+
+struct NormalizedSelectionOperandDefConstantPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::int64_t Value = 0;
+};
+
+struct NormalizedSelectionOperandRenderer final {
+  enum class Kind : std::uint8_t {
+    Operand,
+    PhysicalRegister,
+  };
+
+  Kind SourceKind = Kind::Operand;
+  std::uint32_t Value = 0;
+  std::uint16_t Flags = 0;
+};
+
 struct NormalizedSelectionRule final {
   std::string Symbol;
   std::uint32_t Priority = 0;
   std::uint32_t Specificity = 0;
   std::uint32_t MatchOpcode = 0;
   std::optional<NormalizedSelectionTypePredicate> ResultType;
+  std::optional<NormalizedSelectionIntegerPredicate> IntegerPredicate;
   std::vector<NormalizedSelectionOperandTypePredicate> OperandTypes;
   std::vector<NormalizedSelectionOperandBankPredicate> OperandBanks;
   std::vector<NormalizedSelectionOperandClassPredicate> OperandClasses;
+  std::vector<NormalizedSelectionOperandDefConstantPredicate> OperandDefConstants;
   std::uint32_t ResultOpcode = 0;
+  std::optional<std::vector<NormalizedSelectionOperandRenderer>> OperandRenderers;
   std::vector<std::int64_t> AppendedImmediates;
+  std::vector<std::uint32_t> EraseOperandDefinitions;
 };
 
 struct NormalizedTargetModel final {
