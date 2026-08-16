@@ -381,12 +381,7 @@ public:
     case GenericOpcode::G_FCMP:
     case GenericOpcode::G_SMULH:
     case GenericOpcode::G_UMULH:
-    case GenericOpcode::G_SMIN:
-    case GenericOpcode::G_SMAX:
-    case GenericOpcode::G_UMIN:
-    case GenericOpcode::G_UMAX:
     case GenericOpcode::G_SELECT:
-    case GenericOpcode::G_ABS:
     case GenericOpcode::G_UADDO:
     case GenericOpcode::G_USUBO:
     case GenericOpcode::G_SADDO:
@@ -480,15 +475,8 @@ public:
       return selectSignExtendInRegister(Instruction, Function, Target, Type);
     case GenericOpcode::G_FCMP:
       return selectFloatingCompare(Instruction, Function, Target);
-    case GenericOpcode::G_SMIN:
-    case GenericOpcode::G_SMAX:
-    case GenericOpcode::G_UMIN:
-    case GenericOpcode::G_UMAX:
-      return selectIntegerMinMax(Instruction, Function, Target, Type, Generic);
     case GenericOpcode::G_SELECT:
       return selectValue(Instruction, Function, Target, Type);
-    case GenericOpcode::G_ABS:
-      return selectAbsoluteValue(Instruction, Function, Target, Type);
     case GenericOpcode::G_UADDO:
     case GenericOpcode::G_USUBO:
     case GenericOpcode::G_SADDO:
@@ -833,61 +821,6 @@ private:
                             FalseValue, *MaskedDifference);
   }
 
-  [[nodiscard]] Expected<void> selectIntegerMinMax(MachineInstr &Instruction,
-                                                   MachineFunction &Function,
-                                                   const TargetDescription &Target,
-                                                   std::optional<LowLevelType> Type,
-                                                   GenericOpcode Generic) const {
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const MachineOperand *LeftOperand = Instruction.operandAt(1);
-    const MachineOperand *RightOperand = Instruction.operandAt(2);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
-    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    if (!Type || Destination == nullptr || Left == nullptr || Right == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V integer min/max has invalid operands");
-    auto I1 = LowLevelType::makeCategoryNeutralScalar(1);
-    if (!I1)
-      return std::unexpected(I1.error());
-    auto Condition = createTemporary(Function, *I1, Target);
-    if (!Condition)
-      return std::unexpected(Condition.error());
-    const Register DestinationRegister = *Destination;
-    const Register LeftRegister = *Left;
-    const Register RightRegister = *Right;
-    const bool Unsigned = Generic == GenericOpcode::G_UMIN || Generic == GenericOpcode::G_UMAX;
-    auto NormalizedLeft =
-        normalizeIntegerBefore(Instruction, Function, Target, LeftRegister, *Type, !Unsigned);
-    auto NormalizedRight =
-        normalizeIntegerBefore(Instruction, Function, Target, RightRegister, *Type, !Unsigned);
-    if (!NormalizedLeft || !NormalizedRight)
-      return std::unexpected(!NormalizedLeft ? NormalizedLeft.error() : NormalizedRight.error());
-    auto SetCondition = Instruction.operandAt(0)->setRegister(*Condition);
-    if (!SetCondition)
-      return std::unexpected(SetCondition.error());
-    auto SetLeft = Instruction.operandAt(1)->setRegister(*NormalizedLeft);
-    if (!SetLeft)
-      return std::unexpected(SetLeft.error());
-    auto SetRight = Instruction.operandAt(2)->setRegister(*NormalizedRight);
-    if (!SetRight)
-      return std::unexpected(SetRight.error());
-    auto SetCompare = Instruction.setOpcode(
-        instructionOpcode(Unsigned ? InstructionOpcode::SLTU : InstructionOpcode::SLT));
-    if (!SetCompare)
-      return std::unexpected(SetCompare.error());
-    const bool IsMaximum = Generic == GenericOpcode::G_SMAX || Generic == GenericOpcode::G_UMAX;
-    const Register TrueValue = IsMaximum ? RightRegister : LeftRegister;
-    const Register FalseValue = IsMaximum ? LeftRegister : RightRegister;
-    MachineIRBuilder Builder(Function, Target);
-    auto Selected = buildGPRSelectAfter(Builder, Instruction, Function, Target, *Type,
-                                        DestinationRegister, *Condition, TrueValue, FalseValue);
-    if (!Selected)
-      return std::unexpected(Selected.error());
-    return {};
-  }
-
   [[nodiscard]] Expected<void> selectValue(MachineInstr &Instruction, MachineFunction &Function,
                                            const TargetDescription &Target,
                                            std::optional<LowLevelType> Type) const {
@@ -976,56 +909,6 @@ private:
         buildUnaryAfter(Builder, **Selected, ToFloat, DestinationRegister, *IntegerResult);
     if (!MoveResult)
       return std::unexpected(MoveResult.error());
-    return {};
-  }
-
-  [[nodiscard]] Expected<void> selectAbsoluteValue(MachineInstr &Instruction,
-                                                   MachineFunction &Function,
-                                                   const TargetDescription &Target,
-                                                   std::optional<LowLevelType> Type) const {
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const MachineOperand *SourceOperand = Instruction.operandAt(1);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
-    if (!Type || Destination == nullptr || Source == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V absolute value has invalid operands");
-    const Register DestinationRegister = *Destination;
-    const Register SourceRegister = *Source;
-    auto NormalizedSource =
-        normalizeIntegerBefore(Instruction, Function, Target, SourceRegister, *Type, true);
-    if (!NormalizedSource)
-      return std::unexpected(NormalizedSource.error());
-    auto SignMask = createTemporary(Function, *Type, Target);
-    auto Flipped = createTemporary(Function, *Type, Target);
-    if (!SignMask || !Flipped)
-      return std::unexpected(!SignMask ? SignMask.error() : Flipped.error());
-    auto SetMask = Instruction.operandAt(0)->setRegister(*SignMask);
-    if (!SetMask)
-      return std::unexpected(SetMask.error());
-    auto SetSource = Instruction.operandAt(1)->setRegister(*NormalizedSource);
-    if (!SetSource)
-      return std::unexpected(SetSource.error());
-    const std::uint32_t ContainerBits = Type->scalarBitWidth() <= 32 ? 32 : 64;
-    auto Shift = appendImmediate(Instruction, ContainerBits - 1U);
-    if (!Shift)
-      return std::unexpected(Shift.error());
-    const bool IsWord = Type->scalarBitWidth() <= 32;
-    auto SetShift = Instruction.setOpcode(
-        instructionOpcode(IsWord ? InstructionOpcode::SRAIW : InstructionOpcode::SRAI));
-    if (!SetShift)
-      return std::unexpected(SetShift.error());
-    MachineIRBuilder Builder(Function, Target);
-    auto Flip = buildBinaryAfter(Builder, Instruction, InstructionOpcode::XOR, *Flipped,
-                                 *NormalizedSource, *SignMask);
-    if (!Flip)
-      return std::unexpected(Flip.error());
-    auto Result =
-        buildBinaryAfter(Builder, **Flip, IsWord ? InstructionOpcode::SUBW : InstructionOpcode::SUB,
-                         DestinationRegister, *Flipped, *SignMask);
-    if (!Result)
-      return std::unexpected(Result.error());
     return {};
   }
 
