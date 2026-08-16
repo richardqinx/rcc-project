@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/GlobalISel/InstructionSelect.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/GlobalISel/Utils.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -202,8 +203,7 @@ Expected<void> InstructionSelector::propagateSelectionFlags(MachineInstr &Output
 Expected<void> InstructionSelector::finalizeGeneratedInstruction(
     MachineInstr &Output, MachineFunction &Function, const TargetDescription &Target,
     MachineInstrFlags InputFlags, bool InputMayRaiseFPException) const {
-  auto Flags =
-      propagateSelectionFlags(Output, InputFlags, InputMayRaiseFPException, Target);
+  auto Flags = propagateSelectionFlags(Output, InputFlags, InputMayRaiseFPException, Target);
   if (!Flags)
     return std::unexpected(Flags.error());
   return constrainSelectedInstruction(Output, Function, Target);
@@ -367,6 +367,46 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     if (Descriptor->Flags.has(InstructionFlag::Generic))
       return std::unexpected(
           passFailure("instruction selector left a generic opcode in the function"));
+  }
+  for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {
+    for (MachineInstr *Instruction = Block->lastInstruction(); Instruction != nullptr;) {
+      MachineInstr *Previous = Instruction->previous();
+      if (Instruction->opcode() != opcode(GenericOpcode::COPY)) {
+        Instruction = Previous;
+        continue;
+      }
+      const MachineOperand *SourceOperand = Instruction->operandAt(1);
+      const MachineOperand *DestinationOperand = Instruction->operandAt(0);
+      const Register *Source =
+          SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+      const Register *Destination =
+          DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+      if (Source == nullptr || Destination == nullptr || !Source->isVirtual() ||
+          !Destination->isVirtual() || SourceOperand->subReg().value() != 0) {
+        Instruction = Previous;
+        continue;
+      }
+      auto SourceInfo = Function.registerInfo().virtualRegisterInfo(*Source);
+      if (!SourceInfo)
+        return std::unexpected(SourceInfo.error());
+      auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(*Destination);
+      if (!DestinationInfo)
+        return std::unexpected(DestinationInfo.error());
+      if (!SourceInfo->get().RegClass ||
+          SourceInfo->get().RegClass != DestinationInfo->get().RegClass) {
+        Instruction = Previous;
+        continue;
+      }
+      auto Replaced = Function.registerInfo().replaceRegWith(*Destination, *Source);
+      if (!Replaced)
+        return std::unexpected(Replaced.error());
+      auto Removed = Block->removeInstruction(*Instruction);
+      if (!Removed)
+        return std::unexpected(Removed.error());
+      Result.Changed = true;
+      Result.Changes.add(MachinePassChange::Instructions);
+      Instruction = Previous;
+    }
   }
   auto RegisterValidation = Target.validateRegisterInfo(Function.registerInfo());
   if (!RegisterValidation)
