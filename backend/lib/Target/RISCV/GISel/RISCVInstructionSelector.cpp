@@ -71,11 +71,6 @@ operandType(const MachineFunction &Function, const MachineInstr &Instruction, st
          (Type.isPointer() && Type.scalarBitWidth() == 64);
 }
 
-[[nodiscard]] bool isSupportedIntegerScalar(LowLevelType Type) noexcept {
-  return Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
-         Type.scalarBitWidth() <= 64;
-}
-
 [[nodiscard]] constexpr RegisterBankID fprBank() noexcept {
   return RegisterBankID::fromValue(static_cast<std::uint32_t>(RegisterBank::FPR));
 }
@@ -144,18 +139,6 @@ directIntegerConstant(const MachineRegisterInfo &RegisterInfo, Register ValueReg
     return std::nullopt;
   auto Value = signedImmediate(*ValueOperand);
   return Value ? std::optional<std::int64_t>(*Value) : std::nullopt;
-}
-
-[[nodiscard]] bool fitsIntegerImmediate(std::int64_t Value, bool Signed,
-                                        std::uint32_t BitWidth) noexcept {
-  if (BitWidth == 0 || BitWidth >= 64)
-    return BitWidth == 64 && (Signed || Value >= 0);
-  if (Signed) {
-    const std::int64_t Minimum = -(std::int64_t{1} << (BitWidth - 1U));
-    const std::int64_t Maximum = (std::int64_t{1} << (BitWidth - 1U)) - 1;
-    return Value >= Minimum && Value <= Maximum;
-  }
-  return Value >= 0 && static_cast<std::uint64_t>(Value) < (std::uint64_t{1} << BitWidth);
 }
 
 class RISCVInstructionSelector final : public InstructionSelector {
@@ -1949,79 +1932,6 @@ private:
         return std::unexpected(Erased.error());
     }
     return Instruction.setOpcode(instructionOpcode(InstructionOpcode::EBREAK));
-  }
-
-  [[nodiscard]] Expected<bool> foldRightConstantToImmediate(MachineInstr &Instruction,
-                                                            const MachineFunction &Function,
-                                                            bool Signed,
-                                                            std::uint32_t BitWidth) const {
-    const MachineOperand *RightOperand = Instruction.operandAt(2);
-    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    if (Right == nullptr)
-      return false;
-    const std::optional<std::int64_t> Value =
-        directIntegerConstant(Function.registerInfo(), *Right);
-    if (!Value || !fitsIntegerImmediate(*Value, Signed, BitWidth))
-      return false;
-    auto EraseRight = Instruction.eraseOperand(2);
-    if (!EraseRight)
-      return std::unexpected(EraseRight.error());
-    auto AddImmediate = Instruction.addOperand(MachineOperand::immediate(*Value));
-    if (!AddImmediate)
-      return std::unexpected(AddImmediate.error());
-    return true;
-  }
-
-  [[nodiscard]] Expected<void> selectNormalizedIntegerBinary(
-      MachineInstr &Instruction, MachineFunction &Function, const TargetDescription &Target,
-      std::optional<LowLevelType> Type, InstructionOpcode DoubleWord, InstructionOpcode Word,
-      bool Signed, bool NormalizeRight,
-      std::optional<InstructionOpcode> DoubleWordImmediate = std::nullopt,
-      std::optional<InstructionOpcode> WordImmediate = std::nullopt, bool ImmediateSigned = false,
-      std::uint32_t DoubleWordImmediateBits = 0, std::uint32_t WordImmediateBits = 0) const {
-    const MachineOperand *LeftOperand = Instruction.operandAt(1);
-    const MachineOperand *RightOperand = Instruction.operandAt(2);
-    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
-    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    if (!Type || !isSupportedIntegerScalar(*Type) || Left == nullptr || Right == nullptr) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V normalized integer operation has invalid operands");
-    }
-    auto NormalizedLeft =
-        normalizeIntegerBefore(Instruction, Function, Target, *Left, *Type, Signed);
-    if (!NormalizedLeft)
-      return std::unexpected(NormalizedLeft.error());
-    const Register RightRegister = *Right;
-    bool FoldedImmediate = false;
-    if (DoubleWordImmediate && WordImmediate) {
-      auto Folded = foldRightConstantToImmediate(
-          Instruction, Function, ImmediateSigned,
-          Type->scalarBitWidth() <= 32 ? WordImmediateBits : DoubleWordImmediateBits);
-      if (!Folded)
-        return std::unexpected(Folded.error());
-      FoldedImmediate = *Folded;
-    }
-    Register SelectedRight = RightRegister;
-    if (!FoldedImmediate && NormalizeRight) {
-      auto NormalizedRight =
-          normalizeIntegerBefore(Instruction, Function, Target, RightRegister, *Type, Signed);
-      if (!NormalizedRight)
-        return std::unexpected(NormalizedRight.error());
-      SelectedRight = *NormalizedRight;
-    }
-    auto SetLeft = Instruction.operandAt(1)->setRegister(*NormalizedLeft);
-    if (!SetLeft)
-      return std::unexpected(SetLeft.error());
-    if (!FoldedImmediate) {
-      auto SetRight = Instruction.operandAt(2)->setRegister(SelectedRight);
-      if (!SetRight)
-        return std::unexpected(SetRight.error());
-    }
-    const bool IsWord = Type->scalarBitWidth() <= 32;
-    if (FoldedImmediate)
-      return Instruction.setOpcode(
-          instructionOpcode(IsWord ? *WordImmediate : *DoubleWordImmediate));
-    return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
   [[nodiscard]] Expected<void> selectLoad(MachineInstr &Instruction, MachineFunction &Function,
