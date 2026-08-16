@@ -459,10 +459,6 @@ public:
       return selectSignExtendInRegister(Instruction, Function, Target, Type);
     case GenericOpcode::G_FCMP:
       return selectFloatingCompare(Instruction, Function, Target);
-    case GenericOpcode::G_SMULH:
-      return selectMultiplyHigh(Instruction, Function, Target, Type, true);
-    case GenericOpcode::G_UMULH:
-      return selectMultiplyHigh(Instruction, Function, Target, Type, false);
     case GenericOpcode::G_SMIN:
     case GenericOpcode::G_SMAX:
     case GenericOpcode::G_UMIN:
@@ -814,103 +810,6 @@ private:
       return std::unexpected(MaskInstructionResult.error());
     return buildBinaryAfter(Builder, **MaskInstructionResult, InstructionOpcode::XOR, Destination,
                             FalseValue, *MaskedDifference);
-  }
-
-  [[nodiscard]] Expected<void> selectMultiplyHigh(MachineInstr &Instruction,
-                                                  MachineFunction &Function,
-                                                  const TargetDescription &Target,
-                                                  std::optional<LowLevelType> Type,
-                                                  bool Signed) const {
-    if (!Type)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V high multiplication has no result type");
-    if (Type->scalarBitWidth() == 64) {
-      return Instruction.setOpcode(
-          instructionOpcode(Signed ? InstructionOpcode::MULH : InstructionOpcode::MULHU));
-    }
-
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const MachineOperand *LeftOperand = Instruction.operandAt(1);
-    const MachineOperand *RightOperand = Instruction.operandAt(2);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
-    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    if (Destination == nullptr || Left == nullptr || Right == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V high multiplication has invalid register operands");
-    const Register DestinationRegister = *Destination;
-    const Register RightRegister = *Right;
-    auto I64 = LowLevelType::makeCategoryNeutralScalar(64);
-    if (!I64)
-      return std::unexpected(I64.error());
-    auto ExtendedLeft = createTemporary(Function, *I64, Target);
-    auto ExtendedRight = createTemporary(Function, *I64, Target);
-    auto Product = createTemporary(Function, *I64, Target);
-    if (!ExtendedLeft || !ExtendedRight || !Product) {
-      return std::unexpected(!ExtendedLeft
-                                 ? ExtendedLeft.error()
-                                 : (!ExtendedRight ? ExtendedRight.error() : Product.error()));
-    }
-
-    auto RemoveRight = Instruction.eraseOperand(2);
-    if (!RemoveRight)
-      return std::unexpected(RemoveRight.error());
-    MachineIRBuilder Builder(Function, Target);
-    MachineInstr *Anchor = &Instruction;
-    if (Signed) {
-      auto SetDestination = Instruction.operandAt(0)->setRegister(*ExtendedLeft);
-      if (!SetDestination)
-        return std::unexpected(SetDestination.error());
-      auto Immediate = appendImmediate(Instruction, 0);
-      if (!Immediate)
-        return std::unexpected(Immediate.error());
-      auto SetOpcode = Instruction.setOpcode(instructionOpcode(InstructionOpcode::ADDIW));
-      if (!SetOpcode)
-        return std::unexpected(SetOpcode.error());
-      auto ExtendRight = buildImmediateAfter(Builder, *Anchor, InstructionOpcode::ADDIW,
-                                             *ExtendedRight, RightRegister, 0);
-      if (!ExtendRight)
-        return std::unexpected(ExtendRight.error());
-      Anchor = *ExtendRight;
-    } else {
-      auto ShiftedLeft = createTemporary(Function, *I64, Target);
-      auto ShiftedRight = createTemporary(Function, *I64, Target);
-      if (!ShiftedLeft || !ShiftedRight)
-        return std::unexpected(!ShiftedLeft ? ShiftedLeft.error() : ShiftedRight.error());
-      auto SetDestination = Instruction.operandAt(0)->setRegister(*ShiftedLeft);
-      if (!SetDestination)
-        return std::unexpected(SetDestination.error());
-      auto Immediate = appendImmediate(Instruction, 32);
-      if (!Immediate)
-        return std::unexpected(Immediate.error());
-      auto SetOpcode = Instruction.setOpcode(instructionOpcode(InstructionOpcode::SLLI));
-      if (!SetOpcode)
-        return std::unexpected(SetOpcode.error());
-      auto ExtendLeft = buildImmediateAfter(Builder, *Anchor, InstructionOpcode::SRLI,
-                                            *ExtendedLeft, *ShiftedLeft, 32);
-      if (!ExtendLeft)
-        return std::unexpected(ExtendLeft.error());
-      auto ShiftRight = buildImmediateAfter(Builder, **ExtendLeft, InstructionOpcode::SLLI,
-                                            *ShiftedRight, RightRegister, 32);
-      if (!ShiftRight)
-        return std::unexpected(ShiftRight.error());
-      auto ExtendRight = buildImmediateAfter(Builder, **ShiftRight, InstructionOpcode::SRLI,
-                                             *ExtendedRight, *ShiftedRight, 32);
-      if (!ExtendRight)
-        return std::unexpected(ExtendRight.error());
-      Anchor = *ExtendRight;
-    }
-    auto Multiply = buildBinaryAfter(Builder, *Anchor, InstructionOpcode::MUL, *Product,
-                                     *ExtendedLeft, *ExtendedRight);
-    if (!Multiply)
-      return std::unexpected(Multiply.error());
-    auto Extract = buildImmediateAfter(Builder, **Multiply,
-                                       Signed ? InstructionOpcode::SRAI : InstructionOpcode::SRLI,
-                                       DestinationRegister, *Product, 32);
-    if (!Extract)
-      return std::unexpected(Extract.error());
-    return {};
   }
 
   [[nodiscard]] Expected<void> selectIntegerMinMax(MachineInstr &Instruction,

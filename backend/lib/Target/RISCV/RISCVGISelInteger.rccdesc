@@ -218,6 +218,42 @@ selection_rules:
           root: true
           operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
+    id: select_g_smulh_register
+    priority: 100
+    match:
+      opcode: G_SMULH
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: MULH
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_umulh_register
+    priority: 100
+    match:
+      opcode: G_UMULH
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: MULHU
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
     id: select_g_sdiv_register
     priority: 100
     match:
