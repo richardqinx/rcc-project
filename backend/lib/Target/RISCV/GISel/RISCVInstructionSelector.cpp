@@ -421,6 +421,8 @@ public:
       return std::unexpected(Generated.error());
     if (*Generated)
       return {};
+    if (Instruction.opcode() == opcode(GenericOpcode::COPY))
+      return selectCopy(Instruction, Function, Target);
     auto Match = canSelect(Instruction, Function, Target);
     if (!Match)
       return std::unexpected(Match.error());
@@ -514,6 +516,19 @@ public:
   }
 
 private:
+  [[nodiscard]] Expected<void> selectCopy(MachineInstr &Instruction, MachineFunction &Function,
+                                          const TargetDescription &Target) const {
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    if (Destination == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V COPY selection requires a register destination");
+    if (!Destination->isVirtual())
+      return {};
+    return RegisterBanks.constrainRegister(Function, *Destination, Target);
+  }
+
   [[nodiscard]] Expected<Register>
   createTemporary(MachineFunction &Function, LowLevelType Type, const TargetDescription &Target,
                   std::optional<RegisterBankID> Bank = std::nullopt) const {

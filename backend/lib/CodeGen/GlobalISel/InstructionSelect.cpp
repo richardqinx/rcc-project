@@ -291,7 +291,9 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     if (CurrentDescriptor == nullptr)
       return std::unexpected(
           passFailure("instruction selector encountered an unknown instruction descriptor"));
-    if (!CurrentDescriptor->Flags.has(InstructionFlag::Generic))
+    const bool IsGeneric = CurrentDescriptor->Flags.has(InstructionFlag::Generic);
+    const bool IsCopy = Instruction->opcode() == opcode(GenericOpcode::COPY);
+    if (!IsGeneric && !IsCopy)
       continue;
     const OpcodeState Before = stateOf(*Instruction);
     if (!SeenStates.insert(Before).second) {
@@ -322,21 +324,23 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     if (Selected == nullptr)
       return std::unexpected(
           passFailure("instruction selector produced an unknown instruction descriptor"));
-    auto FlagPropagation =
-        Info->propagateSelectionFlags(*Instruction, InputFlags, InputMayRaiseFPException, Target);
-    if (!FlagPropagation)
-      return std::unexpected(FlagPropagation.error());
-    auto Constraint = Info->constrainSelectedInstruction(*Instruction, Function, Target);
-    if (!Constraint) {
-      return std::unexpected(withErrorContext(
-          Constraint.error(), "instruction selector could not constrain selected registers: "));
+    if (IsGeneric) {
+      auto FlagPropagation =
+          Info->propagateSelectionFlags(*Instruction, InputFlags, InputMayRaiseFPException, Target);
+      if (!FlagPropagation)
+        return std::unexpected(FlagPropagation.error());
+      auto Constraint = Info->constrainSelectedInstruction(*Instruction, Function, Target);
+      if (!Constraint) {
+        return std::unexpected(withErrorContext(
+            Constraint.error(), "instruction selector could not constrain selected registers: "));
+      }
     }
     auto Validation = Target.validateInstruction(*Instruction, Function.registerInfo());
     if (!Validation)
       return std::unexpected(withErrorContext(Validation.error(),
                                               "instruction selector produced invalid MachineIR: "));
     const OpcodeState After = stateOf(*Instruction);
-    if (After == Before)
+    if (IsGeneric && After == Before)
       return std::unexpected(
           passFailure("instruction selector reported success without observable progress",
                       ErrorCode::InternalError));
