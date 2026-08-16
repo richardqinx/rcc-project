@@ -1,0 +1,515 @@
+instructions:
+  -
+    id: 1180
+    symbol: C_ADDI4SPN
+    name: C_ADDI4SPN
+    assembly_mnemonic: c.addi4spn
+    encoding: 2048
+    operands:
+      - { kinds: [register], role: def, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: C_UIMM10_NZ_A4, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    implicit_uses: [{ register: X2 }]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM_SP
+  -
+    id: 1181
+    symbol: C_FLD
+    name: C_FLD
+    assembly_mnemonic: c.fld
+    encoding: 9344
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64C, register_bank: FPR, memory_role: value, name: FRD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM8_A8, name: IMM }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    scheduling_class: LOAD
+    encoding_category: C
+    assembly_format: FRD_OFFSET_RS1
+  -
+    id: 1182
+    symbol: C_LW
+    name: C_LW
+    assembly_mnemonic: c.lw
+    encoding: 17536
+    operands:
+      - { kinds: [register], role: def, register_class: GPRC, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM7_A4, name: IMM }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    scheduling_class: LOAD
+    encoding_category: C
+    assembly_format: RD_OFFSET_RS1
+  -
+    id: 1183
+    symbol: C_LD
+    name: C_LD
+    assembly_mnemonic: c.ld
+    encoding: 25728
+    operands:
+      - { kinds: [register], role: def, register_class: GPRC, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM8_A8, name: IMM }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    scheduling_class: LOAD
+    encoding_category: C
+    assembly_format: RD_OFFSET_RS1
+  -
+    id: 1184
+    symbol: C_FSD
+    name: C_FSD
+    assembly_mnemonic: c.fsd
+    encoding: 42120
+    operands:
+      - { kinds: [register], role: use, register_class: FPR64C, register_bank: FPR, memory_role: value, name: FRS2 }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM8_A8, name: IMM }
+    num_explicit_defs: 0
+    flags: [may_store, produces_code]
+    scheduling_class: STORE
+    encoding_category: C
+    assembly_format: FRS2_OFFSET_RS1
+  -
+    id: 1185
+    symbol: C_SW
+    name: C_SW
+    assembly_mnemonic: c.sw
+    encoding: 50312
+    operands:
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM7_A4, name: IMM }
+    num_explicit_defs: 0
+    flags: [may_store, produces_code]
+    scheduling_class: STORE
+    encoding_category: C
+    assembly_format: RS2_OFFSET_RS1
+  -
+    id: 1186
+    symbol: C_SD
+    name: C_SD
+    assembly_mnemonic: c.sd
+    encoding: 58504
+    operands:
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM8_A8, name: IMM }
+    num_explicit_defs: 0
+    flags: [may_store, produces_code]
+    scheduling_class: STORE
+    encoding_category: C
+    assembly_format: RS2_OFFSET_RS1
+  -
+    id: 1187
+    symbol: C_ADDI
+    name: C_ADDI
+    assembly_mnemonic: c.addi
+    encoding: 1029
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: C_SIMM6, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM
+  -
+    id: 1188
+    symbol: C_ADDIW
+    name: C_ADDIW
+    assembly_mnemonic: c.addiw
+    encoding: 9221
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPR_NX0, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: C_SIMM6, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM
+  -
+    id: 1189
+    symbol: C_LI
+    name: C_LI
+    assembly_mnemonic: c.li
+    encoding: 17413
+    operands:
+      - { kinds: [register], role: def, register_class: GPR_NX0, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: C_SIMM6, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM
+  -
+    id: 1190
+    symbol: C_ADDI16SP
+    name: C_ADDI16SP
+    assembly_mnemonic: c.addi16sp
+    encoding: 24897
+    operands:
+      - { kinds: [immediate], immediate_predicate: C_SIMM10_A16_NZ, name: IMM }
+    num_explicit_defs: 0
+    flags: [produces_code]
+    implicit_defs: [{ register: X2 }]
+    implicit_uses: [{ register: X2 }]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: IMM_SP
+  -
+    id: 1191
+    symbol: C_LUI
+    name: C_LUI
+    assembly_mnemonic: c.lui
+    encoding: 25605
+    operands:
+      - { kinds: [register], role: def, register_class: GPR_NX0_NX2, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: C_SIMM6_NZ, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM
+  -
+    id: 1192
+    symbol: C_SRLI
+    name: C_SRLI
+    assembly_mnemonic: c.srli
+    encoding: 32773
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: UIMM6, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM
+  -
+    id: 1193
+    symbol: C_SRAI
+    name: C_SRAI
+    assembly_mnemonic: c.srai
+    encoding: 33797
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: UIMM6, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM
+  -
+    id: 1194
+    symbol: C_ANDI
+    name: C_ANDI
+    assembly_mnemonic: c.andi
+    encoding: 34821
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: C_SIMM6, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM
+  -
+    id: 1195
+    symbol: C_SUB
+    name: C_SUB
+    assembly_mnemonic: c.sub
+    encoding: 35845
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1196
+    symbol: C_XOR
+    name: C_XOR
+    assembly_mnemonic: c.xor
+    encoding: 35877
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1197
+    symbol: C_OR
+    name: C_OR
+    assembly_mnemonic: c.or
+    encoding: 35909
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1198
+    symbol: C_AND
+    name: C_AND
+    assembly_mnemonic: c.and
+    encoding: 35941
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1199
+    symbol: C_SUBW
+    name: C_SUBW
+    assembly_mnemonic: c.subw
+    encoding: 39941
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1200
+    symbol: C_ADDW
+    name: C_ADDW
+    assembly_mnemonic: c.addw
+    encoding: 39973
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPRC, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1201
+    symbol: C_J
+    name: C_J
+    assembly_mnemonic: c.j
+    encoding: 40961
+    operands:
+      - { kinds: [basic_block], name: TARGET }
+    num_explicit_defs: 0
+    flags: [terminator, branch, produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: TARGET
+  -
+    id: 1202
+    symbol: C_BEQZ
+    name: C_BEQZ
+    assembly_mnemonic: c.beqz
+    encoding: 49153
+    operands:
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS1 }
+      - { kinds: [basic_block], name: TARGET }
+    num_explicit_defs: 0
+    flags: [terminator, branch, produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RS1_TARGET
+  -
+    id: 1203
+    symbol: C_BNEZ
+    name: C_BNEZ
+    assembly_mnemonic: c.bnez
+    encoding: 57345
+    operands:
+      - { kinds: [register], role: use, register_class: GPRC, register_bank: GPR, name: RS1 }
+      - { kinds: [basic_block], name: TARGET }
+    num_explicit_defs: 0
+    flags: [terminator, branch, produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RS1_TARGET
+  -
+    id: 1204
+    symbol: C_SLLI
+    name: C_SLLI
+    assembly_mnemonic: c.slli
+    encoding: 1030
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPR_NX0, register_bank: GPR, name: RD }
+      - { kinds: [immediate], immediate_predicate: UIMM6, name: IMM }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_IMM
+  -
+    id: 1205
+    symbol: C_FLDSP
+    name: C_FLDSP
+    assembly_mnemonic: c.fldsp
+    encoding: 9250
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRD }
+      - { kinds: [immediate], immediate_predicate: C_UIMM9_A8, name: IMM }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    implicit_uses: [{ register: X2 }]
+    scheduling_class: LOAD
+    encoding_category: C
+    assembly_format: FRD_OFFSET_SP
+  -
+    id: 1206
+    symbol: C_LWSP
+    name: C_LWSP
+    assembly_mnemonic: c.lwsp
+    encoding: 17442
+    operands:
+      - { kinds: [register], role: def, register_class: GPR_NX0, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [immediate], immediate_predicate: C_UIMM8_A4, name: IMM }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    implicit_uses: [{ register: X2 }]
+    scheduling_class: LOAD
+    encoding_category: C
+    assembly_format: RD_OFFSET_SP
+  -
+    id: 1207
+    symbol: C_LDSP
+    name: C_LDSP
+    assembly_mnemonic: c.ldsp
+    encoding: 25634
+    operands:
+      - { kinds: [register], role: def, register_class: GPR_NX0, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [immediate], immediate_predicate: C_UIMM9_A8, name: IMM }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    implicit_uses: [{ register: X2 }]
+    scheduling_class: LOAD
+    encoding_category: C
+    assembly_format: RD_OFFSET_SP
+  -
+    id: 1208
+    symbol: C_JR
+    name: C_JR
+    assembly_mnemonic: c.jr
+    encoding: 33794
+    operands:
+      - { kinds: [register], role: use, register_class: GPR_NX0, register_bank: GPR, name: RS1 }
+    num_explicit_defs: 0
+    flags: [terminator, branch, indirect_branch, produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RS1
+  -
+    id: 1209
+    symbol: C_MV
+    name: C_MV
+    assembly_mnemonic: c.mv
+    encoding: 33830
+    operands:
+      - { kinds: [register], role: def, register_class: GPR_NX0, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR_NX0, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1210
+    symbol: C_EBREAK
+    name: C_EBREAK
+    assembly_mnemonic: c.ebreak
+    encoding: 36866
+    operands: []
+    num_explicit_defs: 0
+    flags: [has_side_effects, produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: NONE
+  -
+    id: 1211
+    symbol: C_JALR
+    name: C_JALR
+    assembly_mnemonic: c.jalr
+    encoding: 37890
+    operands:
+      - { kinds: [register], role: use, register_class: GPR_NX0, register_bank: GPR, name: RS1 }
+    num_explicit_defs: 0
+    flags: [terminator, branch, indirect_branch, produces_code]
+    implicit_defs: [{ register: X1 }]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RS1
+  -
+    id: 1212
+    symbol: C_ADD
+    name: C_ADD
+    assembly_mnemonic: c.add
+    encoding: 37926
+    operands:
+      - { kinds: [register], role: def_use, register_class: GPR_NX0, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR_NX0, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1213
+    symbol: C_FSDSP
+    name: C_FSDSP
+    assembly_mnemonic: c.fsdsp
+    encoding: 42018
+    operands:
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRS2 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM9_A8, name: IMM }
+    num_explicit_defs: 0
+    flags: [may_store, produces_code]
+    implicit_uses: [{ register: X2 }]
+    scheduling_class: STORE
+    encoding_category: C
+    assembly_format: FRS2_OFFSET_SP
+  -
+    id: 1214
+    symbol: C_SWSP
+    name: C_SWSP
+    assembly_mnemonic: c.swsp
+    encoding: 50210
+    operands:
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM8_A4, name: IMM }
+    num_explicit_defs: 0
+    flags: [may_store, produces_code]
+    implicit_uses: [{ register: X2 }]
+    scheduling_class: STORE
+    encoding_category: C
+    assembly_format: RS2_OFFSET_SP
+  -
+    id: 1215
+    symbol: C_SDSP
+    name: C_SDSP
+    assembly_mnemonic: c.sdsp
+    encoding: 58402
+    operands:
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [immediate], immediate_predicate: C_UIMM9_A8, name: IMM }
+    num_explicit_defs: 0
+    flags: [may_store, produces_code]
+    implicit_uses: [{ register: X2 }]
+    scheduling_class: STORE
+    encoding_category: C
+    assembly_format: RS2_OFFSET_SP

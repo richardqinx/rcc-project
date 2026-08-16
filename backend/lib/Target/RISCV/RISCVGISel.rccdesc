@@ -1,0 +1,157 @@
+selection_rules:
+  -
+    id: select_g_sllw
+    priority: 100
+    match:
+      opcode: G_SLLW
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply: { opcode: SLLW }
+  -
+    id: select_g_sraw
+    priority: 100
+    match:
+      opcode: G_SRAW
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply: { opcode: SRAW }
+  -
+    id: select_g_srlw
+    priority: 100
+    match:
+      opcode: G_SRLW
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply: { opcode: SRLW }
+  -
+    id: select_g_divw
+    priority: 100
+    match:
+      opcode: G_DIVW
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply: { opcode: DIVW }
+  -
+    id: select_g_divuw
+    priority: 100
+    match:
+      opcode: G_DIVUW
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply: { opcode: DIVUW }
+  -
+    id: select_g_remuw
+    priority: 100
+    match:
+      opcode: G_REMUW
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply: { opcode: REMUW }
+  -
+    id: select_g_fcvt_w_rv64_s32
+    priority: 100
+    match:
+      opcode: G_FCVT_W_RV64
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply: { opcode: FCVT_W_S }
+  -
+    id: select_g_fcvt_w_rv64_s64
+    priority: 100
+    match:
+      opcode: G_FCVT_W_RV64
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply: { opcode: FCVT_W_D }
+  -
+    id: select_g_fcvt_wu_rv64_s32
+    priority: 100
+    match:
+      opcode: G_FCVT_WU_RV64
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply: { opcode: FCVT_WU_S }
+  -
+    id: select_g_fcvt_wu_rv64_s64
+    priority: 100
+    match:
+      opcode: G_FCVT_WU_RV64
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply: { opcode: FCVT_WU_D }
+  -
+    id: select_g_fclass_s32
+    priority: 100
+    match:
+      opcode: G_FCLASS
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply: { opcode: FCLASS_S }
+  -
+    id: select_g_fclass_s64
+    priority: 100
+    match:
+      opcode: G_FCLASS
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply: { opcode: FCLASS_D }

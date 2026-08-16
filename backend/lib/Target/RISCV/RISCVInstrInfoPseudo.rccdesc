@@ -1,0 +1,380 @@
+instructions:
+  -
+    id: 1229
+    symbol: G_SLLW
+    name: G_SLLW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1230
+    symbol: G_SRAW
+    name: G_SRAW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1231
+    symbol: G_DIVW
+    name: G_DIVW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1232
+    symbol: G_CLZW
+    name: G_CLZW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1233
+    symbol: G_CTZW
+    name: G_CTZW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1234
+    symbol: G_FCVT_W_RV64
+    name: G_FCVT_W_RV64
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 1 }
+      - { kinds: [immediate] }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1235
+    symbol: G_FCLASS
+    name: G_FCLASS
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 1 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1236
+    symbol: G_ROLW
+    name: G_ROLW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1237
+    symbol: G_SRLW
+    name: G_SRLW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1238
+    symbol: G_DIVUW
+    name: G_DIVUW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1239
+    symbol: G_REMUW
+    name: G_REMUW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1240
+    symbol: G_RORW
+    name: G_RORW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1241
+    symbol: G_BREV8
+    name: G_BREV8
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1242
+    symbol: G_FCVT_WU_RV64
+    name: G_FCVT_WU_RV64
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 1 }
+      - { kinds: [immediate] }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1243
+    symbol: G_CLSW
+    name: G_CLSW
+    operands:
+      - { kinds: [register], role: def, type_index: 0 }
+      - { kinds: [register], role: use, type_index: 0 }
+    num_explicit_defs: 1
+    flags: [generic, pseudo, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1244
+    symbol: Select_GPR_Using_CC_GPR
+    name: Select_GPR_Using_CC_GPR
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [immediate] }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+    num_explicit_defs: 1
+    flags: [pseudo, produces_code, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1245
+    symbol: ReadFFLAGS
+    name: ReadFFLAGS
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR }
+    num_explicit_defs: 1
+    implicit_uses: [{ register: FFLAGS }]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, has_side_effects]
+    owner: post_ra_expansion
+    deadline: post_ra_finalized
+
+  -
+    id: 1246
+    symbol: WriteFFLAGS
+    name: WriteFFLAGS
+    operands:
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+    num_explicit_defs: 0
+    implicit_defs: [{ register: FFLAGS }]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, has_side_effects]
+    owner: post_ra_expansion
+    deadline: post_ra_finalized
+  -
+    id: 1217
+    symbol: PseudoLOAD_STACK_ARG
+    name: PseudoLOAD_STACK_ARG
+    operands:
+      - { kinds: [register], role: def, memory_role: value }
+      - { kinds: [frame_index] }
+      - { kinds: [immediate, integer_immediate] }
+      - { kinds: [immediate] }
+    num_explicit_defs: 1
+    flags: [pseudo, produces_code, allowed_pre_legalizer, may_load]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1218
+    symbol: PseudoSTORE_STACK_ARG
+    name: PseudoSTORE_STACK_ARG
+    operands:
+      - { kinds: [register], role: use, memory_role: value }
+      - { kinds: [frame_index] }
+      - { kinds: [immediate, integer_immediate] }
+      - { kinds: [immediate] }
+    num_explicit_defs: 0
+    flags: [pseudo, produces_code, allowed_pre_legalizer, may_store]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1219
+    symbol: PseudoBYVAL_COPY
+    name: PseudoBYVAL_COPY
+    operands:
+      - { kinds: [register], role: def }
+      - { kinds: [register], role: use, memory_role: address }
+      - { kinds: [frame_index] }
+      - { kinds: [immediate, integer_immediate] }
+      - { kinds: [immediate, integer_immediate] }
+    num_explicit_defs: 1
+    flags: [pseudo, produces_code, allowed_pre_legalizer, may_load, may_store]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1220
+    symbol: ADJCALLSTACKDOWN
+    name: ADJCALLSTACKDOWN
+    operands:
+      - { kinds: [immediate, integer_immediate] }
+      - { kinds: [immediate, integer_immediate] }
+    num_explicit_defs: 0
+    implicit_defs: [{ register: X2 }]
+    implicit_uses: [{ register: X2 }]
+    flags: [pseudo, allowed_pre_legalizer, has_side_effects]
+    owner: prologue_epilogue_insertion
+    deadline: frame_finalized
+  -
+    id: 1221
+    symbol: ADJCALLSTACKUP
+    name: ADJCALLSTACKUP
+    operands:
+      - { kinds: [immediate, integer_immediate] }
+      - { kinds: [immediate, integer_immediate] }
+    num_explicit_defs: 0
+    implicit_defs: [{ register: X2 }]
+    implicit_uses: [{ register: X2 }]
+    flags: [pseudo, allowed_pre_legalizer, has_side_effects]
+    owner: prologue_epilogue_insertion
+    deadline: frame_finalized
+  -
+    id: 1222
+    symbol: PseudoCALL
+    name: PseudoCALL
+    operands:
+      - { kinds: [global_symbol, external_symbol, register], role: use, allowed_target_flags: 1 }
+      - { kinds: [register_mask], optional: true }
+    num_explicit_defs: 0
+    implicit_defs: [{ register: X1 }]
+    allow_extra_implicit_operands: true
+    flags: [pseudo, produces_code, allowed_pre_legalizer, call, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
+    size: 8
+    owner: post_ra_expansion
+    deadline: post_ra_finalized
+  -
+    id: 1223
+    symbol: PseudoTAIL
+    name: PseudoTAIL
+    operands:
+      - { kinds: [global_symbol, external_symbol, register], role: use, allowed_target_flags: 1 }
+      - { kinds: [register_mask], optional: true }
+    num_explicit_defs: 0
+    allow_extra_implicit_operands: true
+    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, call, barrier, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
+    size: 8
+    owner: post_ra_expansion
+    deadline: post_ra_finalized
+  -
+    id: 1224
+    symbol: PseudoRET
+    name: PseudoRET
+    operands: []
+    num_explicit_defs: 0
+    allow_extra_implicit_operands: true
+    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, return, barrier]
+    size: 4
+    owner: post_ra_expansion
+    deadline: post_ra_finalized
+
+  -
+    id: 1225
+    symbol: JALR_CALL
+    name: JALR_CALL
+    assembly_mnemonic: jalr
+    encoding: 1344615
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
+      - { kinds: [register_mask] }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [call, may_load, may_store, has_side_effects, produces_code, not_duplicable, unmodeled_side_effects]
+    scheduling_class: BRANCH
+    encoding_category: I
+    assembly_format: RD_RS1_IMM
+  -
+    id: 1226
+    symbol: JALR_TAIL
+    name: JALR_TAIL
+    assembly_mnemonic: jalr
+    encoding: 1344615
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
+      - { kinds: [register_mask] }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [terminator, branch, indirect_branch, call, barrier, may_load, may_store, has_side_effects, produces_code, not_duplicable, unmodeled_side_effects]
+    scheduling_class: BRANCH
+    encoding_category: I
+    assembly_format: RD_RS1_IMM
+  -
+    id: 1227
+    symbol: JALR_RET
+    name: JALR_RET
+    assembly_mnemonic: jalr
+    encoding: 1344615
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [terminator, return, barrier, produces_code]
+    scheduling_class: BRANCH
+    encoding_category: I
+    assembly_format: RD_RS1_IMM
+  -
+    id: 1228
+    symbol: PseudoBR
+    name: PseudoBR
+    operands:
+      - { kinds: [basic_block], name: TARGET }
+    num_explicit_defs: 0
+    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, barrier]
+    size: 4
+    owner: post_ra_expansion
+    deadline: post_ra_finalized

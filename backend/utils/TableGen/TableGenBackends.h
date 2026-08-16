@@ -17,6 +17,7 @@ struct GeneratedDescription final {
   std::string RegisterHeader;
   std::string InstructionHeader;
   std::string TargetTables;
+  std::string GlobalISel;
 };
 
 struct DescriptionGenerationResult final {
@@ -41,6 +42,8 @@ struct DescriptionGenerationResult final {
 [[nodiscard]] std::string emitAssemblyWriter(const NormalizedTargetModel &Model);
 [[nodiscard]] std::string emitSubtarget(const NormalizedTargetModel &Model);
 [[nodiscard]] std::string emitSearchableTables(const NormalizedTargetModel &Model);
+[[nodiscard]] std::string emitGlobalISel(const NormalizedTargetModel &Model,
+                                         std::string_view SourceName);
 
 [[nodiscard]] DescriptionGenerationResult generateDescription(const std::string &SourceName,
                                                               std::string SourceText);

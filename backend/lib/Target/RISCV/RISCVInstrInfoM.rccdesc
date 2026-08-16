@@ -1,0 +1,196 @@
+instructions:
+  -
+    id: 1083
+    symbol: MUL
+    name: MUL
+    assembly_mnemonic: mul
+    encoding: 44336179
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code, commutable]
+    scheduling_class: MUL
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1084
+    symbol: MULH
+    name: MULH
+    assembly_mnemonic: mulh
+    encoding: 44340275
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code, commutable]
+    scheduling_class: MUL
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1085
+    symbol: MULHSU
+    name: MULHSU
+    assembly_mnemonic: mulhsu
+    encoding: 44344371
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: MUL
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1086
+    symbol: MULHU
+    name: MULHU
+    assembly_mnemonic: mulhu
+    encoding: 44348467
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code, commutable]
+    scheduling_class: MUL
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1087
+    symbol: DIV
+    name: DIV
+    assembly_mnemonic: div
+    encoding: 44352563
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: DIV
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1088
+    symbol: DIVU
+    name: DIVU
+    assembly_mnemonic: divu
+    encoding: 44356659
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: DIV
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1089
+    symbol: REM
+    name: REM
+    assembly_mnemonic: rem
+    encoding: 44360755
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: DIV
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1090
+    symbol: REMU
+    name: REMU
+    assembly_mnemonic: remu
+    encoding: 44364851
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: DIV
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1091
+    symbol: MULW
+    name: MULW
+    assembly_mnemonic: mulw
+    encoding: 44336187
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code, commutable]
+    scheduling_class: MUL
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1092
+    symbol: DIVW
+    name: DIVW
+    assembly_mnemonic: divw
+    encoding: 44352571
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: DIV
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1093
+    symbol: DIVUW
+    name: DIVUW
+    assembly_mnemonic: divuw
+    encoding: 44356667
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: DIV
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1094
+    symbol: REMW
+    name: REMW
+    assembly_mnemonic: remw
+    encoding: 44360763
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: DIV
+    encoding_category: R
+    assembly_format: RD_RS1_RS2
+  -
+    id: 1095
+    symbol: REMUW
+    name: REMUW
+    assembly_mnemonic: remuw
+    encoding: 44364859
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: DIV
+    encoding_category: R
+    assembly_format: RD_RS1_RS2

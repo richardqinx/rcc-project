@@ -163,6 +163,45 @@ struct NormalizedInstruction final {
   std::string Deadline;
 };
 
+enum class NormalizedSelectionTypeKind : std::uint8_t {
+  Any,
+  Scalar,
+  Pointer,
+};
+
+struct NormalizedSelectionTypePredicate final {
+  NormalizedSelectionTypeKind Kind = NormalizedSelectionTypeKind::Any;
+  std::uint32_t Bits = 0;
+};
+
+struct NormalizedSelectionOperandTypePredicate final {
+  std::uint32_t OperandIndex = 0;
+  NormalizedSelectionTypePredicate Type;
+};
+
+struct NormalizedSelectionOperandBankPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::uint32_t Bank = 0;
+};
+
+struct NormalizedSelectionOperandClassPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::uint32_t RegClass = 0;
+};
+
+struct NormalizedSelectionRule final {
+  std::string Symbol;
+  std::uint32_t Priority = 0;
+  std::uint32_t Specificity = 0;
+  std::uint32_t MatchOpcode = 0;
+  std::optional<NormalizedSelectionTypePredicate> ResultType;
+  std::vector<NormalizedSelectionOperandTypePredicate> OperandTypes;
+  std::vector<NormalizedSelectionOperandBankPredicate> OperandBanks;
+  std::vector<NormalizedSelectionOperandClassPredicate> OperandClasses;
+  std::uint32_t ResultOpcode = 0;
+  std::vector<std::int64_t> AppendedImmediates;
+};
+
 struct NormalizedTargetModel final {
   SourceTarget Target;
   std::vector<SourceRegisterUnit> RegisterUnits;
@@ -178,6 +217,7 @@ struct NormalizedTargetModel final {
   std::vector<NormalizedEncodingCategory> EncodingCategories;
   std::vector<NormalizedAssemblyFormat> AssemblyFormats;
   std::vector<NormalizedInstruction> Instructions;
+  std::vector<NormalizedSelectionRule> SelectionRules;
 };
 
 [[nodiscard]] std::optional<std::string_view>
@@ -219,6 +259,7 @@ private:
   normalizeImplicitRegisters(const std::vector<SourceImplicitRegister> &InputRegisters, bool IsDef,
                              std::vector<NormalizedImplicitRegister> &Result);
   [[nodiscard]] bool normalizeInstructions(NormalizedTargetModel &Result);
+  [[nodiscard]] bool normalizeSelectionRules(NormalizedTargetModel &Result);
 
   const DescriptionAST &Input;
   std::string SourceName;

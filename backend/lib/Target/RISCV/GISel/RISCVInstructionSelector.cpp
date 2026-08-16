@@ -5,7 +5,6 @@
 #include "RISCVRegisterBankInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelector.h"
-#include "rcc/CodeGen/GlobalISel/LegalizerInfo.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -32,6 +31,10 @@
 
 namespace rcc::riscv {
 namespace {
+
+#define GET_GLOBALISEL_MATCH_TABLE
+#include "RISCVGenGlobalISel.inc"
+#undef GET_GLOBALISEL_MATCH_TABLE
 
 [[nodiscard]] std::optional<LowLevelType> registerType(const MachineFunction &Function,
                                                        const MachineOperand &Operand) {
@@ -70,12 +73,6 @@ operandType(const MachineFunction &Function, const MachineInstr &Instruction, st
 [[nodiscard]] bool isSupportedIntegerScalar(LowLevelType Type) noexcept {
   return Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
          Type.scalarBitWidth() <= 64;
-}
-
-[[nodiscard]] bool isScalarGPRType(LowLevelType Type) noexcept {
-  return (Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
-          Type.scalarBitWidth() <= 64) ||
-         (Type.isPointer() && Type.scalarBitWidth() == 64);
 }
 
 [[nodiscard]] constexpr RegisterBankID fprBank() noexcept {
@@ -183,39 +180,23 @@ public:
   [[nodiscard]] Expected<void> canSelect(const MachineInstr &Instruction,
                                          const MachineFunction &Function,
                                          const TargetDescription &Target) const override {
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW) ||
-        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRAW) ||
-        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRLW) ||
-        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_DIVW) ||
-        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_DIVUW) ||
-        Instruction.opcode() == instructionOpcode(InstructionOpcode::G_REMUW)) {
-      const std::optional<LowLevelType> Type = resultType(Function, Instruction);
-      const std::optional<LowLevelType> Left = operandType(Function, Instruction, 1);
-      const std::optional<LowLevelType> Right = operandType(Function, Instruction, 2);
-      return Type && Left && Right && isScalarGPRType(*Type) && Type->scalarBitWidth() == 64 &&
-                     *Left == *Type && *Right == *Type
-                 ? Expected<void>{}
-                 : makeUnexpected(ErrorCode::Unsupported,
-                                  "RISC-V word shift pseudo requires three 64-bit GPR operands");
-    }
-    if (!isGenericOpcode(Instruction.opcode()))
+    auto Generated =
+        GIMatchTableExecutor::match(generatedGlobalISelMatchTable(), Instruction, Function, Target);
+    if (!Generated)
+      return std::unexpected(Generated.error());
+    if (*Generated)
       return {};
+    if (!isGenericOpcode(Instruction.opcode())) {
+      const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
+      if (Descriptor != nullptr && !Descriptor->Flags.has(InstructionFlag::Generic))
+        return {};
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "RISC-V instruction selector has no generated rule for target pseudo");
+    }
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
     const auto Integer = [Type] { return Type && isSupportedIntegerType(*Type); };
     const auto Float = [Type] { return Type && isSupportedFloatingScalar(*Type); };
-    auto Classification = Subtarget.getLegalizerInfo()->getDecision(Instruction, Function, Target);
-    if (!Classification)
-      return std::unexpected(Classification.error());
-    if (Classification->Action != LegalizationAction::Legal &&
-        Classification->Action != LegalizationAction::Custom) {
-      std::string Message = "RISC-V selector cannot select opcode '" +
-                            std::string(getGenericOpcodeName(Generic)) + "'";
-      if (Type)
-        Message += " with result type '" + Type->toString() + "'";
-      Message += ": the legalization rule explicitly marks this combination unsupported";
-      return makeUnexpected(ErrorCode::Unsupported, std::move(Message));
-    }
     switch (Generic) {
     case GenericOpcode::G_ADD:
     case GenericOpcode::G_SUB:
@@ -343,21 +324,15 @@ public:
 
   [[nodiscard]] Expected<void> select(MachineInstr &Instruction, MachineFunction &Function,
                                       const TargetDescription &Target) const override {
+    auto Generated = GIMatchTableExecutor::select(generatedGlobalISelMatchTable(), Instruction,
+                                                  Function, Target);
+    if (!Generated)
+      return std::unexpected(Generated.error());
+    if (*Generated)
+      return {};
     auto Match = canSelect(Instruction, Function, Target);
     if (!Match)
       return std::unexpected(Match.error());
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SLLW))
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SLLW));
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRAW))
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SRAW));
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_SRLW))
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::SRLW));
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_DIVW))
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::DIVW));
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_DIVUW))
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::DIVUW));
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::G_REMUW))
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::REMUW));
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 

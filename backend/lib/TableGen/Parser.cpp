@@ -40,7 +40,7 @@ public:
                    {"schema", "target", "register_units", "registers", "register_banks",
                     "register_classes", "register_masks", "mir_operand_flags", "named_operands",
                     "immediate_predicates", "scheduling_classes", "encoding_categories",
-                    "assembly_formats", "calling_conventions", "instructions"},
+                    "assembly_formats", "calling_conventions", "instructions", "selection_rules"},
                    "target description root")) {
       return std::nullopt;
     }
@@ -80,6 +80,7 @@ public:
         requiredNode(*Root, "calling_conventions", "target description root");
     const yaml::Node *InstructionsNode =
         requiredNode(*Root, "instructions", "target description root");
+    const yaml::Node *SelectionRulesNode = optionalNode(*Root, "selection_rules");
     if (UnitsNode == nullptr || RegistersNode == nullptr || BanksNode == nullptr ||
         ClassesNode == nullptr || MasksNode == nullptr || NamedOperandsNode == nullptr ||
         ImmediatePredicatesNode == nullptr || SchedulingClassesNode == nullptr ||
@@ -98,7 +99,9 @@ public:
         !parseEncodingCategories(*EncodingCategoriesNode, Result.EncodingCategories) ||
         !parseAssemblyFormats(*AssemblyFormatsNode, Result.AssemblyFormats) ||
         !parseCallingConventions(*CallingConventionsNode, Result.CallingConventions) ||
-        !parseInstructions(*InstructionsNode, Result.Instructions)) {
+        !parseInstructions(*InstructionsNode, Result.Instructions) ||
+        (SelectionRulesNode != nullptr &&
+         !parseSelectionRules(*SelectionRulesNode, Result.SelectionRules))) {
       return std::nullopt;
     }
     return Result;
@@ -1023,6 +1026,195 @@ private:
       Result.push_back(*Register);
     }
     return Result;
+  }
+
+  [[nodiscard]] std::optional<SourceSelectionTypePredicate>
+  parseSelectionTypePredicate(const yaml::Node &Node, std::string_view Context) {
+    if (!requireMapping(&Node, Context))
+      return std::nullopt;
+    if (!checkKeys(Node, {"kind", "bits"}, Context))
+      return std::nullopt;
+    const auto Kind = requiredScalar(Node, "kind", Context);
+    const yaml::Node *BitsNode = requiredNode(Node, "bits", Context);
+    if (!Kind || BitsNode == nullptr)
+      return std::nullopt;
+    const auto Bits = unsignedInteger32(*BitsNode, std::string(Context) + " bits");
+    if (!Bits)
+      return std::nullopt;
+    return SourceSelectionTypePredicate{
+        .Kind = *Kind,
+        .Bits = *Bits,
+        .Range = Node.range(),
+    };
+  }
+
+  [[nodiscard]] bool
+  parseSelectionOperandTypes(const yaml::Node &Node,
+                             std::vector<SourceSelectionOperandTypePredicate> &Result) {
+    if (!requireSequence(&Node, "selection operand type predicates"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection operand type predicate") ||
+          !checkKeys(*Element, {"index", "kind", "bits"}, "selection operand type predicate")) {
+        return false;
+      }
+      const yaml::Node *IndexNode =
+          requiredNode(*Element, "index", "selection operand type predicate");
+      const auto Kind = requiredScalar(*Element, "kind", "selection operand type predicate");
+      const yaml::Node *BitsNode =
+          requiredNode(*Element, "bits", "selection operand type predicate");
+      if (IndexNode == nullptr || !Kind || BitsNode == nullptr)
+        return false;
+      const auto Index = unsignedInteger32(*IndexNode, "selection operand type index");
+      const auto Bits = unsignedInteger32(*BitsNode, "selection operand type bits");
+      if (!Index || !Bits)
+        return false;
+      Result.push_back({
+          .OperandIndex = *Index,
+          .Type = {.Kind = *Kind, .Bits = *Bits, .Range = Element->range()},
+          .Range = Element->range(),
+      });
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
+  parseSelectionOperandBanks(const yaml::Node &Node,
+                             std::vector<SourceSelectionOperandBankPredicate> &Result) {
+    if (!requireSequence(&Node, "selection operand bank predicates"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection operand bank predicate") ||
+          !checkKeys(*Element, {"index", "bank"}, "selection operand bank predicate")) {
+        return false;
+      }
+      const yaml::Node *IndexNode =
+          requiredNode(*Element, "index", "selection operand bank predicate");
+      const auto Bank = requiredScalar(*Element, "bank", "selection operand bank predicate");
+      if (IndexNode == nullptr || !Bank)
+        return false;
+      const auto Index = unsignedInteger32(*IndexNode, "selection operand bank index");
+      if (!Index)
+        return false;
+      Result.push_back({
+          .OperandIndex = *Index,
+          .BankSymbol = *Bank,
+          .Range = Element->range(),
+      });
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
+  parseSelectionOperandClasses(const yaml::Node &Node,
+                               std::vector<SourceSelectionOperandClassPredicate> &Result) {
+    if (!requireSequence(&Node, "selection operand class predicates"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection operand class predicate") ||
+          !checkKeys(*Element, {"index", "class"}, "selection operand class predicate")) {
+        return false;
+      }
+      const yaml::Node *IndexNode =
+          requiredNode(*Element, "index", "selection operand class predicate");
+      const auto Class = requiredScalar(*Element, "class", "selection operand class predicate");
+      if (IndexNode == nullptr || !Class)
+        return false;
+      const auto Index = unsignedInteger32(*IndexNode, "selection operand class index");
+      if (!Index)
+        return false;
+      Result.push_back({
+          .OperandIndex = *Index,
+          .ClassSymbol = *Class,
+          .Range = Element->range(),
+      });
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseSelectionRuleMatch(const yaml::Node &Node, SourceSelectionRule &Result) {
+    if (!requireMapping(&Node, "selection rule match") ||
+        !checkKeys(Node,
+                   {"opcode", "result_type", "operand_types", "operand_banks", "operand_classes"},
+                   "selection rule match")) {
+      return false;
+    }
+    const auto Opcode = requiredScalar(Node, "opcode", "selection rule match");
+    if (!Opcode)
+      return false;
+    Result.MatchOpcodeSymbol = *Opcode;
+    if (const yaml::Node *ResultType = optionalNode(Node, "result_type")) {
+      auto Parsed = parseSelectionTypePredicate(*ResultType, "selection result type predicate");
+      if (!Parsed)
+        return false;
+      Result.ResultType = std::move(*Parsed);
+    }
+    if (const yaml::Node *OperandTypes = optionalNode(Node, "operand_types")) {
+      if (!parseSelectionOperandTypes(*OperandTypes, Result.OperandTypes))
+        return false;
+    }
+    if (const yaml::Node *OperandBanks = optionalNode(Node, "operand_banks")) {
+      if (!parseSelectionOperandBanks(*OperandBanks, Result.OperandBanks))
+        return false;
+    }
+    if (const yaml::Node *OperandClasses = optionalNode(Node, "operand_classes")) {
+      if (!parseSelectionOperandClasses(*OperandClasses, Result.OperandClasses))
+        return false;
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseSelectionRuleApply(const yaml::Node &Node, SourceSelectionRule &Result) {
+    if (!requireMapping(&Node, "selection rule apply") ||
+        !checkKeys(Node, {"opcode", "append_immediates"}, "selection rule apply")) {
+      return false;
+    }
+    const auto Opcode = requiredScalar(Node, "opcode", "selection rule apply");
+    if (!Opcode)
+      return false;
+    Result.ResultOpcodeSymbol = *Opcode;
+    if (const yaml::Node *Immediates = optionalNode(Node, "append_immediates")) {
+      auto Values = signedIntegerSequence(*Immediates, "selection rule appended immediates");
+      if (!Values)
+        return false;
+      Result.AppendedImmediates = std::move(*Values);
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseSelectionRules(const yaml::Node &Node,
+                                         std::vector<SourceSelectionRule> &Result) {
+    if (!requireSequence(&Node, "selection_rules"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection rule") ||
+          !checkKeys(*Element, {"id", "priority", "match", "apply"}, "selection rule")) {
+        return false;
+      }
+      const auto Symbol = requiredScalar(*Element, "id", "selection rule");
+      const yaml::Node *PriorityNode = requiredNode(*Element, "priority", "selection rule");
+      const yaml::Node *MatchNode = requiredNode(*Element, "match", "selection rule");
+      const yaml::Node *ApplyNode = requiredNode(*Element, "apply", "selection rule");
+      if (!Symbol || PriorityNode == nullptr || MatchNode == nullptr || ApplyNode == nullptr)
+        return false;
+      const auto Priority = unsignedInteger32(*PriorityNode, "selection rule priority");
+      if (!Priority)
+        return false;
+      SourceSelectionRule Rule;
+      Rule.Symbol = *Symbol;
+      Rule.Priority = *Priority;
+      Rule.Range = Element->range();
+      if (!parseSelectionRuleMatch(*MatchNode, Rule) ||
+          !parseSelectionRuleApply(*ApplyNode, Rule)) {
+        return false;
+      }
+      Result.push_back(std::move(Rule));
+    }
+    return true;
   }
 
   [[nodiscard]] bool parseInstructions(const yaml::Node &Node,

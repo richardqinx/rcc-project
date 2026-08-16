@@ -1,0 +1,100 @@
+named_operands:
+  - { id: 1, symbol: RD, name: rd }
+  - { id: 2, symbol: RS1, name: rs1 }
+  - { id: 3, symbol: RS2, name: rs2 }
+  - { id: 4, symbol: IMM, name: imm }
+  - { id: 5, symbol: TARGET, name: target }
+  - { id: 6, symbol: CSR, name: csr }
+  - { id: 7, symbol: ZIMM, name: zimm }
+  - { id: 8, symbol: PRED, name: pred }
+  - { id: 9, symbol: SUCC, name: succ }
+  - { id: 10, symbol: FRD, name: frd }
+  - { id: 11, symbol: FRS1, name: frs1 }
+  - { id: 12, symbol: FRS2, name: frs2 }
+  - { id: 13, symbol: FRS3, name: frs3 }
+  - { id: 14, symbol: RM, name: rm }
+
+immediate_predicates:
+  - { id: 1, symbol: SIMM12, name: simm12, kind: signed, bits: 12 }
+  - { id: 2, symbol: UIMM20, name: uimm20, kind: unsigned, bits: 20 }
+  - { id: 3, symbol: UIMM5, name: uimm5, kind: unsigned, bits: 5 }
+  - { id: 4, symbol: UIMM6, name: uimm6, kind: unsigned, bits: 6 }
+  - { id: 5, symbol: UIMM12, name: uimm12, kind: unsigned, bits: 12 }
+  - { id: 6, symbol: UIMM4, name: uimm4, kind: unsigned, bits: 4 }
+  - { id: 7, symbol: RM, name: rm, kind: unsigned, bits: 3, allowed_values: [0, 1, 2, 3, 4, 7] }
+  - { id: 8, symbol: C_UIMM10_NZ_A4, name: c-uimm10-nz-a4, kind: unsigned, bits: 10, alignment: 4, nonzero: true }
+  - { id: 9, symbol: C_UIMM7_A4, name: c-uimm7-a4, kind: unsigned, bits: 7, alignment: 4 }
+  - { id: 10, symbol: C_UIMM8_A8, name: c-uimm8-a8, kind: unsigned, bits: 8, alignment: 8 }
+  - { id: 11, symbol: C_UIMM8_A4, name: c-uimm8-a4, kind: unsigned, bits: 8, alignment: 4 }
+  - { id: 12, symbol: C_UIMM9_A8, name: c-uimm9-a8, kind: unsigned, bits: 9, alignment: 8 }
+  - { id: 13, symbol: C_SIMM6, name: c-simm6, kind: signed, bits: 6 }
+  - { id: 14, symbol: C_SIMM6_NZ, name: c-simm6-nz, kind: signed, bits: 6, nonzero: true }
+  - { id: 15, symbol: C_SIMM9_A2, name: c-simm9-a2, kind: signed, bits: 9, alignment: 2 }
+  - { id: 16, symbol: C_SIMM12_A2, name: c-simm12-a2, kind: signed, bits: 12, alignment: 2 }
+  - { id: 17, symbol: C_SIMM10_A16_NZ, name: c-simm10-a16-nz, kind: signed, bits: 10, alignment: 16, nonzero: true }
+
+scheduling_classes:
+  - { id: 1, symbol: ALU, name: alu, micro_ops: 1, latency: 1 }
+  - { id: 2, symbol: LOAD, name: load, micro_ops: 1, latency: 3 }
+  - { id: 3, symbol: STORE, name: store, micro_ops: 1, latency: 1 }
+  - { id: 4, symbol: BRANCH, name: branch, micro_ops: 1, latency: 1 }
+  - { id: 5, symbol: SYSTEM, name: system, micro_ops: 1, latency: 1 }
+  - { id: 6, symbol: MUL, name: mul, micro_ops: 1, latency: 3 }
+  - { id: 7, symbol: DIV, name: div, micro_ops: 1, latency: 20 }
+  - { id: 8, symbol: FENCE, name: fence, micro_ops: 1, latency: 1 }
+  - { id: 9, symbol: ATOMIC, name: atomic, micro_ops: 1, latency: 4 }
+  - { id: 10, symbol: FP_ADD, name: fp-add, micro_ops: 1, latency: 4 }
+  - { id: 11, symbol: FP_MUL, name: fp-mul, micro_ops: 1, latency: 4 }
+  - { id: 12, symbol: FP_DIV, name: fp-div, micro_ops: 1, latency: 20 }
+  - { id: 13, symbol: FP_SQRT, name: fp-sqrt, micro_ops: 1, latency: 20 }
+  - { id: 14, symbol: FP_CONVERT, name: fp-convert, micro_ops: 1, latency: 4 }
+  - { id: 15, symbol: COMPRESSED, name: compressed, micro_ops: 1, latency: 1 }
+
+encoding_categories:
+  - { id: 1, symbol: R, name: r, size_bytes: 4 }
+  - { id: 2, symbol: I, name: i, size_bytes: 4 }
+  - { id: 3, symbol: S, name: s, size_bytes: 4 }
+  - { id: 4, symbol: B, name: b, size_bytes: 4 }
+  - { id: 5, symbol: U, name: u, size_bytes: 4 }
+  - { id: 6, symbol: J, name: j, size_bytes: 4 }
+  - { id: 7, symbol: SYSTEM, name: system, size_bytes: 4 }
+  - { id: 8, symbol: AMO, name: amo, size_bytes: 4 }
+  - { id: 9, symbol: R4, name: r4, size_bytes: 4 }
+  - { id: 10, symbol: C, name: c, size_bytes: 2 }
+
+assembly_formats:
+  - { id: 1, symbol: RD_IMM, name: rd-imm }
+  - { id: 2, symbol: RD_RS1_IMM, name: rd-rs1-imm }
+  - { id: 3, symbol: RD_RS1_RS2, name: rd-rs1-rs2 }
+  - { id: 4, symbol: RD_OFFSET_RS1, name: rd-offset-rs1 }
+  - { id: 5, symbol: RS2_OFFSET_RS1, name: rs2-offset-rs1 }
+  - { id: 6, symbol: RS1_RS2_TARGET, name: rs1-rs2-target }
+  - { id: 7, symbol: RD_TARGET, name: rd-target }
+  - { id: 8, symbol: NONE, name: none }
+  - { id: 9, symbol: IMM_IMM, name: imm-imm }
+  - { id: 10, symbol: RD_CSR_RS1, name: rd-csr-rs1 }
+  - { id: 11, symbol: RD_CSR_IMM, name: rd-csr-imm }
+  - { id: 12, symbol: RD_PAREN_RS1, name: rd-paren-rs1 }
+  - { id: 13, symbol: RD_RS2_PAREN_RS1, name: rd-rs2-paren-rs1 }
+  - { id: 14, symbol: FRD_OFFSET_RS1, name: frd-offset-rs1 }
+  - { id: 15, symbol: FRS2_OFFSET_RS1, name: frs2-offset-rs1 }
+  - { id: 16, symbol: FRD_FRS1_FRS2_RM, name: frd-frs1-frs2-rm }
+  - { id: 17, symbol: FRD_FRS1_FRS2_FRS3_RM, name: frd-frs1-frs2-frs3-rm }
+  - { id: 18, symbol: FRD_FRS1_RM, name: frd-frs1-rm }
+  - { id: 19, symbol: FRD_FRS1_FRS2, name: frd-frs1-frs2 }
+  - { id: 20, symbol: RD_FRS1_RM, name: rd-frs1-rm }
+  - { id: 21, symbol: RD_FRS1, name: rd-frs1 }
+  - { id: 22, symbol: RD_FRS1_FRS2, name: rd-frs1-frs2 }
+  - { id: 23, symbol: FRD_RS1_RM, name: frd-rs1-rm }
+  - { id: 24, symbol: FRD_RS1, name: frd-rs1 }
+  - { id: 25, symbol: TARGET, name: target }
+  - { id: 26, symbol: RS1_TARGET, name: rs1-target }
+  - { id: 27, symbol: RS1, name: rs1 }
+  - { id: 28, symbol: RD_RS2, name: rd-rs2 }
+  - { id: 29, symbol: IMM_SP, name: imm-sp }
+  - { id: 30, symbol: RD_IMM_SP, name: rd-imm-sp }
+  - { id: 31, symbol: RD_OFFSET_SP, name: rd-offset-sp }
+  - { id: 32, symbol: RS2_OFFSET_SP, name: rs2-offset-sp }
+  - { id: 33, symbol: FRD_OFFSET_SP, name: frd-offset-sp }
+  - { id: 34, symbol: FRS2_OFFSET_SP, name: frs2-offset-sp }
+  - { id: 35, symbol: RD_RS1, name: rd-rs1 }

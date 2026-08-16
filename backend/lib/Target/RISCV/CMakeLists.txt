@@ -1,6 +1,25 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-set(RCCBackendRISCVDescription "${CMAKE_CURRENT_SOURCE_DIR}/RISCV.rccdesc")
+set(
+  RCCBackendRISCVDescriptionSources
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCV.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterInfo.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallingConv.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoBase.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoI.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoM.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoA.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoF.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoD.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoC.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoZb.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoPseudo.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISel.rccdesc"
+)
+set(RCCBackendRISCVTableGenArguments)
+foreach(RCCBackendRISCVDescriptionSource IN LISTS RCCBackendRISCVDescriptionSources)
+  list(APPEND RCCBackendRISCVTableGenArguments --input "${RCCBackendRISCVDescriptionSource}")
+endforeach()
 set(
   RCCBackendRISCVGeneratedRegisterHeader
   "${RCC_BACKEND_BINARY_DIR}/generated/include/rcc/Target/RISCV/RISCVRegisters.h"
@@ -13,19 +32,25 @@ set(
   RCCBackendRISCVGeneratedTables
   "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV/RISCVGenTargetDescription.inc"
 )
+set(
+  RCCBackendRISCVGeneratedGlobalISel
+  "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV/RISCVGenGlobalISel.inc"
+)
 
 add_custom_command(
   OUTPUT
     "${RCCBackendRISCVGeneratedRegisterHeader}"
     "${RCCBackendRISCVGeneratedInstructionHeader}"
     "${RCCBackendRISCVGeneratedTables}"
+    "${RCCBackendRISCVGeneratedGlobalISel}"
   COMMAND
     "$<TARGET_FILE:RCCBackendTableGenTool>"
-    --input "${RCCBackendRISCVDescription}"
+    ${RCCBackendRISCVTableGenArguments}
     --register-header "${RCCBackendRISCVGeneratedRegisterHeader}"
     --instruction-header "${RCCBackendRISCVGeneratedInstructionHeader}"
     --tables "${RCCBackendRISCVGeneratedTables}"
-  DEPENDS RCCBackendTableGenTool "${RCCBackendRISCVDescription}"
+    --global-isel "${RCCBackendRISCVGeneratedGlobalISel}"
+  DEPENDS RCCBackendTableGenTool ${RCCBackendRISCVDescriptionSources}
   COMMENT "Generating RCC RV64GC target tables"
   VERBATIM
 )
@@ -36,12 +61,14 @@ add_custom_target(
     "${RCCBackendRISCVGeneratedRegisterHeader}"
     "${RCCBackendRISCVGeneratedInstructionHeader}"
     "${RCCBackendRISCVGeneratedTables}"
+    "${RCCBackendRISCVGeneratedGlobalISel}"
 )
 
 set_source_files_properties(
   "${RCCBackendRISCVGeneratedRegisterHeader}"
   "${RCCBackendRISCVGeneratedInstructionHeader}"
   "${RCCBackendRISCVGeneratedTables}"
+  "${RCCBackendRISCVGeneratedGlobalISel}"
   PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE
 )
 
@@ -74,6 +101,7 @@ add_library(
   "${RCCBackendRISCVGeneratedRegisterHeader}"
   "${RCCBackendRISCVGeneratedInstructionHeader}"
   "${RCCBackendRISCVGeneratedTables}"
+  "${RCCBackendRISCVGeneratedGlobalISel}"
 )
 add_library(RCCBackend::RISCV ALIAS RCCBackendRISCV)
 add_dependencies(RCCBackendRISCV RCCBackendRISCVGeneratedTablesTarget)

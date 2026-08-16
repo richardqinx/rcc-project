@@ -5,9 +5,11 @@ set(
   AsmWriterEmitter.cpp
   CallingConvEmitter.cpp
   CodeEmitterGen.cpp
+  GlobalISelEmitter.cpp
   Common/CodeGenInstruction.cpp
   Common/CodeGenRegisters.cpp
   Common/CodeGenSchedule.cpp
+  Common/CodeGenSelection.cpp
   Common/CodeGenTarget.cpp
   InstrInfoEmitter.cpp
   RegisterBankEmitter.cpp

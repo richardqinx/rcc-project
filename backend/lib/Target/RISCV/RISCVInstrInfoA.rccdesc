@@ -1,0 +1,329 @@
+instructions:
+  -
+    id: 1096
+    symbol: LR_W
+    name: LR_W
+    assembly_mnemonic: lr.w
+    encoding: 268739631
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_PAREN_RS1
+  -
+    id: 1097
+    symbol: SC_W
+    name: SC_W
+    assembly_mnemonic: sc.w
+    encoding: 413443119
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1098
+    symbol: AMOSWAP_W
+    name: AMOSWAP_W
+    assembly_mnemonic: amoswap.w
+    encoding: 145007663
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1099
+    symbol: AMOADD_W
+    name: AMOADD_W
+    assembly_mnemonic: amoadd.w
+    encoding: 10789935
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1100
+    symbol: AMOXOR_W
+    name: AMOXOR_W
+    assembly_mnemonic: amoxor.w
+    encoding: 547660847
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1101
+    symbol: AMOAND_W
+    name: AMOAND_W
+    assembly_mnemonic: amoand.w
+    encoding: 1621402671
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1102
+    symbol: AMOOR_W
+    name: AMOOR_W
+    assembly_mnemonic: amoor.w
+    encoding: 1084531759
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1103
+    symbol: AMOMIN_W
+    name: AMOMIN_W
+    assembly_mnemonic: amomin.w
+    encoding: 2158273583
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1104
+    symbol: AMOMAX_W
+    name: AMOMAX_W
+    assembly_mnemonic: amomax.w
+    encoding: 2695144495
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1105
+    symbol: AMOMINU_W
+    name: AMOMINU_W
+    assembly_mnemonic: amominu.w
+    encoding: 3232015407
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1106
+    symbol: AMOMAXU_W
+    name: AMOMAXU_W
+    assembly_mnemonic: amomaxu.w
+    encoding: 3768886319
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1107
+    symbol: LR_D
+    name: LR_D
+    assembly_mnemonic: lr.d
+    encoding: 268743727
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_PAREN_RS1
+  -
+    id: 1108
+    symbol: SC_D
+    name: SC_D
+    assembly_mnemonic: sc.d
+    encoding: 413447215
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1109
+    symbol: AMOSWAP_D
+    name: AMOSWAP_D
+    assembly_mnemonic: amoswap.d
+    encoding: 145011759
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1110
+    symbol: AMOADD_D
+    name: AMOADD_D
+    assembly_mnemonic: amoadd.d
+    encoding: 10794031
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1111
+    symbol: AMOXOR_D
+    name: AMOXOR_D
+    assembly_mnemonic: amoxor.d
+    encoding: 547664943
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1112
+    symbol: AMOAND_D
+    name: AMOAND_D
+    assembly_mnemonic: amoand.d
+    encoding: 1621406767
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1113
+    symbol: AMOOR_D
+    name: AMOOR_D
+    assembly_mnemonic: amoor.d
+    encoding: 1084535855
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1114
+    symbol: AMOMIN_D
+    name: AMOMIN_D
+    assembly_mnemonic: amomin.d
+    encoding: 2158277679
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1115
+    symbol: AMOMAX_D
+    name: AMOMAX_D
+    assembly_mnemonic: amomax.d
+    encoding: 2695148591
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1116
+    symbol: AMOMINU_D
+    name: AMOMINU_D
+    assembly_mnemonic: amominu.d
+    encoding: 3232019503
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1
+  -
+    id: 1117
+    symbol: AMOMAXU_D
+    name: AMOMAXU_D
+    assembly_mnemonic: amomaxu.d
+    encoding: 3768890415
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, memory_role: value, name: RD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: value, name: RS2 }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+    num_explicit_defs: 1
+    flags: [may_load, may_store, produces_code]
+    scheduling_class: ATOMIC
+    encoding_category: AMO
+    assembly_format: RD_RS2_PAREN_RS1

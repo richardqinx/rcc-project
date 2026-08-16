@@ -205,6 +205,43 @@ struct SourceInstruction final {
   TextRange Range;
 };
 
+struct SourceSelectionTypePredicate final {
+  std::string Kind;
+  std::uint32_t Bits = 0;
+  TextRange Range;
+};
+
+struct SourceSelectionOperandTypePredicate final {
+  std::uint32_t OperandIndex = 0;
+  SourceSelectionTypePredicate Type;
+  TextRange Range;
+};
+
+struct SourceSelectionOperandBankPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::string BankSymbol;
+  TextRange Range;
+};
+
+struct SourceSelectionOperandClassPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::string ClassSymbol;
+  TextRange Range;
+};
+
+struct SourceSelectionRule final {
+  std::string Symbol;
+  std::uint32_t Priority = 0;
+  std::string MatchOpcodeSymbol;
+  std::optional<SourceSelectionTypePredicate> ResultType;
+  std::vector<SourceSelectionOperandTypePredicate> OperandTypes;
+  std::vector<SourceSelectionOperandBankPredicate> OperandBanks;
+  std::vector<SourceSelectionOperandClassPredicate> OperandClasses;
+  std::string ResultOpcodeSymbol;
+  std::vector<std::int64_t> AppendedImmediates;
+  TextRange Range;
+};
+
 struct DescriptionAST final {
   SourceTarget Target;
   std::vector<SourceRegisterUnit> RegisterUnits;
@@ -220,6 +257,7 @@ struct DescriptionAST final {
   std::vector<SourceEncodingCategory> EncodingCategories;
   std::vector<SourceAssemblyFormat> AssemblyFormats;
   std::vector<SourceInstruction> Instructions;
+  std::vector<SourceSelectionRule> SelectionRules;
 };
 
 [[nodiscard]] std::string lowerASCII(std::string_view Value);

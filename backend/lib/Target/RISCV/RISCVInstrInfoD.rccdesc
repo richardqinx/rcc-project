@@ -1,0 +1,509 @@
+instructions:
+  -
+    id: 1148
+    symbol: FLD
+    name: FLD
+    assembly_mnemonic: fld
+    encoding: 8696839
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRD }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
+    num_explicit_defs: 1
+    flags: [may_load, produces_code]
+    scheduling_class: LOAD
+    encoding_category: I
+    assembly_format: FRD_OFFSET_RS1
+  -
+    id: 1149
+    symbol: FSD
+    name: FSD
+    assembly_mnemonic: fsd
+    encoding: 10794023
+    operands:
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, memory_role: value, name: FRS2 }
+      - { kinds: [register, frame_index], role: use, register_class: GPR, register_bank: GPR, memory_role: address, name: RS1 }
+      - { kinds: [immediate, constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol], immediate_predicate: SIMM12, name: IMM, allowed_target_flags: 68 }
+    num_explicit_defs: 0
+    flags: [may_store, produces_code]
+    scheduling_class: STORE
+    encoding_category: S
+    assembly_format: FRS2_OFFSET_RS1
+  -
+    id: 1150
+    symbol: FMADD_D
+    name: FMADD_D
+    assembly_mnemonic: fmadd.d
+    encoding: 1520731203
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS3 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_MUL
+    encoding_category: R4
+    assembly_format: FRD_FRS1_FRS2_FRS3_RM
+  -
+    id: 1151
+    symbol: FMSUB_D
+    name: FMSUB_D
+    assembly_mnemonic: fmsub.d
+    encoding: 1520731207
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS3 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_MUL
+    encoding_category: R4
+    assembly_format: FRD_FRS1_FRS2_FRS3_RM
+  -
+    id: 1152
+    symbol: FNMSUB_D
+    name: FNMSUB_D
+    assembly_mnemonic: fnmsub.d
+    encoding: 1520731211
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS3 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_MUL
+    encoding_category: R4
+    assembly_format: FRD_FRS1_FRS2_FRS3_RM
+  -
+    id: 1153
+    symbol: FNMADD_D
+    name: FNMADD_D
+    assembly_mnemonic: fnmadd.d
+    encoding: 1520731215
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS3 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_MUL
+    encoding_category: R4
+    assembly_format: FRD_FRS1_FRS2_FRS3_RM
+  -
+    id: 1154
+    symbol: FADD_D
+    name: FADD_D
+    assembly_mnemonic: fadd.d
+    encoding: 44336211
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2_RM
+  -
+    id: 1155
+    symbol: FSUB_D
+    name: FSUB_D
+    assembly_mnemonic: fsub.d
+    encoding: 178553939
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2_RM
+  -
+    id: 1156
+    symbol: FMUL_D
+    name: FMUL_D
+    assembly_mnemonic: fmul.d
+    encoding: 312771667
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_MUL
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2_RM
+  -
+    id: 1157
+    symbol: FDIV_D
+    name: FDIV_D
+    assembly_mnemonic: fdiv.d
+    encoding: 446989395
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_DIV
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2_RM
+  -
+    id: 1158
+    symbol: FSQRT_D
+    name: FSQRT_D
+    assembly_mnemonic: fsqrt.d
+    encoding: 1510245459
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_SQRT
+    encoding_category: R
+    assembly_format: FRD_FRS1_RM
+  -
+    id: 1159
+    symbol: FSGNJ_D
+    name: FSGNJ_D
+    assembly_mnemonic: fsgnj.d
+    encoding: 581207123
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2
+  -
+    id: 1160
+    symbol: FSGNJN_D
+    name: FSGNJN_D
+    assembly_mnemonic: fsgnjn.d
+    encoding: 581211219
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2
+  -
+    id: 1161
+    symbol: FSGNJX_D
+    name: FSGNJX_D
+    assembly_mnemonic: fsgnjx.d
+    encoding: 581215315
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2
+  -
+    id: 1162
+    symbol: FMIN_D
+    name: FMIN_D
+    assembly_mnemonic: fmin.d
+    encoding: 715424851
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+    num_explicit_defs: 1
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2
+  -
+    id: 1163
+    symbol: FMAX_D
+    name: FMAX_D
+    assembly_mnemonic: fmax.d
+    encoding: 715428947
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+    num_explicit_defs: 1
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: FRD_FRS1_FRS2
+  -
+    id: 1164
+    symbol: FCVT_W_D
+    name: FCVT_W_D
+    assembly_mnemonic: fcvt.w.d
+    encoding: 3255075923
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: RD_FRS1_RM
+  -
+    id: 1165
+    symbol: FCVT_WU_D
+    name: FCVT_WU_D
+    assembly_mnemonic: fcvt.wu.d
+    encoding: 3256124499
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: RD_FRS1_RM
+  -
+    id: 1166
+    symbol: FCVT_L_D
+    name: FCVT_L_D
+    assembly_mnemonic: fcvt.l.d
+    encoding: 3257173075
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: RD_FRS1_RM
+  -
+    id: 1167
+    symbol: FCVT_LU_D
+    name: FCVT_LU_D
+    assembly_mnemonic: fcvt.lu.d
+    encoding: 3258221651
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: RD_FRS1_RM
+  -
+    id: 1168
+    symbol: FMV_X_D
+    name: FMV_X_D
+    assembly_mnemonic: fmv.x.d
+    encoding: 3791946835
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: RD_FRS1
+  -
+    id: 1169
+    symbol: FEQ_D
+    name: FEQ_D
+    assembly_mnemonic: feq.d
+    encoding: 2728698963
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+    num_explicit_defs: 1
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: RD_FRS1_FRS2
+  -
+    id: 1170
+    symbol: FLT_D
+    name: FLT_D
+    assembly_mnemonic: flt.d
+    encoding: 2728694867
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+    num_explicit_defs: 1
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: RD_FRS1_FRS2
+  -
+    id: 1171
+    symbol: FLE_D
+    name: FLE_D
+    assembly_mnemonic: fle.d
+    encoding: 2728690771
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS2 }
+    num_explicit_defs: 1
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_ADD
+    encoding_category: R
+    assembly_format: RD_FRS1_FRS2
+  -
+    id: 1172
+    symbol: FCLASS_D
+    name: FCLASS_D
+    assembly_mnemonic: fclass.d
+    encoding: 3791950931
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: RD_FRS1
+  -
+    id: 1173
+    symbol: FCVT_D_W
+    name: FCVT_D_W
+    assembly_mnemonic: fcvt.d.w
+    encoding: 3523511379
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: FRD_RS1_RM
+  -
+    id: 1174
+    symbol: FCVT_D_WU
+    name: FCVT_D_WU
+    assembly_mnemonic: fcvt.d.wu
+    encoding: 3524559955
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: FRD_RS1_RM
+  -
+    id: 1175
+    symbol: FCVT_D_L
+    name: FCVT_D_L
+    assembly_mnemonic: fcvt.d.l
+    encoding: 3525608531
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: FRD_RS1_RM
+  -
+    id: 1176
+    symbol: FCVT_D_LU
+    name: FCVT_D_LU
+    assembly_mnemonic: fcvt.d.lu
+    encoding: 3526657107
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: FRD_RS1_RM
+  -
+    id: 1177
+    symbol: FMV_D_X
+    name: FMV_D_X
+    assembly_mnemonic: fmv.d.x
+    encoding: 4060382291
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
+    num_explicit_defs: 1
+    flags: [produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: FRD_RS1
+  -
+    id: 1178
+    symbol: FCVT_S_D
+    name: FCVT_S_D
+    assembly_mnemonic: fcvt.s.d
+    encoding: 1075086419
+    operands:
+      - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR, name: FRS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: FRD_FRS1_RM
+  -
+    id: 1179
+    symbol: FCVT_D_S
+    name: FCVT_D_S
+    assembly_mnemonic: fcvt.d.s
+    encoding: 1107592275
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR, name: FRD }
+      - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR, name: FRS1 }
+      - { kinds: [immediate], immediate_predicate: RM, name: RM }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [may_raise_fp_exception, produces_code]
+    scheduling_class: FP_CONVERT
+    encoding_category: R
+    assembly_format: FRD_FRS1_RM

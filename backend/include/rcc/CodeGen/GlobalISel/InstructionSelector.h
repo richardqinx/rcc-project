@@ -3,7 +3,7 @@
 #ifndef RCC_CODEGEN_GLOBALISEL_INSTRUCTIONSELECTOR_H
 #define RCC_CODEGEN_GLOBALISEL_INSTRUCTIONSELECTOR_H
 
-#include "rcc/CodeGen/MachineIRTypes.h"
+#include "rcc/CodeGen/GlobalISel/GIMatchTableExecutor.h"
 #include "rcc/Support/Error.h"
 
 namespace rcc {
@@ -12,7 +12,7 @@ class MachineFunction;
 class MachineInstr;
 class TargetDescription;
 
-class InstructionSelector {
+class InstructionSelector : public GIMatchTableExecutor {
 public:
   virtual ~InstructionSelector() = default;
 
