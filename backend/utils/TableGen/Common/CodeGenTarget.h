@@ -217,6 +217,7 @@ struct NormalizedSelectionDefUseCapture final {
 struct NormalizedSelectionDefUsePredicate final {
   std::uint32_t RootOperandIndex = 0;
   std::uint32_t Opcode = 0;
+  std::optional<NormalizedSelectionIntegerPredicate> IntegerPredicate;
   std::vector<NormalizedSelectionDefUseCapture> Captures;
   std::vector<NormalizedSelectionOperandDefConstantPredicate> OperandDefConstants;
 };

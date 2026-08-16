@@ -47,7 +47,8 @@ void emitTypePredicate(std::ostream &Output, std::uint32_t OperandIndex,
                       Rule.OperandImmediates.size() + Rule.OperandDefConstants.size() +
                       Rule.Temporaries.size() + Rule.EraseOperandDefinitions.size();
   for (const NormalizedSelectionDefUsePredicate &Predicate : Rule.DefUsePredicates)
-    Count += 1U + Predicate.Captures.size() + Predicate.OperandDefConstants.size();
+    Count += 1U + static_cast<std::size_t>(Predicate.IntegerPredicate.has_value()) +
+             Predicate.Captures.size() + Predicate.OperandDefConstants.size();
   for (const NormalizedSelectionAction &Action : Rule.Actions)
     Count += 1U + Action.OperandRenderers.size();
   return Count;
@@ -137,6 +138,11 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
     }
     for (const NormalizedSelectionDefUsePredicate &DefUse : Rule.DefUsePredicates) {
       emitInstruction(Output, "CheckOperandDefOpcode", DefUse.RootOperandIndex, DefUse.Opcode);
+      if (DefUse.IntegerPredicate) {
+        emitInstruction(Output, "CheckOperandDefIntegerPredicate", DefUse.RootOperandIndex,
+                        DefUse.IntegerPredicate->Predicate,
+                        std::to_string(DefUse.IntegerPredicate->OperandIndex));
+      }
       for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
            DefUse.OperandDefConstants) {
         emitInstruction(Output, "CheckOperandDefOperandConstantRanges", DefUse.RootOperandIndex,

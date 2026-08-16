@@ -364,7 +364,6 @@ public:
     case GenericOpcode::G_FPEXTLOAD:
     case GenericOpcode::G_FPTRUNCSTORE:
     case GenericOpcode::G_STORE:
-    case GenericOpcode::G_BRCOND:
       return {};
     case GenericOpcode::G_FCONSTANT: {
       const MachineOperand *Immediate = Instruction.operandAt(1);
@@ -440,8 +439,6 @@ public:
       return selectStore(Instruction, Function);
     case GenericOpcode::G_FPTRUNCSTORE:
       return selectFloatTruncStore(Instruction, Function, Target);
-    case GenericOpcode::G_BRCOND:
-      return selectConditionalBranch(Instruction);
     case GenericOpcode::G_CONSTANT:
       return selectIntegerConstant(Instruction, Function, Target, Type);
     case GenericOpcode::G_FCONSTANT:
@@ -1420,16 +1417,6 @@ private:
     if (*Bank == fprBank() && Type->scalarBitWidth() == 64 && *Bytes == 8)
       return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSD));
     return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this generic store type");
-  }
-
-  [[nodiscard]] Expected<void> selectConditionalBranch(MachineInstr &Instruction) const {
-    auto Zero = physicalRegister(PhysicalRegisterID::X0);
-    if (!Zero)
-      return std::unexpected(Zero.error());
-    auto Inserted = insertPhysicalRegister(Instruction, 1, *Zero, RegisterOperandFlag::Use);
-    if (!Inserted)
-      return std::unexpected(Inserted.error());
-    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::BNE));
   }
 
   [[nodiscard]] Expected<void> selectIntegerConstant(MachineInstr &Instruction,

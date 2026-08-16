@@ -94,15 +94,16 @@ namespace {
 }
 
 [[nodiscard]] Expected<bool> matchesIntegerPredicate(const MachineInstr &Instruction,
-                                                     const GIMatchTableInstruction &Step) {
-  if (Step.Value >= static_cast<std::uint32_t>(IntegerPredicate::Count)) {
+                                                     std::size_t OperandIndex,
+                                                     std::uint32_t PredicateValue) {
+  if (PredicateValue >= static_cast<std::uint32_t>(IntegerPredicate::Count)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "generated match table has an invalid integer predicate");
   }
-  const MachineOperand *Operand = Instruction.operandAt(Step.OperandIndex);
+  const MachineOperand *Operand = Instruction.operandAt(OperandIndex);
   const auto *Predicate = Operand == nullptr ? nullptr : Operand->getIf<PredicateOperand>();
   const IntegerPredicate *Integer = Predicate == nullptr ? nullptr : Predicate->integerPredicate();
-  return Integer != nullptr && static_cast<std::uint32_t>(*Integer) == Step.Value;
+  return Integer != nullptr && static_cast<std::uint32_t>(*Integer) == PredicateValue;
 }
 
 [[nodiscard]] std::optional<std::int64_t> immediateValue(const MachineOperand &Operand) {
@@ -203,6 +204,15 @@ operandOrDefConstantValue(const MachineInstr &Instruction, const MachineFunction
                           "generated match table has an invalid def-use opcode");
   const MachineInstr *Definition = operandDefinition(Instruction, Function, Step.OperandIndex);
   return Definition != nullptr && Definition->opcode().value() == Step.Value;
+}
+
+[[nodiscard]] Expected<bool>
+matchesOperandDefIntegerPredicate(const MachineInstr &Instruction, const MachineFunction &Function,
+                                  const GIMatchTableInstruction &Step) {
+  const MachineInstr *Definition = operandDefinition(Instruction, Function, Step.OperandIndex);
+  if (Definition == nullptr)
+    return false;
+  return matchesIntegerPredicate(*Definition, Step.Auxiliary, Step.Value);
 }
 
 [[nodiscard]] Expected<bool>
@@ -367,7 +377,7 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
         return makeUnexpected(ErrorCode::VerificationError,
                               "generated match table performs a predicate after an action");
       }
-      auto Matched = matchesIntegerPredicate(Instruction, Step);
+      auto Matched = matchesIntegerPredicate(Instruction, Step.OperandIndex, Step.Value);
       if (!Matched)
         return std::unexpected(Matched.error());
       if (!*Matched)
@@ -416,6 +426,18 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
                               "generated match table performs a predicate after an action");
       }
       auto Matched = matchesOperandDefOpcode(Instruction, Function, Step);
+      if (!Matched)
+        return std::unexpected(Matched.error());
+      if (!*Matched)
+        return std::optional<MatchedRule>{};
+      break;
+    }
+    case GIMatchTableOpcode::CheckOperandDefIntegerPredicate: {
+      if (Applying) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table performs a predicate after an action");
+      }
+      auto Matched = matchesOperandDefIntegerPredicate(Instruction, Function, Step);
       if (!Matched)
         return std::unexpected(Matched.error());
       if (!*Matched)

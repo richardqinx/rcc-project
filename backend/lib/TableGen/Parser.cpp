@@ -1152,8 +1152,9 @@ private:
     return true;
   }
 
-  [[nodiscard]] bool parseSelectionIntegerPredicate(const yaml::Node &Node,
-                                                    SourceSelectionRule &Result) {
+  [[nodiscard]] bool
+  parseSelectionIntegerPredicate(const yaml::Node &Node,
+                                 std::optional<SourceSelectionIntegerPredicate> &Result) {
     if (!requireMapping(&Node, "selection integer predicate") ||
         !checkKeys(Node, {"index", "value"}, "selection integer predicate")) {
       return false;
@@ -1165,7 +1166,7 @@ private:
     const auto Index = unsignedInteger32(*IndexNode, "selection integer predicate index");
     if (!Index)
       return false;
-    Result.IntegerPredicate = SourceSelectionIntegerPredicate{
+    Result = SourceSelectionIntegerPredicate{
         .OperandIndex = *Index,
         .Predicate = *Value,
         .Range = Node.range(),
@@ -1303,8 +1304,10 @@ private:
     for (const yaml::NodeID ElementID : Node.sequence()) {
       const yaml::Node *Element = Input.node(ElementID);
       if (!requireMapping(Element, "selection def-use predicate") ||
-          !checkKeys(*Element, {"operand", "opcode", "captures", "operand_def_constants"},
-                     "selection def-use predicate")) {
+          !checkKeys(
+              *Element,
+              {"operand", "opcode", "integer_predicate", "captures", "operand_def_constants"},
+              "selection def-use predicate")) {
         return false;
       }
       const yaml::Node *OperandNode =
@@ -1319,10 +1322,15 @@ private:
       SourceSelectionDefUsePredicate Predicate{
           .RootOperandIndex = *Operand,
           .OpcodeSymbol = *Opcode,
+          .IntegerPredicate = std::nullopt,
           .Captures = {},
           .OperandDefConstants = {},
           .Range = Element->range(),
       };
+      if (const yaml::Node *IntegerPredicate = optionalNode(*Element, "integer_predicate")) {
+        if (!parseSelectionIntegerPredicate(*IntegerPredicate, Predicate.IntegerPredicate))
+          return false;
+      }
       if (const yaml::Node *Captures = optionalNode(*Element, "captures")) {
         if (!requireSequence(Captures, "selection def-use captures"))
           return false;
@@ -1352,7 +1360,8 @@ private:
         if (!parseSelectionOperandDefConstants(*Constants, Predicate.OperandDefConstants))
           return false;
       }
-      if (Predicate.Captures.empty() && Predicate.OperandDefConstants.empty()) {
+      if (!Predicate.IntegerPredicate && Predicate.Captures.empty() &&
+          Predicate.OperandDefConstants.empty()) {
         fail(Element->range(),
              "selection def-use predicate requires a capture or constant predicate");
         return false;
@@ -1553,7 +1562,7 @@ private:
       Result.ResultType = std::move(*Parsed);
     }
     if (const yaml::Node *Predicate = optionalNode(Node, "integer_predicate")) {
-      if (!parseSelectionIntegerPredicate(*Predicate, Result))
+      if (!parseSelectionIntegerPredicate(*Predicate, Result.IntegerPredicate))
         return false;
     }
     if (const yaml::Node *TargetPredicates = optionalNode(Node, "target_predicates")) {

@@ -15,6 +15,7 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoZb.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoPseudo.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelInteger.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelControlFlow.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelShift.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelFloating.rccdesc"
 )

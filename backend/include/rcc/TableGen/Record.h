@@ -267,6 +267,7 @@ struct SourceSelectionDefUseCapture final {
 struct SourceSelectionDefUsePredicate final {
   std::uint32_t RootOperandIndex = 0;
   std::string OpcodeSymbol;
+  std::optional<SourceSelectionIntegerPredicate> IntegerPredicate;
   std::vector<SourceSelectionDefUseCapture> Captures;
   std::vector<SourceSelectionOperandDefConstantPredicate> OperandDefConstants;
   TextRange Range;

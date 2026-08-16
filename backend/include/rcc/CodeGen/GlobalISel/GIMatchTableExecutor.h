@@ -41,6 +41,7 @@ enum class GIMatchTableOpcode : std::uint8_t {
   CheckOperandImmediateRanges,
   CheckOperandDefConstantRanges,
   CheckOperandDefOpcode,
+  CheckOperandDefIntegerPredicate,
   CheckOperandDefOperandConstantRanges,
   CaptureDefOperand,
   CreateTemporary,

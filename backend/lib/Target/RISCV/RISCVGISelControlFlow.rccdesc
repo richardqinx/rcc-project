@@ -1,0 +1,252 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+selection_rules:
+  -
+    id: select_g_br
+    priority: 100
+    match:
+      opcode: G_BR
+    apply:
+      instructions:
+        - opcode: PseudoBR
+          root: true
+          operands: [{ operand: 0 }]
+  -
+    id: select_g_brcond_sgt_minus_one
+    priority: 600
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: sgt }
+          captures:
+            - { id: lhs, operand: 2 }
+          operand_def_constants:
+            - index: 3
+              ranges: [{ min: -1, max: -1 }]
+    apply:
+      instructions:
+        - opcode: BGE
+          root: true
+          operands:
+            - { captured_operand: lhs }
+            - { physical_register: X0, flags: [use] }
+            - { operand: 1 }
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_slt_one
+    priority: 600
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: slt }
+          captures:
+            - { id: lhs, operand: 2 }
+          operand_def_constants:
+            - index: 3
+              ranges: [{ min: 1, max: 1 }]
+    apply:
+      instructions:
+        - opcode: BGE
+          root: true
+          operands:
+            - { physical_register: X0, flags: [use] }
+            - { captured_operand: lhs }
+            - { operand: 1 }
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_eq
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: eq }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BEQ
+          root: true
+          operands: [{ captured_operand: lhs }, { captured_operand: rhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_ne
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: ne }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BNE
+          root: true
+          operands: [{ captured_operand: lhs }, { captured_operand: rhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_slt
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: slt }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BLT
+          root: true
+          operands: [{ captured_operand: lhs }, { captured_operand: rhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_sge
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: sge }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BGE
+          root: true
+          operands: [{ captured_operand: lhs }, { captured_operand: rhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_ult
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: ult }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BLTU
+          root: true
+          operands: [{ captured_operand: lhs }, { captured_operand: rhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_uge
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: uge }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BGEU
+          root: true
+          operands: [{ captured_operand: lhs }, { captured_operand: rhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_sgt
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: sgt }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BLT
+          root: true
+          operands: [{ captured_operand: rhs }, { captured_operand: lhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_sle
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: sle }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BGE
+          root: true
+          operands: [{ captured_operand: rhs }, { captured_operand: lhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_ugt
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: ugt }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BLTU
+          root: true
+          operands: [{ captured_operand: rhs }, { captured_operand: lhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond_ule
+    priority: 400
+    match:
+      opcode: G_BRCOND
+      def_use:
+        - operand: 0
+          opcode: G_ICMP
+          integer_predicate: { index: 1, value: ule }
+          captures:
+            - { id: lhs, operand: 2 }
+            - { id: rhs, operand: 3 }
+    apply:
+      instructions:
+        - opcode: BGEU
+          root: true
+          operands: [{ captured_operand: rhs }, { captured_operand: lhs }, { operand: 1 }]
+      erase_operand_definitions: [0]
+  -
+    id: select_g_brcond
+    priority: 100
+    match:
+      opcode: G_BRCOND
+    apply:
+      instructions:
+        - opcode: BNE
+          root: true
+          operands:
+            - { operand: 0 }
+            - { physical_register: X0, flags: [use] }
+            - { operand: 1 }

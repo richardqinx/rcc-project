@@ -355,9 +355,22 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       NormalizedSelectionDefUsePredicate NormalizedPredicate{
           .RootOperandIndex = Predicate.RootOperandIndex,
           .Opcode = *DefOpcode,
+          .IntegerPredicate = std::nullopt,
           .Captures = {},
           .OperandDefConstants = {},
       };
+      if (Predicate.IntegerPredicate) {
+        const auto Integer = integerPredicateValue(Predicate.IntegerPredicate->Predicate);
+        if (!Integer) {
+          fail(Predicate.IntegerPredicate->Range,
+               "selection def-use integer predicate is not a recognized integer predicate");
+          return false;
+        }
+        NormalizedPredicate.IntegerPredicate = {
+            .OperandIndex = Predicate.IntegerPredicate->OperandIndex,
+            .Predicate = *Integer,
+        };
+      }
       std::unordered_set<std::uint32_t> CapturedOperands;
       for (const SourceSelectionDefUseCapture &Capture : Predicate.Captures) {
         if (!isIdentifier(Capture.Symbol) ||
@@ -390,7 +403,9 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
         });
       }
       Normalized.DefUsePredicates.push_back(std::move(NormalizedPredicate));
-      Normalized.Specificity += 1U + static_cast<std::uint32_t>(Predicate.Captures.size()) +
+      Normalized.Specificity += 1U +
+                                static_cast<std::uint32_t>(Predicate.IntegerPredicate.has_value()) +
+                                static_cast<std::uint32_t>(Predicate.Captures.size()) +
                                 static_cast<std::uint32_t>(Predicate.OperandDefConstants.size());
     }
 
