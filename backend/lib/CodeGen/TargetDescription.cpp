@@ -17,6 +17,7 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -342,8 +343,12 @@ Expected<void> TargetDescription::validateTargetOperand(const OperandDescriptor 
   if (Descriptor != nullptr && Descriptor->RegClass) {
     const auto EffectiveClass = effectiveRegisterClass(Operand, RegInfo);
     if (!EffectiveClass || !Registers.isSubclass(*EffectiveClass, *Descriptor->RegClass)) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "virtual register class does not satisfy the operand descriptor");
+      const std::string ActualClass =
+          EffectiveClass ? std::to_string(EffectiveClass->value()) : "<none>";
+      return makeUnexpected(
+          ErrorCode::VerificationError,
+          "virtual register class " + ActualClass + " does not satisfy required class " +
+              std::to_string(Descriptor->RegClass->value()));
     }
   }
   return {};
@@ -464,7 +469,9 @@ TargetDescription::validateExplicitOperands(Opcode InstructionOpcode,
     auto TargetValidation =
         validateTargetOperand(&descriptorForOperand(*Descriptor, Index), Operands[Index], RegInfo);
     if (!TargetValidation)
-      return std::unexpected(TargetValidation.error());
+      return std::unexpected(withErrorContext(
+          TargetValidation.error(), "operand " + std::to_string(Index) + " of '" +
+              Descriptor->Name + "': "));
   }
   return {};
 }

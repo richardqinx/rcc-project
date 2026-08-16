@@ -38,6 +38,12 @@ public:
   [[nodiscard]] Expected<void> propagateSelectionFlags(MachineInstr &Output,
                                                        const MachineInstr &Input,
                                                        const TargetDescription &Target) const;
+
+protected:
+  [[nodiscard]] Expected<void>
+  finalizeGeneratedInstruction(MachineInstr &Output, MachineFunction &Function,
+                               const TargetDescription &Target, MachineInstrFlags InputFlags,
+                               bool InputMayRaiseFPException) const override;
 };
 
 } // namespace rcc

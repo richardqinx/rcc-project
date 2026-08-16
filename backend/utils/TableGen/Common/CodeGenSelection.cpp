@@ -11,7 +11,9 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -135,31 +137,18 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
   std::unordered_set<std::string> Symbols;
   for (const SourceSelectionRule &Rule : Input.SelectionRules) {
     const auto MatchOpcode = resolveOpcode(Result, Rule.MatchOpcodeSymbol);
-    const auto ResultOpcode = resolveOpcode(Result, Rule.ResultOpcodeSymbol);
     const NormalizedInstruction *MatchInstruction =
         findInstructionBySymbol(Result, Rule.MatchOpcodeSymbol);
-    const NormalizedInstruction *ResultInstruction =
-        findInstructionBySymbol(Result, Rule.ResultOpcodeSymbol);
-    if (!isIdentifier(Rule.Symbol) || !Symbols.insert(Rule.Symbol).second || !MatchOpcode ||
-        !ResultOpcode) {
-      fail(Rule.Range,
-           "selection rules require a unique identifier and declared match/result opcodes");
+    if (!isIdentifier(Rule.Symbol) || !Symbols.insert(Rule.Symbol).second || !MatchOpcode) {
+      fail(Rule.Range, "selection rules require a unique identifier and declared match opcode");
       return false;
     }
     if (MatchInstruction != nullptr && !std::ranges::contains(MatchInstruction->Flags, "Generic")) {
       fail(Rule.Range, "selection rule match opcode must be generic");
       return false;
     }
-    if (isGenericOpcode(Opcode::fromValue(*ResultOpcode)) ||
-        (ResultInstruction != nullptr &&
-         std::ranges::contains(ResultInstruction->Flags, "Generic"))) {
-      fail(Rule.Range, "selection rule result opcode must not be generic");
-      return false;
-    }
-    if (!Rule.OperandRenderers && MatchInstruction != nullptr && ResultInstruction != nullptr &&
-        ResultInstruction->Operands.size() !=
-            MatchInstruction->Operands.size() + Rule.AppendedImmediates.size()) {
-      fail(Rule.Range, "selection rule result opcode has an incompatible operand count");
+    if (Rule.Actions.empty()) {
+      fail(Rule.Range, "selection rule requires at least one generated instruction");
       return false;
     }
 
@@ -187,8 +176,6 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
     Normalized.Priority = Rule.Priority;
     Normalized.Specificity = 1;
     Normalized.MatchOpcode = *MatchOpcode;
-    Normalized.ResultOpcode = *ResultOpcode;
-    Normalized.AppendedImmediates = Rule.AppendedImmediates;
     Normalized.EraseOperandDefinitions = Rule.EraseOperandDefinitions;
     if (Rule.ResultType) {
       auto Type = NormalizeType(*Rule.ResultType);
@@ -278,32 +265,98 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
     for (const SourceSelectionOperandDefConstantPredicate &Predicate : Rule.OperandDefConstants) {
       if (!ConstantOperands.insert(Predicate.OperandIndex).second ||
           (MatchInstruction != nullptr &&
-           !isRegisterOperand(*MatchInstruction, Predicate.OperandIndex))) {
+           !isRegisterOperand(*MatchInstruction, Predicate.OperandIndex)) || Predicate.Ranges.empty()) {
         fail(Predicate.Range,
              "selection operand definition constant predicates require distinct register "
-             "operands");
+             "operands and at least one range");
         return false;
       }
-      Normalized.OperandDefConstants.push_back(
-          {.OperandIndex = Predicate.OperandIndex, .Value = Predicate.Value});
+      NormalizedSelectionOperandDefConstantPredicate NormalizedPredicate{
+          .OperandIndex = Predicate.OperandIndex,
+          .Ranges = {},
+      };
+      for (const SourceSelectionOperandDefConstantPredicate::ConstantRange &Range :
+           Predicate.Ranges) {
+        if (Range.Minimum > Range.Maximum) {
+          fail(Range.SourceRange, "selection operand definition constant range is invalid");
+          return false;
+        }
+        NormalizedPredicate.Ranges.push_back({
+            .Minimum = Range.Minimum,
+            .Maximum = Range.Maximum,
+        });
+      }
+      std::ranges::sort(NormalizedPredicate.Ranges, {},
+                        &NormalizedSelectionOperandDefConstantPredicate::Range::Minimum);
+      for (std::size_t Index = 1; Index < NormalizedPredicate.Ranges.size(); ++Index) {
+        const auto &Previous = NormalizedPredicate.Ranges[Index - 1];
+        const auto &Current = NormalizedPredicate.Ranges[Index];
+        if (Current.Minimum <= Previous.Maximum) {
+          fail(Predicate.Range, "selection operand definition constant ranges overlap");
+          return false;
+        }
+      }
+      Normalized.OperandDefConstants.push_back(std::move(NormalizedPredicate));
       ++Normalized.Specificity;
     }
 
-    if (Rule.OperandRenderers) {
-      if (!Rule.AppendedImmediates.empty()) {
-        fail(Rule.Range, "selection rule cannot combine operand renderers and appended immediates");
+    std::unordered_map<std::string, std::uint32_t> TemporaryIDs;
+    for (const SourceSelectionTemporary &Temporary : Rule.Temporaries) {
+      if (!isIdentifier(Temporary.Symbol) ||
+          !TemporaryIDs.emplace(Temporary.Symbol, TemporaryIDs.size() + 1U).second ||
+          (MatchInstruction != nullptr &&
+           !isRegisterOperand(*MatchInstruction, Temporary.TypeFromOperand))) {
+        fail(Temporary.Range,
+             "selection temporary requires a unique identifier and a register type source");
         return false;
       }
-      std::vector<NormalizedSelectionOperandRenderer> Renderers;
-      Renderers.reserve(Rule.OperandRenderers->size());
-      for (const SourceSelectionOperandRenderer &Renderer : *Rule.OperandRenderers) {
+      Normalized.Temporaries.push_back({
+          .ID = TemporaryIDs.at(Temporary.Symbol),
+          .TypeFromOperand = Temporary.TypeFromOperand,
+      });
+    }
+
+    bool HasRootAction = false;
+    for (std::size_t ActionIndex = 0; ActionIndex < Rule.Actions.size(); ++ActionIndex) {
+      const SourceSelectionAction &Action = Rule.Actions[ActionIndex];
+      const auto ResultOpcode = resolveOpcode(Result, Action.ResultOpcodeSymbol);
+      const NormalizedInstruction *ResultInstruction =
+          findInstructionBySymbol(Result, Action.ResultOpcodeSymbol);
+      if (!ResultOpcode || ResultInstruction == nullptr ||
+          isGenericOpcode(Opcode::fromValue(*ResultOpcode)) ||
+          std::ranges::contains(ResultInstruction->Flags, "Generic")) {
+        fail(Action.Range, "selection instruction opcode must name a declared target instruction");
+        return false;
+      }
+      if (Action.ReplacesRoot == HasRootAction || (Action.ReplacesRoot && ActionIndex != 0)) {
+        fail(Action.Range,
+             "selection instructions require exactly one root replacement as their first action");
+        return false;
+      }
+      HasRootAction |= Action.ReplacesRoot;
+      if (ResultInstruction->Operands.size() != Action.OperandRenderers.size()) {
+        fail(Action.Range, "selection instruction has an incompatible operand count");
+        return false;
+      }
+
+      NormalizedSelectionAction NormalizedAction{
+          .ResultOpcode = *ResultOpcode,
+          .ReplacesRoot = Action.ReplacesRoot,
+          .OperandRenderers = {},
+      };
+      NormalizedAction.OperandRenderers.reserve(Action.OperandRenderers.size());
+      for (const SourceSelectionOperandRenderer &Renderer : Action.OperandRenderers) {
         if (Renderer.OperandIndex) {
           if (MatchInstruction != nullptr &&
               *Renderer.OperandIndex >= MatchInstruction->Operands.size()) {
             fail(Renderer.Range, "selection operand renderer references an unknown operand");
             return false;
           }
-          Renderers.push_back({
+          if (!Renderer.Flags.empty()) {
+            fail(Renderer.Range, "selection operand renderer cannot replace source register flags");
+            return false;
+          }
+          NormalizedAction.OperandRenderers.push_back({
               .SourceKind = NormalizedSelectionOperandRenderer::Kind::Operand,
               .Value = *Renderer.OperandIndex,
               .Flags = 0,
@@ -311,34 +364,90 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
           continue;
         }
 
-        const NormalizedRegister *Physical =
-            findRegisterBySymbol(Result, Renderer.PhysicalRegisterSymbol);
-        const auto Flags = registerOperandFlags(Renderer.Flags);
-        if (Physical == nullptr || Physical->ID == 0 || !Flags) {
-          fail(Renderer.Range,
-               "selection physical register renderer requires a declared register and valid "
-               "register flags");
-          return false;
+        if (!Renderer.PhysicalRegisterSymbol.empty()) {
+          const NormalizedRegister *Physical =
+              findRegisterBySymbol(Result, Renderer.PhysicalRegisterSymbol);
+          const auto Flags = registerOperandFlags(Renderer.Flags);
+          if (Physical == nullptr || Physical->ID == 0 || !Flags ||
+              !validRegisterOperandFlags(*Flags)) {
+            fail(Renderer.Range,
+                 "selection physical register renderer requires a declared register and valid "
+                 "register flags");
+            return false;
+          }
+          NormalizedAction.OperandRenderers.push_back({
+              .SourceKind = NormalizedSelectionOperandRenderer::Kind::PhysicalRegister,
+              .Value = Physical->ID,
+              .Flags = Flags->rawValue(),
+          });
+          continue;
         }
-        if (!validRegisterOperandFlags(*Flags)) {
-          fail(Renderer.Range, "selection physical register renderer is invalid");
-          return false;
+
+        if (!Renderer.TemporarySymbol.empty()) {
+          const auto Temporary = TemporaryIDs.find(Renderer.TemporarySymbol);
+          const auto Flags = registerOperandFlags(Renderer.Flags);
+          if (Temporary == TemporaryIDs.end() || !Flags || !validRegisterOperandFlags(*Flags)) {
+            fail(Renderer.Range,
+                 "selection temporary renderer requires a declared temporary and valid register "
+                 "flags");
+            return false;
+          }
+          NormalizedAction.OperandRenderers.push_back({
+              .SourceKind = NormalizedSelectionOperandRenderer::Kind::Temporary,
+              .Value = Temporary->second,
+              .Flags = Flags->rawValue(),
+          });
+          continue;
         }
-        Renderers.push_back({
-            .SourceKind = NormalizedSelectionOperandRenderer::Kind::PhysicalRegister,
-            .Value = Physical->ID,
-            .Flags = Flags->rawValue(),
-        });
-      }
-      if (ResultInstruction != nullptr && ResultInstruction->Operands.size() != Renderers.size()) {
-        fail(Rule.Range, "selection operand renderer has an incompatible operand count");
+
+        if (Renderer.CapturedImmediateOperand) {
+          const auto Transform = [&Renderer]()
+              -> std::optional<NormalizedSelectionImmediateTransform> {
+            if (Renderer.ImmediateTransform == "identity")
+              return NormalizedSelectionImmediateTransform::Identity;
+            if (Renderer.ImmediateTransform == "negate")
+              return NormalizedSelectionImmediateTransform::Negate;
+            if (Renderer.ImmediateTransform == "plus_one")
+              return NormalizedSelectionImmediateTransform::PlusOne;
+            return std::nullopt;
+          }();
+          if (!ConstantOperands.contains(*Renderer.CapturedImmediateOperand) || !Transform ||
+              !Renderer.Flags.empty()) {
+            fail(Renderer.Range,
+                 "selection captured immediate renderer requires a matched constant and known "
+                 "transform");
+            return false;
+          }
+          NormalizedAction.OperandRenderers.push_back({
+              .SourceKind = NormalizedSelectionOperandRenderer::Kind::CapturedImmediate,
+              .Value = *Renderer.CapturedImmediateOperand,
+              .Flags = 0,
+              .Transform = *Transform,
+          });
+          continue;
+        }
+
+        if (Renderer.Immediate) {
+          if (!Renderer.Flags.empty() || Renderer.ImmediateTransform != "identity") {
+            fail(Renderer.Range, "selection immediate renderer cannot carry register flags");
+            return false;
+          }
+          NormalizedAction.OperandRenderers.push_back({
+              .SourceKind = NormalizedSelectionOperandRenderer::Kind::Immediate,
+              .Value = 0,
+              .Flags = 0,
+              .Immediate = *Renderer.Immediate,
+          });
+          continue;
+        }
+
+        fail(Renderer.Range, "selection operand renderer has no normalized source");
         return false;
       }
-      Normalized.OperandRenderers = std::move(Renderers);
-    } else if (ResultInstruction != nullptr && MatchInstruction != nullptr &&
-               ResultInstruction->Operands.size() !=
-                   MatchInstruction->Operands.size() + Rule.AppendedImmediates.size()) {
-      fail(Rule.Range, "selection rule result opcode has an incompatible operand count");
+      Normalized.Actions.push_back(std::move(NormalizedAction));
+    }
+    if (!HasRootAction) {
+      fail(Rule.Range, "selection instructions require exactly one root replacement");
       return false;
     }
 
@@ -347,6 +456,10 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       if (!ErasedOperands.insert(OperandIndex).second ||
           (MatchInstruction != nullptr && !isRegisterOperand(*MatchInstruction, OperandIndex))) {
         fail(Rule.Range, "selection erased definitions require distinct register operands");
+        return false;
+      }
+      if (!ConstantOperands.contains(OperandIndex)) {
+        fail(Rule.Range, "selection erased definition requires a matched constant operand");
         return false;
       }
     }

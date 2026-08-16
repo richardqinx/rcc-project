@@ -39,19 +39,29 @@ void emitTypePredicate(std::ostream &Output, std::uint32_t OperandIndex,
 }
 
 [[nodiscard]] std::size_t instructionCount(const NormalizedSelectionRule &Rule) noexcept {
-  return 3U + (Rule.ResultType ? 1U : 0U) + (Rule.IntegerPredicate ? 1U : 0U) +
+  std::size_t Count = 2U + (Rule.ResultType ? 1U : 0U) +
+                      (Rule.IntegerPredicate ? 1U : 0U) +
          Rule.OperandTypes.size() + Rule.OperandBanks.size() + Rule.OperandClasses.size() +
-         Rule.OperandDefConstants.size() +
-         (Rule.OperandRenderers ? Rule.OperandRenderers->size() : 0U) +
-         Rule.AppendedImmediates.size() + Rule.EraseOperandDefinitions.size();
+                      Rule.OperandDefConstants.size() + Rule.Temporaries.size() +
+                      Rule.EraseOperandDefinitions.size();
+  for (const NormalizedSelectionAction &Action : Rule.Actions)
+    Count += 1U + Action.OperandRenderers.size();
+  return Count;
 }
 
 } // namespace
 
 std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view SourceName) {
   std::size_t InstructionCount = 0;
+  std::size_t ConstantRangeCount = 0;
   for (const NormalizedSelectionRule &Rule : Model.SelectionRules)
     InstructionCount += instructionCount(Rule);
+  for (const NormalizedSelectionRule &Rule : Model.SelectionRules) {
+    for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
+         Rule.OperandDefConstants) {
+      ConstantRangeCount += Predicate.Ranges.size();
+    }
+  }
 
   std::ostringstream Output;
   Output << "// SPDX-License-Identifier: GPL-3.0-or-later\n\n";
@@ -59,8 +69,20 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
   appendQuoted(Output, SourceName);
   Output << ". Do not edit it manually.\n\n";
   Output << "#ifdef GET_GLOBALISEL_MATCH_TABLE\n\n";
+  Output << "constexpr std::array<GIMatchTableConstantRange, " << ConstantRangeCount
+         << "> GeneratedGlobalISelConstantRanges = {{\n";
+  for (const NormalizedSelectionRule &Rule : Model.SelectionRules) {
+    for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
+         Rule.OperandDefConstants) {
+      for (const NormalizedSelectionOperandDefConstantPredicate::Range &Range : Predicate.Ranges)
+        Output << "    {" << Range.Minimum << ", " << Range.Maximum << "},\n";
+    }
+  }
+  Output << "}};\n\n";
+
   Output << "constexpr std::array<GIMatchTableInstruction, " << InstructionCount
          << "> GeneratedGlobalISelInstructions = {{\n";
+  std::size_t FirstConstantRange = 0;
   for (const NormalizedSelectionRule &Rule : Model.SelectionRules) {
     emitInstruction(Output, "CheckOpcode", 0, Rule.MatchOpcode);
     if (Rule.ResultType)
@@ -74,21 +96,41 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
       emitInstruction(Output, "CheckOperandBank", Predicate.OperandIndex, Predicate.Bank);
     for (const NormalizedSelectionOperandClassPredicate &Predicate : Rule.OperandClasses)
       emitInstruction(Output, "CheckOperandClass", Predicate.OperandIndex, Predicate.RegClass);
-    for (const NormalizedSelectionOperandDefConstantPredicate &Predicate : Rule.OperandDefConstants)
-      emitInstruction(Output, "CheckOperandDefConstant", Predicate.OperandIndex, 0, "0",
-                      Predicate.Value);
-    emitInstruction(Output, "MutateOpcode", 0, Rule.ResultOpcode);
-    if (Rule.OperandRenderers) {
-      for (const NormalizedSelectionOperandRenderer &Renderer : *Rule.OperandRenderers) {
-        if (Renderer.SourceKind == NormalizedSelectionOperandRenderer::Kind::Operand)
+    for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
+         Rule.OperandDefConstants) {
+      emitInstruction(Output, "CheckOperandDefConstantRanges", Predicate.OperandIndex,
+                      static_cast<std::uint32_t>(FirstConstantRange),
+                      std::to_string(Predicate.Ranges.size()));
+      FirstConstantRange += Predicate.Ranges.size();
+    }
+    for (const NormalizedSelectionTemporary &Temporary : Rule.Temporaries)
+      emitInstruction(Output, "CreateTemporary", Temporary.TypeFromOperand, Temporary.ID);
+    for (const NormalizedSelectionAction &Action : Rule.Actions) {
+      emitInstruction(Output, Action.ReplacesRoot ? "MutateOpcode" : "BuildInstruction", 0,
+                      Action.ResultOpcode);
+      for (const NormalizedSelectionOperandRenderer &Renderer : Action.OperandRenderers) {
+        switch (Renderer.SourceKind) {
+        case NormalizedSelectionOperandRenderer::Kind::Operand:
           emitInstruction(Output, "RenderOperand", Renderer.Value);
-        else
+          break;
+        case NormalizedSelectionOperandRenderer::Kind::PhysicalRegister:
           emitInstruction(Output, "RenderPhysicalRegister", 0, Renderer.Value,
                           std::to_string(Renderer.Flags));
+          break;
+        case NormalizedSelectionOperandRenderer::Kind::Temporary:
+          emitInstruction(Output, "RenderTemporary", 0, Renderer.Value,
+                          std::to_string(Renderer.Flags));
+          break;
+        case NormalizedSelectionOperandRenderer::Kind::CapturedImmediate:
+          emitInstruction(Output, "RenderCapturedImmediate", Renderer.Value,
+                          static_cast<std::uint32_t>(Renderer.Transform));
+          break;
+        case NormalizedSelectionOperandRenderer::Kind::Immediate:
+          emitInstruction(Output, "RenderImmediate", 0, 0, "0", Renderer.Immediate);
+          break;
+        }
       }
     }
-    for (const std::int64_t Immediate : Rule.AppendedImmediates)
-      emitInstruction(Output, "AppendImmediate", 0, 0, "0", Immediate);
     for (const std::uint32_t OperandIndex : Rule.EraseOperandDefinitions)
       emitInstruction(Output, "EraseOperandDefinition", OperandIndex);
     emitInstruction(Output, "Complete", 0);
@@ -107,7 +149,8 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
   }
   Output << "}};\n\n";
   Output << "[[nodiscard]] constexpr GIMatchTable generatedGlobalISelMatchTable() noexcept {\n"
-            "  return {GeneratedGlobalISelInstructions, GeneratedGlobalISelRules};\n"
+            "  return {GeneratedGlobalISelInstructions, GeneratedGlobalISelRules,\n"
+            "          GeneratedGlobalISelConstantRanges};\n"
             "}\n\n";
   Output << "#endif // GET_GLOBALISEL_MATCH_TABLE\n";
   return Output.str();

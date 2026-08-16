@@ -195,19 +195,47 @@ struct NormalizedSelectionIntegerPredicate final {
 };
 
 struct NormalizedSelectionOperandDefConstantPredicate final {
+  struct Range final {
+    std::int64_t Minimum = 0;
+    std::int64_t Maximum = 0;
+  };
+
   std::uint32_t OperandIndex = 0;
-  std::int64_t Value = 0;
+  std::vector<Range> Ranges;
+};
+
+struct NormalizedSelectionTemporary final {
+  std::uint32_t ID = 0;
+  std::uint32_t TypeFromOperand = 0;
+};
+
+enum class NormalizedSelectionImmediateTransform : std::uint8_t {
+  Identity,
+  Negate,
+  PlusOne,
 };
 
 struct NormalizedSelectionOperandRenderer final {
   enum class Kind : std::uint8_t {
     Operand,
     PhysicalRegister,
+    Temporary,
+    CapturedImmediate,
+    Immediate,
   };
 
   Kind SourceKind = Kind::Operand;
   std::uint32_t Value = 0;
   std::uint16_t Flags = 0;
+  NormalizedSelectionImmediateTransform Transform =
+      NormalizedSelectionImmediateTransform::Identity;
+  std::int64_t Immediate = 0;
+};
+
+struct NormalizedSelectionAction final {
+  std::uint32_t ResultOpcode = 0;
+  bool ReplacesRoot = false;
+  std::vector<NormalizedSelectionOperandRenderer> OperandRenderers;
 };
 
 struct NormalizedSelectionRule final {
@@ -221,9 +249,8 @@ struct NormalizedSelectionRule final {
   std::vector<NormalizedSelectionOperandBankPredicate> OperandBanks;
   std::vector<NormalizedSelectionOperandClassPredicate> OperandClasses;
   std::vector<NormalizedSelectionOperandDefConstantPredicate> OperandDefConstants;
-  std::uint32_t ResultOpcode = 0;
-  std::optional<std::vector<NormalizedSelectionOperandRenderer>> OperandRenderers;
-  std::vector<std::int64_t> AppendedImmediates;
+  std::vector<NormalizedSelectionTemporary> Temporaries;
+  std::vector<NormalizedSelectionAction> Actions;
   std::vector<std::uint32_t> EraseOperandDefinitions;
 };
 

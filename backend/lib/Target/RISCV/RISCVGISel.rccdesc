@@ -12,7 +12,11 @@ selection_rules:
         - { index: 0, bank: GPR }
         - { index: 1, bank: GPR }
         - { index: 2, bank: GPR }
-    apply: { opcode: SLLW }
+    apply:
+      instructions:
+        - opcode: SLLW
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_sraw
     priority: 100
@@ -26,7 +30,11 @@ selection_rules:
         - { index: 0, bank: GPR }
         - { index: 1, bank: GPR }
         - { index: 2, bank: GPR }
-    apply: { opcode: SRAW }
+    apply:
+      instructions:
+        - opcode: SRAW
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_srlw
     priority: 100
@@ -40,7 +48,11 @@ selection_rules:
         - { index: 0, bank: GPR }
         - { index: 1, bank: GPR }
         - { index: 2, bank: GPR }
-    apply: { opcode: SRLW }
+    apply:
+      instructions:
+        - opcode: SRLW
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_divw
     priority: 100
@@ -54,7 +66,11 @@ selection_rules:
         - { index: 0, bank: GPR }
         - { index: 1, bank: GPR }
         - { index: 2, bank: GPR }
-    apply: { opcode: DIVW }
+    apply:
+      instructions:
+        - opcode: DIVW
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_divuw
     priority: 100
@@ -68,7 +84,11 @@ selection_rules:
         - { index: 0, bank: GPR }
         - { index: 1, bank: GPR }
         - { index: 2, bank: GPR }
-    apply: { opcode: DIVUW }
+    apply:
+      instructions:
+        - opcode: DIVUW
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_remuw
     priority: 100
@@ -82,7 +102,11 @@ selection_rules:
         - { index: 0, bank: GPR }
         - { index: 1, bank: GPR }
         - { index: 2, bank: GPR }
-    apply: { opcode: REMUW }
+    apply:
+      instructions:
+        - opcode: REMUW
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_fcvt_w_rv64_s32
     priority: 100
@@ -94,7 +118,11 @@ selection_rules:
       operand_banks:
         - { index: 0, bank: GPR }
         - { index: 1, bank: FPR }
-    apply: { opcode: FCVT_W_S }
+    apply:
+      instructions:
+        - opcode: FCVT_W_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_fcvt_w_rv64_s64
     priority: 100
@@ -106,7 +134,11 @@ selection_rules:
       operand_banks:
         - { index: 0, bank: GPR }
         - { index: 1, bank: FPR }
-    apply: { opcode: FCVT_W_D }
+    apply:
+      instructions:
+        - opcode: FCVT_W_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_fcvt_wu_rv64_s32
     priority: 100
@@ -118,7 +150,11 @@ selection_rules:
       operand_banks:
         - { index: 0, bank: GPR }
         - { index: 1, bank: FPR }
-    apply: { opcode: FCVT_WU_S }
+    apply:
+      instructions:
+        - opcode: FCVT_WU_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_fcvt_wu_rv64_s64
     priority: 100
@@ -130,7 +166,11 @@ selection_rules:
       operand_banks:
         - { index: 0, bank: GPR }
         - { index: 1, bank: FPR }
-    apply: { opcode: FCVT_WU_D }
+    apply:
+      instructions:
+        - opcode: FCVT_WU_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
     id: select_g_fclass_s32
     priority: 100
@@ -142,7 +182,11 @@ selection_rules:
       operand_banks:
         - { index: 0, bank: GPR }
         - { index: 1, bank: FPR }
-    apply: { opcode: FCLASS_S }
+    apply:
+      instructions:
+        - opcode: FCLASS_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }]
   -
     id: select_g_fclass_s64
     priority: 100
@@ -154,10 +198,207 @@ selection_rules:
       operand_banks:
         - { index: 0, bank: GPR }
         - { index: 1, bank: FPR }
-    apply: { opcode: FCLASS_D }
+    apply:
+      instructions:
+        - opcode: FCLASS_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }]
+  -
+    id: select_g_icmp_eq_zero
+    priority: 500
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: eq }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges: [{ min: 0, max: 0 }]
+    apply:
+      instructions:
+        - opcode: SLTIU
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { immediate: 1 }]
+      erase_operand_definitions: [3]
   -
     id: select_g_icmp_ne_zero
-    priority: 200
+    priority: 500
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ne }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges: [{ min: 0, max: 0 }]
+    apply:
+      instructions:
+        - opcode: SLTU
+          root: true
+          operands:
+            - { operand: 0 }
+            - { physical_register: X0, flags: [use] }
+            - { operand: 2 }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_ult_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ult }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      instructions:
+        - opcode: SLTIU
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 2 }
+            - { captured_immediate: 3 }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_slt_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: slt }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      instructions:
+        - opcode: SLTI
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 2 }
+            - { captured_immediate: 3 }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_ugt_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ugt }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges:
+            - { min: -2049, max: -2 }
+            - { min: 1, max: 2046 }
+    apply:
+      temporaries:
+        - { id: compare, type_from_operand: 2 }
+      instructions:
+        - opcode: SLTIU
+          root: true
+          operands:
+            - { temporary: compare, flags: [define] }
+            - { operand: 2 }
+            - { captured_immediate: 3, transform: plus_one }
+        - opcode: XORI
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: compare, flags: [use] }
+            - { immediate: 1 }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_sgt_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: sgt }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges:
+            - { min: -2049, max: -1 }
+            - { min: 1, max: 2046 }
+    apply:
+      temporaries:
+        - { id: compare, type_from_operand: 2 }
+      instructions:
+        - opcode: SLTI
+          root: true
+          operands:
+            - { temporary: compare, flags: [define] }
+            - { operand: 2 }
+            - { captured_immediate: 3, transform: plus_one }
+        - opcode: XORI
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: compare, flags: [use] }
+            - { immediate: 1 }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_eq_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: eq }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges: [{ min: -2047, max: 2048 }]
+    apply:
+      temporaries:
+        - { id: difference, type_from_operand: 2 }
+      instructions:
+        - opcode: ADDI
+          root: true
+          operands:
+            - { temporary: difference, flags: [define] }
+            - { operand: 2 }
+            - { captured_immediate: 3, transform: negate }
+        - opcode: SLTIU
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: difference, flags: [use] }
+            - { immediate: 1 }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_ne_immediate
+    priority: 400
     match:
       opcode: G_ICMP
       result_type: { kind: scalar, bits: 64 }
@@ -168,11 +409,384 @@ selection_rules:
         - { index: 0, bank: GPR }
         - { index: 2, bank: GPR }
       operand_def_constants:
-        - { index: 3, value: 0 }
+        - index: 3
+          ranges: [{ min: -2047, max: 2048 }]
     apply:
-      opcode: SLTU
-      operands:
-        - { operand: 0 }
-        - { physical_register: X0, flags: [use] }
-        - { operand: 2 }
+      temporaries:
+        - { id: difference, type_from_operand: 2 }
+      instructions:
+        - opcode: ADDI
+          root: true
+          operands:
+            - { temporary: difference, flags: [define] }
+            - { operand: 2 }
+            - { captured_immediate: 3, transform: negate }
+        - opcode: SLTU
+          root: false
+          operands:
+            - { operand: 0 }
+            - { physical_register: X0, flags: [use] }
+            - { temporary: difference, flags: [use] }
       erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_ule_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ule }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges:
+            - { min: -2049, max: -2 }
+            - { min: 1, max: 2046 }
+    apply:
+      instructions:
+        - opcode: SLTIU
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 2 }
+            - { captured_immediate: 3, transform: plus_one }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_sle_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: sle }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges:
+            - { min: -2049, max: -1 }
+            - { min: 1, max: 2046 }
+    apply:
+      instructions:
+        - opcode: SLTI
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 2 }
+            - { captured_immediate: 3, transform: plus_one }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_uge_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: uge }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      temporaries:
+        - { id: compare, type_from_operand: 2 }
+      instructions:
+        - opcode: SLTIU
+          root: true
+          operands:
+            - { temporary: compare, flags: [define] }
+            - { operand: 2 }
+            - { captured_immediate: 3 }
+        - opcode: XORI
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: compare, flags: [use] }
+            - { immediate: 1 }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_sge_immediate
+    priority: 400
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: sge }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 3
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      temporaries:
+        - { id: compare, type_from_operand: 2 }
+      instructions:
+        - opcode: SLTI
+          root: true
+          operands:
+            - { temporary: compare, flags: [define] }
+            - { operand: 2 }
+            - { captured_immediate: 3 }
+        - opcode: XORI
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: compare, flags: [use] }
+            - { immediate: 1 }
+      erase_operand_definitions: [3]
+  -
+    id: select_g_icmp_ult_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ult }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SLTU
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 3 }]
+  -
+    id: select_g_icmp_slt_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: slt }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SLT
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 3 }]
+  -
+    id: select_g_icmp_ugt_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ugt }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SLTU
+          root: true
+          operands: [{ operand: 0 }, { operand: 3 }, { operand: 2 }]
+  -
+    id: select_g_icmp_sgt_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: sgt }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SLT
+          root: true
+          operands: [{ operand: 0 }, { operand: 3 }, { operand: 2 }]
+  -
+    id: select_g_icmp_eq_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: eq }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      temporaries:
+        - { id: difference, type_from_operand: 2 }
+      instructions:
+        - opcode: XOR
+          root: true
+          operands:
+            - { temporary: difference, flags: [define] }
+            - { operand: 2 }
+            - { operand: 3 }
+        - opcode: SLTIU
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: difference, flags: [use] }
+            - { immediate: 1 }
+  -
+    id: select_g_icmp_ne_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ne }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      temporaries:
+        - { id: difference, type_from_operand: 2 }
+      instructions:
+        - opcode: XOR
+          root: true
+          operands:
+            - { temporary: difference, flags: [define] }
+            - { operand: 2 }
+            - { operand: 3 }
+        - opcode: SLTU
+          root: false
+          operands:
+            - { operand: 0 }
+            - { physical_register: X0, flags: [use] }
+            - { temporary: difference, flags: [use] }
+  -
+    id: select_g_icmp_ule_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: ule }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      temporaries:
+        - { id: compare, type_from_operand: 2 }
+      instructions:
+        - opcode: SLTU
+          root: true
+          operands:
+            - { temporary: compare, flags: [define] }
+            - { operand: 3 }
+            - { operand: 2 }
+        - opcode: XORI
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: compare, flags: [use] }
+            - { immediate: 1 }
+  -
+    id: select_g_icmp_sle_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: sle }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      temporaries:
+        - { id: compare, type_from_operand: 2 }
+      instructions:
+        - opcode: SLT
+          root: true
+          operands:
+            - { temporary: compare, flags: [define] }
+            - { operand: 3 }
+            - { operand: 2 }
+        - opcode: XORI
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: compare, flags: [use] }
+            - { immediate: 1 }
+  -
+    id: select_g_icmp_uge_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: uge }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      temporaries:
+        - { id: compare, type_from_operand: 2 }
+      instructions:
+        - opcode: SLTU
+          root: true
+          operands:
+            - { temporary: compare, flags: [define] }
+            - { operand: 2 }
+            - { operand: 3 }
+        - opcode: XORI
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: compare, flags: [use] }
+            - { immediate: 1 }
+  -
+    id: select_g_icmp_sge_register
+    priority: 100
+    match:
+      opcode: G_ICMP
+      result_type: { kind: scalar, bits: 64 }
+      integer_predicate: { index: 1, value: sge }
+      operand_types:
+        - { index: 2, kind: any, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: GPR }
+        - { index: 3, bank: GPR }
+    apply:
+      temporaries:
+        - { id: compare, type_from_operand: 2 }
+      instructions:
+        - opcode: SLT
+          root: true
+          operands:
+            - { temporary: compare, flags: [define] }
+            - { operand: 2 }
+            - { operand: 3 }
+        - opcode: XORI
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: compare, flags: [use] }
+            - { immediate: 1 }

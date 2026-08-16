@@ -1180,25 +1180,53 @@ private:
     for (const yaml::NodeID ElementID : Node.sequence()) {
       const yaml::Node *Element = Input.node(ElementID);
       if (!requireMapping(Element, "selection operand definition constant") ||
-          !checkKeys(*Element, {"index", "value"}, "selection operand definition constant")) {
+          !checkKeys(*Element, {"index", "ranges"}, "selection operand definition constant")) {
         return false;
       }
       const yaml::Node *IndexNode =
           requiredNode(*Element, "index", "selection operand definition constant");
-      const yaml::Node *ValueNode =
-          requiredNode(*Element, "value", "selection operand definition constant");
-      if (IndexNode == nullptr || ValueNode == nullptr)
+      const yaml::Node *RangesNode =
+          requiredNode(*Element, "ranges", "selection operand definition constant");
+      if (IndexNode == nullptr || RangesNode == nullptr)
         return false;
       const auto Index =
           unsignedInteger32(*IndexNode, "selection operand definition constant index");
-      const auto Value = signedInteger(*ValueNode, "selection operand definition constant value");
-      if (!Index || !Value)
+      if (!Index || !requireSequence(RangesNode, "selection operand definition constant ranges") ||
+          RangesNode->sequence().empty()) {
         return false;
-      Result.push_back({
+      }
+
+      SourceSelectionOperandDefConstantPredicate Predicate{
           .OperandIndex = *Index,
-          .Value = *Value,
+          .Ranges = {},
           .Range = Element->range(),
-      });
+      };
+      for (const yaml::NodeID RangeID : RangesNode->sequence()) {
+        const yaml::Node *Range = Input.node(RangeID);
+        if (!requireMapping(Range, "selection operand definition constant range") ||
+            !checkKeys(*Range, {"min", "max"}, "selection operand definition constant range")) {
+          return false;
+        }
+        const yaml::Node *MinimumNode =
+            requiredNode(*Range, "min", "selection operand definition constant range");
+        const yaml::Node *MaximumNode =
+            requiredNode(*Range, "max", "selection operand definition constant range");
+        if (MinimumNode == nullptr || MaximumNode == nullptr)
+          return false;
+        const auto Minimum = signedInteger(*MinimumNode, "selection constant range minimum");
+        const auto Maximum = signedInteger(*MaximumNode, "selection constant range maximum");
+        if (!Minimum || !Maximum || *Minimum > *Maximum) {
+          if (Minimum && Maximum)
+            fail(Range->range(), "selection operand definition constant range is invalid");
+          return false;
+        }
+        Predicate.Ranges.push_back({
+            .Minimum = *Minimum,
+            .Maximum = *Maximum,
+            .SourceRange = Range->range(),
+        });
+      }
+      Result.push_back(std::move(Predicate));
     }
     return true;
   }
@@ -1211,20 +1239,33 @@ private:
     for (const yaml::NodeID ElementID : Node.sequence()) {
       const yaml::Node *Element = Input.node(ElementID);
       if (!requireMapping(Element, "selection operand renderer") ||
-          !checkKeys(*Element, {"operand", "physical_register", "flags"},
+          !checkKeys(*Element,
+                     {"operand", "physical_register", "temporary", "captured_immediate",
+                      "immediate", "transform", "flags"},
                      "selection operand renderer")) {
         return false;
       }
       const yaml::Node *OperandNode = optionalNode(*Element, "operand");
       const yaml::Node *PhysicalRegisterNode = optionalNode(*Element, "physical_register");
-      if ((OperandNode == nullptr) == (PhysicalRegisterNode == nullptr)) {
-        fail(Element->range(), "selection operand renderer requires exactly one of 'operand' or "
-                               "'physical_register'");
+      const yaml::Node *TemporaryNode = optionalNode(*Element, "temporary");
+      const yaml::Node *CapturedImmediateNode = optionalNode(*Element, "captured_immediate");
+      const yaml::Node *ImmediateNode = optionalNode(*Element, "immediate");
+      const std::uint32_t SourceCount = static_cast<std::uint32_t>(OperandNode != nullptr) +
+                                        static_cast<std::uint32_t>(PhysicalRegisterNode != nullptr) +
+                                        static_cast<std::uint32_t>(TemporaryNode != nullptr) +
+                                        static_cast<std::uint32_t>(CapturedImmediateNode != nullptr) +
+                                        static_cast<std::uint32_t>(ImmediateNode != nullptr);
+      if (SourceCount != 1) {
+        fail(Element->range(), "selection operand renderer requires exactly one source");
         return false;
       }
       SourceSelectionOperandRenderer Renderer{
           .OperandIndex = std::nullopt,
           .PhysicalRegisterSymbol = {},
+          .TemporarySymbol = {},
+          .CapturedImmediateOperand = std::nullopt,
+          .Immediate = std::nullopt,
+          .ImmediateTransform = "identity",
           .Flags = {},
           .Range = Element->range(),
       };
@@ -1233,12 +1274,38 @@ private:
         if (!Index)
           return false;
         Renderer.OperandIndex = Index;
-      } else {
+      } else if (PhysicalRegisterNode != nullptr) {
         const auto Symbol =
             scalar(*PhysicalRegisterNode, "selection operand renderer physical register");
         if (!Symbol)
           return false;
         Renderer.PhysicalRegisterSymbol = *Symbol;
+      } else if (TemporaryNode != nullptr) {
+        const auto Symbol = scalar(*TemporaryNode, "selection operand renderer temporary");
+        if (!Symbol)
+          return false;
+        Renderer.TemporarySymbol = *Symbol;
+      } else if (CapturedImmediateNode != nullptr) {
+        const auto Index =
+            unsignedInteger32(*CapturedImmediateNode, "selection operand renderer captured immediate");
+        if (!Index)
+          return false;
+        Renderer.CapturedImmediateOperand = *Index;
+      } else {
+        const auto Value = signedInteger(*ImmediateNode, "selection operand renderer immediate");
+        if (!Value)
+          return false;
+        Renderer.Immediate = *Value;
+      }
+      if (const yaml::Node *TransformNode = optionalNode(*Element, "transform")) {
+        const auto Transform = scalar(*TransformNode, "selection operand renderer transform");
+        if (!Transform)
+          return false;
+        Renderer.ImmediateTransform = *Transform;
+      }
+      if (!Renderer.CapturedImmediateOperand && Renderer.ImmediateTransform != "identity") {
+        fail(Element->range(), "selection operand renderer transform requires a captured immediate");
+        return false;
       }
       if (const yaml::Node *FlagsNode = optionalNode(*Element, "flags")) {
         const auto Flags = scalarSequence(*FlagsNode, "selection operand renderer flags");
@@ -1247,6 +1314,63 @@ private:
         Renderer.Flags = *Flags;
       }
       Result.push_back(std::move(Renderer));
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseSelectionTemporaries(const yaml::Node &Node,
+                                                std::vector<SourceSelectionTemporary> &Result) {
+    if (!requireSequence(&Node, "selection temporaries"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection temporary") ||
+          !checkKeys(*Element, {"id", "type_from_operand"}, "selection temporary")) {
+        return false;
+      }
+      const auto Symbol = requiredScalar(*Element, "id", "selection temporary");
+      const yaml::Node *TypeNode = requiredNode(*Element, "type_from_operand", "selection temporary");
+      if (!Symbol || TypeNode == nullptr)
+        return false;
+      const auto TypeFromOperand = unsignedInteger32(*TypeNode, "selection temporary type operand");
+      if (!TypeFromOperand)
+        return false;
+      Result.push_back({
+          .Symbol = *Symbol,
+          .TypeFromOperand = *TypeFromOperand,
+          .Range = Element->range(),
+      });
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseSelectionActions(const yaml::Node &Node,
+                                            std::vector<SourceSelectionAction> &Result) {
+    if (!requireSequence(&Node, "selection instructions"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection instruction") ||
+          !checkKeys(*Element, {"opcode", "root", "operands"}, "selection instruction")) {
+        return false;
+      }
+      const auto Opcode = requiredScalar(*Element, "opcode", "selection instruction");
+      const yaml::Node *RootNode = requiredNode(*Element, "root", "selection instruction");
+      const yaml::Node *OperandsNode = requiredNode(*Element, "operands", "selection instruction");
+      if (!Opcode || RootNode == nullptr || OperandsNode == nullptr)
+        return false;
+      const auto ReplacesRoot = boolean(*RootNode, "selection instruction root");
+      if (!ReplacesRoot)
+        return false;
+      std::vector<SourceSelectionOperandRenderer> Renderers;
+      if (!parseSelectionOperandRenderers(*OperandsNode, Renderers))
+        return false;
+      Result.push_back({
+          .ResultOpcodeSymbol = *Opcode,
+          .ReplacesRoot = *ReplacesRoot,
+          .OperandRenderers = std::move(Renderers),
+          .Range = Element->range(),
+      });
     }
     return true;
   }
@@ -1294,26 +1418,19 @@ private:
 
   [[nodiscard]] bool parseSelectionRuleApply(const yaml::Node &Node, SourceSelectionRule &Result) {
     if (!requireMapping(&Node, "selection rule apply") ||
-        !checkKeys(Node, {"opcode", "append_immediates", "operands", "erase_operand_definitions"},
+        !checkKeys(Node, {"temporaries", "instructions", "erase_operand_definitions"},
                    "selection rule apply")) {
       return false;
     }
-    const auto Opcode = requiredScalar(Node, "opcode", "selection rule apply");
-    if (!Opcode)
+    const yaml::Node *Instructions = requiredNode(Node, "instructions", "selection rule apply");
+    if (Instructions == nullptr)
       return false;
-    Result.ResultOpcodeSymbol = *Opcode;
-    if (const yaml::Node *Immediates = optionalNode(Node, "append_immediates")) {
-      auto Values = signedIntegerSequence(*Immediates, "selection rule appended immediates");
-      if (!Values)
+    if (const yaml::Node *Temporaries = optionalNode(Node, "temporaries")) {
+      if (!parseSelectionTemporaries(*Temporaries, Result.Temporaries))
         return false;
-      Result.AppendedImmediates = std::move(*Values);
     }
-    if (const yaml::Node *Operands = optionalNode(Node, "operands")) {
-      std::vector<SourceSelectionOperandRenderer> Renderers;
-      if (!parseSelectionOperandRenderers(*Operands, Renderers))
-        return false;
-      Result.OperandRenderers = std::move(Renderers);
-    }
+    if (!parseSelectionActions(*Instructions, Result.Actions))
+      return false;
     if (const yaml::Node *Erase = optionalNode(Node, "erase_operand_definitions")) {
       auto Indices = unsignedInteger32Sequence(*Erase, "selection operand definitions");
       if (!Indices)

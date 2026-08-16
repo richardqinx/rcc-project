@@ -268,7 +268,6 @@ public:
     case GenericOpcode::G_SEXT:
     case GenericOpcode::G_SEXT_INREG:
     case GenericOpcode::G_ZEXT:
-    case GenericOpcode::G_ICMP:
     case GenericOpcode::G_FCMP:
     case GenericOpcode::G_FPEXT:
     case GenericOpcode::G_FPTRUNC:
@@ -476,8 +475,6 @@ public:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
     case GenericOpcode::G_SEXT_INREG:
       return selectSignExtendInRegister(Instruction, Function, Target, Type);
-    case GenericOpcode::G_ICMP:
-      return selectIntegerCompare(Instruction, Function, Target);
     case GenericOpcode::G_FCMP:
       return selectFloatingCompare(Instruction, Function, Target);
     case GenericOpcode::G_FPEXT:
@@ -748,9 +745,9 @@ private:
                                                           const TargetDescription &Target,
                                                           Register Source, LowLevelType Type,
                                                           bool Signed) const {
-    if (!isSupportedIntegerScalar(Type))
+    if (!isSupportedIntegerType(Type))
       return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V integer normalization requires a scalar i1-i64 type");
+                            "RISC-V integer normalization requires an integer scalar or a 64-bit pointer");
     const std::uint32_t Bits = Type.scalarBitWidth();
     if (Bits == 64)
       return Source;
@@ -1739,175 +1736,6 @@ private:
     if (!Shifted)
       return std::unexpected(Shifted.error());
     return {};
-  }
-
-  [[nodiscard]] Expected<void> selectIntegerCompare(MachineInstr &Instruction,
-                                                    MachineFunction &Function,
-                                                    const TargetDescription &Target) const {
-    const MachineOperand *PredicateMO = Instruction.operandAt(1);
-    const auto *Predicate =
-        PredicateMO == nullptr ? nullptr : PredicateMO->getIf<PredicateOperand>();
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const MachineOperand *LeftOperand = Instruction.operandAt(2);
-    const MachineOperand *RightOperand = Instruction.operandAt(3);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
-    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    const std::optional<LowLevelType> LeftType = operandType(Function, Instruction, 2);
-    if (Predicate == nullptr || Predicate->integerPredicate() == nullptr ||
-        Destination == nullptr || Left == nullptr || Right == nullptr || !LeftType)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V integer comparison has invalid operands");
-    const IntegerPredicate Condition = *Predicate->integerPredicate();
-    const Register DestinationRegister = *Destination;
-    const bool SignedOperands = Condition == IntegerPredicate::SignedGreaterThan ||
-                                Condition == IntegerPredicate::SignedGreaterEqual ||
-                                Condition == IntegerPredicate::SignedLessThan ||
-                                Condition == IntegerPredicate::SignedLessEqual;
-    auto LeftRegister =
-        normalizeIntegerBefore(Instruction, Function, Target, *Left, *LeftType, SignedOperands);
-    auto RightRegister =
-        normalizeIntegerBefore(Instruction, Function, Target, *Right, *LeftType, SignedOperands);
-    if (!LeftRegister || !RightRegister)
-      return std::unexpected(!LeftRegister ? LeftRegister.error() : RightRegister.error());
-    auto ErasePredicate = Instruction.eraseOperand(1);
-    if (!ErasePredicate)
-      return std::unexpected(ErasePredicate.error());
-
-    const auto SetSources = [&Instruction](Register NewLeft, Register NewRight) -> Expected<void> {
-      auto SetLeft = Instruction.operandAt(1)->setRegister(NewLeft);
-      if (!SetLeft)
-        return std::unexpected(SetLeft.error());
-      return Instruction.operandAt(2)->setRegister(NewRight);
-    };
-    const auto StrictOpcode = [](IntegerPredicate Value) -> std::optional<InstructionOpcode> {
-      switch (Value) {
-      case IntegerPredicate::SignedLessThan:
-        return InstructionOpcode::SLT;
-      case IntegerPredicate::UnsignedLessThan:
-        return InstructionOpcode::SLTU;
-      default:
-        return std::nullopt;
-      }
-    };
-
-    IntegerPredicate StrictCondition = Condition;
-    bool Swap = false;
-    bool Invert = false;
-    switch (Condition) {
-    case IntegerPredicate::Equal:
-    case IntegerPredicate::NotEqual:
-      break;
-    case IntegerPredicate::SignedGreaterThan:
-      StrictCondition = IntegerPredicate::SignedLessThan;
-      Swap = true;
-      break;
-    case IntegerPredicate::SignedGreaterEqual:
-      StrictCondition = IntegerPredicate::SignedLessThan;
-      Invert = true;
-      break;
-    case IntegerPredicate::SignedLessThan:
-      StrictCondition = IntegerPredicate::SignedLessThan;
-      break;
-    case IntegerPredicate::SignedLessEqual:
-      StrictCondition = IntegerPredicate::SignedLessThan;
-      Swap = true;
-      Invert = true;
-      break;
-    case IntegerPredicate::UnsignedGreaterThan:
-      StrictCondition = IntegerPredicate::UnsignedLessThan;
-      Swap = true;
-      break;
-    case IntegerPredicate::UnsignedGreaterEqual:
-      StrictCondition = IntegerPredicate::UnsignedLessThan;
-      Invert = true;
-      break;
-    case IntegerPredicate::UnsignedLessThan:
-      StrictCondition = IntegerPredicate::UnsignedLessThan;
-      break;
-    case IntegerPredicate::UnsignedLessEqual:
-      StrictCondition = IntegerPredicate::UnsignedLessThan;
-      Swap = true;
-      Invert = true;
-      break;
-    case IntegerPredicate::Count:
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V integer comparison predicate is invalid");
-    }
-
-    MachineIRBuilder Builder(Function, Target);
-    if (Condition == IntegerPredicate::Equal || Condition == IntegerPredicate::NotEqual) {
-      auto Temporary = createTemporary(Function, *LeftType, Target);
-      if (!Temporary)
-        return std::unexpected(Temporary.error());
-      auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
-      if (!SetDestination)
-        return std::unexpected(SetDestination.error());
-      auto Set = SetSources(*LeftRegister, *RightRegister);
-      if (!Set)
-        return std::unexpected(Set.error());
-      auto SetOpcode = Instruction.setOpcode(instructionOpcode(InstructionOpcode::XOR));
-      if (!SetOpcode)
-        return std::unexpected(SetOpcode.error());
-      if (Condition == IntegerPredicate::Equal) {
-        auto Result = buildImmediateAfter(Builder, Instruction, InstructionOpcode::SLTIU,
-                                          DestinationRegister, *Temporary, 1);
-        if (!Result)
-          return std::unexpected(Result.error());
-      } else {
-        auto Zero = physicalRegister(PhysicalRegisterID::X0);
-        if (!Zero)
-          return std::unexpected(Zero.error());
-        auto Result =
-            buildBinaryAfter(Builder, Instruction, InstructionOpcode::SLTU, DestinationRegister,
-                             Register::fromPhysical(*Zero), *Temporary);
-        if (!Result)
-          return std::unexpected(Result.error());
-      }
-      return {};
-    }
-
-    const std::optional<InstructionOpcode> OpcodeValue = StrictOpcode(StrictCondition);
-    if (!OpcodeValue)
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V integer comparison predicate is invalid");
-    if (Invert) {
-      auto Temporary = createTemporary(Function, *LeftType, Target);
-      if (!Temporary)
-        return std::unexpected(Temporary.error());
-      auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
-      if (!SetDestination)
-        return std::unexpected(SetDestination.error());
-      const Register Base = *Temporary;
-      if (Swap) {
-        auto Set = SetSources(*RightRegister, *LeftRegister);
-        if (!Set)
-          return std::unexpected(Set.error());
-      } else {
-        auto Set = SetSources(*LeftRegister, *RightRegister);
-        if (!Set)
-          return std::unexpected(Set.error());
-      }
-      auto SetOpcode = Instruction.setOpcode(instructionOpcode(*OpcodeValue));
-      if (!SetOpcode)
-        return std::unexpected(SetOpcode.error());
-      auto Result = buildImmediateAfter(Builder, Instruction, InstructionOpcode::XORI,
-                                        DestinationRegister, Base, 1);
-      if (!Result)
-        return std::unexpected(Result.error());
-      return {};
-    }
-    if (Swap) {
-      auto Set = SetSources(*RightRegister, *LeftRegister);
-      if (!Set)
-        return std::unexpected(Set.error());
-    } else {
-      auto Set = SetSources(*LeftRegister, *RightRegister);
-      if (!Set)
-        return std::unexpected(Set.error());
-    }
-    return Instruction.setOpcode(instructionOpcode(*OpcodeValue));
   }
 
   [[nodiscard]] Expected<void> selectFloatingCompare(MachineInstr &Instruction,

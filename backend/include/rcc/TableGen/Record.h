@@ -237,14 +237,37 @@ struct SourceSelectionIntegerPredicate final {
 
 struct SourceSelectionOperandDefConstantPredicate final {
   std::uint32_t OperandIndex = 0;
-  std::int64_t Value = 0;
+  struct ConstantRange final {
+    std::int64_t Minimum = 0;
+    std::int64_t Maximum = 0;
+    TextRange SourceRange;
+  };
+
+  std::vector<ConstantRange> Ranges;
+  TextRange Range;
+};
+
+struct SourceSelectionTemporary final {
+  std::string Symbol;
+  std::uint32_t TypeFromOperand = 0;
   TextRange Range;
 };
 
 struct SourceSelectionOperandRenderer final {
   std::optional<std::uint32_t> OperandIndex;
   std::string PhysicalRegisterSymbol;
+  std::string TemporarySymbol;
+  std::optional<std::uint32_t> CapturedImmediateOperand;
+  std::optional<std::int64_t> Immediate;
+  std::string ImmediateTransform;
   std::vector<std::string> Flags;
+  TextRange Range;
+};
+
+struct SourceSelectionAction final {
+  std::string ResultOpcodeSymbol;
+  bool ReplacesRoot = false;
+  std::vector<SourceSelectionOperandRenderer> OperandRenderers;
   TextRange Range;
 };
 
@@ -258,9 +281,8 @@ struct SourceSelectionRule final {
   std::vector<SourceSelectionOperandBankPredicate> OperandBanks;
   std::vector<SourceSelectionOperandClassPredicate> OperandClasses;
   std::vector<SourceSelectionOperandDefConstantPredicate> OperandDefConstants;
-  std::string ResultOpcodeSymbol;
-  std::optional<std::vector<SourceSelectionOperandRenderer>> OperandRenderers;
-  std::vector<std::int64_t> AppendedImmediates;
+  std::vector<SourceSelectionTemporary> Temporaries;
+  std::vector<SourceSelectionAction> Actions;
   std::vector<std::uint32_t> EraseOperandDefinitions;
   TextRange Range;
 };

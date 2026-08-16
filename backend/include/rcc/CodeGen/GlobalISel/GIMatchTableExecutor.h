@@ -22,17 +22,27 @@ enum class GIMatchTypeKind : std::uint8_t {
   Pointer,
 };
 
+enum class GIMatchImmediateTransform : std::uint8_t {
+  Identity,
+  Negate,
+  PlusOne,
+};
+
 enum class GIMatchTableOpcode : std::uint8_t {
   CheckOpcode,
   CheckOperandType,
   CheckOperandBank,
   CheckOperandClass,
   CheckIntegerPredicate,
-  CheckOperandDefConstant,
+  CheckOperandDefConstantRanges,
+  CreateTemporary,
   MutateOpcode,
+  BuildInstruction,
   RenderOperand,
   RenderPhysicalRegister,
-  AppendImmediate,
+  RenderTemporary,
+  RenderCapturedImmediate,
+  RenderImmediate,
   EraseOperandDefinition,
   Complete,
 };
@@ -45,6 +55,11 @@ struct GIMatchTableInstruction final {
   std::int64_t Immediate = 0;
 };
 
+struct GIMatchTableConstantRange final {
+  std::int64_t Minimum = 0;
+  std::int64_t Maximum = 0;
+};
+
 struct GIMatchTableRule final {
   std::string_view Name;
   std::uint32_t Priority = 0;
@@ -55,10 +70,13 @@ struct GIMatchTableRule final {
 struct GIMatchTable final {
   std::span<const GIMatchTableInstruction> Instructions;
   std::span<const GIMatchTableRule> Rules;
+  std::span<const GIMatchTableConstantRange> ConstantRanges;
 };
 
 class GIMatchTableExecutor {
 public:
+  virtual ~GIMatchTableExecutor() = default;
+
   [[nodiscard]] Expected<bool> match(const GIMatchTable &Table, const MachineInstr &Instruction,
                                      const MachineFunction &Function,
                                      const TargetDescription &Target) const;
@@ -68,6 +86,12 @@ public:
   [[nodiscard]] Expected<bool> select(const GIMatchTable &Table, MachineInstr &Instruction,
                                       MachineFunction &Function,
                                       const TargetDescription &Target) const;
+
+protected:
+  [[nodiscard]] virtual Expected<void>
+  finalizeGeneratedInstruction(MachineInstr &Output, MachineFunction &Function,
+                               const TargetDescription &Target, MachineInstrFlags InputFlags,
+                               bool InputMayRaiseFPException) const;
 };
 
 } // namespace rcc

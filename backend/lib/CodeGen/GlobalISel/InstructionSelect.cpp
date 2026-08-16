@@ -199,6 +199,16 @@ Expected<void> InstructionSelector::propagateSelectionFlags(MachineInstr &Output
                                  Target);
 }
 
+Expected<void> InstructionSelector::finalizeGeneratedInstruction(
+    MachineInstr &Output, MachineFunction &Function, const TargetDescription &Target,
+    MachineInstrFlags InputFlags, bool InputMayRaiseFPException) const {
+  auto Flags =
+      propagateSelectionFlags(Output, InputFlags, InputMayRaiseFPException, Target);
+  if (!Flags)
+    return std::unexpected(Flags.error());
+  return constrainSelectedInstruction(Output, Function, Target);
+}
+
 const MachinePassContract &InstructionSelect::contract() const noexcept {
   return instructionSelectContract();
 }
