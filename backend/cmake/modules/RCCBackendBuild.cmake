@@ -13,6 +13,18 @@ function(rcc_backend_initialize_toolchain)
     NAMES "clang-tidy-${RCCBackendClangMajor}" clang-tidy
     REQUIRED
   )
+  find_program(
+    RCC_BACKEND_CLANG_TIDY_DIFF
+    NAMES clang-tidy-diff.py
+    HINTS "/usr/lib/llvm-${RCCBackendClangMajor}/share/clang"
+    REQUIRED
+  )
+  find_program(
+    RCC_BACKEND_RUN_CLANG_TIDY
+    NAMES "run-clang-tidy-${RCCBackendClangMajor}" run-clang-tidy
+    REQUIRED
+  )
+  find_program(RCC_BACKEND_GIT NAMES git REQUIRED)
 
   foreach(Tool IN ITEMS RCC_BACKEND_CLANG_FORMAT RCC_BACKEND_CLANG_TIDY)
     execute_process(
@@ -40,6 +52,9 @@ function(rcc_backend_initialize_toolchain)
 
   set(RCC_BACKEND_CLANG_FORMAT "${RCC_BACKEND_CLANG_FORMAT}" PARENT_SCOPE)
   set(RCC_BACKEND_CLANG_TIDY "${RCC_BACKEND_CLANG_TIDY}" PARENT_SCOPE)
+  set(RCC_BACKEND_CLANG_TIDY_DIFF "${RCC_BACKEND_CLANG_TIDY_DIFF}" PARENT_SCOPE)
+  set(RCC_BACKEND_RUN_CLANG_TIDY "${RCC_BACKEND_RUN_CLANG_TIDY}" PARENT_SCOPE)
+  set(RCC_BACKEND_GIT "${RCC_BACKEND_GIT}" PARENT_SCOPE)
 endfunction()
 
 function(rcc_backend_configure_target Target)
