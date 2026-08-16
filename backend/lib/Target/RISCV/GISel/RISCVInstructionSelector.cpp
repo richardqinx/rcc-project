@@ -405,7 +405,6 @@ public:
     case GenericOpcode::G_DEBUGTRAP:
     case GenericOpcode::G_UBSANTRAP:
     case GenericOpcode::G_PHI:
-    case GenericOpcode::G_IMPLICIT_DEF:
       return {};
     default:
       return makeUnexpected(ErrorCode::Unsupported,
@@ -493,8 +492,6 @@ public:
       return selectTrap(Instruction);
     case GenericOpcode::G_PHI:
       return Instruction.setOpcode(opcode(GenericOpcode::PHI));
-    case GenericOpcode::G_IMPLICIT_DEF:
-      return Instruction.setOpcode(opcode(GenericOpcode::IMPLICIT_DEF));
     case GenericOpcode::COPY:
     case GenericOpcode::IMPLICIT_DEF:
     case GenericOpcode::PHI:

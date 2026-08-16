@@ -416,10 +416,14 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       const auto ResultOpcode = resolveOpcode(Result, Action.ResultOpcodeSymbol);
       const NormalizedInstruction *ResultInstruction =
           findInstructionBySymbol(Result, Action.ResultOpcodeSymbol);
-      if (!ResultOpcode || ResultInstruction == nullptr ||
-          isGenericOpcode(Opcode::fromValue(*ResultOpcode)) ||
-          std::ranges::contains(ResultInstruction->Flags, "Generic")) {
-        fail(Action.Range, "selection instruction opcode must name a declared target instruction");
+      const bool IsCorePseudo =
+          ResultOpcode && isCorePseudoOpcode(Opcode::fromValue(*ResultOpcode));
+      if (!ResultOpcode || (ResultInstruction == nullptr && !IsCorePseudo) ||
+          (ResultInstruction != nullptr &&
+           (isGenericOpcode(Opcode::fromValue(*ResultOpcode)) ||
+            std::ranges::contains(ResultInstruction->Flags, "Generic")))) {
+        fail(Action.Range,
+             "selection instruction opcode must name a declared target instruction or core pseudo");
         return false;
       }
       if (Action.ReplacesRoot == HasRootAction || (Action.ReplacesRoot && ActionIndex != 0)) {
@@ -428,7 +432,8 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
         return false;
       }
       HasRootAction |= Action.ReplacesRoot;
-      if (ResultInstruction->Operands.size() != Action.OperandRenderers.size()) {
+      if (ResultInstruction != nullptr &&
+          ResultInstruction->Operands.size() != Action.OperandRenderers.size()) {
         fail(Action.Range, "selection instruction has an incompatible operand count");
         return false;
       }

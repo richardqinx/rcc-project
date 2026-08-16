@@ -1,5 +1,15 @@
 selection_rules:
   -
+    id: select_g_implicit_def
+    priority: 100
+    match:
+      opcode: G_IMPLICIT_DEF
+    apply:
+      instructions:
+        - opcode: IMPLICIT_DEF
+          root: true
+          operands: [{ operand: 0 }]
+  -
     id: select_g_sext_s64_s32
     priority: 500
     match:
