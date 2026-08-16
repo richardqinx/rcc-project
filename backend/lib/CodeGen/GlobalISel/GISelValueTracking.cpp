@@ -170,8 +170,8 @@ constantShiftAmount(Register Reg, const MachineRegisterInfo &MRI, std::uint32_t 
 
 } // namespace
 
-GISelValueTracking::GISelValueTracking(MachineFunction &Function, const TargetDescription &Target,
-                                       unsigned MaxDepth) noexcept
+GISelValueTracking::GISelValueTracking(const MachineFunction &Function,
+                                       const TargetDescription &Target, unsigned MaxDepth) noexcept
     : Function(Function), MRI(Function.registerInfo()), Target(Target), MaxDepth(MaxDepth) {}
 
 Expected<GISelValueTracking::KnownBits>

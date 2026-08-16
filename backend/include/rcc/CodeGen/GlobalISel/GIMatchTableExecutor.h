@@ -4,11 +4,14 @@
 #define RCC_CODEGEN_GLOBALISEL_GIMATCHTABLEEXECUTOR_H
 
 #include "rcc/CodeGen/MachineIRTypes.h"
+#include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/Support/Error.h"
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace rcc {
 
@@ -35,10 +38,15 @@ enum class GIMatchTableOpcode : std::uint8_t {
   CheckOperandClass,
   CheckIntegerPredicate,
   CheckOperandDefConstantRanges,
+  CheckOperandDefOpcode,
+  CheckOperandDefOperandConstantRanges,
+  CaptureDefOperand,
   CreateTemporary,
   MutateOpcode,
   BuildInstruction,
   RenderOperand,
+  RenderComplexOperand,
+  RenderCapturedOperand,
   RenderPhysicalRegister,
   RenderTemporary,
   RenderCapturedImmediate,
@@ -53,6 +61,18 @@ struct GIMatchTableInstruction final {
   std::uint32_t Value = 0;
   std::uint32_t Auxiliary = 0;
   std::int64_t Immediate = 0;
+  std::string_view Symbol;
+};
+
+struct GIMatchComplexInstruction final {
+  Opcode ResultOpcode;
+  LowLevelType ResultType;
+  std::vector<MachineOperand> Operands;
+};
+
+struct GIMatchComplexOperand final {
+  std::optional<MachineOperand> Operand;
+  std::optional<GIMatchComplexInstruction> Instruction;
 };
 
 struct GIMatchTableConstantRange final {
@@ -88,6 +108,11 @@ public:
                                       const TargetDescription &Target) const;
 
 protected:
+  [[nodiscard]] virtual Expected<std::optional<GIMatchComplexOperand>>
+  renderComplexOperand(std::string_view Name, const MachineInstr &Instruction,
+                       const MachineFunction &Function, const TargetDescription &Target,
+                       std::uint32_t OperandIndex) const;
+
   [[nodiscard]] virtual Expected<void>
   finalizeGeneratedInstruction(MachineInstr &Output, MachineFunction &Function,
                                const TargetDescription &Target, MachineInstrFlags InputFlags,

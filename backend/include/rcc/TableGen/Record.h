@@ -247,6 +247,20 @@ struct SourceSelectionOperandDefConstantPredicate final {
   TextRange Range;
 };
 
+struct SourceSelectionDefUseCapture final {
+  std::string Symbol;
+  std::uint32_t OperandIndex = 0;
+  TextRange Range;
+};
+
+struct SourceSelectionDefUsePredicate final {
+  std::uint32_t RootOperandIndex = 0;
+  std::string OpcodeSymbol;
+  std::vector<SourceSelectionDefUseCapture> Captures;
+  std::vector<SourceSelectionOperandDefConstantPredicate> OperandDefConstants;
+  TextRange Range;
+};
+
 struct SourceSelectionTemporary final {
   std::string Symbol;
   std::uint32_t TypeFromOperand = 0;
@@ -255,8 +269,11 @@ struct SourceSelectionTemporary final {
 
 struct SourceSelectionOperandRenderer final {
   std::optional<std::uint32_t> OperandIndex;
+  std::optional<std::uint32_t> ComplexOperandIndex;
   std::string PhysicalRegisterSymbol;
+  std::string ComplexRendererSymbol;
   std::string TemporarySymbol;
+  std::string CapturedOperandSymbol;
   std::optional<std::uint32_t> CapturedImmediateOperand;
   std::optional<std::int64_t> Immediate;
   std::string ImmediateTransform;
@@ -281,6 +298,7 @@ struct SourceSelectionRule final {
   std::vector<SourceSelectionOperandBankPredicate> OperandBanks;
   std::vector<SourceSelectionOperandClassPredicate> OperandClasses;
   std::vector<SourceSelectionOperandDefConstantPredicate> OperandDefConstants;
+  std::vector<SourceSelectionDefUsePredicate> DefUsePredicates;
   std::vector<SourceSelectionTemporary> Temporaries;
   std::vector<SourceSelectionAction> Actions;
   std::vector<std::uint32_t> EraseOperandDefinitions;

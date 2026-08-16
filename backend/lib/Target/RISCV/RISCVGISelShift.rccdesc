@@ -1,0 +1,198 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+selection_rules:
+  -
+    id: select_g_lshr_s64_word_immediate
+    priority: 500
+    match:
+      opcode: G_LSHR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: 0, max: 31 }]
+      def_use:
+        - operand: 1
+          opcode: G_AND
+          captures:
+            - { id: source, operand: 1 }
+          operand_def_constants:
+            - index: 2
+              ranges: [{ min: 4294967295, max: 4294967295 }]
+    apply:
+      instructions:
+        - opcode: SRLIW
+          root: true
+          operands:
+            - { operand: 0 }
+            - { captured_operand: source }
+            - { captured_immediate: 2 }
+      erase_operand_definitions: [1, 2]
+  -
+    id: select_g_ashr_s64_word_immediate
+    priority: 500
+    match:
+      opcode: G_ASHR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: 0, max: 31 }]
+      def_use:
+        - operand: 1
+          opcode: G_SEXT_INREG
+          captures:
+            - { id: source, operand: 1 }
+          operand_def_constants:
+            - index: 2
+              ranges: [{ min: 32, max: 32 }]
+    apply:
+      instructions:
+        - opcode: SRAIW
+          root: true
+          operands:
+            - { operand: 0 }
+            - { captured_operand: source }
+            - { captured_immediate: 2 }
+      erase_operand_definitions: [1, 2]
+  -
+    id: select_g_shl_s64_immediate
+    priority: 400
+    match:
+      opcode: G_SHL
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: 0, max: 63 }]
+    apply:
+      instructions:
+        - opcode: SLLI
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_immediate: 2 }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_lshr_s64_immediate
+    priority: 400
+    match:
+      opcode: G_LSHR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: 0, max: 63 }]
+    apply:
+      instructions:
+        - opcode: SRLI
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_immediate: 2 }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_ashr_s64_immediate
+    priority: 400
+    match:
+      opcode: G_ASHR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: 0, max: 63 }]
+    apply:
+      instructions:
+        - opcode: SRAI
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_immediate: 2 }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_shl_s64_register
+    priority: 100
+    match:
+      opcode: G_SHL
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SLL
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 1 }
+            - { complex: shift_mask_xlen, operand: 2 }
+  -
+    id: select_g_lshr_s64_register
+    priority: 100
+    match:
+      opcode: G_LSHR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SRL
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 1 }
+            - { complex: shift_mask_xlen, operand: 2 }
+  -
+    id: select_g_ashr_s64_register
+    priority: 100
+    match:
+      opcode: G_ASHR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SRA
+          root: true
+          operands:
+            - { operand: 0 }
+            - { operand: 1 }
+            - { complex: shift_mask_xlen, operand: 2 }

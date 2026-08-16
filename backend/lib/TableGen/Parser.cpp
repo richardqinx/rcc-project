@@ -1232,6 +1232,73 @@ private:
   }
 
   [[nodiscard]] bool
+  parseSelectionDefUsePredicates(const yaml::Node &Node,
+                                 std::vector<SourceSelectionDefUsePredicate> &Result) {
+    if (!requireSequence(&Node, "selection def-use predicates"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "selection def-use predicate") ||
+          !checkKeys(*Element, {"operand", "opcode", "captures", "operand_def_constants"},
+                     "selection def-use predicate")) {
+        return false;
+      }
+      const yaml::Node *OperandNode =
+          requiredNode(*Element, "operand", "selection def-use predicate");
+      const auto Opcode = requiredScalar(*Element, "opcode", "selection def-use predicate");
+      if (OperandNode == nullptr || !Opcode)
+        return false;
+      const auto Operand = unsignedInteger32(*OperandNode, "selection def-use operand");
+      if (!Operand)
+        return false;
+
+      SourceSelectionDefUsePredicate Predicate{
+          .RootOperandIndex = *Operand,
+          .OpcodeSymbol = *Opcode,
+          .Captures = {},
+          .OperandDefConstants = {},
+          .Range = Element->range(),
+      };
+      if (const yaml::Node *Captures = optionalNode(*Element, "captures")) {
+        if (!requireSequence(Captures, "selection def-use captures"))
+          return false;
+        for (const yaml::NodeID CaptureID : Captures->sequence()) {
+          const yaml::Node *Capture = Input.node(CaptureID);
+          if (!requireMapping(Capture, "selection def-use capture") ||
+              !checkKeys(*Capture, {"id", "operand"}, "selection def-use capture")) {
+            return false;
+          }
+          const auto Symbol = requiredScalar(*Capture, "id", "selection def-use capture");
+          const yaml::Node *CaptureOperand =
+              requiredNode(*Capture, "operand", "selection def-use capture");
+          if (!Symbol || CaptureOperand == nullptr)
+            return false;
+          const auto Index =
+              unsignedInteger32(*CaptureOperand, "selection def-use capture operand");
+          if (!Index)
+            return false;
+          Predicate.Captures.push_back({
+              .Symbol = *Symbol,
+              .OperandIndex = *Index,
+              .Range = Capture->range(),
+          });
+        }
+      }
+      if (const yaml::Node *Constants = optionalNode(*Element, "operand_def_constants")) {
+        if (!parseSelectionOperandDefConstants(*Constants, Predicate.OperandDefConstants))
+          return false;
+      }
+      if (Predicate.Captures.empty() && Predicate.OperandDefConstants.empty()) {
+        fail(Element->range(),
+             "selection def-use predicate requires a capture or constant predicate");
+        return false;
+      }
+      Result.push_back(std::move(Predicate));
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
   parseSelectionOperandRenderers(const yaml::Node &Node,
                                  std::vector<SourceSelectionOperandRenderer> &Result) {
     if (!requireSequence(&Node, "selection operand renderers"))
@@ -1240,36 +1307,55 @@ private:
       const yaml::Node *Element = Input.node(ElementID);
       if (!requireMapping(Element, "selection operand renderer") ||
           !checkKeys(*Element,
-                     {"operand", "physical_register", "temporary", "captured_immediate",
-                      "immediate", "transform", "flags"},
+                     {"operand", "complex", "physical_register", "temporary", "captured_operand",
+                      "captured_immediate", "immediate", "transform", "flags"},
                      "selection operand renderer")) {
         return false;
       }
       const yaml::Node *OperandNode = optionalNode(*Element, "operand");
+      const yaml::Node *ComplexNode = optionalNode(*Element, "complex");
       const yaml::Node *PhysicalRegisterNode = optionalNode(*Element, "physical_register");
       const yaml::Node *TemporaryNode = optionalNode(*Element, "temporary");
+      const yaml::Node *CapturedOperandNode = optionalNode(*Element, "captured_operand");
       const yaml::Node *CapturedImmediateNode = optionalNode(*Element, "captured_immediate");
       const yaml::Node *ImmediateNode = optionalNode(*Element, "immediate");
-      const std::uint32_t SourceCount = static_cast<std::uint32_t>(OperandNode != nullptr) +
-                                        static_cast<std::uint32_t>(PhysicalRegisterNode != nullptr) +
-                                        static_cast<std::uint32_t>(TemporaryNode != nullptr) +
-                                        static_cast<std::uint32_t>(CapturedImmediateNode != nullptr) +
-                                        static_cast<std::uint32_t>(ImmediateNode != nullptr);
+      const std::uint32_t SourceCount =
+          static_cast<std::uint32_t>(ComplexNode != nullptr) +
+          static_cast<std::uint32_t>(ComplexNode == nullptr && OperandNode != nullptr) +
+          static_cast<std::uint32_t>(PhysicalRegisterNode != nullptr) +
+          static_cast<std::uint32_t>(TemporaryNode != nullptr) +
+          static_cast<std::uint32_t>(CapturedOperandNode != nullptr) +
+          static_cast<std::uint32_t>(CapturedImmediateNode != nullptr) +
+          static_cast<std::uint32_t>(ImmediateNode != nullptr);
       if (SourceCount != 1) {
         fail(Element->range(), "selection operand renderer requires exactly one source");
         return false;
       }
       SourceSelectionOperandRenderer Renderer{
           .OperandIndex = std::nullopt,
+          .ComplexOperandIndex = std::nullopt,
           .PhysicalRegisterSymbol = {},
+          .ComplexRendererSymbol = {},
           .TemporarySymbol = {},
+          .CapturedOperandSymbol = {},
           .CapturedImmediateOperand = std::nullopt,
           .Immediate = std::nullopt,
           .ImmediateTransform = "identity",
           .Flags = {},
           .Range = Element->range(),
       };
-      if (OperandNode != nullptr) {
+      if (ComplexNode != nullptr) {
+        if (OperandNode == nullptr) {
+          fail(Element->range(), "complex selection operand renderer requires an operand index");
+          return false;
+        }
+        const auto Name = scalar(*ComplexNode, "selection operand renderer complex matcher");
+        const auto Index = unsignedInteger32(*OperandNode, "selection operand renderer operand");
+        if (!Name || !Index)
+          return false;
+        Renderer.ComplexRendererSymbol = *Name;
+        Renderer.ComplexOperandIndex = Index;
+      } else if (OperandNode != nullptr) {
         const auto Index = unsignedInteger32(*OperandNode, "selection operand renderer operand");
         if (!Index)
           return false;
@@ -1285,9 +1371,15 @@ private:
         if (!Symbol)
           return false;
         Renderer.TemporarySymbol = *Symbol;
+      } else if (CapturedOperandNode != nullptr) {
+        const auto Symbol =
+            scalar(*CapturedOperandNode, "selection operand renderer captured operand");
+        if (!Symbol)
+          return false;
+        Renderer.CapturedOperandSymbol = *Symbol;
       } else if (CapturedImmediateNode != nullptr) {
-        const auto Index =
-            unsignedInteger32(*CapturedImmediateNode, "selection operand renderer captured immediate");
+        const auto Index = unsignedInteger32(*CapturedImmediateNode,
+                                             "selection operand renderer captured immediate");
         if (!Index)
           return false;
         Renderer.CapturedImmediateOperand = *Index;
@@ -1304,7 +1396,8 @@ private:
         Renderer.ImmediateTransform = *Transform;
       }
       if (!Renderer.CapturedImmediateOperand && Renderer.ImmediateTransform != "identity") {
-        fail(Element->range(), "selection operand renderer transform requires a captured immediate");
+        fail(Element->range(),
+             "selection operand renderer transform requires a captured immediate");
         return false;
       }
       if (const yaml::Node *FlagsNode = optionalNode(*Element, "flags")) {
@@ -1319,7 +1412,7 @@ private:
   }
 
   [[nodiscard]] bool parseSelectionTemporaries(const yaml::Node &Node,
-                                                std::vector<SourceSelectionTemporary> &Result) {
+                                               std::vector<SourceSelectionTemporary> &Result) {
     if (!requireSequence(&Node, "selection temporaries"))
       return false;
     for (const yaml::NodeID ElementID : Node.sequence()) {
@@ -1329,7 +1422,8 @@ private:
         return false;
       }
       const auto Symbol = requiredScalar(*Element, "id", "selection temporary");
-      const yaml::Node *TypeNode = requiredNode(*Element, "type_from_operand", "selection temporary");
+      const yaml::Node *TypeNode =
+          requiredNode(*Element, "type_from_operand", "selection temporary");
       if (!Symbol || TypeNode == nullptr)
         return false;
       const auto TypeFromOperand = unsignedInteger32(*TypeNode, "selection temporary type operand");
@@ -1345,7 +1439,7 @@ private:
   }
 
   [[nodiscard]] bool parseSelectionActions(const yaml::Node &Node,
-                                            std::vector<SourceSelectionAction> &Result) {
+                                           std::vector<SourceSelectionAction> &Result) {
     if (!requireSequence(&Node, "selection instructions"))
       return false;
     for (const yaml::NodeID ElementID : Node.sequence()) {
@@ -1379,7 +1473,7 @@ private:
     if (!requireMapping(&Node, "selection rule match") ||
         !checkKeys(Node,
                    {"opcode", "result_type", "integer_predicate", "operand_types", "operand_banks",
-                    "operand_classes", "operand_def_constants"},
+                    "operand_classes", "operand_def_constants", "def_use"},
                    "selection rule match")) {
       return false;
     }
@@ -1411,6 +1505,10 @@ private:
     }
     if (const yaml::Node *OperandDefConstants = optionalNode(Node, "operand_def_constants")) {
       if (!parseSelectionOperandDefConstants(*OperandDefConstants, Result.OperandDefConstants))
+        return false;
+    }
+    if (const yaml::Node *DefUse = optionalNode(Node, "def_use")) {
+      if (!parseSelectionDefUsePredicates(*DefUse, Result.DefUsePredicates))
         return false;
     }
     return true;

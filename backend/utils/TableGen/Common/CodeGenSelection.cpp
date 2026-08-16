@@ -265,7 +265,8 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
     for (const SourceSelectionOperandDefConstantPredicate &Predicate : Rule.OperandDefConstants) {
       if (!ConstantOperands.insert(Predicate.OperandIndex).second ||
           (MatchInstruction != nullptr &&
-           !isRegisterOperand(*MatchInstruction, Predicate.OperandIndex)) || Predicate.Ranges.empty()) {
+           !isRegisterOperand(*MatchInstruction, Predicate.OperandIndex)) ||
+          Predicate.Ranges.empty()) {
         fail(Predicate.Range,
              "selection operand definition constant predicates require distinct register "
              "operands and at least one range");
@@ -298,6 +299,81 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       }
       Normalized.OperandDefConstants.push_back(std::move(NormalizedPredicate));
       ++Normalized.Specificity;
+    }
+
+    std::unordered_map<std::string, std::uint32_t> CaptureIDs;
+    std::unordered_set<std::uint32_t> DefUseRootOperands;
+    for (const SourceSelectionDefUsePredicate &Predicate : Rule.DefUsePredicates) {
+      const auto DefOpcode = resolveOpcode(Result, Predicate.OpcodeSymbol);
+      if (!DefOpcode || !isGenericOpcode(Opcode::fromValue(*DefOpcode)) ||
+          !DefUseRootOperands.insert(Predicate.RootOperandIndex).second ||
+          (MatchInstruction != nullptr &&
+           !isRegisterOperand(*MatchInstruction, Predicate.RootOperandIndex))) {
+        fail(Predicate.Range,
+             "selection def-use predicates require distinct register operands and generic opcodes");
+        return false;
+      }
+
+      NormalizedSelectionDefUsePredicate NormalizedPredicate{
+          .RootOperandIndex = Predicate.RootOperandIndex,
+          .Opcode = *DefOpcode,
+          .Captures = {},
+          .OperandDefConstants = {},
+      };
+      std::unordered_set<std::uint32_t> CapturedOperands;
+      for (const SourceSelectionDefUseCapture &Capture : Predicate.Captures) {
+        if (!isIdentifier(Capture.Symbol) ||
+            !CapturedOperands.insert(Capture.OperandIndex).second ||
+            !CaptureIDs.emplace(Capture.Symbol, CaptureIDs.size() + 1U).second) {
+          fail(Capture.Range,
+               "selection def-use captures require unique identifiers and distinct operands");
+          return false;
+        }
+        NormalizedPredicate.Captures.push_back({
+            .ID = CaptureIDs.at(Capture.Symbol),
+            .OperandIndex = Capture.OperandIndex,
+        });
+      }
+
+      std::unordered_set<std::uint32_t> ConstantOperandsInDef;
+      for (const SourceSelectionOperandDefConstantPredicate &Constant :
+           Predicate.OperandDefConstants) {
+        if (!ConstantOperandsInDef.insert(Constant.OperandIndex).second ||
+            Constant.Ranges.empty()) {
+          fail(Constant.Range, "selection def-use constant predicates require distinct operands "
+                               "and at least one range");
+          return false;
+        }
+        NormalizedSelectionOperandDefConstantPredicate NormalizedConstant{
+            .OperandIndex = Constant.OperandIndex,
+            .Ranges = {},
+        };
+        for (const SourceSelectionOperandDefConstantPredicate::ConstantRange &Range :
+             Constant.Ranges) {
+          if (Range.Minimum > Range.Maximum) {
+            fail(Range.SourceRange, "selection def-use constant range is invalid");
+            return false;
+          }
+          NormalizedConstant.Ranges.push_back({
+              .Minimum = Range.Minimum,
+              .Maximum = Range.Maximum,
+          });
+        }
+        std::ranges::sort(NormalizedConstant.Ranges, {},
+                          &NormalizedSelectionOperandDefConstantPredicate::Range::Minimum);
+        for (std::size_t Index = 1; Index < NormalizedConstant.Ranges.size(); ++Index) {
+          const auto &Previous = NormalizedConstant.Ranges[Index - 1];
+          const auto &Current = NormalizedConstant.Ranges[Index];
+          if (Current.Minimum <= Previous.Maximum) {
+            fail(Constant.Range, "selection def-use constant ranges overlap");
+            return false;
+          }
+        }
+        NormalizedPredicate.OperandDefConstants.push_back(std::move(NormalizedConstant));
+      }
+      Normalized.DefUsePredicates.push_back(std::move(NormalizedPredicate));
+      Normalized.Specificity += 1U + static_cast<std::uint32_t>(Predicate.Captures.size()) +
+                                static_cast<std::uint32_t>(Predicate.OperandDefConstants.size());
     }
 
     std::unordered_map<std::string, std::uint32_t> TemporaryIDs;
@@ -346,6 +422,22 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       };
       NormalizedAction.OperandRenderers.reserve(Action.OperandRenderers.size());
       for (const SourceSelectionOperandRenderer &Renderer : Action.OperandRenderers) {
+        if (Renderer.ComplexOperandIndex) {
+          if (Renderer.ComplexRendererSymbol.empty() || !Renderer.Flags.empty() ||
+              Renderer.ImmediateTransform != "identity") {
+            fail(Renderer.Range,
+                 "selection complex operand renderer requires a matcher and no flags or transform");
+            return false;
+          }
+          NormalizedAction.OperandRenderers.push_back({
+              .SourceKind = NormalizedSelectionOperandRenderer::Kind::ComplexOperand,
+              .Value = *Renderer.ComplexOperandIndex,
+              .ComplexRenderer = Renderer.ComplexRendererSymbol,
+              .Flags = 0,
+          });
+          continue;
+        }
+
         if (Renderer.OperandIndex) {
           if (MatchInstruction != nullptr &&
               *Renderer.OperandIndex >= MatchInstruction->Operands.size()) {
@@ -359,6 +451,7 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
           NormalizedAction.OperandRenderers.push_back({
               .SourceKind = NormalizedSelectionOperandRenderer::Kind::Operand,
               .Value = *Renderer.OperandIndex,
+              .ComplexRenderer = {},
               .Flags = 0,
           });
           continue;
@@ -378,6 +471,7 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
           NormalizedAction.OperandRenderers.push_back({
               .SourceKind = NormalizedSelectionOperandRenderer::Kind::PhysicalRegister,
               .Value = Physical->ID,
+              .ComplexRenderer = {},
               .Flags = Flags->rawValue(),
           });
           continue;
@@ -395,14 +489,32 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
           NormalizedAction.OperandRenderers.push_back({
               .SourceKind = NormalizedSelectionOperandRenderer::Kind::Temporary,
               .Value = Temporary->second,
+              .ComplexRenderer = {},
               .Flags = Flags->rawValue(),
           });
           continue;
         }
 
+        if (!Renderer.CapturedOperandSymbol.empty()) {
+          const auto Capture = CaptureIDs.find(Renderer.CapturedOperandSymbol);
+          if (Capture == CaptureIDs.end() || !Renderer.Flags.empty() ||
+              Renderer.ImmediateTransform != "identity") {
+            fail(Renderer.Range,
+                 "selection captured operand renderer requires a matched capture and no flags");
+            return false;
+          }
+          NormalizedAction.OperandRenderers.push_back({
+              .SourceKind = NormalizedSelectionOperandRenderer::Kind::CapturedOperand,
+              .Value = Capture->second,
+              .ComplexRenderer = {},
+              .Flags = 0,
+          });
+          continue;
+        }
+
         if (Renderer.CapturedImmediateOperand) {
-          const auto Transform = [&Renderer]()
-              -> std::optional<NormalizedSelectionImmediateTransform> {
+          const auto Transform =
+              [&Renderer]() -> std::optional<NormalizedSelectionImmediateTransform> {
             if (Renderer.ImmediateTransform == "identity")
               return NormalizedSelectionImmediateTransform::Identity;
             if (Renderer.ImmediateTransform == "negate")
@@ -421,6 +533,7 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
           NormalizedAction.OperandRenderers.push_back({
               .SourceKind = NormalizedSelectionOperandRenderer::Kind::CapturedImmediate,
               .Value = *Renderer.CapturedImmediateOperand,
+              .ComplexRenderer = {},
               .Flags = 0,
               .Transform = *Transform,
           });
@@ -435,6 +548,7 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
           NormalizedAction.OperandRenderers.push_back({
               .SourceKind = NormalizedSelectionOperandRenderer::Kind::Immediate,
               .Value = 0,
+              .ComplexRenderer = {},
               .Flags = 0,
               .Immediate = *Renderer.Immediate,
           });
@@ -458,8 +572,9 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
         fail(Rule.Range, "selection erased definitions require distinct register operands");
         return false;
       }
-      if (!ConstantOperands.contains(OperandIndex)) {
-        fail(Rule.Range, "selection erased definition requires a matched constant operand");
+      if (!ConstantOperands.contains(OperandIndex) && !DefUseRootOperands.contains(OperandIndex)) {
+        fail(Rule.Range,
+             "selection erased definition requires a matched constant or def-use operand");
         return false;
       }
     }

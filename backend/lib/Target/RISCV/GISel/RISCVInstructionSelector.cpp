@@ -4,6 +4,7 @@
 #include "RISCVImmediateMaterialization.h"
 #include "RISCVRegisterBankInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/CodeGen/GlobalISel/GISelValueTracking.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelector.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
@@ -169,6 +170,140 @@ public:
     return RegisterBanks.constrainSelectedInstruction(Instruction, Function, Target);
   }
 
+  [[nodiscard]] Expected<std::optional<GIMatchComplexOperand>>
+  renderComplexOperand(std::string_view Name, const MachineInstr &Instruction,
+                       const MachineFunction &Function, const TargetDescription &Target,
+                       std::uint32_t OperandIndex) const override {
+    const std::uint64_t ShiftWidth = Name == "shift_mask_xlen" ? 64U
+                                     : Name == "shift_mask_32" ? 32U
+                                                               : 0U;
+    if (ShiftWidth == 0)
+      return std::optional<GIMatchComplexOperand>{};
+    const MachineOperand *Root = Instruction.operandAt(OperandIndex);
+    const Register *RootRegister = Root == nullptr ? nullptr : Root->getIf<Register>();
+    if (RootRegister == nullptr || !RootRegister->isVirtual())
+      return std::optional<GIMatchComplexOperand>{};
+
+    Register ShiftRegister = *RootRegister;
+    const auto Definition = [&Function](Register Reg) -> const MachineInstr * {
+      return Reg.isVirtual() ? Function.registerInfo().getVRegDef(Reg) : nullptr;
+    };
+    const auto UseOperand = [](Register Reg) -> Expected<MachineOperand> {
+      return MachineOperand::registerOperand(Reg, {RegisterOperandFlag::Use});
+    };
+    const auto DirectResult = [&UseOperand](Register Reg) -> Expected<GIMatchComplexOperand> {
+      auto Operand = UseOperand(Reg);
+      if (!Operand)
+        return std::unexpected(Operand.error());
+      return GIMatchComplexOperand{
+          .Operand = std::move(*Operand),
+          .Instruction = std::nullopt,
+      };
+    };
+
+    if (const MachineInstr *Extension = Definition(ShiftRegister);
+        Extension != nullptr && Extension->opcode() == opcode(GenericOpcode::G_ZEXT)) {
+      const MachineOperand *SourceOperand = Extension->operandAt(1);
+      const Register *Source =
+          SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+      if (Source != nullptr)
+        ShiftRegister = *Source;
+    }
+
+    const std::uint64_t ShiftMask = ShiftWidth - 1U;
+    if (const MachineInstr *And = Definition(ShiftRegister);
+        And != nullptr && And->opcode() == opcode(GenericOpcode::G_AND)) {
+      const MachineOperand *SourceOperand = And->operandAt(1);
+      const MachineOperand *MaskOperand = And->operandAt(2);
+      const Register *Source =
+          SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
+      const Register *Mask = MaskOperand == nullptr ? nullptr : MaskOperand->getIf<Register>();
+      const auto MaskValue =
+          Mask == nullptr ? std::nullopt : directIntegerConstant(Function.registerInfo(), *Mask);
+      if (Source != nullptr && MaskValue) {
+        const std::uint64_t RawMask = std::bit_cast<std::uint64_t>(*MaskValue);
+        bool ElideMask = (RawMask & ShiftMask) == ShiftMask;
+        if (!ElideMask) {
+          GISelValueTracking ValueTracking(Function, Target);
+          auto KnownZeroes = ValueTracking.getKnownZeroes(*Source);
+          if (!KnownZeroes)
+            return std::unexpected(KnownZeroes.error());
+          ElideMask = ((RawMask | KnownZeroes->word(0)) & ShiftMask) == ShiftMask;
+        }
+        if (ElideMask)
+          ShiftRegister = *Source;
+      }
+    }
+
+    const MachineInstr *ShiftDefinition = Definition(ShiftRegister);
+    if (ShiftDefinition == nullptr)
+      return DirectResult(ShiftRegister);
+    const MachineOperand *LeftOperand = ShiftDefinition->operandAt(1);
+    const MachineOperand *RightOperand = ShiftDefinition->operandAt(2);
+    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+
+    if (ShiftDefinition->opcode() == opcode(GenericOpcode::G_ADD) && Left != nullptr &&
+        Right != nullptr) {
+      const auto Immediate = directIntegerConstant(Function.registerInfo(), *Right);
+      if (Immediate != std::nullopt && *Immediate != 0 &&
+          std::bit_cast<std::uint64_t>(*Immediate) % ShiftWidth == 0)
+        return DirectResult(*Left);
+    }
+
+    if (ShiftDefinition->opcode() != opcode(GenericOpcode::G_SUB) || Left == nullptr ||
+        Right == nullptr)
+      return DirectResult(ShiftRegister);
+    const auto Immediate = directIntegerConstant(Function.registerInfo(), *Left);
+    if (!Immediate || *Immediate == 0)
+      return DirectResult(ShiftRegister);
+
+    const std::uint64_t Remainder = std::bit_cast<std::uint64_t>(*Immediate) % ShiftWidth;
+    if (Remainder != 0 && Remainder != ShiftMask)
+      return DirectResult(ShiftRegister);
+    auto Type = Function.registerInfo().getType(*Right);
+    if (!Type)
+      return std::unexpected(Type.error());
+    std::vector<MachineOperand> Operands;
+    if (Remainder == 0) {
+      auto Zero = physicalRegister(PhysicalRegisterID::X0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      auto ZeroOperand = UseOperand(Register::fromPhysical(*Zero));
+      auto SourceOperand = UseOperand(*Right);
+      if (!ZeroOperand)
+        return std::unexpected(ZeroOperand.error());
+      if (!SourceOperand)
+        return std::unexpected(SourceOperand.error());
+      Operands.push_back(std::move(*ZeroOperand));
+      Operands.push_back(std::move(*SourceOperand));
+      return GIMatchComplexOperand{
+          .Operand = std::nullopt,
+          .Instruction =
+              GIMatchComplexInstruction{
+                  .ResultOpcode = instructionOpcode(InstructionOpcode::SUBW),
+                  .ResultType = *Type,
+                  .Operands = std::move(Operands),
+              },
+      };
+    }
+
+    auto SourceOperand = UseOperand(*Right);
+    if (!SourceOperand)
+      return std::unexpected(SourceOperand.error());
+    Operands.push_back(std::move(*SourceOperand));
+    Operands.push_back(MachineOperand::immediate(-1));
+    return GIMatchComplexOperand{
+        .Operand = std::nullopt,
+        .Instruction =
+            GIMatchComplexInstruction{
+                .ResultOpcode = instructionOpcode(InstructionOpcode::XORI),
+                .ResultType = *Type,
+                .Operands = std::move(Operands),
+            },
+    };
+  }
+
   [[nodiscard]] Expected<void> canSelect(const MachineInstr &Instruction,
                                          const MachineFunction &Function,
                                          const TargetDescription &Target) const override {
@@ -190,13 +325,6 @@ public:
     const auto Integer = [Type] { return Type && isSupportedIntegerType(*Type); };
     const auto Float = [Type] { return Type && isSupportedFloatingScalar(*Type); };
     switch (Generic) {
-    case GenericOpcode::G_SHL:
-    case GenericOpcode::G_LSHR:
-    case GenericOpcode::G_ASHR:
-      if (!Integer())
-        return makeUnexpected(ErrorCode::Unsupported,
-                              "RISC-V selector requires an i1-i64 integer or 64-bit pointer value");
-      return {};
     case GenericOpcode::G_CONSTANT:
       if (!Integer())
         return makeUnexpected(ErrorCode::Unsupported,
@@ -302,28 +430,6 @@ public:
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 
     switch (Generic) {
-    case GenericOpcode::G_SHL:
-      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::SLL,
-                                 InstructionOpcode::SLLW, InstructionOpcode::SLLI,
-                                 InstructionOpcode::SLLIW, false, 6, 5);
-    case GenericOpcode::G_LSHR:
-      if (auto Selected = selectRV64WordShift(Instruction, Function, Type, Generic); !Selected) {
-        return std::unexpected(Selected.error());
-      } else if (*Selected) {
-        return {};
-      }
-      return selectNormalizedIntegerBinary(
-          Instruction, Function, Target, Type, InstructionOpcode::SRL, InstructionOpcode::SRLW,
-          false, false, InstructionOpcode::SRLI, InstructionOpcode::SRLIW, false, 6, 5);
-    case GenericOpcode::G_ASHR:
-      if (auto Selected = selectRV64WordShift(Instruction, Function, Type, Generic); !Selected) {
-        return std::unexpected(Selected.error());
-      } else if (*Selected) {
-        return {};
-      }
-      return selectNormalizedIntegerBinary(
-          Instruction, Function, Target, Type, InstructionOpcode::SRA, InstructionOpcode::SRAW,
-          true, false, InstructionOpcode::SRAI, InstructionOpcode::SRAIW, false, 6, 5);
     case GenericOpcode::G_LOAD:
       return selectLoad(Instruction, Function, Type);
     case GenericOpcode::G_SEXTLOAD:
@@ -1864,84 +1970,6 @@ private:
     if (!AddImmediate)
       return std::unexpected(AddImmediate.error());
     return true;
-  }
-
-  [[nodiscard]] Expected<bool> selectRV64WordShift(MachineInstr &Instruction,
-                                                   MachineFunction &Function,
-                                                   std::optional<LowLevelType> Type,
-                                                   GenericOpcode Generic) const {
-    if (!Type || !Type->isCategoryNeutralScalar() || Type->scalarBitWidth() != 64)
-      return false;
-    const MachineOperand *LeftOperand = Instruction.operandAt(1);
-    const MachineOperand *RightOperand = Instruction.operandAt(2);
-    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
-    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    if (Left == nullptr || Right == nullptr || !Right->isVirtual())
-      return false;
-    const std::optional<std::int64_t> ShiftAmount =
-        directIntegerConstant(Function.registerInfo(), *Right);
-    if (!ShiftAmount || !fitsIntegerImmediate(*ShiftAmount, false, 5))
-      return false;
-
-    const MachineInstr *LeftDefinition = Function.registerInfo().getVRegDef(*Left);
-    if (LeftDefinition == nullptr)
-      return false;
-    const MachineOperand *SourceOperand = LeftDefinition->operandAt(1);
-    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
-    if (Source == nullptr)
-      return false;
-
-    InstructionOpcode Selected = InstructionOpcode::Invalid;
-    if (Generic == GenericOpcode::G_LSHR &&
-        LeftDefinition->opcode() == opcode(GenericOpcode::G_AND)) {
-      const MachineOperand *MaskOperand = LeftDefinition->operandAt(2);
-      const Register *Mask = MaskOperand == nullptr ? nullptr : MaskOperand->getIf<Register>();
-      const std::optional<std::int64_t> MaskValue =
-          Mask == nullptr ? std::nullopt : directIntegerConstant(Function.registerInfo(), *Mask);
-      if (MaskValue && *MaskValue == std::int64_t{0xffffffff})
-        Selected = InstructionOpcode::SRLIW;
-    } else if (Generic == GenericOpcode::G_ASHR &&
-               LeftDefinition->opcode() == opcode(GenericOpcode::G_SEXT_INREG)) {
-      const MachineOperand *WidthOperand = LeftDefinition->operandAt(2);
-      const auto *Width = WidthOperand == nullptr ? nullptr : WidthOperand->getIf<std::int64_t>();
-      if (Width != nullptr && *Width == 32)
-        Selected = InstructionOpcode::SRAIW;
-    }
-    if (Selected == InstructionOpcode::Invalid)
-      return false;
-
-    auto SetLeft = Instruction.operandAt(1)->setRegister(*Source);
-    if (!SetLeft)
-      return std::unexpected(SetLeft.error());
-    auto EraseRight = Instruction.eraseOperand(2);
-    if (!EraseRight)
-      return std::unexpected(EraseRight.error());
-    auto AddImmediate = Instruction.addOperand(MachineOperand::immediate(*ShiftAmount));
-    if (!AddImmediate)
-      return std::unexpected(AddImmediate.error());
-    auto SetOpcode = Instruction.setOpcode(instructionOpcode(Selected));
-    if (!SetOpcode)
-      return std::unexpected(SetOpcode.error());
-    return true;
-  }
-
-  [[nodiscard]] Expected<void>
-  selectIntegerBinary(MachineInstr &Instruction, MachineFunction &Function,
-                      std::optional<LowLevelType> Type, InstructionOpcode DoubleWord,
-                      InstructionOpcode Word, InstructionOpcode DoubleWordImmediate,
-                      InstructionOpcode WordImmediate, bool SignedImmediate,
-                      std::uint32_t DoubleWordBits, std::uint32_t WordBits) const {
-    if (!Type || !isSupportedIntegerType(*Type))
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V integer instruction requires a supported scalar integer");
-    const bool IsWord = Type->isCategoryNeutralScalar() && Type->scalarBitWidth() <= 32;
-    const auto Folded = foldRightConstantToImmediate(Instruction, Function, SignedImmediate,
-                                                     IsWord ? WordBits : DoubleWordBits);
-    if (!Folded)
-      return std::unexpected(Folded.error());
-    if (*Folded)
-      return Instruction.setOpcode(instructionOpcode(IsWord ? WordImmediate : DoubleWordImmediate));
-    return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
   [[nodiscard]] Expected<void> selectNormalizedIntegerBinary(

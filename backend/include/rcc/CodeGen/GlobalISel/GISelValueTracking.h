@@ -18,7 +18,7 @@ class TargetDescription;
 
 class GISelValueTracking final : public GISelChangeObserver {
 public:
-  GISelValueTracking(MachineFunction &Function, const TargetDescription &Target,
+  GISelValueTracking(const MachineFunction &Function, const TargetDescription &Target,
                      unsigned MaxDepth = 6) noexcept;
 
   [[nodiscard]] const MachineFunction &getMachineFunction() const noexcept {
@@ -42,8 +42,8 @@ private:
   [[nodiscard]] Expected<KnownBits> makeUnknown(std::uint32_t BitWidth) const;
   [[nodiscard]] Expected<KnownBits> getKnownBits(Register Reg, unsigned Depth = 0) const;
 
-  MachineFunction &Function;
-  MachineRegisterInfo &MRI;
+  const MachineFunction &Function;
+  const MachineRegisterInfo &MRI;
   const TargetDescription &Target;
   unsigned MaxDepth;
 };

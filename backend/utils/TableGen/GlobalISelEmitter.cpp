@@ -26,9 +26,11 @@ namespace {
 
 void emitInstruction(std::ostream &Output, std::string_view Opcode, std::uint32_t OperandIndex,
                      std::uint32_t Value = 0, std::string_view Auxiliary = "0",
-                     std::int64_t Immediate = 0) {
+                     std::int64_t Immediate = 0, std::string_view Symbol = {}) {
   Output << "    {GIMatchTableOpcode::" << Opcode << ", " << OperandIndex << ", " << Value << ", "
-         << Auxiliary << ", " << Immediate << "},\n";
+         << Auxiliary << ", " << Immediate << ", ";
+  appendQuoted(Output, Symbol);
+  Output << "},\n";
 }
 
 void emitTypePredicate(std::ostream &Output, std::uint32_t OperandIndex,
@@ -39,11 +41,12 @@ void emitTypePredicate(std::ostream &Output, std::uint32_t OperandIndex,
 }
 
 [[nodiscard]] std::size_t instructionCount(const NormalizedSelectionRule &Rule) noexcept {
-  std::size_t Count = 2U + (Rule.ResultType ? 1U : 0U) +
-                      (Rule.IntegerPredicate ? 1U : 0U) +
-         Rule.OperandTypes.size() + Rule.OperandBanks.size() + Rule.OperandClasses.size() +
-                      Rule.OperandDefConstants.size() + Rule.Temporaries.size() +
-                      Rule.EraseOperandDefinitions.size();
+  std::size_t Count = 2U + (Rule.ResultType ? 1U : 0U) + (Rule.IntegerPredicate ? 1U : 0U) +
+                      Rule.OperandTypes.size() + Rule.OperandBanks.size() +
+                      Rule.OperandClasses.size() + Rule.OperandDefConstants.size() +
+                      Rule.Temporaries.size() + Rule.EraseOperandDefinitions.size();
+  for (const NormalizedSelectionDefUsePredicate &Predicate : Rule.DefUsePredicates)
+    Count += 1U + Predicate.Captures.size() + Predicate.OperandDefConstants.size();
   for (const NormalizedSelectionAction &Action : Rule.Actions)
     Count += 1U + Action.OperandRenderers.size();
   return Count;
@@ -61,6 +64,12 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
          Rule.OperandDefConstants) {
       ConstantRangeCount += Predicate.Ranges.size();
     }
+    for (const NormalizedSelectionDefUsePredicate &DefUse : Rule.DefUsePredicates) {
+      for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
+           DefUse.OperandDefConstants) {
+        ConstantRangeCount += Predicate.Ranges.size();
+      }
+    }
   }
 
   std::ostringstream Output;
@@ -76,6 +85,13 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
          Rule.OperandDefConstants) {
       for (const NormalizedSelectionOperandDefConstantPredicate::Range &Range : Predicate.Ranges)
         Output << "    {" << Range.Minimum << ", " << Range.Maximum << "},\n";
+    }
+    for (const NormalizedSelectionDefUsePredicate &DefUse : Rule.DefUsePredicates) {
+      for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
+           DefUse.OperandDefConstants) {
+        for (const NormalizedSelectionOperandDefConstantPredicate::Range &Range : Predicate.Ranges)
+          Output << "    {" << Range.Minimum << ", " << Range.Maximum << "},\n";
+      }
     }
   }
   Output << "}};\n\n";
@@ -103,6 +119,20 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
                       std::to_string(Predicate.Ranges.size()));
       FirstConstantRange += Predicate.Ranges.size();
     }
+    for (const NormalizedSelectionDefUsePredicate &DefUse : Rule.DefUsePredicates) {
+      emitInstruction(Output, "CheckOperandDefOpcode", DefUse.RootOperandIndex, DefUse.Opcode);
+      for (const NormalizedSelectionOperandDefConstantPredicate &Predicate :
+           DefUse.OperandDefConstants) {
+        emitInstruction(Output, "CheckOperandDefOperandConstantRanges", DefUse.RootOperandIndex,
+                        static_cast<std::uint32_t>(FirstConstantRange),
+                        std::to_string(Predicate.OperandIndex),
+                        static_cast<std::int64_t>(Predicate.Ranges.size()));
+        FirstConstantRange += Predicate.Ranges.size();
+      }
+      for (const NormalizedSelectionDefUseCapture &Capture : DefUse.Captures)
+        emitInstruction(Output, "CaptureDefOperand", DefUse.RootOperandIndex, Capture.ID,
+                        std::to_string(Capture.OperandIndex));
+    }
     for (const NormalizedSelectionTemporary &Temporary : Rule.Temporaries)
       emitInstruction(Output, "CreateTemporary", Temporary.TypeFromOperand, Temporary.ID);
     for (const NormalizedSelectionAction &Action : Rule.Actions) {
@@ -113,6 +143,10 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
         case NormalizedSelectionOperandRenderer::Kind::Operand:
           emitInstruction(Output, "RenderOperand", Renderer.Value);
           break;
+        case NormalizedSelectionOperandRenderer::Kind::ComplexOperand:
+          emitInstruction(Output, "RenderComplexOperand", Renderer.Value, 0, "0", 0,
+                          Renderer.ComplexRenderer);
+          break;
         case NormalizedSelectionOperandRenderer::Kind::PhysicalRegister:
           emitInstruction(Output, "RenderPhysicalRegister", 0, Renderer.Value,
                           std::to_string(Renderer.Flags));
@@ -120,6 +154,9 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
         case NormalizedSelectionOperandRenderer::Kind::Temporary:
           emitInstruction(Output, "RenderTemporary", 0, Renderer.Value,
                           std::to_string(Renderer.Flags));
+          break;
+        case NormalizedSelectionOperandRenderer::Kind::CapturedOperand:
+          emitInstruction(Output, "RenderCapturedOperand", 0, Renderer.Value);
           break;
         case NormalizedSelectionOperandRenderer::Kind::CapturedImmediate:
           emitInstruction(Output, "RenderCapturedImmediate", Renderer.Value,
