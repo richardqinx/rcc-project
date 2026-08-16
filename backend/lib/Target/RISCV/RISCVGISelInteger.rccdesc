@@ -1,5 +1,15 @@
 selection_rules:
   -
+    id: select_g_br
+    priority: 100
+    match:
+      opcode: G_BR
+    apply:
+      instructions:
+        - opcode: PseudoBR
+          root: true
+          operands: [{ operand: 0 }]
+  -
     id: select_g_implicit_def
     priority: 100
     match:
