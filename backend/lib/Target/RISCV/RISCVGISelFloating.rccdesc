@@ -1,0 +1,513 @@
+selection_rules:
+  -
+    id: select_g_fadd_s32
+    priority: 100
+    match:
+      opcode: G_FADD
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FADD_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { immediate: 7 }]
+  -
+    id: select_g_fadd_s64
+    priority: 100
+    match:
+      opcode: G_FADD
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FADD_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { immediate: 7 }]
+  -
+    id: select_g_fsub_s32
+    priority: 100
+    match:
+      opcode: G_FSUB
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSUB_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { immediate: 7 }]
+  -
+    id: select_g_fsub_s64
+    priority: 100
+    match:
+      opcode: G_FSUB
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSUB_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { immediate: 7 }]
+  -
+    id: select_g_fmul_s32
+    priority: 100
+    match:
+      opcode: G_FMUL
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FMUL_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { immediate: 7 }]
+  -
+    id: select_g_fmul_s64
+    priority: 100
+    match:
+      opcode: G_FMUL
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FMUL_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { immediate: 7 }]
+  -
+    id: select_g_fdiv_s32
+    priority: 100
+    match:
+      opcode: G_FDIV
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FDIV_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { immediate: 7 }]
+  -
+    id: select_g_fdiv_s64
+    priority: 100
+    match:
+      opcode: G_FDIV
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FDIV_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { immediate: 7 }]
+  -
+    id: select_g_fma_s32
+    priority: 100
+    match:
+      opcode: G_FMA
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+        - { index: 3, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FMADD_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { operand: 3 }, { immediate: 7 }]
+  -
+    id: select_g_fma_s64
+    priority: 100
+    match:
+      opcode: G_FMA
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+        - { index: 3, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FMADD_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }, { operand: 3 }, { immediate: 7 }]
+  -
+    id: select_g_fsqrt_s32
+    priority: 100
+    match:
+      opcode: G_FSQRT
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSQRT_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 7 }]
+  -
+    id: select_g_fsqrt_s64
+    priority: 100
+    match:
+      opcode: G_FSQRT
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSQRT_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 7 }]
+  -
+    id: select_g_fneg_s32
+    priority: 100
+    match:
+      opcode: G_FNEG
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSGNJN_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 1 }]
+  -
+    id: select_g_fneg_s64
+    priority: 100
+    match:
+      opcode: G_FNEG
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSGNJN_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 1 }]
+  -
+    id: select_g_fabs_s32
+    priority: 100
+    match:
+      opcode: G_FABS
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSGNJX_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 1 }]
+  -
+    id: select_g_fabs_s64
+    priority: 100
+    match:
+      opcode: G_FABS
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FSGNJX_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 1 }]
+  -
+    id: select_g_fminnum_s32
+    priority: 100
+    match:
+      opcode: G_FMINNUM
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FMIN_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_fminnum_s64
+    priority: 100
+    match:
+      opcode: G_FMINNUM
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FMIN_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_fmaxnum_s32
+    priority: 100
+    match:
+      opcode: G_FMAXNUM
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+        - { index: 2, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FMAX_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_fmaxnum_s64
+    priority: 100
+    match:
+      opcode: G_FMAXNUM
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+        - { index: 2, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FMAX_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_fpext_s32_to_s64
+    priority: 100
+    match:
+      opcode: G_FPEXT
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FCVT_D_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 0 }]
+  -
+    id: select_g_fptrunc_s64_to_s32
+    priority: 100
+    match:
+      opcode: G_FPTRUNC
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FCVT_S_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 7 }]
+  -
+    id: select_g_fptosi_s32
+    priority: 100
+    match:
+      opcode: G_FPTOSI
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FCVT_L_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 1 }]
+  -
+    id: select_g_fptosi_s64
+    priority: 100
+    match:
+      opcode: G_FPTOSI
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FCVT_L_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 1 }]
+  -
+    id: select_g_fptoui_s32
+    priority: 100
+    match:
+      opcode: G_FPTOUI
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FCVT_LU_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 1 }]
+  -
+    id: select_g_fptoui_s64
+    priority: 100
+    match:
+      opcode: G_FPTOUI
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FCVT_LU_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 1 }]
+  -
+    id: select_g_sitofp_s32
+    priority: 100
+    match:
+      opcode: G_SITOFP
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: GPR }
+    apply:
+      instructions:
+        - opcode: FCVT_S_L
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 7 }]
+  -
+    id: select_g_sitofp_s64
+    priority: 100
+    match:
+      opcode: G_SITOFP
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: GPR }
+    apply:
+      instructions:
+        - opcode: FCVT_D_L
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 7 }]
+  -
+    id: select_g_uitofp_s32
+    priority: 100
+    match:
+      opcode: G_UITOFP
+      result_type: { kind: scalar, bits: 32 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: GPR }
+    apply:
+      instructions:
+        - opcode: FCVT_S_LU
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 7 }]
+  -
+    id: select_g_uitofp_s64
+    priority: 100
+    match:
+      opcode: G_UITOFP
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: GPR }
+    apply:
+      instructions:
+        - opcode: FCVT_D_LU
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 7 }]

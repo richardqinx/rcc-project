@@ -117,14 +117,6 @@ memoryAccessBytes(const MachineInstr &Instruction) noexcept {
   return Instruction.insertOperand(Index, std::move(*Operand));
 }
 
-[[nodiscard]] Expected<void> insertVirtualUse(MachineInstr &Instruction, std::size_t Index,
-                                              Register Reg) {
-  auto Operand = MachineOperand::registerOperand(Reg, {RegisterOperandFlag::Use});
-  if (!Operand)
-    return std::unexpected(Operand.error());
-  return Instruction.insertOperand(Index, std::move(*Operand));
-}
-
 [[nodiscard]] Expected<std::int64_t> signedImmediate(const MachineOperand &Operand) {
   if (const std::int64_t *Value = Operand.getIf<std::int64_t>())
     return *Value;
@@ -234,14 +226,6 @@ public:
     case GenericOpcode::G_BR:
     case GenericOpcode::G_BRCOND:
       return {};
-    case GenericOpcode::G_FADD:
-    case GenericOpcode::G_FSUB:
-    case GenericOpcode::G_FMUL:
-    case GenericOpcode::G_FDIV:
-    case GenericOpcode::G_FMA:
-    case GenericOpcode::G_FSQRT:
-    case GenericOpcode::G_FNEG:
-    case GenericOpcode::G_FABS:
     case GenericOpcode::G_FCOPYSIGN:
       if (!Float())
         return makeUnexpected(ErrorCode::Unsupported,
@@ -269,14 +253,6 @@ public:
     case GenericOpcode::G_SEXT_INREG:
     case GenericOpcode::G_ZEXT:
     case GenericOpcode::G_FCMP:
-    case GenericOpcode::G_FPEXT:
-    case GenericOpcode::G_FPTRUNC:
-    case GenericOpcode::G_FPTOSI:
-    case GenericOpcode::G_FPTOUI:
-    case GenericOpcode::G_SITOFP:
-    case GenericOpcode::G_UITOFP:
-    case GenericOpcode::G_FMINNUM:
-    case GenericOpcode::G_FMAXNUM:
     case GenericOpcode::G_SDIVREM:
     case GenericOpcode::G_UDIVREM:
     case GenericOpcode::G_SMULH:
@@ -441,30 +417,6 @@ public:
     case GenericOpcode::G_PTRTOINT:
     case GenericOpcode::G_INTTOPTR:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
-    case GenericOpcode::G_FADD:
-      return selectRoundingBinary(Instruction, Type, InstructionOpcode::FADD_S,
-                                  InstructionOpcode::FADD_D);
-    case GenericOpcode::G_FSUB:
-      return selectRoundingBinary(Instruction, Type, InstructionOpcode::FSUB_S,
-                                  InstructionOpcode::FSUB_D);
-    case GenericOpcode::G_FMUL:
-      return selectRoundingBinary(Instruction, Type, InstructionOpcode::FMUL_S,
-                                  InstructionOpcode::FMUL_D);
-    case GenericOpcode::G_FDIV:
-      return selectRoundingBinary(Instruction, Type, InstructionOpcode::FDIV_S,
-                                  InstructionOpcode::FDIV_D);
-    case GenericOpcode::G_FMA:
-      return selectRoundingTernary(Instruction, Type, InstructionOpcode::FMADD_S,
-                                   InstructionOpcode::FMADD_D);
-    case GenericOpcode::G_FSQRT:
-      return selectRoundingUnary(Instruction, Type, InstructionOpcode::FSQRT_S,
-                                 InstructionOpcode::FSQRT_D);
-    case GenericOpcode::G_FNEG:
-      return selectSignInjection(Instruction, Type, InstructionOpcode::FSGNJN_S,
-                                 InstructionOpcode::FSGNJN_D);
-    case GenericOpcode::G_FABS:
-      return selectSignInjection(Instruction, Type, InstructionOpcode::FSGNJX_S,
-                                 InstructionOpcode::FSGNJX_D);
     case GenericOpcode::G_FCOPYSIGN:
       return selectCopySign(Instruction, Function, Target, Type);
     case GenericOpcode::G_ANYEXT:
@@ -477,25 +429,6 @@ public:
       return selectSignExtendInRegister(Instruction, Function, Target, Type);
     case GenericOpcode::G_FCMP:
       return selectFloatingCompare(Instruction, Function, Target);
-    case GenericOpcode::G_FPEXT:
-      return selectRoundingUnary(Instruction, Type, InstructionOpcode::FCVT_D_S,
-                                 InstructionOpcode::FCVT_D_S);
-    case GenericOpcode::G_FPTRUNC:
-      return selectRoundingUnary(Instruction, Type, InstructionOpcode::FCVT_S_D,
-                                 InstructionOpcode::FCVT_S_D);
-    case GenericOpcode::G_FPTOSI:
-    case GenericOpcode::G_FPTOUI:
-      return selectFloatToInteger(Instruction, Function, Type, Generic == GenericOpcode::G_FPTOUI);
-    case GenericOpcode::G_SITOFP:
-    case GenericOpcode::G_UITOFP:
-      return selectIntegerToFloat(Instruction, Function, Target, Type,
-                                  Generic == GenericOpcode::G_UITOFP);
-    case GenericOpcode::G_FMINNUM:
-      return selectFloatingMinMax(Instruction, Type, InstructionOpcode::FMIN_S,
-                                  InstructionOpcode::FMIN_D);
-    case GenericOpcode::G_FMAXNUM:
-      return selectFloatingMinMax(Instruction, Type, InstructionOpcode::FMAX_S,
-                                  InstructionOpcode::FMAX_D);
     case GenericOpcode::G_SMULH:
       return selectMultiplyHigh(Instruction, Function, Target, Type, true);
     case GenericOpcode::G_UMULH:
@@ -746,8 +679,9 @@ private:
                                                           Register Source, LowLevelType Type,
                                                           bool Signed) const {
     if (!isSupportedIntegerType(Type))
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V integer normalization requires an integer scalar or a 64-bit pointer");
+      return makeUnexpected(
+          ErrorCode::Unsupported,
+          "RISC-V integer normalization requires an integer scalar or a 64-bit pointer");
     const std::uint32_t Bits = Type.scalarBitWidth();
     if (Bits == 64)
       return Source;
@@ -1921,73 +1855,6 @@ private:
                           "RISC-V floating comparison predicate is invalid");
   }
 
-  [[nodiscard]] Expected<void> selectFloatToInteger(MachineInstr &Instruction,
-                                                    MachineFunction &Function,
-                                                    std::optional<LowLevelType> Type,
-                                                    bool Unsigned) const {
-    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
-    if (!Type || !Source)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V floating-to-integer conversion has invalid types");
-    auto Rounding = appendImmediate(Instruction, 1);
-    if (!Rounding)
-      return std::unexpected(Rounding.error());
-    const bool IsWord = Type->scalarBitWidth() <= 32;
-    if (Source->scalarBitWidth() == 32) {
-      return Instruction.setOpcode(instructionOpcode(
-          IsWord ? (Unsigned ? InstructionOpcode::FCVT_WU_S : InstructionOpcode::FCVT_W_S)
-                 : (Unsigned ? InstructionOpcode::FCVT_LU_S : InstructionOpcode::FCVT_L_S)));
-    }
-    return Instruction.setOpcode(instructionOpcode(
-        IsWord ? (Unsigned ? InstructionOpcode::FCVT_WU_D : InstructionOpcode::FCVT_W_D)
-               : (Unsigned ? InstructionOpcode::FCVT_LU_D : InstructionOpcode::FCVT_L_D)));
-  }
-
-  [[nodiscard]] Expected<void> selectIntegerToFloat(MachineInstr &Instruction,
-                                                    MachineFunction &Function,
-                                                    const TargetDescription &Target,
-                                                    std::optional<LowLevelType> Type,
-                                                    bool Unsigned) const {
-    const std::optional<LowLevelType> Source = operandType(Function, Instruction, 1);
-    const MachineOperand *SourceOperand = Instruction.operandAt(1);
-    const Register *SourceRegister =
-        SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
-    if (!Type || !Source || SourceRegister == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V integer-to-floating conversion has invalid types");
-    auto Normalized =
-        normalizeIntegerBefore(Instruction, Function, Target, *SourceRegister, *Source, !Unsigned);
-    if (!Normalized)
-      return std::unexpected(Normalized.error());
-    auto SetSource = Instruction.operandAt(1)->setRegister(*Normalized);
-    if (!SetSource)
-      return std::unexpected(SetSource.error());
-    auto Rounding = appendImmediate(Instruction, 0);
-    if (!Rounding)
-      return std::unexpected(Rounding.error());
-    const bool IsWord = Source->scalarBitWidth() <= 32;
-    if (Type->scalarBitWidth() == 32) {
-      return Instruction.setOpcode(instructionOpcode(
-          IsWord ? (Unsigned ? InstructionOpcode::FCVT_S_WU : InstructionOpcode::FCVT_S_W)
-                 : (Unsigned ? InstructionOpcode::FCVT_S_LU : InstructionOpcode::FCVT_S_L)));
-    }
-    return Instruction.setOpcode(instructionOpcode(
-        IsWord ? (Unsigned ? InstructionOpcode::FCVT_D_WU : InstructionOpcode::FCVT_D_W)
-               : (Unsigned ? InstructionOpcode::FCVT_D_LU : InstructionOpcode::FCVT_D_L)));
-  }
-
-  [[nodiscard]] Expected<void> selectFloatingMinMax(MachineInstr &Instruction,
-                                                    std::optional<LowLevelType> Type,
-                                                    InstructionOpcode Single,
-                                                    InstructionOpcode Double) const {
-    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 32)
-      return Instruction.setOpcode(instructionOpcode(Single));
-    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 64)
-      return Instruction.setOpcode(instructionOpcode(Double));
-    return makeUnexpected(ErrorCode::Unsupported,
-                          "RISC-V cannot select this floating min/max type");
-  }
-
   [[nodiscard]] Expected<void> selectCopySign(MachineInstr &Instruction, MachineFunction &Function,
                                               const TargetDescription &Target,
                                               std::optional<LowLevelType> Type) const {
@@ -2648,52 +2515,6 @@ private:
     return {};
   }
 
-  [[nodiscard]] Expected<void> selectRoundingBinary(MachineInstr &Instruction,
-                                                    std::optional<LowLevelType> Type,
-                                                    InstructionOpcode Single,
-                                                    InstructionOpcode Double) const {
-    auto RoundingMode = appendImmediate(Instruction, 0);
-    if (!RoundingMode)
-      return std::unexpected(RoundingMode.error());
-    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 32)
-      return Instruction.setOpcode(instructionOpcode(Single));
-    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 64)
-      return Instruction.setOpcode(instructionOpcode(Double));
-    return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this floating binary type");
-  }
-
-  [[nodiscard]] Expected<void> selectRoundingTernary(MachineInstr &Instruction,
-                                                     std::optional<LowLevelType> Type,
-                                                     InstructionOpcode Single,
-                                                     InstructionOpcode Double) const {
-    return selectRoundingBinary(Instruction, Type, Single, Double);
-  }
-
-  [[nodiscard]] Expected<void> selectRoundingUnary(MachineInstr &Instruction,
-                                                   std::optional<LowLevelType> Type,
-                                                   InstructionOpcode Single,
-                                                   InstructionOpcode Double) const {
-    return selectRoundingBinary(Instruction, Type, Single, Double);
-  }
-
-  [[nodiscard]] Expected<void> selectSignInjection(MachineInstr &Instruction,
-                                                   std::optional<LowLevelType> Type,
-                                                   InstructionOpcode Single,
-                                                   InstructionOpcode Double) const {
-    const MachineOperand *Source = Instruction.operandAt(1);
-    const Register *SourceReg = Source == nullptr ? nullptr : Source->getIf<Register>();
-    if (SourceReg == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V floating sign operation requires a register source");
-    auto Duplicate = insertVirtualUse(Instruction, 2, *SourceReg);
-    if (!Duplicate)
-      return std::unexpected(Duplicate.error());
-    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 32)
-      return Instruction.setOpcode(instructionOpcode(Single));
-    if (Type && Type->isCategoryNeutralScalar() && Type->scalarBitWidth() == 64)
-      return Instruction.setOpcode(instructionOpcode(Double));
-    return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this floating unary type");
-  }
   const RISCVSubtarget &Subtarget;
   const RISCVRegisterBankInfo &RegisterBanks;
 };

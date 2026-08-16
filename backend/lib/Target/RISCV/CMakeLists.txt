@@ -14,7 +14,8 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoC.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoZb.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoPseudo.rccdesc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISel.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelInteger.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelFloating.rccdesc"
 )
 set(RCCBackendRISCVTableGenArguments)
 foreach(RCCBackendRISCVDescriptionSource IN LISTS RCCBackendRISCVDescriptionSources)
