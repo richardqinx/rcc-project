@@ -190,19 +190,13 @@ public:
     const auto Integer = [Type] { return Type && isSupportedIntegerType(*Type); };
     const auto Float = [Type] { return Type && isSupportedFloatingScalar(*Type); };
     switch (Generic) {
-    case GenericOpcode::G_ADD:
-    case GenericOpcode::G_SUB:
-    case GenericOpcode::G_MUL:
-    case GenericOpcode::G_SDIV:
-    case GenericOpcode::G_UDIV:
-    case GenericOpcode::G_SREM:
-    case GenericOpcode::G_UREM:
-    case GenericOpcode::G_AND:
-    case GenericOpcode::G_OR:
-    case GenericOpcode::G_XOR:
     case GenericOpcode::G_SHL:
     case GenericOpcode::G_LSHR:
     case GenericOpcode::G_ASHR:
+      if (!Integer())
+        return makeUnexpected(ErrorCode::Unsupported,
+                              "RISC-V selector requires an i1-i64 integer or 64-bit pointer value");
+      return {};
     case GenericOpcode::G_CONSTANT:
       if (!Integer())
         return makeUnexpected(ErrorCode::Unsupported,
@@ -251,8 +245,6 @@ public:
     case GenericOpcode::G_SEXT_INREG:
     case GenericOpcode::G_ZEXT:
     case GenericOpcode::G_FCMP:
-    case GenericOpcode::G_SDIVREM:
-    case GenericOpcode::G_UDIVREM:
     case GenericOpcode::G_SMULH:
     case GenericOpcode::G_UMULH:
     case GenericOpcode::G_SMIN:
@@ -310,48 +302,6 @@ public:
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 
     switch (Generic) {
-    case GenericOpcode::G_ADD:
-      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::ADD,
-                                 InstructionOpcode::ADDW, InstructionOpcode::ADDI,
-                                 InstructionOpcode::ADDIW, true, 12, 12);
-    case GenericOpcode::G_SUB:
-      return selectIntegerBinary(Instruction, Type, InstructionOpcode::SUB,
-                                 InstructionOpcode::SUBW);
-    case GenericOpcode::G_MUL:
-      return selectIntegerBinary(Instruction, Type, InstructionOpcode::MUL,
-                                 InstructionOpcode::MULW);
-    case GenericOpcode::G_SDIV:
-      return selectNormalizedIntegerBinary(Instruction, Function, Target, Type,
-                                           InstructionOpcode::DIV, InstructionOpcode::DIVW, true,
-                                           true);
-    case GenericOpcode::G_UDIV:
-      return selectNormalizedIntegerBinary(Instruction, Function, Target, Type,
-                                           InstructionOpcode::DIVU, InstructionOpcode::DIVUW, false,
-                                           true);
-    case GenericOpcode::G_SREM:
-      return selectNormalizedIntegerBinary(Instruction, Function, Target, Type,
-                                           InstructionOpcode::REM, InstructionOpcode::REMW, true,
-                                           true);
-    case GenericOpcode::G_UREM:
-      return selectNormalizedIntegerBinary(Instruction, Function, Target, Type,
-                                           InstructionOpcode::REMU, InstructionOpcode::REMUW, false,
-                                           true);
-    case GenericOpcode::G_SDIVREM:
-      return selectDivRem(Instruction, Function, Target, Type, true);
-    case GenericOpcode::G_UDIVREM:
-      return selectDivRem(Instruction, Function, Target, Type, false);
-    case GenericOpcode::G_AND:
-      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::AND,
-                                 InstructionOpcode::AND, InstructionOpcode::ANDI,
-                                 InstructionOpcode::ANDI, true, 12, 12);
-    case GenericOpcode::G_OR:
-      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::OR,
-                                 InstructionOpcode::OR, InstructionOpcode::ORI,
-                                 InstructionOpcode::ORI, true, 12, 12);
-    case GenericOpcode::G_XOR:
-      return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::XOR,
-                                 InstructionOpcode::XOR, InstructionOpcode::XORI,
-                                 InstructionOpcode::XORI, true, 12, 12);
     case GenericOpcode::G_SHL:
       return selectIntegerBinary(Instruction, Function, Type, InstructionOpcode::SLL,
                                  InstructionOpcode::SLLW, InstructionOpcode::SLLI,
@@ -775,52 +725,6 @@ private:
       return std::unexpected(MaskInstructionResult.error());
     return buildBinaryAfter(Builder, **MaskInstructionResult, InstructionOpcode::XOR, Destination,
                             FalseValue, *MaskedDifference);
-  }
-
-  [[nodiscard]] Expected<void> selectDivRem(MachineInstr &Instruction, MachineFunction &Function,
-                                            const TargetDescription &Target,
-                                            std::optional<LowLevelType> Type, bool Signed) const {
-    const MachineOperand *RemainderOperand = Instruction.operandAt(1);
-    const MachineOperand *LeftOperand = Instruction.operandAt(2);
-    const MachineOperand *RightOperand = Instruction.operandAt(3);
-    const Register *Remainder =
-        RemainderOperand == nullptr ? nullptr : RemainderOperand->getIf<Register>();
-    const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
-    const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
-    if (!Type || Remainder == nullptr || Left == nullptr || Right == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V division-with-remainder has invalid operands");
-    const Register RemainderRegister = *Remainder;
-    auto LeftRegister = normalizeIntegerBefore(Instruction, Function, Target, *Left, *Type, Signed);
-    auto RightRegister =
-        normalizeIntegerBefore(Instruction, Function, Target, *Right, *Type, Signed);
-    if (!LeftRegister || !RightRegister)
-      return std::unexpected(!LeftRegister ? LeftRegister.error() : RightRegister.error());
-    auto RemoveRemainder = Instruction.eraseOperand(1);
-    if (!RemoveRemainder)
-      return std::unexpected(RemoveRemainder.error());
-    auto SetLeft = Instruction.operandAt(1)->setRegister(*LeftRegister);
-    if (!SetLeft)
-      return std::unexpected(SetLeft.error());
-    auto SetRight = Instruction.operandAt(2)->setRegister(*RightRegister);
-    if (!SetRight)
-      return std::unexpected(SetRight.error());
-    const bool IsWord = Type->scalarBitWidth() <= 32;
-    const InstructionOpcode Division =
-        IsWord ? (Signed ? InstructionOpcode::DIVW : InstructionOpcode::DIVUW)
-               : (Signed ? InstructionOpcode::DIV : InstructionOpcode::DIVU);
-    const InstructionOpcode RemainderOpcode =
-        IsWord ? (Signed ? InstructionOpcode::REMW : InstructionOpcode::REMUW)
-               : (Signed ? InstructionOpcode::REM : InstructionOpcode::REMU);
-    auto SetDivision = Instruction.setOpcode(instructionOpcode(Division));
-    if (!SetDivision)
-      return std::unexpected(SetDivision.error());
-    MachineIRBuilder Builder(Function, Target);
-    auto BuiltRemainder = buildBinaryAfter(Builder, Instruction, RemainderOpcode, RemainderRegister,
-                                           *LeftRegister, *RightRegister);
-    if (!BuiltRemainder)
-      return std::unexpected(BuiltRemainder.error());
-    return {};
   }
 
   [[nodiscard]] Expected<void> selectMultiplyHigh(MachineInstr &Instruction,
@@ -1939,17 +1843,6 @@ private:
         return std::unexpected(Erased.error());
     }
     return Instruction.setOpcode(instructionOpcode(InstructionOpcode::EBREAK));
-  }
-
-  [[nodiscard]] Expected<void> selectIntegerBinary(MachineInstr &Instruction,
-                                                   std::optional<LowLevelType> Type,
-                                                   InstructionOpcode DoubleWord,
-                                                   InstructionOpcode Word) const {
-    if (!Type || !isSupportedIntegerType(*Type))
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V integer instruction requires a supported scalar integer");
-    const bool IsWord = Type->isCategoryNeutralScalar() && Type->scalarBitWidth() <= 32;
-    return Instruction.setOpcode(instructionOpcode(IsWord ? Word : DoubleWord));
   }
 
   [[nodiscard]] Expected<bool> foldRightConstantToImmediate(MachineInstr &Instruction,

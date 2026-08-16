@@ -84,6 +84,266 @@ selection_rules:
           root: true
           operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
   -
+    id: select_g_add_immediate
+    priority: 400
+    match:
+      opcode: G_ADD
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      instructions:
+        - opcode: ADDI
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_immediate: 2 }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_and_immediate
+    priority: 400
+    match:
+      opcode: G_AND
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      instructions:
+        - opcode: ANDI
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_immediate: 2 }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_or_immediate
+    priority: 400
+    match:
+      opcode: G_OR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      instructions:
+        - opcode: ORI
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_immediate: 2 }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_xor_immediate
+    priority: 400
+    match:
+      opcode: G_XOR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+      operand_def_constants:
+        - index: 2
+          ranges: [{ min: -2048, max: 2047 }]
+    apply:
+      instructions:
+        - opcode: XORI
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { captured_immediate: 2 }]
+      erase_operand_definitions: [2]
+  -
+    id: select_g_add_register
+    priority: 100
+    match:
+      opcode: G_ADD
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: ADD
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_sub_register
+    priority: 100
+    match:
+      opcode: G_SUB
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SUB
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_mul_register
+    priority: 100
+    match:
+      opcode: G_MUL
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: MUL
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_sdiv_register
+    priority: 100
+    match:
+      opcode: G_SDIV
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: DIV
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_udiv_register
+    priority: 100
+    match:
+      opcode: G_UDIV
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: DIVU
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_srem_register
+    priority: 100
+    match:
+      opcode: G_SREM
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: REM
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_urem_register
+    priority: 100
+    match:
+      opcode: G_UREM
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: REMU
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_and_register
+    priority: 100
+    match:
+      opcode: G_AND
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AND
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_or_register
+    priority: 100
+    match:
+      opcode: G_OR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: OR
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
+    id: select_g_xor_register
+    priority: 100
+    match:
+      opcode: G_XOR
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: XOR
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { operand: 2 }]
+  -
     id: select_g_sllw
     priority: 100
     match:
