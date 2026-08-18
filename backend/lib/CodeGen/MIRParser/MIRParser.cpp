@@ -290,6 +290,12 @@ bool MIRDocumentParser::parseFunction(const yaml::Node &Root, MIRDocument &Docum
       return IRFunction->block(BlockName) != nullptr;
     };
   }
+  if (Document.EmbeddedIR) {
+    const EmbeddedIRReferenceIndex *Embedded = &*Document.EmbeddedIR;
+    Context.GlobalValuePropertiesForName = [Embedded](std::string_view GlobalName) {
+      return Embedded->globalObjectProperties(GlobalName).value_or(GlobalValueProperties{});
+    };
+  }
 
   std::vector<PendingJumpTable> PendingJumpTables;
   if (parseFunctionScalars(Root, Function, DocumentInfo) ||

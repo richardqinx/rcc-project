@@ -28,6 +28,7 @@ constexpr std::uint32_t PCRelativeHighFlag = 2;
 constexpr std::uint32_t PCRelativeLowFlag = 4;
 constexpr std::uint32_t CopyF32Flag = 8;
 constexpr std::uint32_t CopyF64Flag = 16;
+constexpr std::uint32_t GOTPCRelativeHighFlag = 128;
 
 [[nodiscard]] std::optional<RegisterBankID>
 registerBank(Register Reg, const MachineFunction &Function, const TargetDescription &Target) {
@@ -298,6 +299,121 @@ copyRegisters(const MachineInstr &Instruction) {
     return Builder.addExternalSymbol(External->Name, External->Offset, PCRelativeHighFlag);
   return makeUnexpected(ErrorCode::VerificationError,
                         "RISC-V direct call pseudo has no symbol target");
+}
+
+[[nodiscard]] Expected<Register> createGPRScratchRegister(MachineFunction &Function,
+                                                          const TargetDescription &Target) {
+  const RegisterBankID GPRBank =
+      RegisterBankID::fromValue(static_cast<std::uint32_t>(RegisterBank::GPR));
+  const RegisterClassID GPRClass =
+      RegisterClassID::fromValue(static_cast<std::uint32_t>(RegisterClass::GPR));
+  if (Target.registers().registerBank(GPRBank) == nullptr ||
+      Target.registers().registerClass(GPRClass) == nullptr) {
+    return makeUnexpected(ErrorCode::InternalError,
+                          "RISC-V pre-RA address expansion requires the GPR register class");
+  }
+  auto Scratch = Function.registerInfo().createVirtualRegister();
+  if (!Scratch)
+    return std::unexpected(Scratch.error());
+  auto SetBank = Function.registerInfo().setRegisterBank(*Scratch, GPRBank);
+  if (!SetBank)
+    return std::unexpected(SetBank.error());
+  auto SetClass = Function.registerInfo().setRegisterClass(*Scratch, GPRClass);
+  if (!SetClass)
+    return std::unexpected(SetClass.error());
+  return *Scratch;
+}
+
+[[nodiscard]] Expected<bool> expandAddressPseudo(MachineInstr &Instruction,
+                                                 MachineFunction &Function,
+                                                 const TargetDescription &Target,
+                                                 bool LoadFromGOT) {
+  const MachineOperand *Destination = Instruction.operandAt(0);
+  const MachineOperand *Symbol = Instruction.operandAt(1);
+  const Register *DestinationRegister =
+      Destination == nullptr ? nullptr : Destination->getIf<Register>();
+  if (DestinationRegister == nullptr || Symbol == nullptr || Instruction.operandCount() != 2) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V address pseudo has malformed explicit operands");
+  }
+  if (LoadFromGOT && Instruction.memOperands().size() != 1) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V global-address pseudo requires one GOT load memory operand");
+  }
+  if (!LoadFromGOT && !Instruction.memOperands().empty()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V local-address pseudo cannot carry memory operands");
+  }
+
+  auto Scratch = createGPRScratchRegister(Function, Target);
+  if (!Scratch)
+    return std::unexpected(Scratch.error());
+  MachineIRBuilder Builder(Function, Target);
+  auto Point = Builder.setInsertPointBefore(Instruction);
+  if (!Point)
+    return std::unexpected(Point.error());
+
+  auto HighPending = Builder.buildInstr(instructionOpcode(InstructionOpcode::AUIPC));
+  if (!HighPending)
+    return std::unexpected(HighPending.error());
+  auto HighDef = HighPending->addDef(*Scratch);
+  if (!HighDef)
+    return std::unexpected(HighDef.error());
+  MachineOperand HighSymbol = Symbol->cloneDetached();
+  HighSymbol.setTargetFlags(LoadFromGOT ? GOTPCRelativeHighFlag : PCRelativeHighFlag);
+  auto HighTarget = HighPending->addOperand(std::move(HighSymbol));
+  if (!HighTarget)
+    return std::unexpected(HighTarget.error());
+  auto High = HighPending->build();
+  if (!High)
+    return std::unexpected(High.error());
+  const std::string Anchor = Instruction.preInstrSymbol()
+                                 ? std::string(*Instruction.preInstrSymbol())
+                                 : ".Lrcc_pcrel_hi_" + std::to_string(Function.stableID().value()) +
+                                       "_" + std::to_string((*High)->stableID().value());
+  auto HighAnchor = (*High)->setPreInstrSymbol(Anchor);
+  if (!HighAnchor)
+    return std::unexpected(HighAnchor.error());
+  auto HighDecoration = copyCommonDecoration(Instruction, **High, false, false, false);
+  if (!HighDecoration)
+    return std::unexpected(HighDecoration.error());
+
+  const InstructionOpcode LowOpcode = LoadFromGOT ? InstructionOpcode::LD : InstructionOpcode::ADDI;
+  auto LowPending = Builder.buildInstr(instructionOpcode(LowOpcode));
+  if (!LowPending)
+    return std::unexpected(LowPending.error());
+  auto LowDef = LowPending->addOperand(Destination->cloneDetached());
+  if (!LowDef)
+    return std::unexpected(LowDef.error());
+  auto LowBase = LowPending->addUse(*Scratch);
+  if (!LowBase)
+    return std::unexpected(LowBase.error());
+  auto LowOffset = LowPending->addMCSymbol(Anchor, 0, PCRelativeLowFlag);
+  if (!LowOffset)
+    return std::unexpected(LowOffset.error());
+  if (LoadFromGOT) {
+    const MachineMemOperand *Memory = Instruction.memOperands().front();
+    if (Memory == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V global-address pseudo has a null memory operand");
+    auto AddedMemory = LowPending->addMemOperand(*Memory);
+    if (!AddedMemory)
+      return std::unexpected(AddedMemory.error());
+  }
+  auto Low = LowPending->build();
+  if (!Low)
+    return std::unexpected(Low.error());
+  auto LowDecoration = copyCommonDecoration(Instruction, **Low, false, true, true);
+  if (!LowDecoration)
+    return std::unexpected(LowDecoration.error());
+  auto Records =
+      Function.records().replaceInstructionReference(Instruction.stableID(), (*Low)->stableID());
+  if (!Records)
+    return std::unexpected(Records.error());
+  auto Removed = removeOldInstruction(Instruction);
+  if (!Removed)
+    return std::unexpected(Removed.error());
+  return true;
 }
 
 [[nodiscard]] bool isRegister(const MachineOperand &Operand, PhysicalRegister Reg) noexcept {
@@ -601,6 +717,13 @@ public:
                                             MachinePseudoExpansionPhase Phase,
                                             MachineFunction &Function,
                                             const TargetDescription &Target) const override {
+    if (Phase == MachinePseudoExpansionPhase::PreRA) {
+      if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoLLA))
+        return expandAddressPseudo(Instruction, Function, Target, false);
+      if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoLGA))
+        return expandAddressPseudo(Instruction, Function, Target, true);
+      return false;
+    }
     if (Phase != MachinePseudoExpansionPhase::PostRA)
       return false;
     if (Instruction.opcode() == opcode(GenericOpcode::COPY))

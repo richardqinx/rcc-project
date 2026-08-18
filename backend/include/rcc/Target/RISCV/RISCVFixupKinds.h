@@ -14,6 +14,7 @@ enum class RISCVFixupKind : mc::MCFixupKind {
   Low12I,
   Low12S,
   PCRelativeHigh20,
+  GOTPCRelativeHigh20,
   PCRelativeLow12I,
   PCRelativeLow12S,
   JAL,

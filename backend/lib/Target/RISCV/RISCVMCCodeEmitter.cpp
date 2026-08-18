@@ -186,6 +186,8 @@ namespace {
     return fixupKind(RISCVFixupKind::High20);
   if (*Kind == static_cast<std::uint32_t>(RISCVMCExprKind::PCRelativeHigh))
     return fixupKind(RISCVFixupKind::PCRelativeHigh20);
+  if (*Kind == static_cast<std::uint32_t>(RISCVMCExprKind::GOTPCRelativeHigh))
+    return fixupKind(RISCVFixupKind::GOTPCRelativeHigh20);
   if (*Kind == static_cast<std::uint32_t>(RISCVMCExprKind::CallPLT))
     return fixupKind(RISCVFixupKind::CallPLT);
   return makeUnexpected(ErrorCode::InstructionEncodingFailed,
@@ -493,6 +495,7 @@ namespace {
   if (!Kind)
     return std::unexpected(Kind.error());
   const bool PCRelative = *Kind == fixupKind(RISCVFixupKind::PCRelativeHigh20) ||
+                          *Kind == fixupKind(RISCVFixupKind::GOTPCRelativeHigh20) ||
                           *Kind == fixupKind(RISCVFixupKind::CallPLT);
   auto Immediate = immediateOrFixup(Instruction, 1, *Kind, PCRelative, Result);
   if (!Immediate)

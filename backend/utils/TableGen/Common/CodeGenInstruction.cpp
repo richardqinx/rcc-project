@@ -110,13 +110,14 @@ instructionFlagEnumerator(std::string_view Value) noexcept {
 
 [[nodiscard]] std::optional<std::string_view>
 pseudoOwnerEnumerator(std::string_view Value) noexcept {
-  static constexpr std::array<std::pair<std::string_view, std::string_view>, 12> Owners = {{
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 13> Owners = {{
       {"none", "None"},
       {"legalizer", "Legalizer"},
       {"register_bank_select", "RegisterBankSelect"},
       {"instruction_select", "InstructionSelect"},
       {"phi_elimination", "PhiElimination"},
       {"two_address_rewrite", "TwoAddressRewrite"},
+      {"pre_ra_expansion", "PreRAExpansion"},
       {"register_allocator", "RegisterAllocator"},
       {"pre_pei_expansion", "PrePEIExpansion"},
       {"prologue_epilogue_insertion", "PrologueEpilogueInsertion"},

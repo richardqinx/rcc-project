@@ -5,6 +5,7 @@
 
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMetadata.h"
+#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/Register.h"
 #include "rcc/Support/Error.h"
 #include "rcc/Support/TextDiagnostic.h"
@@ -66,6 +67,7 @@ struct MIParserContext final {
   std::vector<MIMetadataSlot> Metadata;
   std::vector<MISyncScopeSlot> SyncScopes;
   std::function<bool(std::string_view)> HasIRBlock;
+  std::function<GlobalValueProperties(std::string_view)> GlobalValuePropertiesForName;
   std::function<Expected<SyncScopeID>(std::string_view)> InternSyncScope;
   std::function<Expected<std::uint32_t>(std::uint32_t)> PointerSizeInBits;
 };

@@ -409,6 +409,31 @@ instructions:
     owner: post_ra_expansion
     deadline: post_ra_finalized
   -
+    id: 1267
+    symbol: PseudoLLA
+    name: PseudoLLA
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR }
+      - { kinds: [constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol] }
+    num_explicit_defs: 1
+    flags: [pseudo, produces_code, allowed_pre_legalizer]
+    size: 8
+    owner: pre_ra_expansion
+    deadline: tied_ops_rewritten
+  -
+    id: 1268
+    symbol: PseudoLGA
+    name: PseudoLGA
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR }
+      - { kinds: [constant_pool_index, jump_table_index, global_symbol, external_symbol, block_address, mc_symbol] }
+    num_explicit_defs: 1
+    flags: [pseudo, produces_code, allowed_pre_legalizer, may_load]
+    size: 8
+    requires_memory_operands: true
+    owner: pre_ra_expansion
+    deadline: tied_ops_rewritten
+  -
     id: 1263
     symbol: PseudoBRIND
     name: PseudoBRIND

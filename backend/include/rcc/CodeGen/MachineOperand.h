@@ -5,6 +5,7 @@
 
 #include "rcc/ADT/APFloat.h"
 #include "rcc/ADT/APInt.h"
+#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineDebugInfo.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
@@ -127,6 +128,7 @@ struct JumpTableOperand final {
 struct GlobalSymbolOperand final {
   std::string Name;
   std::int64_t Offset = 0;
+  GlobalValueProperties Properties;
 
   friend bool operator==(const GlobalSymbolOperand &Left,
                          const GlobalSymbolOperand &Right) = default;
@@ -329,7 +331,8 @@ public:
   [[nodiscard]] static MachineOperand jumpTable(JumpTableIndex Index,
                                                 std::uint32_t TargetFlags = 0);
   [[nodiscard]] static Expected<MachineOperand>
-  globalSymbol(std::string Name, std::int64_t Offset = 0, std::uint32_t TargetFlags = 0);
+  globalSymbol(std::string Name, std::int64_t Offset = 0, std::uint32_t TargetFlags = 0,
+               GlobalValueProperties Properties = {});
   [[nodiscard]] static Expected<MachineOperand>
   externalSymbol(std::string Name, std::int64_t Offset = 0, std::uint32_t TargetFlags = 0);
   [[nodiscard]] static Expected<MachineOperand> blockAddress(std::string FunctionName,

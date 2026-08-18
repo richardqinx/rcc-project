@@ -920,7 +920,8 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
         rcc::riscv::RISCVSubtargetFeatures::fromFeatureList(Command.Invocation.Features);
     if (!Features)
       return std::unexpected(Features.error());
-    const rcc::riscv::RISCVSubtarget Subtarget(*Features);
+    const rcc::riscv::RISCVSubtarget Subtarget(*Features, Command.Invocation.Relocation,
+                                               Command.Invocation.Code);
     std::vector<std::string> Names;
     for (std::size_t Index = 0; Index < Input->Document.unit().functionCount(); ++Index) {
       const rcc::MachineFunction *Function = Input->Document.unit().functionAt(Index);

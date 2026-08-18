@@ -55,7 +55,7 @@ struct BackendInvocation final {
   std::vector<std::string> Features;
   std::string ABI;
   std::string DataLayout;
-  rcc::RelocationModel Relocation = rcc::RelocationModel::PositionIndependent;
+  rcc::RelocationModel Relocation = rcc::RelocationModel::Static;
   rcc::CodeModel Code = rcc::CodeModel::Small;
   std::vector<BackendOption> TargetOptions;
   LayoutOwnership Layout = LayoutOwnership::NativeObject;

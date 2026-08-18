@@ -171,7 +171,9 @@ bool RISCVSubtargetFeatures::has(RISCVSubtargetOption Option) const noexcept {
   return (Options & optionBit(Option)) != 0;
 }
 
-RISCVSubtarget::RISCVSubtarget(RISCVSubtargetFeatures Features) : Features(Features) {}
+RISCVSubtarget::RISCVSubtarget(RISCVSubtargetFeatures Features, RelocationModel Relocation,
+                               CodeModel Code)
+    : Features(Features), Relocation(Relocation), Code(Code) {}
 
 RISCVSubtarget::~RISCVSubtarget() = default;
 

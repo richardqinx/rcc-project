@@ -3,6 +3,7 @@
 #ifndef RCC_MIR_EMBEDDEDIR_H
 #define RCC_MIR_EMBEDDEDIR_H
 
+#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/Support/TextDiagnostic.h"
 
 #include <cstddef>
@@ -141,6 +142,8 @@ public:
   [[nodiscard]] const EmbeddedIRFunction *function(std::string_view Name) const noexcept;
   [[nodiscard]] const EmbeddedIRFunction *unnamedFunction(std::size_t Ordinal) const noexcept;
   [[nodiscard]] const EmbeddedIRReference *globalObject(std::string_view Name) const noexcept;
+  [[nodiscard]] std::optional<GlobalValueProperties>
+  globalObjectProperties(std::string_view Name) const noexcept;
   [[nodiscard]] const EmbeddedIRMetadataDefinition *metadata(std::string_view Name) const noexcept;
   [[nodiscard]] const EmbeddedIRTypeDefinition *
   typeDefinition(std::string_view Name) const noexcept;
@@ -167,6 +170,8 @@ private:
   std::optional<TextRange> DataLayoutRange;
   std::vector<EmbeddedIRFunction> Functions;
   std::vector<EmbeddedIRReference> GlobalObjects;
+  std::unordered_map<std::string, GlobalValueProperties, StringHash, std::equal_to<> >
+      GlobalProperties;
   std::vector<EmbeddedIRMetadataDefinition> MetadataDefinitions;
   std::vector<EmbeddedIRTypeDefinition> TypeDefinitions;
   std::unordered_map<std::string, std::size_t, StringHash, std::equal_to<>> FunctionNameToIndex;

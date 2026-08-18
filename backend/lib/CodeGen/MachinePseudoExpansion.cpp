@@ -94,7 +94,8 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
     return makeUnexpected(ErrorCode::PseudoExpansionFailed,
                           "pseudo expansion changed CFG resources outside its owner contract");
   }
-  if (Before.VirtualRegisterCount != After.VirtualRegisterCount) {
+  if (Phase != MachinePseudoExpansionPhase::PreRA &&
+      Before.VirtualRegisterCount != After.VirtualRegisterCount) {
     return makeUnexpected(ErrorCode::PseudoExpansionFailed,
                           "post-selection pseudo expansion created a virtual register");
   }
@@ -109,6 +110,8 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
 
 [[nodiscard]] PseudoOwner ownerFor(MachinePseudoExpansionPhase Phase) noexcept {
   switch (Phase) {
+  case MachinePseudoExpansionPhase::PreRA:
+    return PseudoOwner::PreRAExpansion;
   case MachinePseudoExpansionPhase::PrePEI:
     return PseudoOwner::PrePEIExpansion;
   case MachinePseudoExpansionPhase::PostRA:
@@ -137,6 +140,21 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
 }
 
 [[nodiscard]] const MachinePassContract &phaseContract(MachinePseudoExpansionPhase Phase) {
+  static const MachinePassContract PreRA = [] {
+    MachinePassContract Value{
+        .Name = "pre-ra-target-pseudo-expansion",
+        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
+                     MachineFunctionProperty::TiedOpsRewritten},
+        .Sets = {},
+        .Clears = {},
+        .RequiredAnalyses = {},
+        .VerificationStage = PipelineStage::TiedOpsRewritten,
+    };
+    Value.ThreadSafety = PassThreadSafety::ThreadSafe;
+    Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands,
+                             MachinePassChange::Registers};
+    return Value;
+  }();
   static const MachinePassContract PrePEI = [] {
     MachinePassContract Value{
         .Name = "pre-pei-target-pseudo-expansion",
@@ -185,6 +203,8 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
     return Value;
   }();
   switch (Phase) {
+  case MachinePseudoExpansionPhase::PreRA:
+    return PreRA;
   case MachinePseudoExpansionPhase::PrePEI:
     return PrePEI;
   case MachinePseudoExpansionPhase::PostRA:
@@ -401,6 +421,21 @@ runExpansionTransaction(MachineFunction &Function, const TargetDescription &Targ
 }
 
 } // namespace
+
+const MachinePassContract &PreRATargetPseudoExpansionPass::contract() const noexcept {
+  return phaseContract(MachinePseudoExpansionPhase::PreRA);
+}
+
+Expected<MachinePassResult>
+PreRATargetPseudoExpansionPass::run(MachineFunction &Function, const TargetDescription &Target,
+                                    MachineFunctionAnalysisManager &Analyses) {
+  if (!Function.properties().containsAll(contract().Requires)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "pre-RA pseudo expansion requires selected SSA-exited MIR");
+  }
+  return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::PreRA,
+                                 nullptr, Analyses);
+}
 
 const MachinePassContract &PreparePostRAPseudosPass::contract() const noexcept {
   return preparationContract();

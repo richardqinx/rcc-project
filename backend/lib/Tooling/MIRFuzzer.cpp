@@ -298,7 +298,7 @@ private:
   auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
   if (!Features)
     return std::unexpected(Features.error());
-  const riscv::RISCVSubtarget Subtarget(*Features);
+  const riscv::RISCVSubtarget Subtarget(*Features, Invocation.Relocation, Invocation.Code);
   auto Names = riscv::canonicalPipelinePassNames(*Function, Subtarget);
   if (!Names)
     return std::unexpected(Names.error());

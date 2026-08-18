@@ -240,7 +240,7 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
             riscv::RISCVSubtargetFeatures Features, bool AllowSnapshots,
             MachinePassInstrumentation *Instrumentation) {
   FunctionRunResult Result;
-  const riscv::RISCVSubtarget Subtarget(Features);
+  const riscv::RISCVSubtarget Subtarget(Features, Invocation.Relocation, Invocation.Code);
   MachinePassManagerOptions ManagerOptions{
       .VerifyBefore = true,
       .VerifyEach = Controls.VerifyEach,

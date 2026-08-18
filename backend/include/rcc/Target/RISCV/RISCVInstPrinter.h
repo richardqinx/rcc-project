@@ -18,6 +18,7 @@ enum class RISCVMCExprKind : std::uint32_t {
   PCRelativeLow = 3,
   AbsoluteHigh = 4,
   AbsoluteLow = 5,
+  GOTPCRelativeHigh = 6,
 };
 
 class RISCVInstPrinter final : public mc::MCInstPrinter {

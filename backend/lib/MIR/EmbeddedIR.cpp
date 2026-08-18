@@ -117,6 +117,14 @@ EmbeddedIRReferenceIndex::globalObject(std::string_view Name) const noexcept {
   return &GlobalObjects[Position->second];
 }
 
+std::optional<GlobalValueProperties>
+EmbeddedIRReferenceIndex::globalObjectProperties(std::string_view Name) const noexcept {
+  const auto Position = GlobalProperties.find(Name);
+  if (Position == GlobalProperties.end())
+    return std::nullopt;
+  return Position->second;
+}
+
 const EmbeddedIRMetadataDefinition *
 EmbeddedIRReferenceIndex::metadata(std::string_view Name) const noexcept {
   const auto Position = MetadataNameToIndex.find(Name);
@@ -794,12 +802,31 @@ private:
                "duplicate embedded LLVM IR global object");
       return;
     }
+    ++Position;
+    GlobalValueProperties Properties;
+    while (Position < End) {
+      while (Position < End && !isIdentifierStart(Line[Position]))
+        ++Position;
+      const std::size_t WordBegin = Position;
+      while (Position < End && isIdentifierBody(Line[Position]))
+        ++Position;
+      if (WordBegin == Position)
+        continue;
+      const std::string_view Word = Line.substr(WordBegin, Position - WordBegin);
+      if (Word == "dso_local" || Word == "internal" || Word == "private")
+        Properties.DSOLocal = true;
+      else if (Word == "extern_weak")
+        Properties.ExternalWeak = true;
+      else if (Word == "thread_local")
+        Properties.ThreadLocal = true;
+    }
     const std::size_t GlobalIndex = Index.GlobalObjects.size();
     Index.GlobalNameToIndex.emplace(Name->Name, GlobalIndex);
     Index.GlobalObjects.push_back(EmbeddedIRReference{
         .Name = std::move(Name->Name),
         .Range = Name->Range,
     });
+    Index.GlobalProperties.emplace(Index.GlobalObjects.back().Name, Properties);
   }
 
   void parseMetadataDefinition(std::string_view Line, std::size_t LineOffset, std::size_t Position,

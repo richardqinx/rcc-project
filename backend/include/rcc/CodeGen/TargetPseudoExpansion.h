@@ -14,6 +14,7 @@ class MachineInstr;
 class TargetDescription;
 
 enum class MachinePseudoExpansionPhase : std::uint8_t {
+  PreRA,
   PrePEI,
   PostRA,
   TargetLate,

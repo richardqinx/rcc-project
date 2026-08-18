@@ -5,6 +5,7 @@
 #include "RISCVInstrInfo.h"
 #include "RISCVRegisterBankInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
+#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/GlobalISel/GISelValueTracking.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelector.h"
 #include "rcc/CodeGen/LowLevelType.h"
@@ -12,6 +13,7 @@
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -32,6 +34,9 @@
 
 namespace rcc::riscv {
 namespace {
+
+constexpr std::uint32_t AbsoluteHighFlag = 32;
+constexpr std::uint32_t AbsoluteLowFlag = 64;
 
 #define GET_GLOBALISEL_MATCH_TABLE
 #include "RISCVGenGlobalISel.inc"
@@ -591,6 +596,9 @@ public:
       return {};
     case GenericOpcode::G_FPEXTLOAD:
     case GenericOpcode::G_FPTRUNCSTORE:
+    case GenericOpcode::G_GLOBAL_VALUE:
+    case GenericOpcode::G_JUMP_TABLE:
+    case GenericOpcode::G_CONSTANT_POOL:
       return {};
     case GenericOpcode::G_FCONSTANT: {
       const MachineOperand *Immediate = Instruction.operandAt(1);
@@ -692,6 +700,10 @@ public:
       return selectAtomicRMW(Instruction, Function, Target, Type, Generic);
     case GenericOpcode::G_FENCE:
       return selectFence(Instruction);
+    case GenericOpcode::G_GLOBAL_VALUE:
+    case GenericOpcode::G_JUMP_TABLE:
+    case GenericOpcode::G_CONSTANT_POOL:
+      return selectGlobalAddress(Instruction, Function, Target);
     case GenericOpcode::G_PHI:
       return Instruction.setOpcode(opcode(GenericOpcode::PHI));
     case GenericOpcode::COPY:
@@ -715,6 +727,172 @@ public:
   }
 
 private:
+  [[nodiscard]] Expected<const MachineMemOperand *>
+  createGOTLoad(MachineFunction &Function, LowLevelType Type) const {
+    auto Size = MemorySize::fixed(Type.minimumBitWidth() / 8U);
+    if (!Size)
+      return std::unexpected(Size.error());
+    auto Alignment = rcc::Alignment::create(Type.minimumBitWidth() / 8U);
+    if (!Alignment)
+      return std::unexpected(Alignment.error());
+    MachineMemOperandDesc Description;
+    Description.Accesses = {MemoryAccessFlag::Load, MemoryAccessFlag::Dereferenceable,
+                            MemoryAccessFlag::Invariant};
+    Description.Size = *Size;
+    Description.MemoryType = Type;
+    Description.Align = *Alignment;
+    Description.Base = MemoryBase::got();
+    return Function.createMemOperand(std::move(Description));
+  }
+
+  [[nodiscard]] Expected<void>
+  selectGlobalAddress(MachineInstr &Instruction, MachineFunction &Function,
+                      const TargetDescription &Target) const {
+    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
+    const MachineOperand *SymbolOperand = Instruction.operandAt(1);
+    const Register *Destination =
+        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
+    const std::optional<LowLevelType> Type = resultType(Function, Instruction);
+    if (Destination == nullptr || SymbolOperand == nullptr || !Type || !Type->isPointer()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V address selection has malformed generic operands");
+    }
+    auto DestinationConstraint = constrainBuilderRegisters(Function, Target, {*Destination});
+    if (!DestinationConstraint)
+      return std::unexpected(DestinationConstraint.error());
+
+    GlobalValueProperties Properties;
+    if (Instruction.opcode() == opcode(GenericOpcode::G_GLOBAL_VALUE)) {
+      const auto *Global = SymbolOperand->getIf<GlobalSymbolOperand>();
+      if (Global == nullptr)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "RISC-V global address has no global symbol operand");
+      Properties = Global->Properties;
+      if (Properties.ThreadLocal) {
+        return makeUnexpected(ErrorCode::Unsupported,
+                              "RISC-V GlobalISel does not support thread-local global addresses");
+      }
+    }
+
+    const bool TaggedGlobals = Subtarget.features().has(RISCVSubtargetOption::TaggedGlobals);
+    const bool UseGOT = Subtarget.relocationModel() == RelocationModel::PositionIndependent ||
+                        TaggedGlobals;
+    const auto ReplaceWithPseudo = [&](InstructionOpcode OpcodeValue) -> Expected<void> {
+      auto SetOpcode = Instruction.setOpcode(instructionOpcode(OpcodeValue));
+      if (!SetOpcode)
+        return std::unexpected(SetOpcode.error());
+      return constrainSelectedInstruction(Instruction, Function, Target);
+    };
+    const auto BuildGOTLoad = [&]() -> Expected<void> {
+      auto Memory = createGOTLoad(Function, *Type);
+      if (!Memory)
+        return std::unexpected(Memory.error());
+      MachineIRBuilder Builder(Function, Target);
+      auto Point = Builder.setInsertPointBefore(Instruction);
+      if (!Point)
+        return std::unexpected(Point.error());
+      auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::PseudoLGA));
+      if (!Pending)
+        return std::unexpected(Pending.error());
+      auto Def = Pending->addDef(*Destination);
+      if (!Def)
+        return std::unexpected(Def.error());
+      auto Symbol = Pending->addOperand(SymbolOperand->cloneDetached());
+      if (!Symbol)
+        return std::unexpected(Symbol.error());
+      auto MemoryAdded = Pending->addMemOperand(**Memory);
+      if (!MemoryAdded)
+        return std::unexpected(MemoryAdded.error());
+      auto Result = Pending->build();
+      if (!Result)
+        return std::unexpected(Result.error());
+      auto Flags = propagateSelectionFlags(**Result, Instruction, Target);
+      if (!Flags)
+        return std::unexpected(Flags.error());
+      auto Constraint = constrainSelectedInstruction(**Result, Function, Target);
+      if (!Constraint)
+        return std::unexpected(Constraint.error());
+      MachineBasicBlock *Block = Instruction.parent();
+      if (Block == nullptr)
+        return makeUnexpected(ErrorCode::InternalError,
+                              "RISC-V global address is detached from its block");
+      return Block->removeInstruction(Instruction);
+    };
+
+    if (UseGOT) {
+      if (Properties.DSOLocal && !TaggedGlobals)
+        return ReplaceWithPseudo(InstructionOpcode::PseudoLLA);
+      return BuildGOTLoad();
+    }
+
+    if (Subtarget.codeModel() == CodeModel::Medium) {
+      if (Properties.ExternalWeak)
+        return BuildGOTLoad();
+      return ReplaceWithPseudo(InstructionOpcode::PseudoLLA);
+    }
+    if (Subtarget.codeModel() != CodeModel::Small) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "RISC-V GlobalISel does not support this global address code model");
+    }
+
+    auto Temporary = createTemporary(Function, *Type, Target);
+    if (!Temporary)
+      return std::unexpected(Temporary.error());
+    MachineIRBuilder Builder(Function, Target);
+    auto Point = Builder.setInsertPointBefore(Instruction);
+    if (!Point)
+      return std::unexpected(Point.error());
+    auto HighPending = Builder.buildInstr(instructionOpcode(InstructionOpcode::LUI));
+    if (!HighPending)
+      return std::unexpected(HighPending.error());
+    auto HighDef = HighPending->addDef(*Temporary);
+    if (!HighDef)
+      return std::unexpected(HighDef.error());
+    MachineOperand HighSymbol = SymbolOperand->cloneDetached();
+    HighSymbol.setTargetFlags(AbsoluteHighFlag);
+    auto HighOperand = HighPending->addOperand(std::move(HighSymbol));
+    if (!HighOperand)
+      return std::unexpected(HighOperand.error());
+    auto High = HighPending->build();
+    if (!High)
+      return std::unexpected(High.error());
+    auto HighFlags = propagateSelectionFlags(**High, Instruction, Target);
+    if (!HighFlags)
+      return std::unexpected(HighFlags.error());
+    auto HighConstraint = constrainSelectedInstruction(**High, Function, Target);
+    if (!HighConstraint)
+      return std::unexpected(HighConstraint.error());
+
+    auto LowPending = Builder.buildInstr(instructionOpcode(InstructionOpcode::ADDI));
+    if (!LowPending)
+      return std::unexpected(LowPending.error());
+    auto LowDef = LowPending->addDef(*Destination);
+    if (!LowDef)
+      return std::unexpected(LowDef.error());
+    auto LowSource = LowPending->addUse(*Temporary);
+    if (!LowSource)
+      return std::unexpected(LowSource.error());
+    MachineOperand LowSymbol = SymbolOperand->cloneDetached();
+    LowSymbol.setTargetFlags(AbsoluteLowFlag);
+    auto LowOperand = LowPending->addOperand(std::move(LowSymbol));
+    if (!LowOperand)
+      return std::unexpected(LowOperand.error());
+    auto Low = LowPending->build();
+    if (!Low)
+      return std::unexpected(Low.error());
+    auto LowFlags = propagateSelectionFlags(**Low, Instruction, Target);
+    if (!LowFlags)
+      return std::unexpected(LowFlags.error());
+    auto LowConstraint = constrainSelectedInstruction(**Low, Function, Target);
+    if (!LowConstraint)
+      return std::unexpected(LowConstraint.error());
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "RISC-V global address is detached from its block");
+    return Block->removeInstruction(Instruction);
+  }
+
   [[nodiscard]] Expected<void> selectCopy(MachineInstr &Instruction, MachineFunction &Function,
                                           const TargetDescription &Target) const {
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);

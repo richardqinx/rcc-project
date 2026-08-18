@@ -48,9 +48,11 @@ constexpr std::uint32_t CopyF32TargetFlag = 8;
 constexpr std::uint32_t CopyF64TargetFlag = 16;
 constexpr std::uint32_t AbsoluteHighTargetFlag = 32;
 constexpr std::uint32_t AbsoluteLowTargetFlag = 64;
-constexpr std::uint32_t KnownTargetFlags =
-    CallTargetFlag | PCRelativeHighTargetFlag | PCRelativeLowTargetFlag | CopyF32TargetFlag |
-    CopyF64TargetFlag | AbsoluteHighTargetFlag | AbsoluteLowTargetFlag;
+constexpr std::uint32_t GOTPCRelativeHighTargetFlag = 128;
+constexpr std::uint32_t KnownTargetFlags = CallTargetFlag | PCRelativeHighTargetFlag |
+                                           PCRelativeLowTargetFlag | CopyF32TargetFlag |
+                                           CopyF64TargetFlag | AbsoluteHighTargetFlag |
+                                           AbsoluteLowTargetFlag | GOTPCRelativeHighTargetFlag;
 
 [[nodiscard]] Expected<std::uint8_t> targetRelocationSize(TargetRelocationKindID Kind) {
   if (Kind == targetRelocationKind(RISCVTargetRelocationKind::Absolute32))
@@ -96,6 +98,9 @@ constexpr std::uint32_t KnownTargetFlags =
     break;
   case AbsoluteLowTargetFlag:
     Kind = RISCVMCExprKind::AbsoluteLow;
+    break;
+  case GOTPCRelativeHighTargetFlag:
+    Kind = RISCVMCExprKind::GOTPCRelativeHigh;
     break;
   default:
     return makeUnexpected(ErrorCode::AssemblyLoweringFailed,

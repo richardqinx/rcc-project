@@ -2290,7 +2290,10 @@ bool MIParser::Impl::parseOperand(bool IsDef, ParsedOperand &Result) {
     std::int64_t Offset = 0;
     if (parseOptionalOffset(Offset))
       return true;
-    auto Created = MachineOperand::globalSymbol(Name, Offset, TargetFlags);
+    const GlobalValueProperties Properties = Context.GlobalValuePropertiesForName
+                                                 ? Context.GlobalValuePropertiesForName(Name)
+                                                 : GlobalValueProperties{};
+    auto Created = MachineOperand::globalSymbol(Name, Offset, TargetFlags, Properties);
     if (!Created)
       return importError(OperandToken, Created.error());
     Operand = std::move(*Created);

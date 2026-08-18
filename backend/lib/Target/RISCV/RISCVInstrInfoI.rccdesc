@@ -21,7 +21,7 @@ instructions:
     encoding: 5143
     operands:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
-      - { kinds: [immediate, basic_block, global_symbol, external_symbol, mc_symbol], immediate_predicate: UIMM20, allowed_target_flags: 3, name: IMM }
+      - { kinds: [immediate, basic_block, global_symbol, external_symbol, mc_symbol], immediate_predicate: UIMM20, allowed_target_flags: 130, name: IMM }
     num_explicit_defs: 1
     flags: [produces_code]
     scheduling_class: ALU

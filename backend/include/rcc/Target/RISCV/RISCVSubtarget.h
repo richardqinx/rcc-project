@@ -3,6 +3,7 @@
 #ifndef RCC_TARGET_RISCV_RISCVSUBTARGET_H
 #define RCC_TARGET_RISCV_RISCVSUBTARGET_H
 
+#include "rcc/CodeGen/CommandFlags.h"
 #include "rcc/Support/Error.h"
 
 #include <cstdint>
@@ -88,7 +89,9 @@ private:
 
 class RISCVSubtarget final {
 public:
-  explicit RISCVSubtarget(RISCVSubtargetFeatures Features);
+  explicit RISCVSubtarget(RISCVSubtargetFeatures Features,
+                          RelocationModel Relocation = RelocationModel::Static,
+                          CodeModel Code = CodeModel::Small);
   RISCVSubtarget(const RISCVSubtarget &) = delete;
   RISCVSubtarget &operator=(const RISCVSubtarget &) = delete;
   RISCVSubtarget(RISCVSubtarget &&) = delete;
@@ -99,6 +102,14 @@ public:
     return Features;
   }
 
+  [[nodiscard]] RelocationModel relocationModel() const noexcept {
+    return Relocation;
+  }
+
+  [[nodiscard]] CodeModel codeModel() const noexcept {
+    return Code;
+  }
+
   [[nodiscard]] const TargetCallLowering *getCallLowering() const;
   [[nodiscard]] InstructionSelector *getInstructionSelector() const;
   [[nodiscard]] const LegalizerInfo *getLegalizerInfo() const;
@@ -106,6 +117,8 @@ public:
 
 private:
   RISCVSubtargetFeatures Features;
+  RelocationModel Relocation;
+  CodeModel Code;
   mutable std::unique_ptr<TargetCallLowering> CallLoweringInfo;
   mutable std::unique_ptr<InstructionSelector> InstSelector;
   mutable std::unique_ptr<LegalizerInfo> Legalizer;

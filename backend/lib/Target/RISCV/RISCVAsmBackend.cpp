@@ -21,6 +21,7 @@ enum class RISCVRelocation : std::uint32_t {
   Branch = 16,
   JAL = 17,
   CallPLT = 19,
+  GOTHigh20 = 20,
   PCRelativeHigh20 = 23,
   PCRelativeLow12I = 24,
   PCRelativeLow12S = 25,
@@ -193,6 +194,7 @@ Expected<void> RISCVAsmBackend::applyFixup(mc::MCFixupKind Kind, std::span<std::
   std::uint32_t Instruction = readWord(Data, Offset);
   if (isTargetKind(Kind, RISCVFixupKind::High20) ||
       isTargetKind(Kind, RISCVFixupKind::PCRelativeHigh20) ||
+      isTargetKind(Kind, RISCVFixupKind::GOTPCRelativeHigh20) ||
       isTargetKind(Kind, RISCVFixupKind::CallPLT)) {
     const std::uint64_t Adjusted = static_cast<std::uint64_t>(Value) + 0x800U;
     const std::uint32_t High = static_cast<std::uint32_t>(Adjusted >> 12U);
@@ -243,6 +245,13 @@ Expected<std::uint32_t> RISCVAsmBackend::relocationType(const mc::MCFixup &Fixup
     if (!Kind)
       return std::unexpected(Kind.error());
     return Relocation(RISCVRelocation::PCRelativeHigh20);
+  }
+  if (isTargetKind(Fixup.Kind, RISCVFixupKind::GOTPCRelativeHigh20)) {
+    auto Kind = requireRelocationTargetKind(
+        Value, static_cast<std::uint32_t>(RISCVMCExprKind::GOTPCRelativeHigh), "R_RISCV_GOT_HI20");
+    if (!Kind)
+      return std::unexpected(Kind.error());
+    return Relocation(RISCVRelocation::GOTHigh20);
   }
   if (isTargetKind(Fixup.Kind, RISCVFixupKind::PCRelativeLow12I) ||
       isTargetKind(Fixup.Kind, RISCVFixupKind::PCRelativeLow12S)) {

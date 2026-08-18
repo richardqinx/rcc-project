@@ -388,7 +388,7 @@ register_masks:
     preserved: [X1, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, F8_D, F9_D, F18_D, F19_D, F20_D, F21_D, F22_D, F23_D, F24_D, F25_D, F26_D, F27_D, F8_F, F9_F, F18_F, F19_F, F20_F, F21_F, F22_F, F23_F, F24_F, F25_F, F26_F, F27_F]
 
 mir_operand_flags:
-  direct_mask: 127
+  direct_mask: 255
   direct:
     - { name: riscv-call, value: 1 }
     - { name: riscv-pcrel-hi, value: 2 }
@@ -397,4 +397,5 @@ mir_operand_flags:
     - { name: riscv-copy-f64, value: 16 }
     - { name: riscv-hi, value: 32 }
     - { name: riscv-lo, value: 64 }
+    - { name: riscv-got-pcrel-hi, value: 128 }
   bitmask: []

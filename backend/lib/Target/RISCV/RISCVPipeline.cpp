@@ -12,6 +12,7 @@
 #include "rcc/CodeGen/MachineCombiner.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
+#include "rcc/CodeGen/MachinePseudoExpansion.h"
 #include "rcc/CodeGen/PHIElimination.h"
 #include "rcc/CodeGen/RegAllocPBQP.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -65,7 +66,10 @@ template <typename PassT, typename... ArgumentT>
 }
 
 [[nodiscard]] Expected<void> addRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline) {
-  auto Added = addPreRegisterAllocationOptimizationPipeline(Pipeline, optimizationPipelineInfo());
+  auto Added = addPass<PreRATargetPseudoExpansionPass>(Pipeline, pseudoExpansionInfo());
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = addPreRegisterAllocationOptimizationPipeline(Pipeline, optimizationPipelineInfo());
   if (!Added)
     return std::unexpected(Added.error());
   return addPass<PBQPAllocatorPass>(Pipeline, registerAllocationInfo());

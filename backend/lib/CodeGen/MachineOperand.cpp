@@ -116,12 +116,13 @@ MachineOperand MachineOperand::jumpTable(JumpTableIndex Index, std::uint32_t Tar
 }
 
 Expected<MachineOperand> MachineOperand::globalSymbol(std::string Name, std::int64_t Offset,
-                                                      std::uint32_t TargetFlags) {
+                                                      std::uint32_t TargetFlags,
+                                                      GlobalValueProperties Properties) {
   if (Name.empty()) {
     return makeUnexpected(ErrorCode::InvalidArgument, "global symbol operand name cannot be empty");
   }
-  return MachineOperand(Kind::GlobalSymbol, GlobalSymbolOperand{std::move(Name), Offset},
-                        TargetFlags);
+  return MachineOperand(Kind::GlobalSymbol,
+                        GlobalSymbolOperand{std::move(Name), Offset, Properties}, TargetFlags);
 }
 
 Expected<MachineOperand> MachineOperand::externalSymbol(std::string Name, std::int64_t Offset,

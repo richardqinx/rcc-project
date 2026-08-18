@@ -156,6 +156,15 @@ enum class GlobalUnnamedAddress : std::uint8_t {
   Count,
 };
 
+struct GlobalValueProperties final {
+  bool DSOLocal = false;
+  bool ExternalWeak = false;
+  bool ThreadLocal = false;
+
+  friend constexpr bool operator==(const GlobalValueProperties &Left,
+                                   const GlobalValueProperties &Right) noexcept = default;
+};
+
 struct GlobalObjectDesc final {
   std::string Symbol;
   GenericConstantType ObjectType;
