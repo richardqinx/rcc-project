@@ -1532,7 +1532,22 @@ private:
 
     const std::uint32_t BitWidth = Type->scalarBitWidth();
     const std::uint64_t Bits = Floating->Bits.words().empty() ? 0 : Floating->Bits.words().front();
-    auto Integer = APInt::fromUnsigned(64, Bits);
+    const InstructionOpcode Move =
+        BitWidth == 32 ? InstructionOpcode::FMV_W_X : InstructionOpcode::FMV_D_X;
+    if (Bits == 0) {
+      auto Zero = physicalRegister(PhysicalRegisterID::X0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      auto EraseImmediate = Instruction.eraseOperand(1);
+      if (!EraseImmediate)
+        return std::unexpected(EraseImmediate.error());
+      auto Source = insertPhysicalRegister(Instruction, 1, *Zero, RegisterOperandFlag::Use);
+      if (!Source)
+        return std::unexpected(Source.error());
+      return Instruction.setOpcode(instructionOpcode(Move));
+    }
+
+    auto Integer = APInt::fromUnsigned(BitWidth, Bits);
     if (!Integer)
       return std::unexpected(Integer.error());
     auto IntegerType = LowLevelType::makeCategoryNeutralScalar(64);
@@ -1574,8 +1589,6 @@ private:
         constrainBuilderRegisters(Function, Target, {DestinationRegister, *Temporary});
     if (!RegisterConstraints)
       return std::unexpected(RegisterConstraints.error());
-    const InstructionOpcode Move =
-        BitWidth == 32 ? InstructionOpcode::FMV_W_X : InstructionOpcode::FMV_D_X;
     auto MoveInstruction = Builder.buildInstr(instructionOpcode(Move));
     if (!MoveInstruction)
       return std::unexpected(MoveInstruction.error());
