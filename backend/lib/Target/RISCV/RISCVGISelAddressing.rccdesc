@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+selection_rules:
+  -
+    id: select_g_frame_index
+    priority: 100
+    match:
+      opcode: G_FRAME_INDEX
+      result_type: { kind: pointer, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+    apply:
+      instructions:
+        - opcode: ADDI
+          root: true
+          operands: [{ operand: 0 }, { operand: 1 }, { immediate: 0 }]
