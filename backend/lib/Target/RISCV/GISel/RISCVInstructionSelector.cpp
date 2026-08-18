@@ -522,9 +522,6 @@ public:
     case GenericOpcode::G_ATOMICRMW_UMIN:
     case GenericOpcode::G_FENCE:
     case GenericOpcode::G_BRINDIRECT:
-    case GenericOpcode::G_TRAP:
-    case GenericOpcode::G_DEBUGTRAP:
-    case GenericOpcode::G_UBSANTRAP:
     case GenericOpcode::G_PHI:
       return {};
     default:
@@ -599,10 +596,6 @@ public:
       return selectAtomicRMW(Instruction, Function, Target, Type, Generic);
     case GenericOpcode::G_FENCE:
       return selectFence(Instruction);
-    case GenericOpcode::G_TRAP:
-    case GenericOpcode::G_DEBUGTRAP:
-    case GenericOpcode::G_UBSANTRAP:
-      return selectTrap(Instruction);
     case GenericOpcode::G_PHI:
       return Instruction.setOpcode(opcode(GenericOpcode::PHI));
     case GenericOpcode::COPY:
@@ -1156,15 +1149,6 @@ private:
     if (!SetSucc)
       return std::unexpected(SetSucc.error());
     return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FENCE));
-  }
-
-  [[nodiscard]] Expected<void> selectTrap(MachineInstr &Instruction) const {
-    while (Instruction.operandCount() != 0) {
-      auto Erased = Instruction.eraseOperand(Instruction.operandCount() - 1U);
-      if (!Erased)
-        return std::unexpected(Erased.error());
-    }
-    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::EBREAK));
   }
 
   [[nodiscard]] Expected<void> selectLoad(MachineInstr &Instruction, MachineFunction &Function,

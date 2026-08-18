@@ -2,6 +2,22 @@
 
 selection_rules:
   -
+    id: select_g_trap
+    priority: 100
+    match:
+      opcode: G_TRAP
+    apply:
+      instructions:
+        - { opcode: UNIMP, root: true, operands: [] }
+  -
+    id: select_g_debugtrap
+    priority: 100
+    match:
+      opcode: G_DEBUGTRAP
+    apply:
+      instructions:
+        - { opcode: EBREAK, root: true, operands: [] }
+  -
     id: select_g_brindirect
     priority: 100
     match:

@@ -784,6 +784,18 @@ instructions:
     encoding_category: SYSTEM
     assembly_format: NONE
   -
+    id: 1266
+    symbol: UNIMP
+    name: UNIMP
+    assembly_mnemonic: unimp
+    encoding: 3221229683
+    operands: []
+    num_explicit_defs: 0
+    flags: [has_side_effects, produces_code]
+    scheduling_class: SYSTEM
+    encoding_category: SYSTEM
+    assembly_format: NONE
+  -
     id: 1036
     symbol: SLTI
     name: SLTI
