@@ -34,6 +34,8 @@ enum class GIMatchImmediateTransform : std::uint8_t {
 enum class GIMatchTableOpcode : std::uint8_t {
   CheckOpcode,
   CheckOperandType,
+  CheckInstructionFlag,
+  ClearInstructionFlags,
   CheckOperandBank,
   CheckOperandClass,
   CheckIntegerPredicate,
@@ -52,10 +54,12 @@ enum class GIMatchTableOpcode : std::uint8_t {
   RenderOperand,
   RenderComplexOperand,
   RenderCapturedOperand,
+  RenderCapturedTypeBits,
   RenderPhysicalRegister,
   RenderTemporary,
   RenderCapturedImmediate,
   RenderImmediate,
+  ReplaceRootWithCapturedOperand,
   EraseOperandDefinition,
   Complete,
 };
@@ -92,10 +96,16 @@ struct GIMatchTableRule final {
   std::uint32_t InstructionCount = 0;
 };
 
+enum class GIMatchTableKind : std::uint8_t {
+  Selection,
+  Combiner,
+};
+
 struct GIMatchTable final {
   std::span<const GIMatchTableInstruction> Instructions;
   std::span<const GIMatchTableRule> Rules;
   std::span<const GIMatchTableConstantRange> ConstantRanges;
+  GIMatchTableKind Kind = GIMatchTableKind::Selection;
 };
 
 class GIMatchTableExecutor {
@@ -111,6 +121,11 @@ public:
   [[nodiscard]] Expected<bool> select(const GIMatchTable &Table, MachineInstr &Instruction,
                                       MachineFunction &Function,
                                       const TargetDescription &Target) const;
+
+  // Match and apply one generated GlobalISel combiner rule.
+  [[nodiscard]] Expected<bool> combine(const GIMatchTable &Table, MachineInstr &Instruction,
+                                       MachineFunction &Function,
+                                       const TargetDescription &Target) const;
 
 protected:
   [[nodiscard]] virtual Expected<bool>

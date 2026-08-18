@@ -40,7 +40,8 @@ public:
                    {"schema", "target", "register_units", "registers", "register_banks",
                     "register_classes", "register_masks", "mir_operand_flags", "named_operands",
                     "immediate_predicates", "scheduling_classes", "encoding_categories",
-                    "assembly_formats", "calling_conventions", "instructions", "selection_rules"},
+                    "assembly_formats", "calling_conventions", "instructions", "selection_rules",
+                    "combiner_rules"},
                    "target description root")) {
       return std::nullopt;
     }
@@ -81,6 +82,7 @@ public:
     const yaml::Node *InstructionsNode =
         requiredNode(*Root, "instructions", "target description root");
     const yaml::Node *SelectionRulesNode = optionalNode(*Root, "selection_rules");
+    const yaml::Node *CombinerRulesNode = optionalNode(*Root, "combiner_rules");
     if (UnitsNode == nullptr || RegistersNode == nullptr || BanksNode == nullptr ||
         ClassesNode == nullptr || MasksNode == nullptr || NamedOperandsNode == nullptr ||
         ImmediatePredicatesNode == nullptr || SchedulingClassesNode == nullptr ||
@@ -101,7 +103,9 @@ public:
         !parseCallingConventions(*CallingConventionsNode, Result.CallingConventions) ||
         !parseInstructions(*InstructionsNode, Result.Instructions) ||
         (SelectionRulesNode != nullptr &&
-         !parseSelectionRules(*SelectionRulesNode, Result.SelectionRules))) {
+         !parseSelectionRules(*SelectionRulesNode, Result.SelectionRules)) ||
+        (CombinerRulesNode != nullptr &&
+         !parseCombinerRules(*CombinerRulesNode, Result.CombinerRules))) {
       return std::nullopt;
     }
     return Result;
@@ -1707,6 +1711,181 @@ private:
           !parseSelectionRuleApply(*ApplyNode, Rule)) {
         return false;
       }
+      Result.push_back(std::move(Rule));
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
+  parseCombinerOperandRenderers(const yaml::Node &Node,
+                                std::vector<SourceCombinerOperandRenderer> &Result) {
+    if (!requireSequence(&Node, "combiner operand renderers"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "combiner operand renderer") ||
+          !checkKeys(*Element, {"operand", "captured_operand", "captured_type_bits", "immediate"},
+                     "combiner operand renderer")) {
+        return false;
+      }
+      const yaml::Node *Operand = optionalNode(*Element, "operand");
+      const yaml::Node *CapturedOperand = optionalNode(*Element, "captured_operand");
+      const yaml::Node *CapturedTypeBits = optionalNode(*Element, "captured_type_bits");
+      const yaml::Node *Immediate = optionalNode(*Element, "immediate");
+      const std::uint32_t SourceCount = static_cast<std::uint32_t>(Operand != nullptr) +
+                                        static_cast<std::uint32_t>(CapturedOperand != nullptr) +
+                                        static_cast<std::uint32_t>(CapturedTypeBits != nullptr) +
+                                        static_cast<std::uint32_t>(Immediate != nullptr);
+      if (SourceCount != 1) {
+        fail(Element->range(), "combiner operand renderer requires exactly one source");
+        return false;
+      }
+      SourceCombinerOperandRenderer Renderer{.SourceKind =
+                                                 SourceCombinerOperandRenderer::Kind::RootOperand,
+                                             .OperandIndex = 0,
+                                             .CaptureSymbol = {},
+                                             .Immediate = 0,
+                                             .Range = Element->range()};
+      if (Operand != nullptr) {
+        const auto Index = unsignedInteger32(*Operand, "combiner operand renderer operand");
+        if (!Index)
+          return false;
+        Renderer.OperandIndex = *Index;
+      } else if (CapturedOperand != nullptr) {
+        const auto Symbol = scalar(*CapturedOperand, "combiner operand renderer captured operand");
+        if (!Symbol)
+          return false;
+        Renderer.SourceKind = SourceCombinerOperandRenderer::Kind::CapturedOperand;
+        Renderer.CaptureSymbol = *Symbol;
+      } else if (CapturedTypeBits != nullptr) {
+        const auto Symbol =
+            scalar(*CapturedTypeBits, "combiner operand renderer captured type bits");
+        if (!Symbol)
+          return false;
+        Renderer.SourceKind = SourceCombinerOperandRenderer::Kind::CapturedTypeBits;
+        Renderer.CaptureSymbol = *Symbol;
+      } else {
+        const auto Value = signedInteger(*Immediate, "combiner operand renderer immediate");
+        if (!Value)
+          return false;
+        Renderer.SourceKind = SourceCombinerOperandRenderer::Kind::Immediate;
+        Renderer.Immediate = *Value;
+      }
+      Result.push_back(std::move(Renderer));
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseCombinerRuleMatch(const yaml::Node &Node, SourceCombinerRule &Result) {
+    if (!requireMapping(&Node, "combiner rule match") ||
+        !checkKeys(
+            Node,
+            {"opcode", "result_type", "operand_types", "target_predicates", "flags", "def_use"},
+            "combiner rule match")) {
+      return false;
+    }
+    const auto Opcode = requiredScalar(Node, "opcode", "combiner rule match");
+    if (!Opcode)
+      return false;
+    Result.MatchOpcodeSymbol = *Opcode;
+    if (const yaml::Node *Type = optionalNode(Node, "result_type")) {
+      auto Parsed = parseSelectionTypePredicate(*Type, "combiner result type predicate");
+      if (!Parsed)
+        return false;
+      Result.ResultType = std::move(*Parsed);
+    }
+    if (const yaml::Node *Types = optionalNode(Node, "operand_types")) {
+      if (!parseSelectionOperandTypes(*Types, Result.OperandTypes))
+        return false;
+    }
+    if (const yaml::Node *Predicates = optionalNode(Node, "target_predicates")) {
+      if (!parseSelectionTargetPredicates(*Predicates, Result.TargetPredicates))
+        return false;
+    }
+    if (const yaml::Node *Flags = optionalNode(Node, "flags")) {
+      const auto Parsed = scalarSequence(*Flags, "combiner instruction flags");
+      if (!Parsed)
+        return false;
+      Result.InstructionFlags = *Parsed;
+    }
+    if (const yaml::Node *DefUse = optionalNode(Node, "def_use")) {
+      if (!parseSelectionDefUsePredicates(*DefUse, Result.DefUsePredicates))
+        return false;
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseCombinerRuleApply(const yaml::Node &Node, SourceCombinerRule &Result) {
+    if (!requireMapping(&Node, "combiner rule apply") ||
+        !checkKeys(
+            Node,
+            {"action", "capture", "opcode", "operands", "clear_flags", "erase_operand_definitions"},
+            "combiner rule apply")) {
+      return false;
+    }
+    const auto Action = requiredScalar(Node, "action", "combiner rule apply");
+    if (!Action)
+      return false;
+    if (*Action == "replace_root_with_capture") {
+      const auto Capture = requiredScalar(Node, "capture", "combiner rule apply");
+      if (!Capture)
+        return false;
+      Result.Action.Kind = SourceCombinerActionKind::ReplaceRootWithCapturedOperand;
+      Result.Action.CapturedOperandSymbol = *Capture;
+    } else if (*Action == "mutate_root") {
+      const auto Opcode = requiredScalar(Node, "opcode", "combiner rule apply");
+      const yaml::Node *Operands = requiredNode(Node, "operands", "combiner rule apply");
+      if (!Opcode || Operands == nullptr)
+        return false;
+      Result.Action.Kind = SourceCombinerActionKind::MutateRoot;
+      Result.Action.ResultOpcodeSymbol = *Opcode;
+      if (!parseCombinerOperandRenderers(*Operands, Result.Action.OperandRenderers))
+        return false;
+    } else {
+      fail(Node.range(),
+           "combiner rule apply action must be replace_root_with_capture or mutate_root");
+      return false;
+    }
+    if (const yaml::Node *ClearFlags = optionalNode(Node, "clear_flags")) {
+      const auto Parsed = scalarSequence(*ClearFlags, "combiner action clear flags");
+      if (!Parsed)
+        return false;
+      Result.Action.ClearInstructionFlags = *Parsed;
+    }
+    if (const yaml::Node *Erase = optionalNode(Node, "erase_operand_definitions")) {
+      auto Indices = unsignedInteger32Sequence(*Erase, "combiner operand definitions");
+      if (!Indices)
+        return false;
+      Result.EraseOperandDefinitions = std::move(*Indices);
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseCombinerRules(const yaml::Node &Node,
+                                        std::vector<SourceCombinerRule> &Result) {
+    if (!requireSequence(&Node, "combiner_rules"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "combiner rule") ||
+          !checkKeys(*Element, {"id", "priority", "match", "apply"}, "combiner rule")) {
+        return false;
+      }
+      const auto Symbol = requiredScalar(*Element, "id", "combiner rule");
+      const yaml::Node *PriorityNode = requiredNode(*Element, "priority", "combiner rule");
+      const yaml::Node *MatchNode = requiredNode(*Element, "match", "combiner rule");
+      const yaml::Node *ApplyNode = requiredNode(*Element, "apply", "combiner rule");
+      if (!Symbol || PriorityNode == nullptr || MatchNode == nullptr || ApplyNode == nullptr)
+        return false;
+      const auto Priority = unsignedInteger32(*PriorityNode, "combiner rule priority");
+      if (!Priority)
+        return false;
+      SourceCombinerRule Rule;
+      Rule.Symbol = *Symbol;
+      Rule.Priority = *Priority;
+      Rule.Range = Element->range();
+      if (!parseCombinerRuleMatch(*MatchNode, Rule) || !parseCombinerRuleApply(*ApplyNode, Rule))
+        return false;
       Result.push_back(std::move(Rule));
     }
     return true;

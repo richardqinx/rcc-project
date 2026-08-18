@@ -290,6 +290,46 @@ struct NormalizedSelectionRule final {
   std::vector<std::uint32_t> EraseOperandDefinitions;
 };
 
+enum class NormalizedCombinerActionKind : std::uint8_t {
+  ReplaceRootWithCapturedOperand,
+  MutateRoot,
+};
+
+struct NormalizedCombinerOperandRenderer final {
+  enum class Kind : std::uint8_t {
+    RootOperand,
+    CapturedOperand,
+    CapturedTypeBits,
+    Immediate,
+  };
+
+  Kind SourceKind = Kind::RootOperand;
+  std::uint32_t Value = 0;
+  std::int64_t Immediate = 0;
+};
+
+struct NormalizedCombinerAction final {
+  NormalizedCombinerActionKind Kind = NormalizedCombinerActionKind::ReplaceRootWithCapturedOperand;
+  std::uint32_t CapturedOperand = 0;
+  std::uint32_t ResultOpcode = 0;
+  std::vector<NormalizedCombinerOperandRenderer> OperandRenderers;
+  std::uint32_t ClearInstructionFlags = 0;
+};
+
+struct NormalizedCombinerRule final {
+  std::string Symbol;
+  std::uint32_t Priority = 0;
+  std::uint32_t Specificity = 0;
+  std::uint32_t MatchOpcode = 0;
+  std::optional<NormalizedSelectionTypePredicate> ResultType;
+  std::vector<NormalizedSelectionOperandTypePredicate> OperandTypes;
+  std::vector<std::string> TargetPredicates;
+  std::vector<std::uint32_t> InstructionFlags;
+  std::vector<NormalizedSelectionDefUsePredicate> DefUsePredicates;
+  NormalizedCombinerAction Action;
+  std::vector<std::uint32_t> EraseOperandDefinitions;
+};
+
 struct NormalizedTargetModel final {
   SourceTarget Target;
   std::vector<SourceRegisterUnit> RegisterUnits;
@@ -306,6 +346,7 @@ struct NormalizedTargetModel final {
   std::vector<NormalizedAssemblyFormat> AssemblyFormats;
   std::vector<NormalizedInstruction> Instructions;
   std::vector<NormalizedSelectionRule> SelectionRules;
+  std::vector<NormalizedCombinerRule> CombinerRules;
 };
 
 [[nodiscard]] std::optional<std::string_view>
@@ -348,6 +389,7 @@ private:
                              std::vector<NormalizedImplicitRegister> &Result);
   [[nodiscard]] bool normalizeInstructions(NormalizedTargetModel &Result);
   [[nodiscard]] bool normalizeSelectionRules(NormalizedTargetModel &Result);
+  [[nodiscard]] bool normalizeCombinerRules(NormalizedTargetModel &Result);
 
   const DescriptionAST &Input;
   std::string SourceName;

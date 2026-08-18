@@ -6,10 +6,10 @@
 #include "GISel/RISCVRegisterBankInfo.h"
 #include "RISCV.h"
 #include "RISCVInstrInfo.h"
+#include "rcc/CodeGen/GlobalISel/Combiner.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelect.h"
 #include "rcc/CodeGen/GlobalISel/Legalizer.h"
 #include "rcc/CodeGen/GlobalISel/RegBankSelect.h"
-#include "rcc/CodeGen/MachineCombiner.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
 #include "rcc/CodeGen/MachinePseudoExpansion.h"
@@ -41,8 +41,8 @@ template <typename PassT, typename... ArgumentT>
 [[nodiscard]] Expected<void> addInitialPipeline(MachineFunctionPassManager &Pipeline,
                                                 const RISCVSubtarget &Subtarget,
                                                 RISCVPipelineOptions Options) {
-  auto Added = addPass<MachineCombinerPass>(Pipeline, machineCombinerInfo(),
-                                            MachineCombinerStage::PreLegalizer);
+  auto Added = addPass<GlobalISelCombinerPass>(
+      Pipeline, giselCombinerTable(), giselCombinerExecutor(), "riscv-prelegalizer-combiner");
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization,
@@ -99,8 +99,8 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
                                     const MachineFunction &Function,
                                     const RISCVSubtarget &Subtarget, RISCVPipelineOptions Options) {
   if (!Function.properties().has(MachineFunctionProperty::Legalized)) {
-    auto Added = addPass<MachineCombinerPass>(Pipeline, machineCombinerInfo(),
-                                              MachineCombinerStage::PreLegalizer);
+    auto Added = addPass<GlobalISelCombinerPass>(
+        Pipeline, giselCombinerTable(), giselCombinerExecutor(), "riscv-prelegalizer-combiner");
     if (!Added)
       return std::unexpected(Added.error());
     Added = addPass<Legalizer>(Pipeline, Subtarget.getLegalizerInfo(), Options.Optimization,

@@ -334,6 +334,49 @@ struct SourceSelectionRule final {
   TextRange Range;
 };
 
+struct SourceCombinerOperandRenderer final {
+  enum class Kind : std::uint8_t {
+    RootOperand,
+    CapturedOperand,
+    CapturedTypeBits,
+    Immediate,
+  };
+
+  Kind SourceKind = Kind::RootOperand;
+  std::uint32_t OperandIndex = 0;
+  std::string CaptureSymbol;
+  std::int64_t Immediate = 0;
+  TextRange Range;
+};
+
+enum class SourceCombinerActionKind : std::uint8_t {
+  ReplaceRootWithCapturedOperand,
+  MutateRoot,
+};
+
+struct SourceCombinerAction final {
+  SourceCombinerActionKind Kind = SourceCombinerActionKind::ReplaceRootWithCapturedOperand;
+  std::string CapturedOperandSymbol;
+  std::string ResultOpcodeSymbol;
+  std::vector<SourceCombinerOperandRenderer> OperandRenderers;
+  std::vector<std::string> ClearInstructionFlags;
+  TextRange Range;
+};
+
+struct SourceCombinerRule final {
+  std::string Symbol;
+  std::uint32_t Priority = 0;
+  std::string MatchOpcodeSymbol;
+  std::optional<SourceSelectionTypePredicate> ResultType;
+  std::vector<SourceSelectionOperandTypePredicate> OperandTypes;
+  std::vector<SourceSelectionTargetPredicate> TargetPredicates;
+  std::vector<std::string> InstructionFlags;
+  std::vector<SourceSelectionDefUsePredicate> DefUsePredicates;
+  SourceCombinerAction Action;
+  std::vector<std::uint32_t> EraseOperandDefinitions;
+  TextRange Range;
+};
+
 struct DescriptionAST final {
   SourceTarget Target;
   std::vector<SourceRegisterUnit> RegisterUnits;
@@ -350,6 +393,7 @@ struct DescriptionAST final {
   std::vector<SourceAssemblyFormat> AssemblyFormats;
   std::vector<SourceInstruction> Instructions;
   std::vector<SourceSelectionRule> SelectionRules;
+  std::vector<SourceCombinerRule> CombinerRules;
 };
 
 [[nodiscard]] std::string lowerASCII(std::string_view Value);

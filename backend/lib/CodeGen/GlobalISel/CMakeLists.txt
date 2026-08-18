@@ -4,6 +4,7 @@ set(
   RCCBackendGlobalISelSources
   CSEInfo.cpp
   CSEMIRBuilder.cpp
+  Combiner.cpp
   GIMatchTableExecutor.cpp
   GISelChangeObserver.cpp
   GISelValueTracking.cpp
@@ -19,6 +20,7 @@ set(
   RCCBackendGlobalISelHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/CSEInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/CSEMIRBuilder.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/Combiner.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/GIMatchTableExecutor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/GISelChangeObserver.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalISel/GISelValueTracking.h"
@@ -39,6 +41,7 @@ target_sources(RCCBackendCodeGen PRIVATE ${RCCBackendGlobalISelSources})
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CSEInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/CSEMIRBuilder.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/Combiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GIMatchTableExecutor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISelChangeObserver.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISelValueTracking.cpp"
@@ -54,6 +57,7 @@ rcc_backend_register_format_files(
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/CSEInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/CSEMIRBuilder.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/Combiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GIMatchTableExecutor.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISelChangeObserver.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISelValueTracking.cpp"

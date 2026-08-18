@@ -6,6 +6,7 @@ set(
   CallingConvEmitter.cpp
   CodeEmitterGen.cpp
   GlobalISelEmitter.cpp
+  GlobalISelCombinerEmitter.cpp
   Common/CodeGenInstruction.cpp
   Common/CodeGenRegisters.cpp
   Common/CodeGenSchedule.cpp

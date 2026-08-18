@@ -698,4 +698,302 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
   return true;
 }
 
+bool CodeGenTarget::normalizeCombinerRules(NormalizedTargetModel &Result) {
+  std::unordered_set<std::string> Symbols;
+  const auto NormalizeType = [this](const SourceSelectionTypePredicate &Source)
+      -> std::optional<NormalizedSelectionTypePredicate> {
+    NormalizedSelectionTypeKind Kind = NormalizedSelectionTypeKind::Any;
+    if (Source.Kind == "scalar")
+      Kind = NormalizedSelectionTypeKind::Scalar;
+    else if (Source.Kind == "pointer")
+      Kind = NormalizedSelectionTypeKind::Pointer;
+    else if (Source.Kind != "any") {
+      fail(Source.Range, "combiner type kind must be 'any', 'scalar', or 'pointer'");
+      return std::nullopt;
+    }
+    if (Source.Bits > LowLevelType::MaxBitWidth ||
+        (Kind != NormalizedSelectionTypeKind::Any && Source.Bits == 0)) {
+      fail(Source.Range, "combiner type bit width is invalid for its kind");
+      return std::nullopt;
+    }
+    return NormalizedSelectionTypePredicate{.Kind = Kind, .Bits = Source.Bits};
+  };
+  const auto NormalizeRanges =
+      [this](const std::vector<SourceSelectionConstantRange> &Ranges,
+             TextRange Range) -> std::optional<std::vector<NormalizedSelectionConstantRange>> {
+    if (Ranges.empty()) {
+      fail(Range, "combiner def-use constant predicate requires at least one range");
+      return std::nullopt;
+    }
+    std::vector<NormalizedSelectionConstantRange> ResultRanges;
+    ResultRanges.reserve(Ranges.size());
+    for (const SourceSelectionConstantRange &Source : Ranges) {
+      if (Source.Minimum > Source.Maximum) {
+        fail(Source.SourceRange, "combiner def-use constant range is inverted");
+        return std::nullopt;
+      }
+      ResultRanges.push_back({.Minimum = Source.Minimum, .Maximum = Source.Maximum});
+    }
+    std::ranges::sort(ResultRanges, {}, &NormalizedSelectionConstantRange::Minimum);
+    for (std::size_t Index = 1; Index < ResultRanges.size(); ++Index) {
+      if (ResultRanges[Index].Minimum <= ResultRanges[Index - 1].Maximum) {
+        fail(Range, "combiner def-use constant ranges overlap");
+        return std::nullopt;
+      }
+    }
+    return ResultRanges;
+  };
+  const auto FlagValue = [](std::string_view Name) -> std::optional<std::uint32_t> {
+    static constexpr std::array<std::pair<std::string_view, MachineInstrFlag>, 3> Flags = {{
+        {"nneg", MachineInstrFlag::NonNeg},
+        {"nsw", MachineInstrFlag::NoSignedWrap},
+        {"nuw", MachineInstrFlag::NoUnsignedWrap},
+    }};
+    const auto Position = std::ranges::find(Flags, Name, &decltype(Flags)::value_type::first);
+    if (Position == Flags.end())
+      return std::nullopt;
+    return std::uint32_t{1} << static_cast<std::uint8_t>(Position->second);
+  };
+  const auto FlagMask = [&FlagValue](std::span<const std::string> Names,
+                                     TextRange Range) -> std::optional<std::uint32_t> {
+    std::uint32_t Mask = 0;
+    for (const std::string &Name : Names) {
+      const auto Value = FlagValue(Name);
+      if (!Value || (Mask & *Value) != 0)
+        return std::nullopt;
+      Mask |= *Value;
+    }
+    if (Names.size() != 0 && Mask == 0)
+      return std::nullopt;
+    (void)Range;
+    return Mask;
+  };
+
+  for (const SourceCombinerRule &Rule : Input.CombinerRules) {
+    const auto MatchOpcode = resolveOpcode(Result, Rule.MatchOpcodeSymbol);
+    const NormalizedInstruction *MatchInstruction =
+        findInstructionBySymbol(Result, Rule.MatchOpcodeSymbol);
+    if (!isIdentifier(Rule.Symbol) || !Symbols.insert(Rule.Symbol).second || !MatchOpcode) {
+      fail(Rule.Range, "combiner rules require a unique identifier and declared match opcode");
+      return false;
+    }
+    if (MatchInstruction != nullptr && !std::ranges::contains(MatchInstruction->Flags, "Generic")) {
+      fail(Rule.Range, "combiner rule match opcode must be generic");
+      return false;
+    }
+
+    NormalizedCombinerRule Normalized;
+    Normalized.Symbol = Rule.Symbol;
+    Normalized.Priority = Rule.Priority;
+    Normalized.Specificity = 1;
+    Normalized.MatchOpcode = *MatchOpcode;
+    if (Rule.ResultType) {
+      auto Type = NormalizeType(*Rule.ResultType);
+      if (!Type)
+        return false;
+      if (MatchInstruction != nullptr && !isRegisterOperand(*MatchInstruction, 0)) {
+        fail(Rule.ResultType->Range,
+             "combiner result type predicate requires register operand zero");
+        return false;
+      }
+      Normalized.ResultType = *Type;
+      ++Normalized.Specificity;
+    }
+
+    std::unordered_set<std::uint32_t> TypeOperands;
+    for (const SourceSelectionOperandTypePredicate &Predicate : Rule.OperandTypes) {
+      auto Type = NormalizeType(Predicate.Type);
+      if (!Type)
+        return false;
+      if (!TypeOperands.insert(Predicate.OperandIndex).second ||
+          (MatchInstruction != nullptr &&
+           !isRegisterOperand(*MatchInstruction, Predicate.OperandIndex))) {
+        fail(Predicate.Range,
+             "combiner operand type predicates require distinct register operands");
+        return false;
+      }
+      Normalized.OperandTypes.push_back({.OperandIndex = Predicate.OperandIndex, .Type = *Type});
+      ++Normalized.Specificity;
+    }
+
+    std::unordered_set<std::string> TargetPredicates;
+    for (const SourceSelectionTargetPredicate &Predicate : Rule.TargetPredicates) {
+      if (!isIdentifier(Predicate.Symbol) || !TargetPredicates.insert(Predicate.Symbol).second) {
+        fail(Predicate.Range, "combiner target predicates require distinct identifiers");
+        return false;
+      }
+      Normalized.TargetPredicates.push_back(Predicate.Symbol);
+      ++Normalized.Specificity;
+    }
+
+    std::uint32_t InstructionFlags = 0;
+    for (const std::string &Name : Rule.InstructionFlags) {
+      const auto Value = FlagValue(Name);
+      if (!Value) {
+        fail(Rule.Range, "combiner instruction flag is not supported");
+        return false;
+      }
+      if ((InstructionFlags & *Value) != 0) {
+        fail(Rule.Range, "combiner instruction flags must be unique");
+        return false;
+      }
+      InstructionFlags |= *Value;
+      ++Normalized.Specificity;
+    }
+    if (InstructionFlags != 0)
+      Normalized.InstructionFlags.push_back(InstructionFlags);
+
+    std::unordered_set<std::uint32_t> DefUseRoots;
+    std::unordered_set<std::uint32_t> CaptureIDs;
+    std::unordered_map<std::string, std::uint32_t> Captures;
+    std::uint32_t NextCaptureID = 1;
+    for (const SourceSelectionDefUsePredicate &Predicate : Rule.DefUsePredicates) {
+      const auto DefOpcode = resolveOpcode(Result, Predicate.OpcodeSymbol);
+      const NormalizedInstruction *DefInstruction =
+          findInstructionBySymbol(Result, Predicate.OpcodeSymbol);
+      if (!DefOpcode || !DefUseRoots.insert(Predicate.RootOperandIndex).second ||
+          (MatchInstruction != nullptr &&
+           !isRegisterOperand(*MatchInstruction, Predicate.RootOperandIndex)) ||
+          (DefInstruction != nullptr && !std::ranges::contains(DefInstruction->Flags, "Generic"))) {
+        fail(Predicate.Range, "combiner def-use predicate has an invalid root or opcode");
+        return false;
+      }
+      NormalizedSelectionDefUsePredicate DefUse{
+          .RootOperandIndex = Predicate.RootOperandIndex,
+          .Opcode = *DefOpcode,
+          .IntegerPredicate = std::nullopt,
+          .Captures = {},
+          .OperandDefConstants = {},
+      };
+      for (const SourceSelectionDefUseCapture &Capture : Predicate.Captures) {
+        if (!isIdentifier(Capture.Symbol) || Captures.contains(Capture.Symbol) ||
+            !CaptureIDs.insert(NextCaptureID).second ||
+            (DefInstruction != nullptr &&
+             !isRegisterOperand(*DefInstruction, Capture.OperandIndex))) {
+          fail(Capture.Range, "combiner captures require unique identifiers and register operands");
+          return false;
+        }
+        Captures.emplace(Capture.Symbol, NextCaptureID);
+        DefUse.Captures.push_back({.ID = NextCaptureID, .OperandIndex = Capture.OperandIndex});
+        ++NextCaptureID;
+      }
+      for (const SourceSelectionOperandDefConstantPredicate &PredicateConstant :
+           Predicate.OperandDefConstants) {
+        auto Ranges = NormalizeRanges(PredicateConstant.Ranges, PredicateConstant.Range);
+        if (!Ranges)
+          return false;
+        if (DefInstruction != nullptr &&
+            (PredicateConstant.OperandIndex >= DefInstruction->Operands.size() ||
+             (!std::ranges::contains(DefInstruction->Operands[PredicateConstant.OperandIndex].Kinds,
+                                     "Immediate") &&
+              !std::ranges::contains(DefInstruction->Operands[PredicateConstant.OperandIndex].Kinds,
+                                     "IntegerImmediate")))) {
+          fail(PredicateConstant.Range, "combiner def-use constant operand is not immediate");
+          return false;
+        }
+        DefUse.OperandDefConstants.push_back({
+            .OperandIndex = PredicateConstant.OperandIndex,
+            .Ranges = std::move(*Ranges),
+        });
+      }
+      Normalized.DefUsePredicates.push_back(std::move(DefUse));
+      ++Normalized.Specificity;
+    }
+    if (Rule.DefUsePredicates.empty()) {
+      fail(Rule.Range, "combiner rule requires a def-use predicate");
+      return false;
+    }
+
+    NormalizedCombinerAction Action;
+    if (Rule.Action.Kind == SourceCombinerActionKind::ReplaceRootWithCapturedOperand) {
+      const auto Capture = Captures.find(Rule.Action.CapturedOperandSymbol);
+      if (Capture == Captures.end()) {
+        fail(Rule.Action.Range, "combiner replacement requires a matched capture");
+        return false;
+      }
+      Action.Kind = NormalizedCombinerActionKind::ReplaceRootWithCapturedOperand;
+      Action.CapturedOperand = Capture->second;
+    } else {
+      const auto ResultOpcode = resolveOpcode(Result, Rule.Action.ResultOpcodeSymbol);
+      const NormalizedInstruction *ResultInstruction =
+          findInstructionBySymbol(Result, Rule.Action.ResultOpcodeSymbol);
+      if (!ResultOpcode || (ResultInstruction != nullptr &&
+                            !std::ranges::contains(ResultInstruction->Flags, "Generic"))) {
+        fail(Rule.Action.Range, "combiner mutation requires a declared generic result opcode");
+        return false;
+      }
+      Action.Kind = NormalizedCombinerActionKind::MutateRoot;
+      Action.ResultOpcode = *ResultOpcode;
+      for (const SourceCombinerOperandRenderer &Renderer : Rule.Action.OperandRenderers) {
+        NormalizedCombinerOperandRenderer NormalizedRenderer;
+        switch (Renderer.SourceKind) {
+        case SourceCombinerOperandRenderer::Kind::RootOperand:
+          NormalizedRenderer.SourceKind = NormalizedCombinerOperandRenderer::Kind::RootOperand;
+          NormalizedRenderer.Value = Renderer.OperandIndex;
+          break;
+        case SourceCombinerOperandRenderer::Kind::CapturedOperand: {
+          const auto Capture = Captures.find(Renderer.CaptureSymbol);
+          if (Capture == Captures.end()) {
+            fail(Renderer.Range, "combiner renderer requires a matched capture");
+            return false;
+          }
+          NormalizedRenderer.SourceKind = NormalizedCombinerOperandRenderer::Kind::CapturedOperand;
+          NormalizedRenderer.Value = Capture->second;
+          break;
+        }
+        case SourceCombinerOperandRenderer::Kind::CapturedTypeBits: {
+          const auto Capture = Captures.find(Renderer.CaptureSymbol);
+          if (Capture == Captures.end()) {
+            fail(Renderer.Range, "combiner type-width renderer requires a matched capture");
+            return false;
+          }
+          NormalizedRenderer.SourceKind = NormalizedCombinerOperandRenderer::Kind::CapturedTypeBits;
+          NormalizedRenderer.Value = Capture->second;
+          break;
+        }
+        case SourceCombinerOperandRenderer::Kind::Immediate:
+          NormalizedRenderer.SourceKind = NormalizedCombinerOperandRenderer::Kind::Immediate;
+          NormalizedRenderer.Immediate = Renderer.Immediate;
+          break;
+        }
+        Action.OperandRenderers.push_back(NormalizedRenderer);
+      }
+      if (Action.OperandRenderers.empty()) {
+        fail(Rule.Action.Range, "combiner mutation requires operand renderers");
+        return false;
+      }
+    }
+    if (!Rule.Action.ClearInstructionFlags.empty()) {
+      const auto ClearFlags = FlagMask(Rule.Action.ClearInstructionFlags, Rule.Action.Range);
+      if (!ClearFlags) {
+        fail(Rule.Action.Range, "combiner action clear flags are invalid or duplicated");
+        return false;
+      }
+      Action.ClearInstructionFlags = *ClearFlags;
+    }
+    Normalized.Action = std::move(Action);
+    std::unordered_set<std::uint32_t> Erased;
+    for (const std::uint32_t OperandIndex : Rule.EraseOperandDefinitions) {
+      if (!Erased.insert(OperandIndex).second ||
+          (MatchInstruction != nullptr && !isRegisterOperand(*MatchInstruction, OperandIndex)) ||
+          !DefUseRoots.contains(OperandIndex)) {
+        fail(Rule.Range, "combiner erased definitions must be distinct def-use operands");
+        return false;
+      }
+      Normalized.EraseOperandDefinitions.push_back(OperandIndex);
+    }
+    Result.CombinerRules.push_back(std::move(Normalized));
+  }
+
+  std::ranges::sort(Result.CombinerRules,
+                    [](const NormalizedCombinerRule &Left, const NormalizedCombinerRule &Right) {
+                      if (Left.Priority != Right.Priority)
+                        return Left.Priority > Right.Priority;
+                      if (Left.Specificity != Right.Specificity)
+                        return Left.Specificity > Right.Specificity;
+                      return Left.Symbol < Right.Symbol;
+                    });
+  return true;
+}
+
 } // namespace rcc::targetgen

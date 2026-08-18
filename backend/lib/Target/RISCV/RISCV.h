@@ -3,6 +3,7 @@
 #ifndef RCC_LIB_TARGET_RISCV_RISCV_H
 #define RCC_LIB_TARGET_RISCV_RISCV_H
 
+#include "rcc/CodeGen/GlobalISel/GIMatchTableExecutor.h"
 #include "rcc/CodeGen/MachineCombinerPattern.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
 #include "rcc/CodeGen/TargetFrameLowering.h"
@@ -28,6 +29,8 @@ createRISCVInstructionSelector(const RISCVSubtarget &Subtarget,
 [[nodiscard]] const TargetFrameLowering &frameLowering() noexcept;
 [[nodiscard]] const TargetSchedulingModel &schedulingModel() noexcept;
 [[nodiscard]] const TargetMachineCombinerInfo &machineCombinerInfo() noexcept;
+[[nodiscard]] const GIMatchTable &giselCombinerTable() noexcept;
+[[nodiscard]] const GIMatchTableExecutor &giselCombinerExecutor() noexcept;
 [[nodiscard]] const TargetMemoryFoldingInfo &memoryFoldingInfo() noexcept;
 [[nodiscard]] const TargetPseudoExpansionInfo &pseudoExpansionInfo() noexcept;
 [[nodiscard]] MachineOptimizationPipelineTargetInfo optimizationPipelineInfo() noexcept;

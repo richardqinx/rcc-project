@@ -19,6 +19,7 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelControlFlow.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelShift.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelFloating.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelCombiner.rccdesc"
 )
 set(RCCBackendRISCVTableGenArguments)
 foreach(RCCBackendRISCVDescriptionSource IN LISTS RCCBackendRISCVDescriptionSources)
@@ -40,6 +41,10 @@ set(
   RCCBackendRISCVGeneratedGlobalISel
   "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV/RISCVGenGlobalISel.inc"
 )
+set(
+  RCCBackendRISCVGeneratedGlobalISelCombiner
+  "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV/RISCVGenGlobalISelCombiner.inc"
+)
 
 add_custom_command(
   OUTPUT
@@ -47,6 +52,7 @@ add_custom_command(
     "${RCCBackendRISCVGeneratedInstructionHeader}"
     "${RCCBackendRISCVGeneratedTables}"
     "${RCCBackendRISCVGeneratedGlobalISel}"
+    "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
   COMMAND
     "$<TARGET_FILE:RCCBackendTableGenTool>"
     ${RCCBackendRISCVTableGenArguments}
@@ -54,6 +60,7 @@ add_custom_command(
     --instruction-header "${RCCBackendRISCVGeneratedInstructionHeader}"
     --tables "${RCCBackendRISCVGeneratedTables}"
     --global-isel "${RCCBackendRISCVGeneratedGlobalISel}"
+    --global-isel-combiner "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
   DEPENDS RCCBackendTableGenTool ${RCCBackendRISCVDescriptionSources}
   COMMENT "Generating RCC RV64GC target tables"
   VERBATIM
@@ -66,6 +73,7 @@ add_custom_target(
     "${RCCBackendRISCVGeneratedInstructionHeader}"
     "${RCCBackendRISCVGeneratedTables}"
     "${RCCBackendRISCVGeneratedGlobalISel}"
+    "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
 )
 
 set_source_files_properties(
@@ -73,6 +81,7 @@ set_source_files_properties(
   "${RCCBackendRISCVGeneratedInstructionHeader}"
   "${RCCBackendRISCVGeneratedTables}"
   "${RCCBackendRISCVGeneratedGlobalISel}"
+  "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
   PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE
 )
 
@@ -80,6 +89,7 @@ add_library(
   RCCBackendRISCV
   GISel/RISCVCallLowering.cpp
   GISel/RISCVInstructionSelector.cpp
+  GISel/RISCVGISelCombiner.cpp
   GISel/RISCVLegalizerInfo.cpp
   GISel/RISCVRegisterBankInfo.cpp
   RISCVInstrInfo.cpp
@@ -106,6 +116,7 @@ add_library(
   "${RCCBackendRISCVGeneratedInstructionHeader}"
   "${RCCBackendRISCVGeneratedTables}"
   "${RCCBackendRISCVGeneratedGlobalISel}"
+  "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
 )
 add_library(RCCBackend::RISCV ALIAS RCCBackendRISCV)
 add_dependencies(RCCBackendRISCV RCCBackendRISCVGeneratedTablesTarget)
@@ -155,6 +166,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVInstructionSelector.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVGISelCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVLegalizerInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVLegalizerInfo.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVRegisterBankInfo.cpp"
@@ -199,6 +211,7 @@ rcc_backend_register_format_files(
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVInstructionSelector.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVGISelCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVLegalizerInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVRegisterBankInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.cpp"

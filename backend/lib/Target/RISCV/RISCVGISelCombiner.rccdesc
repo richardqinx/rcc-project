@@ -1,0 +1,173 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+combiner_rules:
+  -
+    id: combine_nneg_zext
+    priority: 500
+    match:
+      opcode: G_ZEXT
+      result_type: { kind: scalar, bits: 64 }
+      operand_types:
+        - { index: 1, kind: scalar, bits: 32 }
+      target_predicates: [sext_cheaper_than_zext]
+      flags: [nneg]
+      def_use:
+        -
+          operand: 1
+          opcode: G_TRUNC
+          captures:
+            - { id: source, operand: 1 }
+            - { id: trunc_result, operand: 0 }
+    apply:
+      action: mutate_root
+      opcode: G_SEXT_INREG
+      operands:
+        - { operand: 0 }
+        - { captured_operand: source }
+        - { captured_type_bits: trunc_result }
+      clear_flags: [nneg]
+      erase_operand_definitions: [1]
+  -
+    id: combine_shl_zero
+    priority: 100
+    match:
+      opcode: G_SHL
+      def_use:
+        -
+          operand: 1
+          opcode: G_CONSTANT
+          captures:
+            - { id: zero, operand: 0 }
+          operand_def_constants:
+            - index: 1
+              ranges: [{ min: 0, max: 0 }]
+    apply:
+      action: replace_root_with_capture
+      capture: zero
+      erase_operand_definitions: [1]
+  -
+    id: combine_lshr_zero
+    priority: 100
+    match:
+      opcode: G_LSHR
+      def_use:
+        -
+          operand: 1
+          opcode: G_CONSTANT
+          captures:
+            - { id: zero, operand: 0 }
+          operand_def_constants:
+            - index: 1
+              ranges: [{ min: 0, max: 0 }]
+    apply:
+      action: replace_root_with_capture
+      capture: zero
+      erase_operand_definitions: [1]
+  -
+    id: combine_ashr_zero
+    priority: 100
+    match:
+      opcode: G_ASHR
+      def_use:
+        -
+          operand: 1
+          opcode: G_CONSTANT
+          captures:
+            - { id: zero, operand: 0 }
+          operand_def_constants:
+            - index: 1
+              ranges: [{ min: 0, max: 0 }]
+    apply:
+      action: replace_root_with_capture
+      capture: zero
+      erase_operand_definitions: [1]
+  -
+    id: combine_sdiv_zero
+    priority: 100
+    match:
+      opcode: G_SDIV
+      def_use:
+        -
+          operand: 1
+          opcode: G_CONSTANT
+          captures:
+            - { id: zero, operand: 0 }
+          operand_def_constants:
+            - index: 1
+              ranges: [{ min: 0, max: 0 }]
+    apply:
+      action: replace_root_with_capture
+      capture: zero
+      erase_operand_definitions: [1]
+  -
+    id: combine_udiv_zero
+    priority: 100
+    match:
+      opcode: G_UDIV
+      def_use:
+        -
+          operand: 1
+          opcode: G_CONSTANT
+          captures:
+            - { id: zero, operand: 0 }
+          operand_def_constants:
+            - index: 1
+              ranges: [{ min: 0, max: 0 }]
+    apply:
+      action: replace_root_with_capture
+      capture: zero
+      erase_operand_definitions: [1]
+  -
+    id: combine_srem_zero
+    priority: 100
+    match:
+      opcode: G_SREM
+      def_use:
+        -
+          operand: 1
+          opcode: G_CONSTANT
+          captures:
+            - { id: zero, operand: 0 }
+          operand_def_constants:
+            - index: 1
+              ranges: [{ min: 0, max: 0 }]
+    apply:
+      action: replace_root_with_capture
+      capture: zero
+      erase_operand_definitions: [1]
+  -
+    id: combine_urem_zero
+    priority: 100
+    match:
+      opcode: G_UREM
+      def_use:
+        -
+          operand: 1
+          opcode: G_CONSTANT
+          captures:
+            - { id: zero, operand: 0 }
+          operand_def_constants:
+            - index: 1
+              ranges: [{ min: 0, max: 0 }]
+    apply:
+      action: replace_root_with_capture
+      capture: zero
+      erase_operand_definitions: [1]
+  -
+    id: combine_mul_zero
+    priority: 100
+    match:
+      opcode: G_MUL
+      def_use:
+        -
+          operand: 1
+          opcode: G_CONSTANT
+          captures:
+            - { id: zero, operand: 0 }
+          operand_def_constants:
+            - index: 1
+              ranges: [{ min: 0, max: 0 }]
+    apply:
+      action: replace_root_with_capture
+      capture: zero
+      erase_operand_definitions: [1]

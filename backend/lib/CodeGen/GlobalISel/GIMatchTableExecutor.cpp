@@ -62,6 +62,11 @@ namespace {
                         "generated match table has an invalid type predicate");
 }
 
+[[nodiscard]] bool matchesInstructionFlags(const MachineInstr &Instruction,
+                                           const GIMatchTableInstruction &Step) noexcept {
+  return (Instruction.flags().rawValue() & Step.Value) == Step.Value;
+}
+
 [[nodiscard]] Expected<bool> matchesMemorySize(const MachineInstr &Instruction,
                                                const GIMatchTableInstruction &Step) {
   if (Step.Value == 0) {
@@ -299,6 +304,7 @@ struct MatchedRule final {
       PhysicalRegister,
       Temporary,
       CapturedImmediate,
+      CapturedTypeBits,
       Immediate,
     };
 
@@ -320,6 +326,8 @@ struct MatchedRule final {
   std::vector<CapturedOperand> CapturedOperands;
   std::vector<Instruction> Instructions;
   std::vector<Register> EraseOperandDefinitions;
+  std::optional<std::uint32_t> ReplaceRootCapture;
+  std::uint32_t ClearInstructionFlags = 0;
 };
 
 [[nodiscard]] bool hasTemporary(const MatchedRule &Rule, std::uint32_t ID) {
@@ -378,6 +386,22 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
         return std::optional<MatchedRule>{};
       break;
     }
+    case GIMatchTableOpcode::CheckInstructionFlag:
+      if (Applying || Step.Value == 0)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table has an invalid instruction flag predicate");
+      if (!matchesInstructionFlags(Instruction, Step))
+        return std::optional<MatchedRule>{};
+      break;
+    case GIMatchTableOpcode::ClearInstructionFlags:
+      if (!Applying || Complete || Step.Value == 0)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table has an invalid flag clear action");
+      if (Result.ClearInstructionFlags != 0)
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table clears instruction flags twice");
+      Result.ClearInstructionFlags = Step.Value;
+      break;
     case GIMatchTableOpcode::CheckOperandBank: {
       if (Applying) {
         return makeUnexpected(ErrorCode::VerificationError,
@@ -607,6 +631,18 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
           .ComplexRenderer = {},
       });
       break;
+    case GIMatchTableOpcode::RenderCapturedTypeBits:
+      if (Complete || Result.Instructions.empty() || Step.Value == 0 ||
+          !hasCapturedOperand(Result, Step.Value)) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table has an invalid captured type renderer");
+      }
+      Result.Instructions.back().Operands.push_back({
+          .SourceKind = MatchedRule::RenderedOperand::Kind::CapturedTypeBits,
+          .Value = Step.Value,
+          .ComplexRenderer = {},
+      });
+      break;
     case GIMatchTableOpcode::RenderPhysicalRegister:
       if (Complete || Result.Instructions.empty() || Step.Value == 0) {
         return makeUnexpected(ErrorCode::VerificationError,
@@ -663,8 +699,18 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
           .Immediate = Step.Immediate,
       });
       break;
+    case GIMatchTableOpcode::ReplaceRootWithCapturedOperand:
+      if (Table.Kind != GIMatchTableKind::Combiner || Complete || Applying ||
+          !Result.Instructions.empty() || Step.Value == 0 ||
+          !hasCapturedOperand(Result, Step.Value) || Result.ReplaceRootCapture) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table has an invalid root replacement action");
+      }
+      Applying = true;
+      Result.ReplaceRootCapture = Step.Value;
+      break;
     case GIMatchTableOpcode::EraseOperandDefinition: {
-      if (Complete || Result.Instructions.empty()) {
+      if (Complete || (Result.Instructions.empty() && !Result.ReplaceRootCapture)) {
         return makeUnexpected(ErrorCode::VerificationError,
                               "generated match table has an invalid erased definition");
       }
@@ -678,7 +724,8 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
       break;
     }
     case GIMatchTableOpcode::Complete:
-      if (Complete || Result.Instructions.empty() || Index + 1 != First + Count) {
+      if (Complete || (Result.Instructions.empty() && !Result.ReplaceRootCapture) ||
+          Index + 1 != First + Count) {
         return makeUnexpected(ErrorCode::VerificationError,
                               "generated match table has an invalid completion action");
       }
@@ -687,7 +734,13 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
     }
   }
 
-  if (!Complete || Result.Instructions.empty() || !Result.Instructions.front().ReplacesRoot) {
+  if (!Complete ||
+      (Table.Kind == GIMatchTableKind::Selection &&
+       (Result.Instructions.empty() || !Result.Instructions.front().ReplacesRoot)) ||
+      (Table.Kind == GIMatchTableKind::Combiner && Result.Instructions.empty() &&
+       !Result.ReplaceRootCapture) ||
+      (Table.Kind == GIMatchTableKind::Combiner && !Result.Instructions.empty() &&
+       Result.ReplaceRootCapture)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "generated match table rule does not complete rendering");
   }
@@ -900,6 +953,24 @@ renderOperand(const MatchedRule::RenderedOperand &Rendered, const MachineInstr &
     }
     return Captured->Operand.cloneDetached();
   }
+  case MatchedRule::RenderedOperand::Kind::CapturedTypeBits: {
+    const MatchedRule::CapturedOperand *Captured =
+        findCapturedOperand(CapturedOperands, Rendered.Value);
+    if (Captured == nullptr)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "generated match table renders an unknown captured type");
+    const Register *Reg = Captured->Operand.getIf<Register>();
+    if (Reg == nullptr || !Reg->isVirtual())
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "generated match table captured type is not a virtual register");
+    auto Type = Function.registerInfo().getType(*Reg);
+    if (!Type)
+      return std::unexpected(Type.error());
+    if (!Type->isCategoryNeutralScalar())
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "generated match table captured type is not scalar");
+    return MachineOperand::immediate(static_cast<std::int64_t>(Type->scalarBitWidth()));
+  }
   case MatchedRule::RenderedOperand::Kind::PhysicalRegister: {
     auto Physical = PhysicalRegister::create(Rendered.Value);
     if (!Physical || Target.registers().physicalRegister(*Physical) == nullptr) {
@@ -958,6 +1029,76 @@ renderOperand(const MatchedRule::RenderedOperand &Rendered, const MachineInstr &
                         "generated match table has an invalid operand renderer");
 }
 
+[[nodiscard]] bool compatibleReplacement(Register Destination, Register Source,
+                                         const MachineFunction &Function,
+                                         const TargetDescription &Target) {
+  if (!Destination.isVirtual() || Source.isNoRegister())
+    return false;
+  auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(Destination);
+  if (!DestinationInfo)
+    return false;
+  const VirtualRegisterInfo &DestinationValue = DestinationInfo->get();
+  if (Source.isPhysical()) {
+    const std::optional<PhysicalRegister> Physical = Source.physicalRegister();
+    if (!Physical)
+      return false;
+    if (DestinationValue.RegClass &&
+        !Target.registers().registerClassContains(*DestinationValue.RegClass, *Physical))
+      return false;
+    return !DestinationValue.Bank ||
+           Target.registers().bankContainsRegister(*DestinationValue.Bank, *Physical);
+  }
+  auto SourceInfo = Function.registerInfo().virtualRegisterInfo(Source);
+  if (!SourceInfo)
+    return false;
+  const VirtualRegisterInfo &SourceValue = SourceInfo->get();
+  if (DestinationValue.Type != SourceValue.Type)
+    return false;
+  if (DestinationValue.Bank &&
+      (!SourceValue.Bank ||
+       !Target.registers().registerBanksOverlap(*DestinationValue.Bank, *SourceValue.Bank)))
+    return false;
+  if (DestinationValue.RegClass &&
+      (!SourceValue.RegClass || !Target.registers().registerClassesOverlap(
+                                    *DestinationValue.RegClass, *SourceValue.RegClass)))
+    return false;
+  return true;
+}
+
+[[nodiscard]] Expected<bool> replaceRootWithCapturedOperand(const MatchedRule &Rule,
+                                                            MachineInstr &Instruction,
+                                                            MachineFunction &Function,
+                                                            const TargetDescription &Target) {
+  if (!Rule.ReplaceRootCapture)
+    return false;
+  const MatchedRule::CapturedOperand *Captured =
+      findCapturedOperand(Rule.CapturedOperands, *Rule.ReplaceRootCapture);
+  const MachineOperand *Definition = Instruction.operandAt(0);
+  const Register *Destination = Definition == nullptr ? nullptr : Definition->getIf<Register>();
+  const Register *Source = Captured == nullptr ? nullptr : Captured->Operand.getIf<Register>();
+  if (Destination == nullptr || Source == nullptr || !Definition->isDef() || Definition->isUse() ||
+      (!Source->isVirtual() && !Source->isPhysical()) || Destination->isNoRegister() ||
+      Source->isNoRegister() || !Destination->isVirtual() ||
+      Function.registerInfo().getUniqueVRegDef(*Destination) != Definition ||
+      !compatibleReplacement(*Destination, *Source, Function, Target)) {
+    return false;
+  }
+  if (Instruction.parent() == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "generated combiner root is detached");
+  std::vector<MachineOperand *> Uses;
+  for (MachineOperand &Use : Function.registerInfo().useOperands(*Destination, true))
+    Uses.push_back(&Use);
+  for (MachineOperand *Use : Uses) {
+    auto Replaced = Use->setRegister(*Source);
+    if (!Replaced)
+      return std::unexpected(Replaced.error());
+  }
+  auto Erased = eraseInstr(Instruction, Function.registerInfo(), Target);
+  if (!Erased)
+    return std::unexpected(Erased.error());
+  return true;
+}
+
 template <typename Finalizer, typename ComplexRenderer>
 [[nodiscard]] Expected<void> applyRule(const MatchedRule &Rule, MachineInstr &Instruction,
                                        MachineFunction &Function, const TargetDescription &Target,
@@ -966,6 +1107,32 @@ template <typename Finalizer, typename ComplexRenderer>
   if (InputDescriptor == nullptr) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "generated match table input has no instruction descriptor");
+  }
+  if (Rule.ReplaceRootCapture) {
+    auto Replaced = replaceRootWithCapturedOperand(Rule, Instruction, Function, Target);
+    if (!Replaced)
+      return std::unexpected(Replaced.error());
+    if (!*Replaced)
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "generated combiner root replacement is incompatible");
+    for (const Register Reg : Rule.EraseOperandDefinitions) {
+      MachineInstr *Definition = Function.registerInfo().getVRegDef(Reg);
+      if (Definition == nullptr || !isTriviallyDead(*Definition, Function.registerInfo(), Target))
+        continue;
+      auto Erased = eraseInstr(*Definition, Function.registerInfo(), Target);
+      if (!Erased)
+        return std::unexpected(Erased.error());
+    }
+    if (Rule.ClearInstructionFlags != 0) {
+      MachineInstrFlags Flags = Instruction.flags();
+      for (std::uint32_t Index = 0; Index < static_cast<std::uint32_t>(MachineInstrFlag::Count);
+           ++Index) {
+        if ((Rule.ClearInstructionFlags & (std::uint32_t{1} << Index)) != 0)
+          Flags.clear(static_cast<MachineInstrFlag>(Index));
+      }
+      Instruction.setFlags(Flags);
+    }
+    return {};
   }
   const MachineInstrFlags InputFlags = Instruction.flags();
   const bool InputMayRaiseFPException =
@@ -1262,6 +1429,15 @@ template <typename Finalizer, typename ComplexRenderer>
     if (!Erased)
       return Rollback(Erased.error());
   }
+  if (Rule.ClearInstructionFlags != 0) {
+    MachineInstrFlags Flags = Instruction.flags();
+    for (std::uint32_t Index = 0; Index < static_cast<std::uint32_t>(MachineInstrFlag::Count);
+         ++Index) {
+      if ((Rule.ClearInstructionFlags & (std::uint32_t{1} << Index)) != 0)
+        Flags.clear(static_cast<MachineInstrFlag>(Index));
+    }
+    Instruction.setFlags(Flags);
+  }
   return {};
 }
 
@@ -1351,6 +1527,49 @@ Expected<bool> GIMatchTableExecutor::select(const GIMatchTable &Table, MachineIn
       return std::unexpected(Complex.error());
     if (!*Complex)
       continue;
+    auto Applied = applyRule(
+        **Match, Instruction, Function, Target,
+        [this, &Function, &Target](MachineInstr &Output, MachineInstrFlags InputFlags,
+                                   bool InputMayRaiseFPException) {
+          return finalizeGeneratedInstruction(Output, Function, Target, InputFlags,
+                                              InputMayRaiseFPException);
+        },
+        [this](std::string_view Name, const MachineInstr &Input,
+               const MachineFunction &InputFunction, const TargetDescription &InputTarget,
+               std::uint32_t OperandIndex) {
+          return renderComplexOperand(Name, Input, InputFunction, InputTarget, OperandIndex);
+        });
+    if (!Applied)
+      return std::unexpected(Applied.error());
+    return true;
+  }
+  return false;
+}
+
+Expected<bool> GIMatchTableExecutor::combine(const GIMatchTable &Table, MachineInstr &Instruction,
+                                             MachineFunction &Function,
+                                             const TargetDescription &Target) const {
+  if (Table.Kind != GIMatchTableKind::Combiner)
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "GlobalISel combiner received a selection match table");
+  for (const GIMatchTableRule &Rule : Table.Rules) {
+    auto Match = matchRule(Table, Rule, Instruction, Function, Target,
+                           [this](std::string_view Name, const MachineInstr &Input,
+                                  const MachineFunction &InputFunction,
+                                  const TargetDescription &InputTarget) {
+                             return matchesTargetPredicate(Name, Input, InputFunction, InputTarget);
+                           });
+    if (!Match)
+      return std::unexpected(Match.error());
+    if (!*Match)
+      continue;
+    if (!(*Match)->ReplaceRootCapture) {
+      for (const MatchedRule::Instruction &Action : (*Match)->Instructions) {
+        if (Target.instructionDescriptor(Action.ResultOpcode) == nullptr)
+          return makeUnexpected(ErrorCode::VerificationError,
+                                "generated combiner selects an unknown instruction opcode");
+      }
+    }
     auto Applied = applyRule(
         **Match, Instruction, Function, Target,
         [this, &Function, &Target](MachineInstr &Output, MachineInstrFlags InputFlags,

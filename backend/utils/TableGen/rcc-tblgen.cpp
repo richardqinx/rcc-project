@@ -22,6 +22,7 @@ struct CommandLine final {
   std::string InstructionHeaderPath;
   std::string TablesPath;
   std::string GlobalISelPath;
+  std::string GlobalISelCombinerPath;
 };
 
 [[nodiscard]] bool parseCommandLine(int ArgumentCount, char *Arguments[], CommandLine &Result) {
@@ -36,7 +37,8 @@ struct CommandLine final {
       continue;
     }
     if (Argument == "--register-header" || Argument == "--instruction-header" ||
-        Argument == "--tables" || Argument == "--global-isel") {
+        Argument == "--tables" || Argument == "--global-isel" ||
+        Argument == "--global-isel-combiner") {
       if (Index + 1 >= ArgumentCount) {
         std::cerr << "rcc-tblgen: missing value for " << Argument << '\n';
         return false;
@@ -48,6 +50,8 @@ struct CommandLine final {
         Destination = &Result.InstructionHeaderPath;
       else if (Argument == "--global-isel")
         Destination = &Result.GlobalISelPath;
+      else if (Argument == "--global-isel-combiner")
+        Destination = &Result.GlobalISelCombinerPath;
       else
         Destination = &Result.TablesPath;
       *Destination = Arguments[++Index];
@@ -58,11 +62,12 @@ struct CommandLine final {
   }
   if (!Result.InputPaths.empty() && !Result.RegisterHeaderPath.empty() &&
       !Result.InstructionHeaderPath.empty() && !Result.TablesPath.empty() &&
-      !Result.GlobalISelPath.empty()) {
+      !Result.GlobalISelPath.empty() && !Result.GlobalISelCombinerPath.empty()) {
     return true;
   }
   std::cerr << "usage: rcc-tblgen --input <file> [--input <fragment>]... --register-header <file> "
-               "--instruction-header <file> --tables <file> --global-isel <file>\n";
+               "--instruction-header <file> --tables <file> --global-isel <file> "
+               "--global-isel-combiner <file>\n";
   return false;
 }
 
@@ -166,7 +171,8 @@ combineDescriptionSources(const std::vector<std::string> &Paths,
         Result.push_back(Section);
         continue;
       }
-      if (Section.Name != "instructions" && Section.Name != "selection_rules") {
+      if (Section.Name != "instructions" && Section.Name != "selection_rules" &&
+          Section.Name != "combiner_rules") {
         std::cerr << "rcc-tblgen: duplicate description section '" << Section.Name << "' in '"
                   << Paths[Index] << "'\n";
         return std::nullopt;
@@ -226,7 +232,8 @@ int main(int ArgumentCount, char *Arguments[]) {
   return writeFile(Command.RegisterHeaderPath, Output.RegisterHeader) &&
                  writeFile(Command.InstructionHeaderPath, Output.InstructionHeader) &&
                  writeFile(Command.TablesPath, Output.TargetTables) &&
-                 writeFile(Command.GlobalISelPath, Output.GlobalISel)
+                 writeFile(Command.GlobalISelPath, Output.GlobalISel) &&
+                 writeFile(Command.GlobalISelCombinerPath, Output.GlobalISelCombiner)
              ? 0
              : 1;
 }
