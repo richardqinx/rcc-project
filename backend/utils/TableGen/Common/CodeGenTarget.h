@@ -53,6 +53,7 @@ struct NormalizedRegisterClass final {
   std::uint64_t Lanes = 0;
   std::vector<std::uint32_t> Registers;
   std::vector<std::uint32_t> AllocationOrder;
+  std::vector<std::uint32_t> SuperClasses;
   bool Allocatable = true;
   std::uint32_t CopyCost = 1;
 };

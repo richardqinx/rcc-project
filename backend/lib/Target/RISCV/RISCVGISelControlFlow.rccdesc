@@ -2,6 +2,18 @@
 
 selection_rules:
   -
+    id: select_g_brindirect
+    priority: 100
+    match:
+      opcode: G_BRINDIRECT
+    apply:
+      instructions:
+        - opcode: PseudoBRIND
+          root: true
+          operands:
+            - { operand: 0 }
+            - { immediate: 0 }
+  -
     id: select_g_br
     priority: 100
     match:

@@ -544,6 +544,51 @@ copyRegisters(const MachineInstr &Instruction) {
   return true;
 }
 
+[[nodiscard]] Expected<bool> expandIndirectBranch(MachineInstr &Instruction,
+                                                  MachineFunction &Function,
+                                                  const TargetDescription &Target) {
+  const MachineOperand *Address = Instruction.operandAt(0);
+  const MachineOperand *Offset = Instruction.operandAt(1);
+  if (Address == nullptr || Address->getIf<Register>() == nullptr || Offset == nullptr ||
+      Offset->getIf<std::int64_t>() == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V PseudoBRIND has malformed operands");
+  }
+
+  auto Zero = physicalRegister(PhysicalRegisterID::X0);
+  if (!Zero)
+    return std::unexpected(Zero.error());
+  MachineIRBuilder Builder(Function, Target);
+  auto Point = Builder.setInsertPointBefore(Instruction);
+  if (!Point)
+    return std::unexpected(Point.error());
+  auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JALR));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  auto Added = Pending->addDef(Register::fromPhysical(*Zero));
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = Pending->addOperand(Address->cloneDetached());
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = Pending->addOperand(Offset->cloneDetached());
+  if (!Added)
+    return std::unexpected(Added.error());
+  auto Implicit = copyExtraImplicitOperands(Instruction, 2, *Pending, std::nullopt, std::nullopt);
+  if (!Implicit)
+    return std::unexpected(Implicit.error());
+  auto Replacement = Pending->build();
+  if (!Replacement)
+    return std::unexpected(Replacement.error());
+  auto Decoration = copyCommonDecoration(Instruction, **Replacement, true, true, true);
+  if (!Decoration)
+    return std::unexpected(Decoration.error());
+  auto Removed = removeOldInstruction(Instruction);
+  if (!Removed)
+    return std::unexpected(Removed.error());
+  return true;
+}
+
 class RISCVPseudoExpansionInfo final : public TargetPseudoExpansionInfo {
 public:
   [[nodiscard]] Expected<bool> preparePostRAPseudo(MachineInstr &Instruction,
@@ -571,6 +616,8 @@ public:
       return expandReturn(Instruction, Function, Target);
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoBR))
       return expandBranch(Instruction, Function, Target);
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoBRIND))
+      return expandIndirectBranch(Instruction, Function, Target);
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::ReadFFLAGS))
       return expandFFLAGSAccess(Instruction, Function, Target, true);
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::WriteFFLAGS))

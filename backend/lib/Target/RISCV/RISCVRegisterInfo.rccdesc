@@ -253,6 +253,7 @@ register_classes:
     symbol: GPRC
     name: GPRC
     bank: GPR
+    superclasses: [GPR]
     size_bits: 64
     spill_size_bits: 64
     spill_alignment_bits: 64
@@ -275,6 +276,7 @@ register_classes:
     symbol: FPR64C
     name: FPR64C
     bank: FPR
+    superclasses: [FPR64]
     size_bits: 64
     spill_size_bits: 64
     spill_alignment_bits: 64
@@ -297,6 +299,7 @@ register_classes:
     symbol: FPR32C
     name: FPR32C
     bank: FPR
+    superclasses: [FPR32]
     size_bits: 32
     spill_size_bits: 32
     spill_alignment_bits: 32
@@ -308,6 +311,7 @@ register_classes:
     symbol: GPR_NX0
     name: GPR_NX0
     bank: GPR
+    superclasses: [GPR]
     size_bits: 64
     spill_size_bits: 64
     spill_alignment_bits: 64
@@ -319,6 +323,7 @@ register_classes:
     symbol: GPR_NX0_NX2
     name: GPR_NX0_NX2
     bank: GPR
+    superclasses: [GPR_NX0]
     size_bits: 64
     spill_size_bits: 64
     spill_alignment_bits: 64
@@ -361,6 +366,18 @@ register_classes:
     registers: [V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, V17, V18, V19, V20, V21, V22, V23, V24, V25, V26, V27, V28, V29, V30, V31]
     allocation_order: []
     allocatable: false
+  -
+    id: 12
+    symbol: GPRJALRNonX7
+    name: GPRJALRNonX7
+    bank: GPR
+    superclasses: [GPR]
+    size_bits: 64
+    spill_size_bits: 64
+    spill_alignment_bits: 64
+    lanes: 1
+    registers: [X6, X8, X9, X10, X11, X12, X13, X14, X15, X16, X17, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, X31]
+    allocation_order: [X6, X28, X29, X30, X31, X10, X11, X12, X13, X14, X15, X16, X17, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27]
 
 register_masks:
   -

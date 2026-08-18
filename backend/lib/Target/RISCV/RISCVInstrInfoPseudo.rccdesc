@@ -378,3 +378,15 @@ instructions:
     size: 4
     owner: post_ra_expansion
     deadline: post_ra_finalized
+  -
+    id: 1263
+    symbol: PseudoBRIND
+    name: PseudoBRIND
+    operands:
+      - { kinds: [register], role: use, register_class: GPRJALRNonX7, register_bank: GPR, name: RS1 }
+      - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
+    num_explicit_defs: 0
+    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, indirect_branch, barrier]
+    size: 4
+    owner: post_ra_expansion
+    deadline: post_ra_finalized

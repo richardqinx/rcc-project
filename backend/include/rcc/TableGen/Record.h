@@ -71,6 +71,7 @@ struct SourceRegisterClass final {
   std::uint64_t Lanes = 0;
   std::vector<std::string> RegisterSymbols;
   std::vector<std::string> AllocationOrderSymbols;
+  std::vector<std::string> SuperClassSymbols;
   bool Allocatable = true;
   std::uint32_t CopyCost = 1;
   TextRange Range;

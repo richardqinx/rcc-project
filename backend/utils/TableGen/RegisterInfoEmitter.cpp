@@ -20,6 +20,15 @@ void emitRegisterIDList(std::ostream &Output, const NormalizedTargetModel &Model
     Output << "PhysicalRegisterID::" << findRegister(Model, ID).Symbol << ", ";
 }
 
+void emitRegisterClassIDList(std::ostream &Output, const NormalizedTargetModel &Model,
+                             std::span<const std::uint32_t> IDs) {
+  for (const std::uint32_t ID : IDs) {
+    const auto Position =
+        std::ranges::find(Model.RegisterClasses, ID, &NormalizedRegisterClass::ID);
+    Output << "RegisterClass::" << Position->Symbol << ", ";
+  }
+}
+
 } // namespace
 
 [[nodiscard]] std::string emitRegisterHeader(const NormalizedTargetModel &Model,
@@ -114,6 +123,8 @@ std::string emitRegisterInfo(const NormalizedTargetModel &Model, std::string_vie
     emitRegisterIDList(Output, Model, Class.Registers);
     Output << "}, {";
     emitRegisterIDList(Output, Model, Class.AllocationOrder);
+    Output << "}, {";
+    emitRegisterClassIDList(Output, Model, Class.SuperClasses);
     Output << "}, RegisterBank::" << findRegisterBank(Model, Class.BankID).Symbol << ", "
            << Class.SizeInBits << ", " << Class.SpillSizeInBits << ", "
            << Class.SpillAlignmentInBits << ", " << Class.Lanes << ", "

@@ -36,7 +36,8 @@ struct SpillForm final {
   if (Class == registerClassID(RegisterClass::GPR) ||
       Class == registerClassID(RegisterClass::GPRC) ||
       Class == registerClassID(RegisterClass::GPR_NX0) ||
-      Class == registerClassID(RegisterClass::GPR_NX0_NX2)) {
+      Class == registerClassID(RegisterClass::GPR_NX0_NX2) ||
+      Class == registerClassID(RegisterClass::GPRJALRNonX7)) {
     return SpillForm{InstructionOpcode::LD, InstructionOpcode::SD, 8};
   }
   if (Class == registerClassID(RegisterClass::FPR64) ||

@@ -477,7 +477,7 @@ private:
       if (!checkKeys(*Element,
                      {"id", "symbol", "name", "bank", "size_bits", "spill_size_bits",
                       "spill_alignment_bits", "lanes", "registers", "allocation_order",
-                      "allocatable", "copy_cost"},
+                      "superclasses", "allocatable", "copy_cost"},
                      "register class")) {
         return false;
       }
@@ -522,8 +522,15 @@ private:
           .Lanes = *Lanes,
           .RegisterSymbols = *Registers,
           .AllocationOrderSymbols = *AllocationOrder,
+          .SuperClassSymbols = {},
           .Range = Element->range(),
       };
+      if (const yaml::Node *SuperClasses = optionalNode(*Element, "superclasses")) {
+        const auto Values = scalarSequence(*SuperClasses, "register class superclasses");
+        if (!Values)
+          return false;
+        RegisterClass.SuperClassSymbols = *Values;
+      }
       if (const yaml::Node *Allocatable = optionalNode(*Element, "allocatable")) {
         const auto Value = boolean(*Allocatable, "register class allocatable");
         if (!Value)

@@ -132,6 +132,9 @@ namespace rcc::targetgen {
       return false;
     }
     ClassBySymbol.emplace(Class.Symbol, Class.ID);
+  }
+  for (const SourceRegisterClass &Class : Input.RegisterClasses) {
+    const auto Bank = BankBySymbol.find(Class.BankSymbol);
     NormalizedRegisterClass Normalized{
         .ID = Class.ID,
         .Symbol = Class.Symbol,
@@ -143,6 +146,7 @@ namespace rcc::targetgen {
         .Lanes = Class.Lanes,
         .Registers = {},
         .AllocationOrder = {},
+        .SuperClasses = {},
         .Allocatable = Class.Allocatable,
         .CopyCost = Class.CopyCost,
     };
@@ -165,6 +169,18 @@ namespace rcc::targetgen {
         return false;
       }
       Normalized.AllocationOrder.push_back(Register->second);
+    }
+    std::unordered_set<std::uint32_t> SuperClasses;
+    for (const std::string &Symbol : Class.SuperClassSymbols) {
+      const auto SuperClass = ClassBySymbol.find(Symbol);
+      if (SuperClass == ClassBySymbol.end() || SuperClass->second == Class.ID ||
+          !SuperClasses.insert(SuperClass->second).second) {
+        fail(Class.Range,
+             "register class superclasses must reference distinct declared classes other than "
+             "the class itself");
+        return false;
+      }
+      Normalized.SuperClasses.push_back(SuperClass->second);
     }
     if ((Normalized.Allocatable && Normalized.AllocationOrder.empty()) ||
         (!Normalized.Allocatable && !Normalized.AllocationOrder.empty())) {

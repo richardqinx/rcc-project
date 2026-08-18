@@ -43,11 +43,21 @@ physicalRegisters(std::initializer_list<PhysicalRegisterID> IDs) {
   return Result;
 }
 
+[[nodiscard]] std::vector<RegisterClassID>
+registerClasses(std::initializer_list<RegisterClass> IDs) {
+  std::vector<RegisterClassID> Result;
+  Result.reserve(IDs.size());
+  for (const RegisterClass ID : IDs)
+    Result.push_back(RegisterClassID::fromValue(static_cast<std::uint32_t>(ID)));
+  return Result;
+}
+
 [[nodiscard]] RegisterClassDesc registerClass(
     RegisterClass ID, const char *Name, std::initializer_list<PhysicalRegisterID> Registers,
-    std::initializer_list<PhysicalRegisterID> AllocationOrder, RegisterBank Bank,
-    std::uint32_t SizeInBits, std::uint32_t SpillSizeInBits, std::uint32_t SpillAlignmentInBits,
-    std::uint64_t Lanes, bool Allocatable, std::uint32_t CopyCost) {
+    std::initializer_list<PhysicalRegisterID> AllocationOrder,
+    std::initializer_list<RegisterClass> SuperClasses, RegisterBank Bank, std::uint32_t SizeInBits,
+    std::uint32_t SpillSizeInBits, std::uint32_t SpillAlignmentInBits, std::uint64_t Lanes,
+    bool Allocatable, std::uint32_t CopyCost) {
   return {
       .ID = RegisterClassID::fromValue(static_cast<std::uint32_t>(ID)),
       .Name = Name,
@@ -58,7 +68,7 @@ physicalRegisters(std::initializer_list<PhysicalRegisterID> IDs) {
       .SpillAlignmentInBits = SpillAlignmentInBits,
       .Lanes = LaneMask::fromRaw(Lanes),
       .SupportedSubRegs = {},
-      .SuperClasses = {},
+      .SuperClasses = registerClasses(SuperClasses),
       .DefaultBank = RegisterBankID::fromValue(static_cast<std::uint32_t>(Bank)),
       .Allocatable = Allocatable,
       .CopyCost = CopyCost,

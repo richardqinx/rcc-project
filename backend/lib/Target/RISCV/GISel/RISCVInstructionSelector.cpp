@@ -478,8 +478,6 @@ public:
       return selectAtomicRMW(Instruction, Function, Target, Type, Generic);
     case GenericOpcode::G_FENCE:
       return selectFence(Instruction);
-    case GenericOpcode::G_BRINDIRECT:
-      return selectIndirectBranch(Instruction);
     case GenericOpcode::G_TRAP:
     case GenericOpcode::G_DEBUGTRAP:
     case GenericOpcode::G_UBSANTRAP:
@@ -1196,19 +1194,6 @@ private:
     if (!SetSucc)
       return std::unexpected(SetSucc.error());
     return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FENCE));
-  }
-
-  [[nodiscard]] Expected<void> selectIndirectBranch(MachineInstr &Instruction) const {
-    auto Zero = physicalRegister(PhysicalRegisterID::X0);
-    if (!Zero)
-      return std::unexpected(Zero.error());
-    auto Inserted = insertPhysicalRegister(Instruction, 0, *Zero, RegisterOperandFlag::Define);
-    if (!Inserted)
-      return std::unexpected(Inserted.error());
-    auto Immediate = appendImmediate(Instruction, 0);
-    if (!Immediate)
-      return std::unexpected(Immediate.error());
-    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::JALR));
   }
 
   [[nodiscard]] Expected<void> selectTrap(MachineInstr &Instruction) const {
