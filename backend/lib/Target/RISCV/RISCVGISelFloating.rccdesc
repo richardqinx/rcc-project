@@ -637,3 +637,47 @@ selection_rules:
         - opcode: FCVT_D_LU
           root: true
           operands: [{ operand: 0 }, { operand: 1 }, { immediate: 7 }]
+  -
+    id: select_g_select_fpr32
+    priority: 100
+    match:
+      opcode: G_SELECT
+      result_type: { kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: Select_FPR32_Using_CC_GPR
+          root: true
+          operands:
+            - { operand: 0 }
+            - { complex: select_condition_lhs, operand: 1 }
+            - { complex: select_condition_rhs, operand: 1 }
+            - { complex: select_condition_code, operand: 1 }
+            - { operand: 2 }
+            - { operand: 3 }
+  -
+    id: select_g_select_fpr64
+    priority: 100
+    match:
+      opcode: G_SELECT
+      result_type: { kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: Select_FPR64_Using_CC_GPR
+          root: true
+          operands:
+            - { operand: 0 }
+            - { complex: select_condition_lhs, operand: 1 }
+            - { complex: select_condition_rhs, operand: 1 }
+            - { complex: select_condition_code, operand: 1 }
+            - { operand: 2 }
+            - { operand: 3 }

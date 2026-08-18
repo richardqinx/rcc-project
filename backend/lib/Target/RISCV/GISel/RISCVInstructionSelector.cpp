@@ -2,6 +2,7 @@
 
 #include "RISCV.h"
 #include "RISCVImmediateMaterialization.h"
+#include "RISCVInstrInfo.h"
 #include "RISCVRegisterBankInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/GlobalISel/GISelValueTracking.h"
@@ -141,6 +142,105 @@ directIntegerConstant(const MachineRegisterInfo &RegisterInfo, Register ValueReg
   return Value ? std::optional<std::int64_t>(*Value) : std::nullopt;
 }
 
+struct SelectedIntegerCondition final {
+  Register Left;
+  Register Right;
+  BranchConditionCode Code = BranchConditionCode::NotEqual;
+};
+
+[[nodiscard]] Expected<std::optional<SelectedIntegerCondition>>
+selectIntegerCondition(const MachineInstr &Instruction, const MachineFunction &Function,
+                       std::uint32_t OperandIndex) {
+  const MachineOperand *ConditionOperand = Instruction.operandAt(OperandIndex);
+  const Register *Condition =
+      ConditionOperand == nullptr ? nullptr : ConditionOperand->getIf<Register>();
+  if (Condition == nullptr)
+    return std::optional<SelectedIntegerCondition>{};
+
+  auto Zero = physicalRegister(PhysicalRegisterID::X0);
+  if (!Zero)
+    return std::unexpected(Zero.error());
+  SelectedIntegerCondition Result{
+      .Left = *Condition,
+      .Right = Register::fromPhysical(*Zero),
+      .Code = BranchConditionCode::NotEqual,
+  };
+  const MachineInstr *Comparison =
+      Condition->isVirtual() ? Function.registerInfo().getVRegDef(*Condition) : nullptr;
+  if (Comparison == nullptr || Comparison->opcode() != opcode(GenericOpcode::G_ICMP))
+    return std::optional<SelectedIntegerCondition>{Result};
+
+  const MachineOperand *PredicateMO = Comparison->operandAt(1);
+  const auto *Predicate = PredicateMO == nullptr ? nullptr : PredicateMO->getIf<PredicateOperand>();
+  const IntegerPredicate *Integer = Predicate == nullptr ? nullptr : Predicate->integerPredicate();
+  const MachineOperand *LeftOperand = Comparison->operandAt(2);
+  const MachineOperand *RightOperand = Comparison->operandAt(3);
+  const Register *Left = LeftOperand == nullptr ? nullptr : LeftOperand->getIf<Register>();
+  const Register *Right = RightOperand == nullptr ? nullptr : RightOperand->getIf<Register>();
+  if (Integer == nullptr || Left == nullptr || Right == nullptr) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V integer comparison has malformed branch operands");
+  }
+  Result.Left = *Left;
+  Result.Right = *Right;
+
+  if (const std::optional<std::int64_t> Constant =
+          directIntegerConstant(Function.registerInfo(), *Right)) {
+    if (*Integer == IntegerPredicate::SignedGreaterThan && *Constant == -1) {
+      Result.Right = Register::fromPhysical(*Zero);
+      Result.Code = BranchConditionCode::SignedGreaterEqual;
+      return std::optional<SelectedIntegerCondition>{Result};
+    }
+    if (*Integer == IntegerPredicate::SignedLessThan && *Constant == 1) {
+      Result.Right = Result.Left;
+      Result.Left = Register::fromPhysical(*Zero);
+      Result.Code = BranchConditionCode::SignedGreaterEqual;
+      return std::optional<SelectedIntegerCondition>{Result};
+    }
+  }
+
+  switch (*Integer) {
+  case IntegerPredicate::Equal:
+    Result.Code = BranchConditionCode::Equal;
+    break;
+  case IntegerPredicate::NotEqual:
+    Result.Code = BranchConditionCode::NotEqual;
+    break;
+  case IntegerPredicate::SignedLessThan:
+    Result.Code = BranchConditionCode::SignedLessThan;
+    break;
+  case IntegerPredicate::SignedGreaterEqual:
+    Result.Code = BranchConditionCode::SignedGreaterEqual;
+    break;
+  case IntegerPredicate::UnsignedLessThan:
+    Result.Code = BranchConditionCode::UnsignedLessThan;
+    break;
+  case IntegerPredicate::UnsignedGreaterEqual:
+    Result.Code = BranchConditionCode::UnsignedGreaterEqual;
+    break;
+  case IntegerPredicate::SignedGreaterThan:
+    std::swap(Result.Left, Result.Right);
+    Result.Code = BranchConditionCode::SignedLessThan;
+    break;
+  case IntegerPredicate::SignedLessEqual:
+    std::swap(Result.Left, Result.Right);
+    Result.Code = BranchConditionCode::SignedGreaterEqual;
+    break;
+  case IntegerPredicate::UnsignedGreaterThan:
+    std::swap(Result.Left, Result.Right);
+    Result.Code = BranchConditionCode::UnsignedLessThan;
+    break;
+  case IntegerPredicate::UnsignedLessEqual:
+    std::swap(Result.Left, Result.Right);
+    Result.Code = BranchConditionCode::UnsignedGreaterEqual;
+    break;
+  case IntegerPredicate::Count:
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V select has an invalid integer predicate");
+  }
+  return std::optional<SelectedIntegerCondition>{Result};
+}
+
 class RISCVInstructionSelector final : public InstructionSelector {
 public:
   RISCVInstructionSelector(const RISCVSubtarget &Subtarget,
@@ -167,6 +267,29 @@ public:
   renderComplexOperand(std::string_view Name, const MachineInstr &Instruction,
                        const MachineFunction &Function, const TargetDescription &Target,
                        std::uint32_t OperandIndex) const override {
+    if (Name == "select_condition_lhs" || Name == "select_condition_rhs" ||
+        Name == "select_condition_code") {
+      auto Condition = selectIntegerCondition(Instruction, Function, OperandIndex);
+      if (!Condition)
+        return std::unexpected(Condition.error());
+      if (!*Condition)
+        return std::optional<GIMatchComplexOperand>{};
+      if (Name == "select_condition_code") {
+        return GIMatchComplexOperand{
+            .Operand = MachineOperand::immediate(static_cast<std::int64_t>((*Condition)->Code)),
+            .Instruction = std::nullopt,
+        };
+      }
+      const Register Value =
+          Name == "select_condition_lhs" ? (*Condition)->Left : (*Condition)->Right;
+      auto Operand = MachineOperand::registerOperand(Value, {RegisterOperandFlag::Use});
+      if (!Operand)
+        return std::unexpected(Operand.error());
+      return GIMatchComplexOperand{
+          .Operand = std::move(*Operand),
+          .Instruction = std::nullopt,
+      };
+    }
     if (Name == "fcopysign_to_s32" || Name == "fcopysign_to_s64") {
       const MachineOperand *SourceOperand = Instruction.operandAt(OperandIndex);
       const Register *Source =
@@ -463,8 +586,6 @@ public:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
     case GenericOpcode::G_FCMP:
       return selectFloatingCompare(Instruction, Function, Target);
-    case GenericOpcode::G_SELECT:
-      return selectValue(Instruction, Function, Target, Type);
     case GenericOpcode::G_ATOMICRMW_XCHG:
     case GenericOpcode::G_ATOMICRMW_ADD:
     case GenericOpcode::G_ATOMICRMW_SUB:
@@ -736,165 +857,6 @@ private:
     if (!Right)
       return std::unexpected(Right.error());
     return *Result;
-  }
-
-  [[nodiscard]] Expected<MachineInstr *> buildUnaryAfter(MachineIRBuilder &Builder,
-                                                         MachineInstr &Anchor,
-                                                         InstructionOpcode Opcode, Register Def,
-                                                         Register Source) const {
-    auto Point = Builder.setInsertPointAfter(Anchor);
-    if (!Point)
-      return std::unexpected(Point.error());
-    auto RegisterConstraints =
-        constrainBuilderRegisters(Builder.function(), Builder.target(), {Def, Source});
-    if (!RegisterConstraints)
-      return std::unexpected(RegisterConstraints.error());
-    auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
-    if (!Pending)
-      return std::unexpected(Pending.error());
-    auto DefResult = Pending->addDef(Def);
-    if (!DefResult)
-      return std::unexpected(DefResult.error());
-    auto SourceResult = Pending->addUse(Source);
-    if (!SourceResult)
-      return std::unexpected(SourceResult.error());
-    auto Built = Pending->build();
-    if (!Built)
-      return std::unexpected(Built.error());
-    auto FlagPropagation = propagateSelectionFlags(**Built, Anchor, Builder.target());
-    if (!FlagPropagation)
-      return std::unexpected(FlagPropagation.error());
-    auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
-    if (!Constraint)
-      return std::unexpected(Constraint.error());
-    return *Built;
-  }
-
-  [[nodiscard]] Expected<MachineInstr *>
-  buildGPRSelectAfter(MachineIRBuilder &Builder, MachineInstr &Anchor, MachineFunction &Function,
-                      const TargetDescription &Target, LowLevelType ValueType, Register Destination,
-                      Register Condition, Register TrueValue, Register FalseValue) const {
-    auto IntegerType = LowLevelType::makeCategoryNeutralScalar(ValueType.scalarBitWidth());
-    if (!IntegerType)
-      return std::unexpected(IntegerType.error());
-    auto Mask = createTemporary(Function, *IntegerType, Target);
-    auto Difference = createTemporary(Function, *IntegerType, Target);
-    auto MaskedDifference = createTemporary(Function, *IntegerType, Target);
-    if (!Mask || !Difference || !MaskedDifference) {
-      return std::unexpected(
-          (!Mask ? Mask.error() : (!Difference ? Difference.error() : MaskedDifference.error())));
-    }
-    auto Zero = physicalRegister(PhysicalRegisterID::X0);
-    if (!Zero)
-      return std::unexpected(Zero.error());
-    const InstructionOpcode Subtract =
-        ValueType.scalarBitWidth() == 32 ? InstructionOpcode::SUBW : InstructionOpcode::SUB;
-    auto MaskInstruction = buildBinaryAfter(Builder, Anchor, Subtract, *Mask,
-                                            Register::fromPhysical(*Zero), Condition);
-    if (!MaskInstruction)
-      return std::unexpected(MaskInstruction.error());
-    auto DifferenceInstruction = buildBinaryAfter(
-        Builder, **MaskInstruction, InstructionOpcode::XOR, *Difference, TrueValue, FalseValue);
-    if (!DifferenceInstruction)
-      return std::unexpected(DifferenceInstruction.error());
-    auto MaskInstructionResult =
-        buildBinaryAfter(Builder, **DifferenceInstruction, InstructionOpcode::AND,
-                         *MaskedDifference, *Difference, *Mask);
-    if (!MaskInstructionResult)
-      return std::unexpected(MaskInstructionResult.error());
-    return buildBinaryAfter(Builder, **MaskInstructionResult, InstructionOpcode::XOR, Destination,
-                            FalseValue, *MaskedDifference);
-  }
-
-  [[nodiscard]] Expected<void> selectValue(MachineInstr &Instruction, MachineFunction &Function,
-                                           const TargetDescription &Target,
-                                           std::optional<LowLevelType> Type) const {
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const MachineOperand *ConditionOperand = Instruction.operandAt(1);
-    const MachineOperand *TrueOperand = Instruction.operandAt(2);
-    const MachineOperand *FalseOperand = Instruction.operandAt(3);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    const Register *Condition =
-        ConditionOperand == nullptr ? nullptr : ConditionOperand->getIf<Register>();
-    const Register *TrueValue = TrueOperand == nullptr ? nullptr : TrueOperand->getIf<Register>();
-    const Register *FalseValue =
-        FalseOperand == nullptr ? nullptr : FalseOperand->getIf<Register>();
-    if (!Type || Destination == nullptr || Condition == nullptr || TrueValue == nullptr ||
-        FalseValue == nullptr) {
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V value selection has invalid operands");
-    }
-    const Register DestinationRegister = *Destination;
-    const Register TrueRegister = *TrueValue;
-    const Register FalseRegister = *FalseValue;
-    auto I1 = LowLevelType::makeCategoryNeutralScalar(1);
-    if (!I1)
-      return std::unexpected(I1.error());
-    auto NormalizedCondition = createTemporary(Function, *I1, Target);
-    if (!NormalizedCondition)
-      return std::unexpected(NormalizedCondition.error());
-    auto SetCondition = Instruction.operandAt(0)->setRegister(*NormalizedCondition);
-    if (!SetCondition)
-      return std::unexpected(SetCondition.error());
-    auto EraseFalse = Instruction.eraseOperand(3);
-    if (!EraseFalse)
-      return std::unexpected(EraseFalse.error());
-    auto EraseTrue = Instruction.eraseOperand(2);
-    if (!EraseTrue)
-      return std::unexpected(EraseTrue.error());
-    auto Mask = appendImmediate(Instruction, 1);
-    if (!Mask)
-      return std::unexpected(Mask.error());
-    auto SetNormalize = Instruction.setOpcode(instructionOpcode(InstructionOpcode::ANDI));
-    if (!SetNormalize)
-      return std::unexpected(SetNormalize.error());
-
-    auto DestinationBank = registerBank(Function, DestinationRegister);
-    if (!DestinationBank)
-      return std::unexpected(DestinationBank.error());
-
-    MachineIRBuilder Builder(Function, Target);
-    if (*DestinationBank != fprBank()) {
-      auto Selected =
-          buildGPRSelectAfter(Builder, Instruction, Function, Target, *Type, DestinationRegister,
-                              *NormalizedCondition, TrueRegister, FalseRegister);
-      if (!Selected)
-        return std::unexpected(Selected.error());
-      return {};
-    }
-
-    auto IntegerType = LowLevelType::makeCategoryNeutralScalar(Type->scalarBitWidth());
-    if (!IntegerType)
-      return std::unexpected(IntegerType.error());
-    auto IntegerTrue = createTemporary(Function, *IntegerType, Target);
-    auto IntegerFalse = createTemporary(Function, *IntegerType, Target);
-    auto IntegerResult = createTemporary(Function, *IntegerType, Target);
-    if (!IntegerTrue || !IntegerFalse || !IntegerResult) {
-      return std::unexpected(!IntegerTrue
-                                 ? IntegerTrue.error()
-                                 : (!IntegerFalse ? IntegerFalse.error() : IntegerResult.error()));
-    }
-    const InstructionOpcode ToInteger =
-        Type->scalarBitWidth() == 32 ? InstructionOpcode::FMV_X_W : InstructionOpcode::FMV_X_D;
-    const InstructionOpcode ToFloat =
-        Type->scalarBitWidth() == 32 ? InstructionOpcode::FMV_W_X : InstructionOpcode::FMV_D_X;
-    auto MoveTrue = buildUnaryAfter(Builder, Instruction, ToInteger, *IntegerTrue, TrueRegister);
-    if (!MoveTrue)
-      return std::unexpected(MoveTrue.error());
-    auto MoveFalse = buildUnaryAfter(Builder, **MoveTrue, ToInteger, *IntegerFalse, FalseRegister);
-    if (!MoveFalse)
-      return std::unexpected(MoveFalse.error());
-    auto Selected =
-        buildGPRSelectAfter(Builder, **MoveFalse, Function, Target, *IntegerType, *IntegerResult,
-                            *NormalizedCondition, *IntegerTrue, *IntegerFalse);
-    if (!Selected)
-      return std::unexpected(Selected.error());
-    auto MoveResult =
-        buildUnaryAfter(Builder, **Selected, ToFloat, DestinationRegister, *IntegerResult);
-    if (!MoveResult)
-      return std::unexpected(MoveResult.error());
-    return {};
   }
 
   [[nodiscard]] Expected<void> selectAtomicRMW(MachineInstr &Instruction, MachineFunction &Function,

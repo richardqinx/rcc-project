@@ -5,7 +5,18 @@
 
 #include "rcc/CodeGen/TargetInstrInfo.h"
 
+#include <cstdint>
+
 namespace rcc::riscv {
+
+enum class BranchConditionCode : std::uint32_t {
+  Equal = 0,
+  NotEqual = 1,
+  SignedLessThan = 2,
+  SignedGreaterEqual = 3,
+  UnsignedLessThan = 4,
+  UnsignedGreaterEqual = 5,
+};
 
 [[nodiscard]] const TargetInstrInfo &instrInfo() noexcept;
 

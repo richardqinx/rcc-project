@@ -190,6 +190,36 @@ instructions:
     owner: instruction_select
     deadline: selected
   -
+    id: 1264
+    symbol: Select_FPR32_Using_CC_GPR
+    name: Select_FPR32_Using_CC_GPR
+    operands:
+      - { kinds: [register], role: def, register_class: FPR32, register_bank: FPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [immediate] }
+      - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR }
+      - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR }
+    num_explicit_defs: 1
+    flags: [pseudo, produces_code, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
+    id: 1265
+    symbol: Select_FPR64_Using_CC_GPR
+    name: Select_FPR64_Using_CC_GPR
+    operands:
+      - { kinds: [register], role: def, register_class: FPR64, register_bank: FPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
+      - { kinds: [immediate] }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR }
+      - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR }
+    num_explicit_defs: 1
+    flags: [pseudo, produces_code, allowed_pre_legalizer]
+    owner: instruction_select
+    deadline: selected
+  -
     id: 1245
     symbol: ReadFFLAGS
     name: ReadFFLAGS
