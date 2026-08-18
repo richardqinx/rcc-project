@@ -1182,6 +1182,28 @@ private:
   }
 
   [[nodiscard]] bool
+  parseSelectionFloatingPredicate(const yaml::Node &Node,
+                                  std::optional<SourceSelectionFloatingPredicate> &Result) {
+    if (!requireMapping(&Node, "selection floating predicate") ||
+        !checkKeys(Node, {"index", "value"}, "selection floating predicate")) {
+      return false;
+    }
+    const yaml::Node *IndexNode = requiredNode(Node, "index", "selection floating predicate");
+    const auto Value = requiredScalar(Node, "value", "selection floating predicate");
+    if (IndexNode == nullptr || !Value)
+      return false;
+    const auto Index = unsignedInteger32(*IndexNode, "selection floating predicate index");
+    if (!Index)
+      return false;
+    Result = SourceSelectionFloatingPredicate{
+        .OperandIndex = *Index,
+        .Predicate = *Value,
+        .Range = Node.range(),
+    };
+    return true;
+  }
+
+  [[nodiscard]] bool
   parseSelectionTargetPredicates(const yaml::Node &Node,
                                  std::vector<SourceSelectionTargetPredicate> &Result) {
     if (!requireSequence(&Node, "selection target predicates"))
@@ -1552,9 +1574,9 @@ private:
   [[nodiscard]] bool parseSelectionRuleMatch(const yaml::Node &Node, SourceSelectionRule &Result) {
     if (!requireMapping(&Node, "selection rule match") ||
         !checkKeys(Node,
-                   {"opcode", "result_type", "integer_predicate", "target_predicates",
-                    "operand_types", "operand_banks", "operand_classes", "operand_immediates",
-                    "operand_def_constants", "def_use"},
+                   {"opcode", "result_type", "integer_predicate", "floating_predicate",
+                    "target_predicates", "operand_types", "operand_banks", "operand_classes",
+                    "operand_immediates", "operand_def_constants", "def_use"},
                    "selection rule match")) {
       return false;
     }
@@ -1570,6 +1592,10 @@ private:
     }
     if (const yaml::Node *Predicate = optionalNode(Node, "integer_predicate")) {
       if (!parseSelectionIntegerPredicate(*Predicate, Result.IntegerPredicate))
+        return false;
+    }
+    if (const yaml::Node *Predicate = optionalNode(Node, "floating_predicate")) {
+      if (!parseSelectionFloatingPredicate(*Predicate, Result.FloatingPredicate))
         return false;
     }
     if (const yaml::Node *TargetPredicates = optionalNode(Node, "target_predicates")) {

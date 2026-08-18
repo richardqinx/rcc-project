@@ -273,6 +273,19 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     Worklist.push_back(Instruction);
     DiscoveredInstructions.insert(Instruction->stableID());
   }
+  const auto DiscoverNewInstructions = [&]() -> Expected<void> {
+    for (MachineInstr *Candidate : bottomUpInstructions(Function)) {
+      const InstructionDescriptor *CandidateDescriptor =
+          Target.instructionDescriptor(Candidate->opcode());
+      if (CandidateDescriptor == nullptr) {
+        return std::unexpected(
+            passFailure("instruction selector produced an unknown instruction descriptor"));
+      }
+      if (DiscoveredInstructions.insert(Candidate->stableID()).second)
+        Worklist.push_back(Candidate);
+    }
+    return {};
+  };
 
   for (std::size_t Index = 0; Index < Worklist.size(); ++Index) {
     MachineInstr *Instruction = Worklist[Index];
@@ -320,6 +333,14 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     auto Selection = Info->select(*Instruction, Function, Target);
     if (!Selection)
       return std::unexpected(Selection.error());
+    if (Instruction->parent() == nullptr) {
+      Result.Changed = true;
+      Result.Changes.add(MachinePassChange::Instructions);
+      auto Discovered = DiscoverNewInstructions();
+      if (!Discovered)
+        return std::unexpected(Discovered.error());
+      continue;
+    }
     const InstructionDescriptor *Selected = Target.instructionDescriptor(Instruction->opcode());
     if (Selected == nullptr)
       return std::unexpected(
@@ -348,16 +369,9 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
     Result.Changes.add(MachinePassChange::Instructions);
     if (Selected->Flags.has(InstructionFlag::Generic))
       Worklist.push_back(Instruction);
-    for (MachineInstr *Candidate : bottomUpInstructions(Function)) {
-      const InstructionDescriptor *CandidateDescriptor =
-          Target.instructionDescriptor(Candidate->opcode());
-      if (CandidateDescriptor == nullptr)
-        return std::unexpected(
-            passFailure("instruction selector produced an unknown instruction descriptor"));
-      if (!DiscoveredInstructions.insert(Candidate->stableID()).second)
-        continue;
-      Worklist.push_back(Candidate);
-    }
+    auto Discovered = DiscoverNewInstructions();
+    if (!Discovered)
+      return std::unexpected(Discovered.error());
   }
   for (MachineInstr *Instruction : layoutInstructions(Function)) {
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());

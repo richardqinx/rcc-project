@@ -1,5 +1,119 @@
 selection_rules:
   -
+    id: select_g_fcmp_oeq_s32
+    priority: 100
+    match:
+      opcode: G_FCMP
+      result_type: { kind: scalar, bits: 64 }
+      floating_predicate: { index: 1, value: oeq }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 32 }
+        - { index: 3, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FEQ_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 3 }]
+  -
+    id: select_g_fcmp_olt_s32
+    priority: 100
+    match:
+      opcode: G_FCMP
+      result_type: { kind: scalar, bits: 64 }
+      floating_predicate: { index: 1, value: olt }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 32 }
+        - { index: 3, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FLT_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 3 }]
+  -
+    id: select_g_fcmp_ole_s32
+    priority: 100
+    match:
+      opcode: G_FCMP
+      result_type: { kind: scalar, bits: 64 }
+      floating_predicate: { index: 1, value: ole }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 32 }
+        - { index: 3, kind: scalar, bits: 32 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FLE_S
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 3 }]
+  -
+    id: select_g_fcmp_oeq_s64
+    priority: 100
+    match:
+      opcode: G_FCMP
+      result_type: { kind: scalar, bits: 64 }
+      floating_predicate: { index: 1, value: oeq }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+        - { index: 3, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FEQ_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 3 }]
+  -
+    id: select_g_fcmp_olt_s64
+    priority: 100
+    match:
+      opcode: G_FCMP
+      result_type: { kind: scalar, bits: 64 }
+      floating_predicate: { index: 1, value: olt }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+        - { index: 3, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FLT_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 3 }]
+  -
+    id: select_g_fcmp_ole_s64
+    priority: 100
+    match:
+      opcode: G_FCMP
+      result_type: { kind: scalar, bits: 64 }
+      floating_predicate: { index: 1, value: ole }
+      operand_types:
+        - { index: 2, kind: scalar, bits: 64 }
+        - { index: 3, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 2, bank: FPR }
+        - { index: 3, bank: FPR }
+    apply:
+      instructions:
+        - opcode: FLE_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 3 }]
+  -
     id: select_g_fadd_s32
     priority: 100
     match:

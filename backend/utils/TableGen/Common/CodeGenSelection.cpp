@@ -79,6 +79,33 @@ findInstructionBySymbol(const NormalizedTargetModel &Model, std::string_view Sym
   return static_cast<std::uint32_t>(Position->second);
 }
 
+[[nodiscard]] std::optional<std::uint32_t>
+floatingPredicateValue(std::string_view Symbol) noexcept {
+  static constexpr std::array<std::pair<std::string_view, FloatingPredicate>, 16> Predicates = {{
+      {"false", FloatingPredicate::AlwaysFalse},
+      {"oeq", FloatingPredicate::OrderedEqual},
+      {"ogt", FloatingPredicate::OrderedGreaterThan},
+      {"oge", FloatingPredicate::OrderedGreaterEqual},
+      {"olt", FloatingPredicate::OrderedLessThan},
+      {"ole", FloatingPredicate::OrderedLessEqual},
+      {"one", FloatingPredicate::OrderedNotEqual},
+      {"ord", FloatingPredicate::Ordered},
+      {"uno", FloatingPredicate::Unordered},
+      {"ueq", FloatingPredicate::UnorderedEqual},
+      {"ugt", FloatingPredicate::UnorderedGreaterThan},
+      {"uge", FloatingPredicate::UnorderedGreaterEqual},
+      {"ult", FloatingPredicate::UnorderedLessThan},
+      {"ule", FloatingPredicate::UnorderedLessEqual},
+      {"une", FloatingPredicate::UnorderedNotEqual},
+      {"true", FloatingPredicate::AlwaysTrue},
+  }};
+  const auto *const Position =
+      std::ranges::find(Predicates, Symbol, &decltype(Predicates)::value_type::first);
+  if (Position == Predicates.end())
+    return std::nullopt;
+  return static_cast<std::uint32_t>(Position->second);
+}
+
 [[nodiscard]] const NormalizedRegister *findRegisterBySymbol(const NormalizedTargetModel &Model,
                                                              std::string_view Symbol) {
   const auto Position = std::ranges::find(Model.Registers, Symbol, &NormalizedRegister::Symbol);
@@ -238,6 +265,33 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       }
       Normalized.IntegerPredicate = {
           .OperandIndex = Rule.IntegerPredicate->OperandIndex,
+          .Predicate = *Predicate,
+      };
+      ++Normalized.Specificity;
+    }
+
+    if (Rule.IntegerPredicate && Rule.FloatingPredicate) {
+      fail(Rule.Range, "selection rule cannot require both integer and floating predicates");
+      return false;
+    }
+    if (Rule.FloatingPredicate) {
+      const auto Predicate = floatingPredicateValue(Rule.FloatingPredicate->Predicate);
+      if (!Predicate) {
+        fail(Rule.FloatingPredicate->Range,
+             "selection floating predicate is not a recognized floating predicate");
+        return false;
+      }
+      if (MatchInstruction != nullptr &&
+          (Rule.FloatingPredicate->OperandIndex >= MatchInstruction->Operands.size() ||
+           !std::ranges::contains(
+               MatchInstruction->Operands[Rule.FloatingPredicate->OperandIndex].Kinds,
+               "Predicate"))) {
+        fail(Rule.FloatingPredicate->Range,
+             "selection floating predicate requires a predicate operand");
+        return false;
+      }
+      Normalized.FloatingPredicate = {
+          .OperandIndex = Rule.FloatingPredicate->OperandIndex,
           .Predicate = *Predicate,
       };
       ++Normalized.Specificity;

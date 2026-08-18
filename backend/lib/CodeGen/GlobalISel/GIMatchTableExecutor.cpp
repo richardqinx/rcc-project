@@ -106,6 +106,20 @@ namespace {
   return Integer != nullptr && static_cast<std::uint32_t>(*Integer) == PredicateValue;
 }
 
+[[nodiscard]] Expected<bool> matchesFloatingPredicate(const MachineInstr &Instruction,
+                                                      std::size_t OperandIndex,
+                                                      std::uint32_t PredicateValue) {
+  if (PredicateValue >= static_cast<std::uint32_t>(FloatingPredicate::Count)) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "generated match table has an invalid floating predicate");
+  }
+  const MachineOperand *Operand = Instruction.operandAt(OperandIndex);
+  const auto *Predicate = Operand == nullptr ? nullptr : Operand->getIf<PredicateOperand>();
+  const FloatingPredicate *Floating =
+      Predicate == nullptr ? nullptr : Predicate->floatingPredicate();
+  return Floating != nullptr && static_cast<std::uint32_t>(*Floating) == PredicateValue;
+}
+
 [[nodiscard]] std::optional<std::int64_t> immediateValue(const MachineOperand &Operand) {
   if (const std::int64_t *Immediate = Operand.getIf<std::int64_t>())
     return *Immediate;
@@ -378,6 +392,18 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
                               "generated match table performs a predicate after an action");
       }
       auto Matched = matchesIntegerPredicate(Instruction, Step.OperandIndex, Step.Value);
+      if (!Matched)
+        return std::unexpected(Matched.error());
+      if (!*Matched)
+        return std::optional<MatchedRule>{};
+      break;
+    }
+    case GIMatchTableOpcode::CheckFloatingPredicate: {
+      if (Applying) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table performs a predicate after an action");
+      }
+      auto Matched = matchesFloatingPredicate(Instruction, Step.OperandIndex, Step.Value);
       if (!Matched)
         return std::unexpected(Matched.error());
       if (!*Matched)

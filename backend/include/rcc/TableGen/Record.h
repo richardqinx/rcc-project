@@ -236,6 +236,12 @@ struct SourceSelectionIntegerPredicate final {
   TextRange Range;
 };
 
+struct SourceSelectionFloatingPredicate final {
+  std::uint32_t OperandIndex = 0;
+  std::string Predicate;
+  TextRange Range;
+};
+
 struct SourceSelectionTargetPredicate final {
   std::string Symbol;
   TextRange Range;
@@ -307,6 +313,7 @@ struct SourceSelectionRule final {
   std::string MatchOpcodeSymbol;
   std::optional<SourceSelectionTypePredicate> ResultType;
   std::optional<SourceSelectionIntegerPredicate> IntegerPredicate;
+  std::optional<SourceSelectionFloatingPredicate> FloatingPredicate;
   std::vector<SourceSelectionTargetPredicate> TargetPredicates;
   std::vector<SourceSelectionOperandTypePredicate> OperandTypes;
   std::vector<SourceSelectionOperandBankPredicate> OperandBanks;

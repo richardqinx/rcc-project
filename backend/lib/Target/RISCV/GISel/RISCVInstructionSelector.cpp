@@ -66,6 +66,76 @@ operandType(const MachineFunction &Function, const MachineInstr &Instruction, st
          (Type.scalarBitWidth() == 32 || Type.scalarBitWidth() == 64);
 }
 
+[[nodiscard]] Expected<InstructionOpcode> floatingCompareOpcode(FloatingPredicate Predicate,
+                                                                std::uint32_t BitWidth) {
+  if (BitWidth == 32) {
+    switch (Predicate) {
+    case FloatingPredicate::OrderedEqual:
+      return InstructionOpcode::FEQ_S;
+    case FloatingPredicate::OrderedLessThan:
+      return InstructionOpcode::FLT_S;
+    case FloatingPredicate::OrderedLessEqual:
+      return InstructionOpcode::FLE_S;
+    default:
+      break;
+    }
+  } else if (BitWidth == 64) {
+    switch (Predicate) {
+    case FloatingPredicate::OrderedEqual:
+      return InstructionOpcode::FEQ_D;
+    case FloatingPredicate::OrderedLessThan:
+      return InstructionOpcode::FLT_D;
+    case FloatingPredicate::OrderedLessEqual:
+      return InstructionOpcode::FLE_D;
+    default:
+      break;
+    }
+  }
+  return makeUnexpected(ErrorCode::Unsupported,
+                        "RISC-V floating comparison predicate is not directly supported");
+}
+
+// Convert a floating predicate by swapping or inverting it to one supported by
+// a scalar RISC-V comparison instruction.
+[[nodiscard]] bool legalizeFloatingPredicate(Register &Left, Register &Right,
+                                             FloatingPredicate &Predicate,
+                                             bool &NeedsInvert) noexcept {
+  switch (Predicate) {
+  case FloatingPredicate::OrderedGreaterThan:
+    Predicate = FloatingPredicate::OrderedLessThan;
+    std::swap(Left, Right);
+    return true;
+  case FloatingPredicate::OrderedGreaterEqual:
+    Predicate = FloatingPredicate::OrderedLessEqual;
+    std::swap(Left, Right);
+    return true;
+  case FloatingPredicate::UnorderedNotEqual:
+    Predicate = FloatingPredicate::OrderedEqual;
+    NeedsInvert = true;
+    return true;
+  case FloatingPredicate::UnorderedGreaterThan:
+    Predicate = FloatingPredicate::OrderedLessEqual;
+    NeedsInvert = true;
+    return true;
+  case FloatingPredicate::UnorderedGreaterEqual:
+    Predicate = FloatingPredicate::OrderedLessThan;
+    NeedsInvert = true;
+    return true;
+  case FloatingPredicate::UnorderedLessThan:
+    Predicate = FloatingPredicate::OrderedLessEqual;
+    NeedsInvert = true;
+    std::swap(Left, Right);
+    return true;
+  case FloatingPredicate::UnorderedLessEqual:
+    Predicate = FloatingPredicate::OrderedLessThan;
+    NeedsInvert = true;
+    std::swap(Left, Right);
+    return true;
+  default:
+    return false;
+  }
+}
+
 [[nodiscard]] bool isSupportedIntegerType(LowLevelType Type) noexcept {
   return (Type.isCategoryNeutralScalar() && Type.scalarBitWidth() != 0 &&
           Type.scalarBitWidth() <= 64) ||
@@ -955,168 +1025,158 @@ private:
         Destination == nullptr || Left == nullptr || Right == nullptr || !FloatType || !ResultType)
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V floating comparison has invalid operands");
-    const FloatingPredicate Condition = *Predicate->floatingPredicate();
+    FloatingPredicate Condition = *Predicate->floatingPredicate();
     const Register DestinationRegister = *Destination;
-    const Register LeftRegister = *Left;
-    const Register RightRegister = *Right;
-    const InstructionOpcode EqualOpcode =
-        FloatType->scalarBitWidth() == 32 ? InstructionOpcode::FEQ_S : InstructionOpcode::FEQ_D;
-    const InstructionOpcode LessOpcode =
-        FloatType->scalarBitWidth() == 32 ? InstructionOpcode::FLT_S : InstructionOpcode::FLT_D;
-    const InstructionOpcode LessEqualOpcode =
-        FloatType->scalarBitWidth() == 32 ? InstructionOpcode::FLE_S : InstructionOpcode::FLE_D;
+    Register LeftRegister = *Left;
+    Register RightRegister = *Right;
+    MachineIRBuilder Builder(Function, Target);
 
-    auto ErasePredicate = Instruction.eraseOperand(1);
-    if (!ErasePredicate)
-      return std::unexpected(ErasePredicate.error());
-    const auto SetBase = [&Instruction](InstructionOpcode OpcodeValue, Register Def,
-                                        Register NewLeft, Register NewRight) -> Expected<void> {
-      auto SetDestination = Instruction.operandAt(0)->setRegister(Def);
-      if (!SetDestination)
-        return std::unexpected(SetDestination.error());
-      auto SetLeft = Instruction.operandAt(1)->setRegister(NewLeft);
-      if (!SetLeft)
-        return std::unexpected(SetLeft.error());
-      auto SetRight = Instruction.operandAt(2)->setRegister(NewRight);
-      if (!SetRight)
-        return std::unexpected(SetRight.error());
-      return Instruction.setOpcode(instructionOpcode(OpcodeValue));
+    const auto BuildBinary = [&](InstructionOpcode OpcodeValue, Register Def, Register LeftValue,
+                                 Register RightValue) -> Expected<MachineInstr *> {
+      auto Point = Builder.setInsertPointBefore(Instruction);
+      if (!Point)
+        return std::unexpected(Point.error());
+      auto Registers = constrainBuilderRegisters(Function, Target, {Def, LeftValue, RightValue});
+      if (!Registers)
+        return std::unexpected(Registers.error());
+      auto Pending = Builder.buildInstr(instructionOpcode(OpcodeValue));
+      if (!Pending)
+        return std::unexpected(Pending.error());
+      auto DefResult = Pending->addDef(Def);
+      if (!DefResult)
+        return std::unexpected(DefResult.error());
+      auto LeftResult = Pending->addUse(LeftValue);
+      if (!LeftResult)
+        return std::unexpected(LeftResult.error());
+      auto RightResult = Pending->addUse(RightValue);
+      if (!RightResult)
+        return std::unexpected(RightResult.error());
+      auto Built = Pending->build();
+      if (!Built)
+        return std::unexpected(Built.error());
+      auto Constraint = constrainSelectedInstruction(**Built, Function, Target);
+      if (!Constraint)
+        return std::unexpected(Constraint.error());
+      return *Built;
     };
-    const auto BuildInverted = [&](InstructionOpcode BaseOpcode, Register BaseLeft,
-                                   Register BaseRight) -> Expected<void> {
-      auto Temporary = createTemporary(Function, *ResultType, Target);
-      if (!Temporary)
-        return std::unexpected(Temporary.error());
-      auto Base = SetBase(BaseOpcode, *Temporary, BaseLeft, BaseRight);
-      if (!Base)
-        return std::unexpected(Base.error());
-      MachineIRBuilder Builder(Function, Target);
-      auto Invert = buildImmediateAfter(Builder, Instruction, InstructionOpcode::XORI,
-                                        DestinationRegister, *Temporary, 1);
-      if (!Invert)
-        return std::unexpected(Invert.error());
-      return {};
+    const auto BuildImmediate = [&](InstructionOpcode OpcodeValue, Register Def, Register Source,
+                                    std::int64_t Immediate) -> Expected<MachineInstr *> {
+      auto Point = Builder.setInsertPointBefore(Instruction);
+      if (!Point)
+        return std::unexpected(Point.error());
+      auto Registers = constrainBuilderRegisters(Function, Target, {Def, Source});
+      if (!Registers)
+        return std::unexpected(Registers.error());
+      auto Pending = Builder.buildInstr(instructionOpcode(OpcodeValue));
+      if (!Pending)
+        return std::unexpected(Pending.error());
+      auto DefResult = Pending->addDef(Def);
+      if (!DefResult)
+        return std::unexpected(DefResult.error());
+      auto SourceResult = Pending->addUse(Source);
+      if (!SourceResult)
+        return std::unexpected(SourceResult.error());
+      auto ImmediateResult = Pending->addImmediate(Immediate);
+      if (!ImmediateResult)
+        return std::unexpected(ImmediateResult.error());
+      auto Built = Pending->build();
+      if (!Built)
+        return std::unexpected(Built.error());
+      auto Constraint = constrainSelectedInstruction(**Built, Function, Target);
+      if (!Constraint)
+        return std::unexpected(Constraint.error());
+      return *Built;
     };
-    const auto BuildSelfAnd = [&](bool Invert) -> Expected<void> {
+
+    Register TemporaryResult = DestinationRegister;
+    bool NeedsInvert = false;
+    if (legalizeFloatingPredicate(LeftRegister, RightRegister, Condition, NeedsInvert)) {
+      if (NeedsInvert) {
+        auto Temporary = createTemporary(Function, *ResultType, Target);
+        if (!Temporary)
+          return std::unexpected(Temporary.error());
+        TemporaryResult = *Temporary;
+      }
+      auto OpcodeValue = floatingCompareOpcode(Condition, FloatType->scalarBitWidth());
+      if (!OpcodeValue)
+        return std::unexpected(OpcodeValue.error());
+      auto Comparison = BuildBinary(*OpcodeValue, TemporaryResult, LeftRegister, RightRegister);
+      if (!Comparison)
+        return std::unexpected(Comparison.error());
+    } else if (Condition == FloatingPredicate::OrderedNotEqual ||
+               Condition == FloatingPredicate::UnorderedEqual) {
+      NeedsInvert = Condition == FloatingPredicate::UnorderedEqual;
       auto First = createTemporary(Function, *ResultType, Target);
       auto Second = createTemporary(Function, *ResultType, Target);
       if (!First || !Second)
         return std::unexpected((!First ? First.error() : Second.error()));
-      auto Base = SetBase(EqualOpcode, *First, LeftRegister, LeftRegister);
-      if (!Base)
-        return std::unexpected(Base.error());
-      MachineIRBuilder Builder(Function, Target);
-      auto SecondInstruction = buildBinaryAfter(Builder, Instruction, EqualOpcode, *Second,
-                                                RightRegister, RightRegister);
-      if (!SecondInstruction)
-        return std::unexpected(SecondInstruction.error());
-      Register CombinedDestination = DestinationRegister;
-      if (Invert) {
+      auto LessOpcode =
+          floatingCompareOpcode(FloatingPredicate::OrderedLessThan, FloatType->scalarBitWidth());
+      if (!LessOpcode)
+        return std::unexpected(LessOpcode.error());
+      auto FirstComparison = BuildBinary(*LessOpcode, *First, LeftRegister, RightRegister);
+      if (!FirstComparison)
+        return std::unexpected(FirstComparison.error());
+      auto SecondComparison = BuildBinary(*LessOpcode, *Second, RightRegister, LeftRegister);
+      if (!SecondComparison)
+        return std::unexpected(SecondComparison.error());
+      if (NeedsInvert) {
         auto Temporary = createTemporary(Function, *ResultType, Target);
         if (!Temporary)
           return std::unexpected(Temporary.error());
-        CombinedDestination = *Temporary;
+        TemporaryResult = *Temporary;
       }
-      auto Combined = buildBinaryAfter(Builder, **SecondInstruction, InstructionOpcode::AND,
-                                       CombinedDestination, *First, *Second);
+      auto Combined = BuildBinary(InstructionOpcode::OR, TemporaryResult, *First, *Second);
       if (!Combined)
         return std::unexpected(Combined.error());
-      if (!Invert)
-        return {};
-      auto Inverted = buildImmediateAfter(Builder, **Combined, InstructionOpcode::XORI,
-                                          DestinationRegister, CombinedDestination, 1);
-      if (!Inverted)
-        return std::unexpected(Inverted.error());
-      return {};
-    };
-    const auto BuildOrderedNotEqual = [&](bool Invert) -> Expected<void> {
-      auto First = createTemporary(Function, *ResultType, Target);
-      auto Second = createTemporary(Function, *ResultType, Target);
-      if (!First || !Second)
-        return std::unexpected((!First ? First.error() : Second.error()));
-      auto Base = SetBase(LessOpcode, *First, LeftRegister, RightRegister);
-      if (!Base)
-        return std::unexpected(Base.error());
-      MachineIRBuilder Builder(Function, Target);
-      auto SecondInstruction =
-          buildBinaryAfter(Builder, Instruction, LessOpcode, *Second, RightRegister, LeftRegister);
-      if (!SecondInstruction)
-        return std::unexpected(SecondInstruction.error());
-      Register CombinedDestination = DestinationRegister;
-      if (Invert) {
+    } else if (Condition == FloatingPredicate::Ordered ||
+               Condition == FloatingPredicate::Unordered) {
+      NeedsInvert = Condition == FloatingPredicate::Unordered;
+      auto EqualOpcode =
+          floatingCompareOpcode(FloatingPredicate::OrderedEqual, FloatType->scalarBitWidth());
+      if (!EqualOpcode)
+        return std::unexpected(EqualOpcode.error());
+      if (NeedsInvert) {
         auto Temporary = createTemporary(Function, *ResultType, Target);
         if (!Temporary)
           return std::unexpected(Temporary.error());
-        CombinedDestination = *Temporary;
+        TemporaryResult = *Temporary;
       }
-      auto Combined = buildBinaryAfter(Builder, **SecondInstruction, InstructionOpcode::OR,
-                                       CombinedDestination, *First, *Second);
-      if (!Combined)
-        return std::unexpected(Combined.error());
-      if (!Invert)
-        return {};
-      auto Inverted = buildImmediateAfter(Builder, **Combined, InstructionOpcode::XORI,
-                                          DestinationRegister, CombinedDestination, 1);
-      if (!Inverted)
-        return std::unexpected(Inverted.error());
-      return {};
-    };
-
-    switch (Condition) {
-    case FloatingPredicate::AlwaysFalse:
-    case FloatingPredicate::AlwaysTrue: {
-      auto EraseRight = Instruction.eraseOperand(2);
-      if (!EraseRight)
-        return std::unexpected(EraseRight.error());
-      auto EraseLeft = Instruction.eraseOperand(1);
-      if (!EraseLeft)
-        return std::unexpected(EraseLeft.error());
-      auto Zero = physicalRegister(PhysicalRegisterID::X0);
-      if (!Zero)
-        return std::unexpected(Zero.error());
-      auto InsertZero = insertPhysicalRegister(Instruction, 1, *Zero, RegisterOperandFlag::Use);
-      if (!InsertZero)
-        return std::unexpected(InsertZero.error());
-      auto Immediate =
-          appendImmediate(Instruction, Condition == FloatingPredicate::AlwaysTrue ? 1 : 0);
-      if (!Immediate)
-        return std::unexpected(Immediate.error());
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::ADDI));
-    }
-    case FloatingPredicate::OrderedEqual:
-      return SetBase(EqualOpcode, DestinationRegister, LeftRegister, RightRegister);
-    case FloatingPredicate::OrderedGreaterThan:
-      return SetBase(LessOpcode, DestinationRegister, RightRegister, LeftRegister);
-    case FloatingPredicate::OrderedGreaterEqual:
-      return SetBase(LessEqualOpcode, DestinationRegister, RightRegister, LeftRegister);
-    case FloatingPredicate::OrderedLessThan:
-      return SetBase(LessOpcode, DestinationRegister, LeftRegister, RightRegister);
-    case FloatingPredicate::OrderedLessEqual:
-      return SetBase(LessEqualOpcode, DestinationRegister, LeftRegister, RightRegister);
-    case FloatingPredicate::OrderedNotEqual:
-      return BuildOrderedNotEqual(false);
-    case FloatingPredicate::Ordered:
-      return BuildSelfAnd(false);
-    case FloatingPredicate::Unordered:
-      return BuildSelfAnd(true);
-    case FloatingPredicate::UnorderedEqual:
-      return BuildOrderedNotEqual(true);
-    case FloatingPredicate::UnorderedGreaterThan:
-      return BuildInverted(LessEqualOpcode, LeftRegister, RightRegister);
-    case FloatingPredicate::UnorderedGreaterEqual:
-      return BuildInverted(LessOpcode, LeftRegister, RightRegister);
-    case FloatingPredicate::UnorderedLessThan:
-      return BuildInverted(LessEqualOpcode, RightRegister, LeftRegister);
-    case FloatingPredicate::UnorderedLessEqual:
-      return BuildInverted(LessOpcode, RightRegister, LeftRegister);
-    case FloatingPredicate::UnorderedNotEqual:
-      return BuildInverted(EqualOpcode, LeftRegister, RightRegister);
-    case FloatingPredicate::Count:
+      if (LeftRegister == RightRegister) {
+        auto Comparison = BuildBinary(*EqualOpcode, TemporaryResult, LeftRegister, LeftRegister);
+        if (!Comparison)
+          return std::unexpected(Comparison.error());
+      } else {
+        auto First = createTemporary(Function, *ResultType, Target);
+        auto Second = createTemporary(Function, *ResultType, Target);
+        if (!First || !Second)
+          return std::unexpected((!First ? First.error() : Second.error()));
+        auto FirstComparison = BuildBinary(*EqualOpcode, *First, LeftRegister, LeftRegister);
+        if (!FirstComparison)
+          return std::unexpected(FirstComparison.error());
+        auto SecondComparison = BuildBinary(*EqualOpcode, *Second, RightRegister, RightRegister);
+        if (!SecondComparison)
+          return std::unexpected(SecondComparison.error());
+        auto Combined = BuildBinary(InstructionOpcode::AND, TemporaryResult, *First, *Second);
+        if (!Combined)
+          return std::unexpected(Combined.error());
+      }
+    } else {
       return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V floating comparison predicate is invalid");
+                            "RISC-V floating comparison predicate has no LLVM selection");
     }
-    return makeUnexpected(ErrorCode::Unsupported,
-                          "RISC-V floating comparison predicate is invalid");
+
+    if (NeedsInvert) {
+      auto Inverted =
+          BuildImmediate(InstructionOpcode::XORI, DestinationRegister, TemporaryResult, 1);
+      if (!Inverted)
+        return std::unexpected(Inverted.error());
+    }
+    MachineBasicBlock *Block = Instruction.parent();
+    if (Block == nullptr)
+      return makeUnexpected(ErrorCode::InternalError,
+                            "RISC-V floating comparison is detached from its block");
+    return Block->removeInstruction(Instruction);
   }
 
   [[nodiscard]] Expected<void> selectFence(MachineInstr &Instruction) const {
