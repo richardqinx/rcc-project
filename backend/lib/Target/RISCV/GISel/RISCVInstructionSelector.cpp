@@ -212,6 +212,55 @@ directIntegerConstant(const MachineRegisterInfo &RegisterInfo, Register ValueReg
   return Value ? std::optional<std::int64_t>(*Value) : std::nullopt;
 }
 
+struct SelectedAddress final {
+  MachineOperand Base;
+  std::int64_t Offset = 0;
+};
+
+[[nodiscard]] std::optional<SelectedAddress> selectAddress(const MachineInstr &Instruction,
+                                                           const MachineFunction &Function,
+                                                           std::uint32_t OperandIndex) {
+  const MachineOperand *Root = Instruction.operandAt(OperandIndex);
+  const Register *RootRegister = Root == nullptr ? nullptr : Root->getIf<Register>();
+  if (RootRegister == nullptr || !RootRegister->isVirtual())
+    return std::nullopt;
+
+  const MachineRegisterInfo &Registers = Function.registerInfo();
+  const MachineInstr *RootDefinition = Registers.getVRegDef(*RootRegister);
+  if (RootDefinition != nullptr &&
+      RootDefinition->opcode() == opcode(GenericOpcode::G_FRAME_INDEX)) {
+    const MachineOperand *FrameIndex = RootDefinition->operandAt(1);
+    if (FrameIndex == nullptr)
+      return std::nullopt;
+    return SelectedAddress{.Base = FrameIndex->cloneDetached(), .Offset = 0};
+  }
+
+  if (RootDefinition != nullptr && RootDefinition->opcode() == opcode(GenericOpcode::G_PTR_ADD)) {
+    const MachineOperand *Base = RootDefinition->operandAt(1);
+    const MachineOperand *Offset = RootDefinition->operandAt(2);
+    const Register *BaseRegister = Base == nullptr ? nullptr : Base->getIf<Register>();
+    const Register *OffsetRegister = Offset == nullptr ? nullptr : Offset->getIf<Register>();
+    if (BaseRegister != nullptr && OffsetRegister != nullptr) {
+      const std::optional<std::int64_t> Constant =
+          directIntegerConstant(Registers, *OffsetRegister);
+      if (Constant && *Constant >= -2048 && *Constant <= 2047) {
+        const MachineInstr *BaseDefinition =
+            BaseRegister->isVirtual() ? Registers.getVRegDef(*BaseRegister) : nullptr;
+        if (BaseDefinition != nullptr &&
+            BaseDefinition->opcode() == opcode(GenericOpcode::G_FRAME_INDEX)) {
+          const MachineOperand *FrameIndex = BaseDefinition->operandAt(1);
+          if (FrameIndex == nullptr)
+            return std::nullopt;
+          return SelectedAddress{.Base = FrameIndex->cloneDetached(), .Offset = *Constant};
+        }
+        return SelectedAddress{.Base = Base->cloneDetached(), .Offset = *Constant};
+      }
+    }
+  }
+
+  return SelectedAddress{.Base = Root->cloneDetached(), .Offset = 0};
+}
+
 struct SelectedIntegerCondition final {
   Register Left;
   Register Right;
@@ -337,6 +386,21 @@ public:
   renderComplexOperand(std::string_view Name, const MachineInstr &Instruction,
                        const MachineFunction &Function, const TargetDescription &Target,
                        std::uint32_t OperandIndex) const override {
+    if (Name == "addr_reg_imm_base" || Name == "addr_reg_imm_offset") {
+      std::optional<SelectedAddress> Address = selectAddress(Instruction, Function, OperandIndex);
+      if (!Address)
+        return std::optional<GIMatchComplexOperand>{};
+      if (Name == "addr_reg_imm_offset") {
+        return GIMatchComplexOperand{
+            .Operand = MachineOperand::immediate(Address->Offset),
+            .Instruction = std::nullopt,
+        };
+      }
+      return GIMatchComplexOperand{
+          .Operand = std::move(Address->Base),
+          .Instruction = std::nullopt,
+      };
+    }
     if (Name == "select_condition_lhs" || Name == "select_condition_rhs" ||
         Name == "select_condition_code") {
       auto Condition = selectIntegerCondition(Instruction, Function, OperandIndex);
@@ -551,9 +615,6 @@ public:
                                 "RISC-V integer constant requires an immediate operand");
       }
       return {};
-    case GenericOpcode::G_LOAD:
-    case GenericOpcode::G_SEXTLOAD:
-    case GenericOpcode::G_ZEXTLOAD:
     case GenericOpcode::G_FPEXTLOAD:
     case GenericOpcode::G_FPTRUNCSTORE:
     case GenericOpcode::G_STORE:
@@ -617,12 +678,6 @@ public:
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 
     switch (Generic) {
-    case GenericOpcode::G_LOAD:
-      return selectLoad(Instruction, Function, Type);
-    case GenericOpcode::G_SEXTLOAD:
-      return selectExtLoad(Instruction, Type, true);
-    case GenericOpcode::G_ZEXTLOAD:
-      return selectExtLoad(Instruction, Type, false);
     case GenericOpcode::G_FPEXTLOAD:
       return selectFloatExtLoad(Instruction, Function, Target);
     case GenericOpcode::G_STORE:
@@ -1209,71 +1264,6 @@ private:
     if (!SetSucc)
       return std::unexpected(SetSucc.error());
     return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FENCE));
-  }
-
-  [[nodiscard]] Expected<void> selectLoad(MachineInstr &Instruction, MachineFunction &Function,
-                                          std::optional<LowLevelType> Type) const {
-    if (!Type)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "load result has no virtual-register type");
-    const auto Bytes = memoryAccessBytes(Instruction);
-    if (!Bytes)
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V load size does not match its result type");
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    if (Destination == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError, "RISC-V load has no destination");
-    auto Bank = registerBank(Function, *Destination);
-    if (!Bank)
-      return std::unexpected(Bank.error());
-    if (Instruction.memOperands().front()->isAtomic()) {
-      if (*Bank == fprBank() || !isSupportedIntegerType(*Type) || (*Bytes != 4 && *Bytes != 8))
-        return makeUnexpected(ErrorCode::Unsupported,
-                              "RISC-V atomic load requires a 32-bit or 64-bit GPR value");
-      return Instruction.setOpcode(
-          instructionOpcode(*Bytes == 4 ? InstructionOpcode::LR_W : InstructionOpcode::LR_D));
-    }
-    auto AppendOffset = appendImmediate(Instruction, 0);
-    if (!AppendOffset)
-      return std::unexpected(AppendOffset.error());
-    if (*Bank != fprBank() && isSupportedIntegerType(*Type)) {
-      const InstructionOpcode Selected = *Bytes == 1   ? InstructionOpcode::LB
-                                         : *Bytes == 2 ? InstructionOpcode::LH
-                                         : *Bytes == 4 ? InstructionOpcode::LW
-                                         : *Bytes == 8 ? InstructionOpcode::LD
-                                                       : InstructionOpcode::Invalid;
-      if (Selected == InstructionOpcode::Invalid)
-        return makeUnexpected(ErrorCode::Unsupported, "RISC-V integer load width is unsupported");
-      return Instruction.setOpcode(instructionOpcode(Selected));
-    }
-    if (*Bank == fprBank() && Type->scalarBitWidth() == 32 && *Bytes == 4)
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FLW));
-    if (*Bank == fprBank() && Type->scalarBitWidth() == 64 && *Bytes == 8)
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FLD));
-    return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this generic load type");
-  }
-
-  [[nodiscard]] Expected<void> selectExtLoad(MachineInstr &Instruction,
-                                             std::optional<LowLevelType> Type, bool Signed) const {
-    if (!Type || !isSupportedIntegerType(*Type))
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V extension load requires an integer result");
-    const auto Bytes = memoryAccessBytes(Instruction);
-    if (!Bytes)
-      return makeUnexpected(ErrorCode::Unsupported, "RISC-V extension load has an invalid width");
-    const InstructionOpcode Selected =
-        *Bytes == 1   ? (Signed ? InstructionOpcode::LB : InstructionOpcode::LBU)
-        : *Bytes == 2 ? (Signed ? InstructionOpcode::LH : InstructionOpcode::LHU)
-        : *Bytes == 4 ? (Signed ? InstructionOpcode::LW : InstructionOpcode::LWU)
-                      : InstructionOpcode::Invalid;
-    if (Selected == InstructionOpcode::Invalid)
-      return makeUnexpected(ErrorCode::Unsupported, "RISC-V extension load width is unsupported");
-    auto Immediate = appendImmediate(Instruction, 0);
-    if (!Immediate)
-      return std::unexpected(Immediate.error());
-    return Instruction.setOpcode(instructionOpcode(Selected));
   }
 
   [[nodiscard]] Expected<void> selectFloatExtLoad(MachineInstr &Instruction,

@@ -297,6 +297,20 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
       ++Normalized.Specificity;
     }
 
+    if (Rule.MemoryPredicate) {
+      if (Rule.MemoryPredicate->Bytes == 0 ||
+          (MatchInstruction != nullptr && !MatchInstruction->RequiresMemoryOperands)) {
+        fail(Rule.MemoryPredicate->Range,
+             "selection memory predicate requires a nonzero size and a memory opcode");
+        return false;
+      }
+      Normalized.MemoryPredicate = {
+          .MemoryOperandIndex = Rule.MemoryPredicate->MemoryOperandIndex,
+          .Bytes = Rule.MemoryPredicate->Bytes,
+      };
+      ++Normalized.Specificity;
+    }
+
     std::unordered_set<std::string> TargetPredicateSymbols;
     for (const SourceSelectionTargetPredicate &Predicate : Rule.TargetPredicates) {
       if (!isIdentifier(Predicate.Symbol) ||

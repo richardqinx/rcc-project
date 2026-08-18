@@ -247,6 +247,12 @@ struct SourceSelectionTargetPredicate final {
   TextRange Range;
 };
 
+struct SourceSelectionMemoryPredicate final {
+  std::uint32_t MemoryOperandIndex = 0;
+  std::uint32_t Bytes = 0;
+  TextRange Range;
+};
+
 struct SourceSelectionConstantRange final {
   std::int64_t Minimum = 0;
   std::int64_t Maximum = 0;
@@ -314,6 +320,7 @@ struct SourceSelectionRule final {
   std::optional<SourceSelectionTypePredicate> ResultType;
   std::optional<SourceSelectionIntegerPredicate> IntegerPredicate;
   std::optional<SourceSelectionFloatingPredicate> FloatingPredicate;
+  std::optional<SourceSelectionMemoryPredicate> MemoryPredicate;
   std::vector<SourceSelectionTargetPredicate> TargetPredicates;
   std::vector<SourceSelectionOperandTypePredicate> OperandTypes;
   std::vector<SourceSelectionOperandBankPredicate> OperandBanks;

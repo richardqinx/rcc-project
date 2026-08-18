@@ -8,6 +8,7 @@
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
+#include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -59,6 +60,21 @@ namespace {
   }
   return makeUnexpected(ErrorCode::VerificationError,
                         "generated match table has an invalid type predicate");
+}
+
+[[nodiscard]] Expected<bool> matchesMemorySize(const MachineInstr &Instruction,
+                                               const GIMatchTableInstruction &Step) {
+  if (Step.Value == 0) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "generated match table has an invalid memory size");
+  }
+  if (Step.OperandIndex >= Instruction.memOperands().size())
+    return false;
+  const MachineMemOperand *Memory = Instruction.memOperands()[Step.OperandIndex];
+  if (Memory == nullptr)
+    return false;
+  const MemorySize Size = Memory->description().Size;
+  return Size.isKnown() && !Size.isScalable() && Size.minimumBytes() == Step.Value;
 }
 
 [[nodiscard]] Expected<bool> matchesBank(const MachineInstr &Instruction,
@@ -404,6 +420,18 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
                               "generated match table performs a predicate after an action");
       }
       auto Matched = matchesFloatingPredicate(Instruction, Step.OperandIndex, Step.Value);
+      if (!Matched)
+        return std::unexpected(Matched.error());
+      if (!*Matched)
+        return std::optional<MatchedRule>{};
+      break;
+    }
+    case GIMatchTableOpcode::CheckMemorySize: {
+      if (Applying) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table performs a predicate after an action");
+      }
+      auto Matched = matchesMemorySize(Instruction, Step);
       if (!Matched)
         return std::unexpected(Matched.error());
       if (!*Matched)

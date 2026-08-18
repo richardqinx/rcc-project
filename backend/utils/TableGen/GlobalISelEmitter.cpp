@@ -42,11 +42,11 @@ void emitTypePredicate(std::ostream &Output, std::uint32_t OperandIndex,
 
 [[nodiscard]] std::size_t instructionCount(const NormalizedSelectionRule &Rule) noexcept {
   std::size_t Count = 2U + (Rule.ResultType ? 1U : 0U) + (Rule.IntegerPredicate ? 1U : 0U) +
-                      (Rule.FloatingPredicate ? 1U : 0U) + Rule.TargetPredicates.size() +
-                      Rule.OperandTypes.size() + Rule.OperandBanks.size() +
-                      Rule.OperandClasses.size() + Rule.OperandImmediates.size() +
-                      Rule.OperandDefConstants.size() + Rule.Temporaries.size() +
-                      Rule.EraseOperandDefinitions.size();
+                      (Rule.FloatingPredicate ? 1U : 0U) + (Rule.MemoryPredicate ? 1U : 0U) +
+                      Rule.TargetPredicates.size() + Rule.OperandTypes.size() +
+                      Rule.OperandBanks.size() + Rule.OperandClasses.size() +
+                      Rule.OperandImmediates.size() + Rule.OperandDefConstants.size() +
+                      Rule.Temporaries.size() + Rule.EraseOperandDefinitions.size();
   for (const NormalizedSelectionDefUsePredicate &Predicate : Rule.DefUsePredicates)
     Count += 1U + static_cast<std::size_t>(Predicate.IntegerPredicate.has_value()) +
              Predicate.Captures.size() + Predicate.OperandDefConstants.size();
@@ -119,6 +119,9 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
     if (Rule.FloatingPredicate)
       emitInstruction(Output, "CheckFloatingPredicate", Rule.FloatingPredicate->OperandIndex,
                       Rule.FloatingPredicate->Predicate);
+    if (Rule.MemoryPredicate)
+      emitInstruction(Output, "CheckMemorySize", Rule.MemoryPredicate->MemoryOperandIndex,
+                      Rule.MemoryPredicate->Bytes);
     for (const std::string &Predicate : Rule.TargetPredicates)
       emitInstruction(Output, "CheckTargetPredicate", 0, 0, "0", 0, Predicate);
     for (const NormalizedSelectionOperandTypePredicate &Predicate : Rule.OperandTypes)

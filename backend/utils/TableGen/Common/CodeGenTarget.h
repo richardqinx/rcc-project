@@ -200,6 +200,11 @@ struct NormalizedSelectionFloatingPredicate final {
   std::uint32_t Predicate = 0;
 };
 
+struct NormalizedSelectionMemoryPredicate final {
+  std::uint32_t MemoryOperandIndex = 0;
+  std::uint32_t Bytes = 0;
+};
+
 struct NormalizedSelectionConstantRange final {
   std::int64_t Minimum = 0;
   std::int64_t Maximum = 0;
@@ -272,6 +277,7 @@ struct NormalizedSelectionRule final {
   std::optional<NormalizedSelectionTypePredicate> ResultType;
   std::optional<NormalizedSelectionIntegerPredicate> IntegerPredicate;
   std::optional<NormalizedSelectionFloatingPredicate> FloatingPredicate;
+  std::optional<NormalizedSelectionMemoryPredicate> MemoryPredicate;
   std::vector<std::string> TargetPredicates;
   std::vector<NormalizedSelectionOperandTypePredicate> OperandTypes;
   std::vector<NormalizedSelectionOperandBankPredicate> OperandBanks;

@@ -1204,6 +1204,29 @@ private:
   }
 
   [[nodiscard]] bool
+  parseSelectionMemoryPredicate(const yaml::Node &Node,
+                                std::optional<SourceSelectionMemoryPredicate> &Result) {
+    if (!requireMapping(&Node, "selection memory predicate") ||
+        !checkKeys(Node, {"index", "bytes"}, "selection memory predicate")) {
+      return false;
+    }
+    const yaml::Node *IndexNode = requiredNode(Node, "index", "selection memory predicate");
+    const yaml::Node *BytesNode = requiredNode(Node, "bytes", "selection memory predicate");
+    if (IndexNode == nullptr || BytesNode == nullptr)
+      return false;
+    const auto Index = unsignedInteger32(*IndexNode, "selection memory predicate index");
+    const auto Bytes = unsignedInteger32(*BytesNode, "selection memory predicate bytes");
+    if (!Index || !Bytes)
+      return false;
+    Result = SourceSelectionMemoryPredicate{
+        .MemoryOperandIndex = *Index,
+        .Bytes = *Bytes,
+        .Range = Node.range(),
+    };
+    return true;
+  }
+
+  [[nodiscard]] bool
   parseSelectionTargetPredicates(const yaml::Node &Node,
                                  std::vector<SourceSelectionTargetPredicate> &Result) {
     if (!requireSequence(&Node, "selection target predicates"))
@@ -1574,7 +1597,7 @@ private:
   [[nodiscard]] bool parseSelectionRuleMatch(const yaml::Node &Node, SourceSelectionRule &Result) {
     if (!requireMapping(&Node, "selection rule match") ||
         !checkKeys(Node,
-                   {"opcode", "result_type", "integer_predicate", "floating_predicate",
+                   {"opcode", "result_type", "integer_predicate", "floating_predicate", "memory",
                     "target_predicates", "operand_types", "operand_banks", "operand_classes",
                     "operand_immediates", "operand_def_constants", "def_use"},
                    "selection rule match")) {
@@ -1596,6 +1619,10 @@ private:
     }
     if (const yaml::Node *Predicate = optionalNode(Node, "floating_predicate")) {
       if (!parseSelectionFloatingPredicate(*Predicate, Result.FloatingPredicate))
+        return false;
+    }
+    if (const yaml::Node *Predicate = optionalNode(Node, "memory")) {
+      if (!parseSelectionMemoryPredicate(*Predicate, Result.MemoryPredicate))
         return false;
     }
     if (const yaml::Node *TargetPredicates = optionalNode(Node, "target_predicates")) {
