@@ -192,6 +192,82 @@ selection_rules:
             - { complex: addr_reg_imm_base, operand: 1 }
             - { complex: addr_reg_imm_offset, operand: 1 }
   -
+    id: select_g_store_m8
+    priority: 300
+    match:
+      opcode: G_STORE
+      memory: { index: 0, bytes: 1 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SB
+          root: true
+          operands:
+            - { operand: 0 }
+            - { complex: addr_reg_imm_base, operand: 1 }
+            - { complex: addr_reg_imm_offset, operand: 1 }
+  -
+    id: select_g_store_m16
+    priority: 300
+    match:
+      opcode: G_STORE
+      memory: { index: 0, bytes: 2 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SH
+          root: true
+          operands:
+            - { operand: 0 }
+            - { complex: addr_reg_imm_base, operand: 1 }
+            - { complex: addr_reg_imm_offset, operand: 1 }
+  -
+    id: select_g_store_m32
+    priority: 300
+    match:
+      opcode: G_STORE
+      memory: { index: 0, bytes: 4 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SW
+          root: true
+          operands:
+            - { operand: 0 }
+            - { complex: addr_reg_imm_base, operand: 1 }
+            - { complex: addr_reg_imm_offset, operand: 1 }
+  -
+    id: select_g_store_m64
+    priority: 300
+    match:
+      opcode: G_STORE
+      memory: { index: 0, bytes: 8 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+    apply:
+      instructions:
+        - opcode: SD
+          root: true
+          operands:
+            - { operand: 0 }
+            - { complex: addr_reg_imm_base, operand: 1 }
+            - { complex: addr_reg_imm_offset, operand: 1 }
+  -
     id: select_g_frame_index
     priority: 100
     match:

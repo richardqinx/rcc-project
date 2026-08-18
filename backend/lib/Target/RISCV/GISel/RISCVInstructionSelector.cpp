@@ -12,7 +12,6 @@
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
-#include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -144,31 +143,6 @@ operandType(const MachineFunction &Function, const MachineInstr &Instruction, st
 
 [[nodiscard]] constexpr RegisterBankID fprBank() noexcept {
   return RegisterBankID::fromValue(static_cast<std::uint32_t>(RegisterBank::FPR));
-}
-
-[[nodiscard]] Expected<RegisterBankID> registerBank(const MachineFunction &Function, Register Reg) {
-  if (!Reg.isVirtual()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V generic instruction requires a virtual register");
-  }
-  auto Info = Function.registerInfo().virtualRegisterInfo(Reg);
-  if (!Info)
-    return std::unexpected(Info.error());
-  if (!Info->get().Bank) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V instruction selection requires an assigned register bank");
-  }
-  return *Info->get().Bank;
-}
-
-[[nodiscard]] std::optional<std::uint64_t>
-memoryAccessBytes(const MachineInstr &Instruction) noexcept {
-  if (Instruction.memOperands().size() != 1)
-    return std::nullopt;
-  const MachineMemOperandDesc &Description = Instruction.memOperands().front()->description();
-  if (!Description.Size.isKnown() || Description.Size.isScalable())
-    return std::nullopt;
-  return Description.Size.minimumBytes();
 }
 
 [[nodiscard]] Expected<void> appendImmediate(MachineInstr &Instruction, std::int64_t Value) {
@@ -617,7 +591,6 @@ public:
       return {};
     case GenericOpcode::G_FPEXTLOAD:
     case GenericOpcode::G_FPTRUNCSTORE:
-    case GenericOpcode::G_STORE:
       return {};
     case GenericOpcode::G_FCONSTANT: {
       const MachineOperand *Immediate = Instruction.operandAt(1);
@@ -680,8 +653,6 @@ public:
     switch (Generic) {
     case GenericOpcode::G_FPEXTLOAD:
       return selectFloatExtLoad(Instruction, Function, Target);
-    case GenericOpcode::G_STORE:
-      return selectStore(Instruction, Function);
     case GenericOpcode::G_FPTRUNCSTORE:
       return selectFloatTruncStore(Instruction, Function, Target);
     case GenericOpcode::G_CONSTANT:
@@ -1347,57 +1318,6 @@ private:
     if (!Immediate)
       return std::unexpected(Immediate.error());
     return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSW));
-  }
-
-  [[nodiscard]] Expected<void> selectStore(MachineInstr &Instruction,
-                                           MachineFunction &Function) const {
-    const MachineOperand *Value = Instruction.operandAt(0);
-    const std::optional<LowLevelType> Type =
-        Value == nullptr ? std::nullopt : registerType(Function, *Value);
-    if (!Type)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "store value has no virtual-register type");
-    const auto Bytes = memoryAccessBytes(Instruction);
-    if (!Bytes)
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V store size does not match its value type");
-    const Register *ValueRegister = Value->getIf<Register>();
-    if (ValueRegister == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError, "RISC-V store has no value register");
-    auto Bank = registerBank(Function, *ValueRegister);
-    if (!Bank)
-      return std::unexpected(Bank.error());
-    if (Instruction.memOperands().front()->isAtomic()) {
-      if (*Bank == fprBank() || !isSupportedIntegerType(*Type) || (*Bytes != 4 && *Bytes != 8))
-        return makeUnexpected(ErrorCode::Unsupported,
-                              "RISC-V atomic store requires a 32-bit or 64-bit GPR value");
-      auto Zero = physicalRegister(PhysicalRegisterID::X0);
-      if (!Zero)
-        return std::unexpected(Zero.error());
-      auto Destination = insertPhysicalRegister(Instruction, 0, *Zero, RegisterOperandFlag::Define);
-      if (!Destination)
-        return std::unexpected(Destination.error());
-      return Instruction.setOpcode(instructionOpcode(*Bytes == 4 ? InstructionOpcode::AMOSWAP_W
-                                                                 : InstructionOpcode::AMOSWAP_D));
-    }
-    auto AppendOffset = appendImmediate(Instruction, 0);
-    if (!AppendOffset)
-      return std::unexpected(AppendOffset.error());
-    if (*Bank != fprBank() && isSupportedIntegerType(*Type)) {
-      const InstructionOpcode Selected = *Bytes == 1   ? InstructionOpcode::SB
-                                         : *Bytes == 2 ? InstructionOpcode::SH
-                                         : *Bytes == 4 ? InstructionOpcode::SW
-                                         : *Bytes == 8 ? InstructionOpcode::SD
-                                                       : InstructionOpcode::Invalid;
-      if (Selected == InstructionOpcode::Invalid)
-        return makeUnexpected(ErrorCode::Unsupported, "RISC-V integer store width is unsupported");
-      return Instruction.setOpcode(instructionOpcode(Selected));
-    }
-    if (*Bank == fprBank() && Type->scalarBitWidth() == 32 && *Bytes == 4)
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSW));
-    if (*Bank == fprBank() && Type->scalarBitWidth() == 64 && *Bytes == 8)
-      return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSD));
-    return makeUnexpected(ErrorCode::Unsupported, "RISC-V cannot select this generic store type");
   }
 
   [[nodiscard]] Expected<void> selectIntegerConstant(MachineInstr &Instruction,
