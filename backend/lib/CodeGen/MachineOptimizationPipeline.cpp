@@ -76,9 +76,6 @@ Expected<void> addPreRegisterAllocationOptimizationPipeline(
                                        MachineCombinerStage::PreRegisterAllocation);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<MachineDCEPass>(Pipeline);
-  if (!Added)
-    return std::unexpected(Added.error());
   return addPass<MachineSchedulerPass>(Pipeline, TargetInfo.SchedulingModel);
 }
 
@@ -103,9 +100,6 @@ addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<PrologueEpilogueInsertionPass>(Pipeline, TargetInfo.FrameLowering);
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = addPass<MachineDCEPass>(Pipeline);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<ExpandPostRAPseudosPass>(Pipeline, TargetInfo.PseudoExpansion);

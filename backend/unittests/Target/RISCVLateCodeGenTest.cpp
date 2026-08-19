@@ -1138,7 +1138,7 @@ void testCanonicalOptimizationPipelines(TestContext &Context,
                      SelectedPipeline.size() == 6,
                  "canonical selected-SSA optimization pipeline must register completely");
   Context.expect(rcc::addPreRegisterAllocationOptimizationPipeline(PreRAPipeline, TargetInfo) &&
-                     PreRAPipeline.size() == 4,
+                     PreRAPipeline.size() == 3,
                  "canonical pre-RA optimization pipeline must register completely");
 
   auto Function = makeFunction(Context, "canonical_post_ra_pipeline", 21);
@@ -1180,7 +1180,7 @@ void testCanonicalOptimizationPipelines(TestContext &Context,
 
   rcc::MachineFunctionPassManager Pipeline;
   auto Added = rcc::addPostRegisterAllocationPipeline(Pipeline, TargetInfo);
-  Context.expect(Added && Pipeline.size() == 20,
+  Context.expect(Added && Pipeline.size() == 19,
                  "canonical post-RA pipeline must register every required pass");
   if (!Added)
     return;
