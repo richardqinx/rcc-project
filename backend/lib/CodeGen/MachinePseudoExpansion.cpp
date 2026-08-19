@@ -168,8 +168,8 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
   static const MachinePassContract TargetLate = [] {
     MachinePassContract Value{
         .Name = "target-late-pseudo-expansion",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::NoVRegs, MachineFunctionProperty::TracksLiveness,
+        .Requires = {MachineFunctionProperty::NoPHIs, MachineFunctionProperty::NoVRegs,
+                     MachineFunctionProperty::TracksLiveness,
                      MachineFunctionProperty::FrameFinalized,
                      MachineFunctionProperty::NoFrameIndices},
         .Sets = {},
