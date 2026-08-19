@@ -45,9 +45,7 @@ namespace {
   static const MachinePassContract PostRA = [] {
     MachinePassContract Value{
         .Name = "post-ra-machine-sink",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::TracksLiveness},
+        .Requires = {MachineFunctionProperty::NoVRegs},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
