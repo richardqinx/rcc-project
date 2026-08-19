@@ -31,11 +31,7 @@ namespace {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "machine-tail-duplication",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::TracksLiveness,
-                     MachineFunctionProperty::FrameFinalized,
-                     MachineFunctionProperty::NoFrameIndices},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {},
@@ -244,10 +240,6 @@ const MachinePassContract &MachineTailDuplicationPass::contract() const noexcept
 Expected<MachinePassResult> MachineTailDuplicationPass::run(MachineFunction &Function,
                                                             const TargetDescription &Target,
                                                             MachineFunctionAnalysisManager &) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "tail duplication requires finalized allocated tracked-liveness MIR");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
