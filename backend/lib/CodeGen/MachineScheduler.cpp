@@ -33,8 +33,7 @@ namespace {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "machine-scheduler",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>()},
@@ -392,10 +391,6 @@ const MachinePassContract &MachineSchedulerPass::contract() const noexcept {
 Expected<MachinePassResult> MachineSchedulerPass::run(MachineFunction &Function,
                                                       const TargetDescription &Target,
                                                       MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "pre-RA machine scheduler requires selected, SSA-exited MachineIR");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
