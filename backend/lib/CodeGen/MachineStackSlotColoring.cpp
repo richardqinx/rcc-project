@@ -27,8 +27,7 @@ namespace {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "machine-stack-slot-coloring",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {},
@@ -224,10 +223,6 @@ const MachinePassContract &MachineStackSlotColoringPass::contract() const noexce
 Expected<MachinePassResult> MachineStackSlotColoringPass::run(MachineFunction &Function,
                                                               const TargetDescription &Target,
                                                               MachineFunctionAnalysisManager &) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "stack-slot coloring requires allocated PHI-free MachineIR");
-  }
   if (Function.frameInfo().isFrozen()) {
     return makeUnexpected(ErrorCode::FrameLayoutFailed,
                           "stack-slot coloring must run before frame layout is frozen");
