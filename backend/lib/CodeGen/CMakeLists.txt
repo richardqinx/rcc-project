@@ -55,7 +55,6 @@ set(
   MachineSink.cpp
   MachineStackSlotColoring.cpp
   MachineTailDuplication.cpp
-  MachineTailMerge.cpp
   PrologueEpilogueInsertion.cpp
   PostRAScheduler.cpp
   RegisterPressure.cpp
@@ -152,7 +151,6 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineSink.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineStackSlotColoring.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineTailDuplication.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineTailMerge.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PostRAScheduler.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Graph.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PBQP/Math.h"

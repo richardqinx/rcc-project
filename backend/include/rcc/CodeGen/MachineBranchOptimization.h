@@ -13,6 +13,7 @@ class TargetInstrInfo;
 
 struct MachineBranchOptimizationOptions final {
   std::size_t MaximumThreadedEdges = 10'000;
+  std::size_t MaximumMergedBlocks = 4'096;
 };
 
 class MachineBranchOptimizationPass final : public MachineFunctionPass {

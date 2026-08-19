@@ -23,7 +23,6 @@
 #include "rcc/CodeGen/MachineShrinkWrapping.h"
 #include "rcc/CodeGen/MachineStackSlotColoring.h"
 #include "rcc/CodeGen/MachineTailDuplication.h"
-#include "rcc/CodeGen/MachineTailMerge.h"
 #include "rcc/CodeGen/PrologueEpilogueInsertion.h"
 #include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/Target/RISCV/RISCVInstructions.h"
@@ -587,7 +586,7 @@ void testTailDuplication(TestContext &Context, const rcc::TargetDescription &Tar
       "tail duplication must clone a small shared tail and repair liveness");
 }
 
-void testTailMerge(TestContext &Context, const rcc::TargetDescription &Target) {
+void testBranchFoldingTailMerge(TestContext &Context, const rcc::TargetDescription &Target) {
   auto Function = makeFunction(Context, "tail_merge", 12);
   if (!Function)
     return;
@@ -618,7 +617,7 @@ void testTailMerge(TestContext &Context, const rcc::TargetDescription &Target) {
   }
   setRelaxationProperties(Context, *Function, Target);
   rcc::MachineFunctionAnalysisManager Analyses;
-  rcc::MachineTailMergePass Pass(rcc::riscv::instrInfo());
+  rcc::MachineBranchOptimizationPass Pass(rcc::riscv::instrInfo());
   Second->attributes().set(rcc::MachineBasicBlockAttribute::MachineBlockAddressTaken);
   auto Protected = Pass.run(*Function, Target, Analyses);
   Context.expect(Protected && !Protected->Changed && Second->isLinked(),
@@ -1138,7 +1137,7 @@ void testCanonicalOptimizationPipelines(TestContext &Context,
                      SelectedPipeline.size() == 6,
                  "canonical selected-SSA optimization pipeline must register completely");
   Context.expect(rcc::addPreRegisterAllocationOptimizationPipeline(PreRAPipeline, TargetInfo) &&
-                     PreRAPipeline.size() == 3,
+                     PreRAPipeline.size() == 2,
                  "canonical pre-RA optimization pipeline must register completely");
 
   auto Function = makeFunction(Context, "canonical_post_ra_pipeline", 21);
@@ -1180,7 +1179,7 @@ void testCanonicalOptimizationPipelines(TestContext &Context,
 
   rcc::MachineFunctionPassManager Pipeline;
   auto Added = rcc::addPostRegisterAllocationPipeline(Pipeline, TargetInfo);
-  Context.expect(Added && Pipeline.size() == 19,
+  Context.expect(Added && Pipeline.size() == 17,
                  "canonical post-RA pipeline must register every required pass");
   if (!Added)
     return;
@@ -1364,7 +1363,7 @@ int main() {
   testFallthroughMaterialization(Context, *Target);
   testBranchOptimization(Context, *Target);
   testTailDuplication(Context, *Target);
-  testTailMerge(Context, *Target);
+  testBranchFoldingTailMerge(Context, *Target);
   testStackSlotColoring(Context, *Target);
   testRISCVMemoryFoldingBoundary(Context, *Target);
   testShrinkWrappedFrameRegion(Context, *Target);
