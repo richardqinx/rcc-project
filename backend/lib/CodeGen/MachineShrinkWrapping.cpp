@@ -27,9 +27,7 @@ namespace {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "machine-shrink-wrapping",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::TracksLiveness},
+        .Requires = {MachineFunctionProperty::NoVRegs},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
@@ -69,10 +67,6 @@ const MachinePassContract &MachineShrinkWrappingPass::contract() const noexcept 
 Expected<MachinePassResult>
 MachineShrinkWrappingPass::run(MachineFunction &Function, const TargetDescription &Target,
                                MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "shrink wrapping requires allocated tracked-liveness MachineIR");
-  }
   if (Function.frameInfo().isFrozen()) {
     return makeUnexpected(ErrorCode::FrameLayoutFailed,
                           "shrink wrapping must run before frame layout freeze");
