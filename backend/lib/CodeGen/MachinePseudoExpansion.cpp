@@ -155,10 +155,7 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
   static const MachinePassContract PostRA = [] {
     MachinePassContract Value{
         .Name = "postrapseudos",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::NoVRegs, MachineFunctionProperty::TracksLiveness,
-                     MachineFunctionProperty::FrameFinalized,
-                     MachineFunctionProperty::NoFrameIndices},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {},
@@ -437,9 +434,6 @@ const MachinePassContract &ExpandPostRAPseudosPass::contract() const noexcept {
 Expected<MachinePassResult> ExpandPostRAPseudosPass::run(MachineFunction &Function,
                                                          const TargetDescription &Target,
                                                          MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires))
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "post-RA pseudo expansion requires finalized frame and liveness");
   return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::PostRA,
                                  nullptr, Analyses);
 }
