@@ -272,11 +272,9 @@ private:
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "PBQPAllocator",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten,
-                     MachineFunctionProperty::TracksLiveness},
+        .Requires = {MachineFunctionProperty::NoPHIs},
         .Sets = {MachineFunctionProperty::NoVRegs},
-        .Clears = {},
+        .Clears = {MachineFunctionProperty::IsSSA},
         .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>()},
         .VerificationStage = PipelineStage::RegisterAllocated,
     };
