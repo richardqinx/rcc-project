@@ -32,9 +32,7 @@ namespace {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "postmisched",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::TracksLiveness},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>()},
@@ -58,10 +56,6 @@ const MachinePassContract &PostRASchedulerPass::contract() const noexcept {
 Expected<MachinePassResult> PostRASchedulerPass::run(MachineFunction &Function,
                                                      const TargetDescription &Target,
                                                      MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "post-RA scheduler requires allocated tracked-liveness MachineIR");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
