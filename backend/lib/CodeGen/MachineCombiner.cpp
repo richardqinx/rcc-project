@@ -82,22 +82,6 @@ namespace {
                              MachinePassChange::Registers};
     return Value;
   }();
-  static const MachinePassContract PostFrame = [] {
-    MachinePassContract Value{
-        .Name = "machine-combiner-post-frame",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::FrameFinalized,
-                     MachineFunctionProperty::NoFrameIndices},
-        .Sets = {},
-        .Clears = {},
-        .RequiredAnalyses = {},
-        .VerificationStage = PipelineStage::PostRAFinalized,
-    };
-    Value.ThreadSafety = PassThreadSafety::ThreadSafe;
-    Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands,
-                             MachinePassChange::Registers};
-    return Value;
-  }();
   switch (Stage) {
   case MachineCombinerStage::PreLegalizer:
     return PreLegalizer;
@@ -107,8 +91,6 @@ namespace {
     return PreRA;
   case MachineCombinerStage::PostRegisterAllocation:
     return PostRA;
-  case MachineCombinerStage::PostFrame:
-    return PostFrame;
   }
   return PreLegalizer;
 }

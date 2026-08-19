@@ -105,10 +105,6 @@ addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
   Added = addPass<PrologueEpilogueInsertionPass>(Pipeline, TargetInfo.FrameLowering);
   if (!Added)
     return std::unexpected(Added.error());
-  Added =
-      addPass<MachineCombinerPass>(Pipeline, TargetInfo.Combiner, MachineCombinerStage::PostFrame);
-  if (!Added)
-    return std::unexpected(Added.error());
   Added = addPass<MachineDCEPass>(Pipeline);
   if (!Added)
     return std::unexpected(Added.error());

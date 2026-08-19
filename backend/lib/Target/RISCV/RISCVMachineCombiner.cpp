@@ -15,8 +15,7 @@ namespace {
 [[nodiscard]] constexpr MachineCombinerStageMask allOptimizationStages() noexcept {
   return machineCombinerStageMask(MachineCombinerStage::SelectedSSA) |
          machineCombinerStageMask(MachineCombinerStage::PreRegisterAllocation) |
-         machineCombinerStageMask(MachineCombinerStage::PostRegisterAllocation) |
-         machineCombinerStageMask(MachineCombinerStage::PostFrame);
+         machineCombinerStageMask(MachineCombinerStage::PostRegisterAllocation);
 }
 
 [[nodiscard]] MachineCombinerPattern immediateIdentity(InstructionOpcode OpcodeValue,

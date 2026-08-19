@@ -20,7 +20,6 @@ enum class MachineCombinerStage : std::uint8_t {
   SelectedSSA,
   PreRegisterAllocation,
   PostRegisterAllocation,
-  PostFrame,
 };
 
 using MachineCombinerStageMask = std::uint8_t;
