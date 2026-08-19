@@ -10,7 +10,6 @@
 #include "rcc/CodeGen/MachineBranchRelaxation.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
 #include "rcc/CodeGen/MachineCopyPropagation.h"
-#include "rcc/CodeGen/MachineFallthrough.h"
 #include "rcc/CodeGen/MachineFinalization.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
@@ -382,77 +381,6 @@ void testBlockPlacement(TestContext &Context, const rcc::TargetDescription &Targ
     std::cerr << "block placement failure: " << Result.error().message() << '\n';
   Context.expect(Result && Result->Changed && Entry->next() == Hot && Hot->next() == Cold,
                  "block placement must put the highest-probability successor on the trace");
-}
-
-void testFallthroughNormalization(TestContext &Context, const rcc::TargetDescription &Target) {
-  auto Function = makeFunction(Context, "fallthrough", 2);
-  if (!Function)
-    return;
-  rcc::MachineBasicBlock *Entry = appendBlock(Context, *Function);
-  rcc::MachineBasicBlock *False = appendBlock(Context, *Function);
-  rcc::MachineBasicBlock *True = appendBlock(Context, *Function);
-  if (Entry == nullptr || False == nullptr || True == nullptr)
-    return;
-  auto Half = rcc::BranchProbability::fromFraction(1, 2);
-  auto CFG = Function->cfgUpdater();
-  Context.expect(Half && CFG.addSuccessor(*Entry, *True, *Half).has_value() &&
-                     CFG.addSuccessor(*Entry, *False, *Half).has_value(),
-                 "fallthrough CFG construction must succeed");
-  rcc::MachineIRBuilder Builder(*Function, Target);
-  Context.expect(Builder.setInsertPoint(*Entry).has_value(),
-                 "fallthrough insertion point must be established");
-  rcc::MachineInstr *Conditional =
-      buildConditional(Context, Builder, rcc::riscv::InstructionOpcode::BEQ, *True);
-  rcc::MachineInstr *Jump = buildJAL(Context, Builder, *False);
-  if (Conditional == nullptr || Jump == nullptr)
-    return;
-  setPostRAProperties(*Function);
-  auto Liveness = rcc::rebuildMachineLiveness(*Function, Target);
-  Context.expect(Liveness.has_value(), "fallthrough fixture liveness must be rebuilt");
-  rcc::MachineFunctionAnalysisManager Analyses;
-  rcc::MachineFallthroughPass Pass(rcc::riscv::instrInfo());
-  auto Result = Pass.run(*Function, Target, Analyses);
-  if (!Result)
-    std::cerr << "fallthrough normalization failure: " << Result.error().message() << '\n';
-  Context.expect(Result && Result->Changed && Conditional->next() == nullptr &&
-                     Jump->parent() == nullptr,
-                 "fallthrough normalization must remove a jump to the next block");
-}
-
-void testFallthroughMaterialization(TestContext &Context, const rcc::TargetDescription &Target) {
-  auto Function = makeFunction(Context, "fallthrough_materialization", 8);
-  if (!Function)
-    return;
-  rcc::MachineBasicBlock *Entry = appendBlock(Context, *Function);
-  rcc::MachineBasicBlock *Padding = appendBlock(Context, *Function);
-  rcc::MachineBasicBlock *True = appendBlock(Context, *Function);
-  rcc::MachineBasicBlock *False = appendBlock(Context, *Function);
-  if (Entry == nullptr || Padding == nullptr || True == nullptr || False == nullptr)
-    return;
-  auto Half = rcc::BranchProbability::fromFraction(1, 2);
-  auto CFG = Function->cfgUpdater();
-  Context.expect(Half && CFG.addSuccessor(*Entry, *True, *Half).has_value() &&
-                     CFG.addSuccessor(*Entry, *False, *Half).has_value(),
-                 "materialized fallthrough CFG construction must succeed");
-  rcc::MachineIRBuilder Builder(*Function, Target);
-  Context.expect(Builder.setInsertPoint(*Entry).has_value(),
-                 "materialized fallthrough insertion point must be established");
-  rcc::MachineInstr *Conditional =
-      buildConditional(Context, Builder, rcc::riscv::InstructionOpcode::BNE, *True);
-  if (Conditional == nullptr)
-    return;
-  setPostRAProperties(*Function);
-  Context.expect(rcc::rebuildMachineLiveness(*Function, Target).has_value(),
-                 "materialized fallthrough liveness must be rebuilt");
-  rcc::MachineFunctionAnalysisManager Analyses;
-  rcc::MachineFallthroughPass Pass(rcc::riscv::instrInfo());
-  auto Result = Pass.run(*Function, Target, Analyses);
-  if (!Result)
-    std::cerr << "fallthrough materialization failure: " << Result.error().message() << '\n';
-  Context.expect(Result && Result->Changed && Conditional->next() != nullptr &&
-                     Conditional->next()->opcode() == opcode(rcc::riscv::InstructionOpcode::JAL) &&
-                     branchTarget(*Conditional->next()) == False,
-                 "fallthrough normalization must materialize a displaced false edge");
 }
 
 void testBranchOptimization(TestContext &Context, const rcc::TargetDescription &Target) {
@@ -1359,8 +1287,6 @@ int main() {
   if (!Target)
     return Context.result();
   testBlockPlacement(Context, *Target);
-  testFallthroughNormalization(Context, *Target);
-  testFallthroughMaterialization(Context, *Target);
   testBranchOptimization(Context, *Target);
   testTailDuplication(Context, *Target);
   testBranchFoldingTailMerge(Context, *Target);

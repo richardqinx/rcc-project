@@ -11,7 +11,6 @@
 #include "rcc/CodeGen/MachineCombiner.h"
 #include "rcc/CodeGen/MachineCopyPropagation.h"
 #include "rcc/CodeGen/MachineDCE.h"
-#include "rcc/CodeGen/MachineFallthrough.h"
 #include "rcc/CodeGen/MachineFinalization.h"
 #include "rcc/CodeGen/MachineLICM.h"
 #include "rcc/CodeGen/MachineMemoryFolding.h"
@@ -117,9 +116,6 @@ addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<MachineBlockPlacementPass>(Pipeline);
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = addPass<MachineFallthroughPass>(Pipeline, TargetInfo.InstrInfo);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<MachineBranchRelaxationPass>(Pipeline, TargetInfo.InstrInfo);

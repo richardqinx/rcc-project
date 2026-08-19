@@ -25,7 +25,6 @@ set(
   MachineDebugInfo.cpp
   MachineDCE.cpp
   MachineFrameInfo.cpp
-  MachineFallthrough.cpp
   MachineFinalization.cpp
   MachineFunction.cpp
   MachineFunctionAttributes.cpp
@@ -112,7 +111,6 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineDebugInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineDCE.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFrameInfo.h"
-  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFallthrough.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFinalization.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunction.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionAttributes.h"
