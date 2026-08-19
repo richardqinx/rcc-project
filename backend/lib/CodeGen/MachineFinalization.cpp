@@ -22,8 +22,8 @@ namespace {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "finalize-emission-pseudos",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::NoVRegs, MachineFunctionProperty::FrameFinalized,
+        .Requires = {MachineFunctionProperty::NoPHIs, MachineFunctionProperty::NoVRegs,
+                     MachineFunctionProperty::FrameFinalized,
                      MachineFunctionProperty::NoFrameIndices},
         .Sets = {MachineFunctionProperty::NoExecutablePseudos},
         .Clears = {},
