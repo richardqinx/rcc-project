@@ -25,8 +25,7 @@ const MachinePassContract &PrologueEpilogueInsertionPass::contract() const noexc
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "prologepilog",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs},
+        .Requires = {MachineFunctionProperty::NoPHIs, MachineFunctionProperty::NoVRegs},
         .Sets = {MachineFunctionProperty::FrameFinalized, MachineFunctionProperty::NoFrameIndices},
         .Clears = {},
         .RequiredAnalyses = {},
