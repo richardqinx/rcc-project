@@ -31,7 +31,7 @@ namespace {
   static const MachinePassContract Selected = [] {
     MachinePassContract Value{
         .Name = "machine-sink",
-        .Requires = {MachineFunctionProperty::IsSSA, MachineFunctionProperty::Selected},
+        .Requires = {MachineFunctionProperty::IsSSA},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
@@ -349,7 +349,7 @@ Expected<MachinePassResult> MachineSinkPass::run(MachineFunction &Function,
     return makeUnexpected(
         ErrorCode::VerificationError,
         Stage == MachineCodeMotionStage::SelectedSSA
-            ? "machine sink requires selected SSA MachineIR"
+            ? "machine sink requires SSA MachineIR"
             : "post-RA machine sink requires allocated tracked-liveness MachineIR");
   }
   auto Trial = cloneMachineFunction(
