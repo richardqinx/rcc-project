@@ -41,8 +41,8 @@ namespace {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "final-encodability-verifier",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::NoVRegs, MachineFunctionProperty::FrameFinalized,
+        .Requires = {MachineFunctionProperty::NoPHIs, MachineFunctionProperty::NoVRegs,
+                     MachineFunctionProperty::FrameFinalized,
                      MachineFunctionProperty::NoFrameIndices,
                      MachineFunctionProperty::NoExecutablePseudos},
         .Sets = {},
