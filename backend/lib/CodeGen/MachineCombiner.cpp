@@ -71,7 +71,7 @@ namespace {
   static const MachinePassContract PostRA = [] {
     MachinePassContract Value{
         .Name = "machine-combiner-post-ra",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoVRegs},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {},
