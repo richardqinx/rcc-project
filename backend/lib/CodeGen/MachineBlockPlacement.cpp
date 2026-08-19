@@ -32,7 +32,7 @@ enum class PlacementClass : std::uint8_t {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "machine-block-placement",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses =
@@ -42,7 +42,7 @@ enum class PlacementClass : std::uint8_t {
                 MachineFunctionAnalysisManager::id<MachineBlockFrequencyAnalysis>(),
                 MachineFunctionAnalysisManager::id<MachineLoopAnalysis>(),
             },
-        .VerificationStage = PipelineStage::Selected,
+        .VerificationStage = std::nullopt,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
     Value.DeclaredChanges = {MachinePassChange::BlockLayout};
@@ -99,10 +99,6 @@ const MachinePassContract &MachineBlockPlacementPass::contract() const noexcept 
 Expected<MachinePassResult>
 MachineBlockPlacementPass::run(MachineFunction &Function, const TargetDescription &Target,
                                MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "machine block placement requires selected PHI-free MachineIR");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
