@@ -45,9 +45,7 @@ namespace {
   static const MachinePassContract PostRA = [] {
     MachinePassContract Value{
         .Name = "post-ra-machine-licm",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::TracksLiveness},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {MachineFunctionAnalysisManager::id<MachineDominatorTreeAnalysis>(),
