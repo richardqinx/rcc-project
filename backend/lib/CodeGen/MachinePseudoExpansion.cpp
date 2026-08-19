@@ -99,9 +99,8 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
     return makeUnexpected(ErrorCode::PseudoExpansionFailed,
                           "post-selection pseudo expansion created a virtual register");
   }
-  if (Phase != MachinePseudoExpansionPhase::PrePEI &&
-      (Before.FrameObjectCount != After.FrameObjectCount ||
-       Before.FrameFrozen != After.FrameFrozen)) {
+  if (Before.FrameObjectCount != After.FrameObjectCount ||
+      Before.FrameFrozen != After.FrameFrozen) {
     return makeUnexpected(ErrorCode::PseudoExpansionFailed,
                           "post-PEI pseudo expansion changed frozen frame resources");
   }
@@ -112,8 +111,6 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
   switch (Phase) {
   case MachinePseudoExpansionPhase::PreRA:
     return PseudoOwner::PreRAExpansion;
-  case MachinePseudoExpansionPhase::PrePEI:
-    return PseudoOwner::PrePEIExpansion;
   case MachinePseudoExpansionPhase::PostRA:
     return PseudoOwner::PostRAExpansion;
   case MachinePseudoExpansionPhase::TargetLate:
@@ -155,21 +152,6 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
                              MachinePassChange::Registers};
     return Value;
   }();
-  static const MachinePassContract PrePEI = [] {
-    MachinePassContract Value{
-        .Name = "pre-pei-target-pseudo-expansion",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::NoVRegs, MachineFunctionProperty::TracksLiveness},
-        .Sets = {},
-        .Clears = {},
-        .RequiredAnalyses = {},
-        .VerificationStage = PipelineStage::RegisterAllocated,
-    };
-    Value.ThreadSafety = PassThreadSafety::ThreadSafe;
-    Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands,
-                             MachinePassChange::Frame};
-    return Value;
-  }();
   static const MachinePassContract PostRA = [] {
     MachinePassContract Value{
         .Name = "postrapseudos",
@@ -205,8 +187,6 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
   switch (Phase) {
   case MachinePseudoExpansionPhase::PreRA:
     return PreRA;
-  case MachinePseudoExpansionPhase::PrePEI:
-    return PrePEI;
   case MachinePseudoExpansionPhase::PostRA:
     return PostRA;
   case MachinePseudoExpansionPhase::TargetLate:
@@ -448,20 +428,6 @@ PreparePostRAPseudosPass::run(MachineFunction &Function, const TargetDescription
     return makeUnexpected(ErrorCode::VerificationError,
                           "post-RA pseudo preparation requires selected MachineIR");
   return runPreparationTransaction(Function, Target, *Info, Analyses);
-}
-
-const MachinePassContract &PrePEITargetPseudoExpansionPass::contract() const noexcept {
-  return phaseContract(MachinePseudoExpansionPhase::PrePEI);
-}
-
-Expected<MachinePassResult>
-PrePEITargetPseudoExpansionPass::run(MachineFunction &Function, const TargetDescription &Target,
-                                     MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires))
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "pre-PEI pseudo expansion requires allocated tracked-liveness MIR");
-  return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::PrePEI,
-                                 nullptr, Analyses);
 }
 
 const MachinePassContract &ExpandPostRAPseudosPass::contract() const noexcept {

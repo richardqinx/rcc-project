@@ -102,9 +102,6 @@ addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
   Added = addPass<MachineShrinkWrappingPass>(Pipeline, TargetInfo.FrameLowering);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPass<PrePEITargetPseudoExpansionPass>(Pipeline, TargetInfo.PseudoExpansion);
-  if (!Added)
-    return std::unexpected(Added.error());
   Added = addPass<PrologueEpilogueInsertionPass>(Pipeline, TargetInfo.FrameLowering);
   if (!Added)
     return std::unexpected(Added.error());

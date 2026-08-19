@@ -38,20 +38,6 @@ private:
   const TargetPseudoExpansionInfo *Info;
 };
 
-class PrePEITargetPseudoExpansionPass final : public MachineFunctionPass {
-public:
-  explicit PrePEITargetPseudoExpansionPass(const TargetPseudoExpansionInfo &Info) noexcept
-      : Info(&Info) {}
-
-  [[nodiscard]] const MachinePassContract &contract() const noexcept override;
-  [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
-                                                const TargetDescription &Target,
-                                                MachineFunctionAnalysisManager &Analyses) override;
-
-private:
-  const TargetPseudoExpansionInfo *Info;
-};
-
 class ExpandPostRAPseudosPass final : public MachineFunctionPass {
 public:
   explicit ExpandPostRAPseudosPass(const TargetPseudoExpansionInfo &Info) noexcept : Info(&Info) {}

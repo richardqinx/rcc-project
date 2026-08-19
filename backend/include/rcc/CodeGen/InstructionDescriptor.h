@@ -197,7 +197,6 @@ enum class PseudoOwner : std::uint8_t {
   TwoAddressRewrite,
   PreRAExpansion,
   RegisterAllocator,
-  PrePEIExpansion,
   PrologueEpilogueInsertion,
   PostRAExpansion,
   Finalization,
