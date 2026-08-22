@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
+#include "rcc/CodeGen/MachineStripDebug.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/Target/RISCV/RISCVPipeline.h"
 
@@ -322,6 +323,13 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
     auto Run = SinglePass.run(Function, Target, Analyses, Instrumentation);
     if (!Run)
       return std::unexpected(Run.error());
+    if (Controls.DebugifyAndStripAllSafe) {
+      auto Stripped = stripDebugMachineFunction(Function);
+      if (!Stripped)
+        return std::unexpected(Stripped.error());
+      if (*Stripped)
+        Analyses.invalidate(Function, PreservedAnalyses::none(), MachinePassChanges::all());
+    }
     Result.ExecutedPasses.push_back({
         .Function = std::string(Function.name()),
         .Pass = Name,

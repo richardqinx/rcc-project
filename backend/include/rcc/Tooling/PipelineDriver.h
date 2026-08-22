@@ -47,6 +47,7 @@ struct PipelineControls final {
   bool VerifyEach = true;
   bool DetectUnreportedChanges = true;
   bool SimplifyMIR = false;
+  bool DebugifyAndStripAllSafe = false;
 };
 
 struct PipelineSnapshot final {

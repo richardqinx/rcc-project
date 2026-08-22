@@ -330,6 +330,10 @@ void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::st
       Command.Controls.DetectUnreportedChanges = false;
       continue;
     }
+    if (Argument == "-debugify-and-strip-all-safe" || Argument == "--debugify-and-strip-all-safe") {
+      Command.Controls.DebugifyAndStripAllSafe = true;
+      continue;
+    }
     if (Argument == "--print-actions") {
       Command.PrintActions = true;
       continue;
@@ -346,7 +350,6 @@ void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::st
     bool ParsedCompatibilityOption = false;
     for (const std::string_view Name : {
              std::string_view{"-disable-gisel-legality-check"},
-             std::string_view{"-debugify-and-strip-all-safe"},
              std::string_view{"-mcp-use-is-copy-instr"},
              std::string_view{"-riscv-enable-cfi-instr-inserter"},
              std::string_view{"-riscv-outliner-regsave"},

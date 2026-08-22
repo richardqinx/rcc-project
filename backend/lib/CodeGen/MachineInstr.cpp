@@ -2,6 +2,7 @@
 
 #include "rcc/CodeGen/MachineInstr.h"
 
+#include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
@@ -17,6 +18,14 @@
 #include <utility>
 
 namespace rcc {
+
+bool MachineInstr::isDebugInstr() const noexcept {
+  return InstructionOpcode == rcc::opcode(GenericOpcode::DBG_VALUE) ||
+         InstructionOpcode == rcc::opcode(GenericOpcode::DBG_VALUE_LIST) ||
+         InstructionOpcode == rcc::opcode(GenericOpcode::DBG_LABEL) ||
+         InstructionOpcode == rcc::opcode(GenericOpcode::DBG_INSTR_REF) ||
+         InstructionOpcode == rcc::opcode(GenericOpcode::DBG_PHI);
+}
 
 MachineInstr::MachineInstr(MachineFunction &OwnerFunction, Opcode InstructionOpcode,
                            MachineInstrStableID StableID)
@@ -96,6 +105,13 @@ Expected<void> MachineInstr::insertOperand(std::size_t Index, MachineOperand &&O
       !OwnerFunction->registerInfo().isKnownVirtualRegister(*Reg)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "register operand references an unknown virtual register");
+  }
+  if (Operand.isUse() && isDebugInstr()) {
+    RegisterOperandFlags RegisterFlags = Operand.registerFlags();
+    RegisterFlags.set(RegisterOperandFlag::Debug);
+    auto Updated = Operand.setRegisterFlags(RegisterFlags);
+    if (!Updated)
+      return std::unexpected(Updated.error());
   }
 
   Operands.insert(Operands.begin() + static_cast<std::ptrdiff_t>(Index), std::move(Operand));

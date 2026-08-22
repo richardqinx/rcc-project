@@ -23,6 +23,7 @@ set(
   MachineCopyPropagation.cpp
   MachineCSE.cpp
   MachineDebugInfo.cpp
+  MachineStripDebug.cpp
   MachineDCE.cpp
   MachineFrameInfo.cpp
   MachineFinalization.cpp
@@ -111,6 +112,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCopyPropagation.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCSE.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineDebugInfo.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineStripDebug.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineDCE.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFrameInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFinalization.h"

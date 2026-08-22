@@ -79,6 +79,8 @@ public:
     return ParentBlock != nullptr;
   }
 
+  [[nodiscard]] bool isDebugInstr() const noexcept;
+
   [[nodiscard]] std::size_t operandCount() const noexcept {
     return Operands.size();
   }

@@ -1935,7 +1935,8 @@ Expected<void> BodyPrinter::printRegisterOperand(const MachineOperand &Operand, 
     Output.append("internal ");
   if (Flags.has(RegisterOperandFlag::EarlyClobber))
     Output.append("early-clobber ");
-  if (Flags.has(RegisterOperandFlag::Debug))
+  if (Flags.has(RegisterOperandFlag::Debug) &&
+      (Operand.parent() == nullptr || !Operand.parent()->isDebugInstr()))
     Output.append("debug-use ");
   if (Flags.has(RegisterOperandFlag::Renamable))
     Output.append("renamable ");
