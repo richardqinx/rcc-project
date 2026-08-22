@@ -240,6 +240,10 @@ constexpr std::uint32_t KnownTargetFlags = CallTargetFlag | PCRelativeHighTarget
                         "RISC-V MC lowering encountered a non-encoding operand");
 }
 
+#define GET_MC_PSEUDO_LOWERING
+#include "RISCVGenMCPseudoLowering.inc"
+#undef GET_MC_PSEUDO_LOWERING
+
 [[nodiscard]] const AssemblyFormatInfo *assemblyFormat(AssemblyFormatID ID) noexcept {
   const auto Formats = assemblyFormats();
   const auto Position = std::ranges::find(Formats, ID, &AssemblyFormatInfo::ID);
@@ -866,6 +870,11 @@ Expected<mc::MCInst> RISCVMCTargetLowering::lowerInstruction(const MachineInstr 
 Expected<void> RISCVMCTargetLowering::emitTerminalInstruction(const MachineInstr &Instruction,
                                                               MachineMCContext &Context,
                                                               mc::MCStreamer &Streamer) const {
+  auto Pseudo = lowerGeneratedMCPseudo(Instruction, Context);
+  if (!Pseudo)
+    return std::unexpected(Pseudo.error());
+  if (*Pseudo)
+    return Streamer.emitInstruction(**Pseudo);
   if (Instruction.opcode() != opcode(GenericOpcode::INLINEASM) &&
       Instruction.opcode() != opcode(GenericOpcode::INLINEASM_BR)) {
     return TargetMCInstLowering::emitTerminalInstruction(Instruction, Context, Streamer);

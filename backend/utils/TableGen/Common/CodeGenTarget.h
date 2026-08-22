@@ -151,6 +151,24 @@ struct NormalizedMacroFusionRule final {
   bool RequireSecondDestinationTie = false;
 };
 
+enum class NormalizedMCPseudoOperandKind : std::uint8_t {
+  SourceOperand,
+  Register,
+  Immediate,
+};
+
+struct NormalizedMCPseudoOperand final {
+  NormalizedMCPseudoOperandKind Kind = NormalizedMCPseudoOperandKind::SourceOperand;
+  std::uint32_t Value = 0;
+  std::int64_t Immediate = 0;
+};
+
+struct NormalizedMCPseudoExpansion final {
+  std::uint32_t PseudoOpcode = 0;
+  std::uint32_t ResultOpcode = 0;
+  std::vector<NormalizedMCPseudoOperand> Operands;
+};
+
 struct NormalizedEncodingCategory final {
   std::uint32_t ID = 0;
   std::string Symbol;
@@ -393,6 +411,7 @@ struct NormalizedTargetModel final {
   std::vector<NormalizedSelectionRule> SelectionRules;
   std::vector<NormalizedCombinerRule> CombinerRules;
   std::vector<NormalizedMacroFusionRule> MacroFusionRules;
+  std::vector<NormalizedMCPseudoExpansion> MCPseudoExpansions;
 };
 
 [[nodiscard]] std::optional<std::string_view>
@@ -437,6 +456,7 @@ private:
   [[nodiscard]] bool normalizeSelectionRules(NormalizedTargetModel &Result);
   [[nodiscard]] bool normalizeCombinerRules(NormalizedTargetModel &Result);
   [[nodiscard]] bool normalizeMacroFusionRules(NormalizedTargetModel &Result);
+  [[nodiscard]] bool normalizeMCPseudoExpansions(NormalizedTargetModel &Result);
 
   const DescriptionAST &Input;
   std::string SourceName;

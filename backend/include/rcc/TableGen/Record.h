@@ -189,6 +189,20 @@ struct SourceMacroFusionRule final {
   TextRange Range;
 };
 
+struct SourceMCPseudoOperand final {
+  std::optional<std::uint32_t> SourceOperandIndex;
+  std::string RegisterSymbol;
+  std::optional<std::int64_t> Immediate;
+  TextRange Range;
+};
+
+struct SourceMCPseudoExpansion final {
+  std::string PseudoOpcodeSymbol;
+  std::string ResultOpcodeSymbol;
+  std::vector<SourceMCPseudoOperand> Operands;
+  TextRange Range;
+};
+
 struct SourceEncodingCategory final {
   std::uint32_t ID = 0;
   std::string Symbol;
@@ -441,6 +455,7 @@ struct DescriptionAST final {
   std::vector<SourceSelectionRule> SelectionRules;
   std::vector<SourceCombinerRule> CombinerRules;
   std::vector<SourceMacroFusionRule> MacroFusionRules;
+  std::vector<SourceMCPseudoExpansion> MCPseudoExpansions;
 };
 
 [[nodiscard]] std::string lowerASCII(std::string_view Value);

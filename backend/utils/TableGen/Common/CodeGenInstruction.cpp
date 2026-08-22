@@ -388,13 +388,10 @@ CodeGenTarget::normalizeImplicitRegisters(const std::vector<SourceImplicitRegist
                                    HasEncodingCategory || HasAssemblyFormat;
     const bool IsPseudoSource =
         std::ranges::find(Instruction.Flags, "pseudo") != Instruction.Flags.end();
-    const bool IsTerminalEmissionSource =
-        std::ranges::find(Instruction.Flags, "terminal_emission") != Instruction.Flags.end();
-    if (HasAnyMachineFact != HasAllMachineFacts ||
-        ((!IsPseudoSource || IsTerminalEmissionSource) && !HasAllMachineFacts)) {
+    if ((!IsPseudoSource && !HasAllMachineFacts) || HasAnyMachineFact != HasAllMachineFacts) {
       fail(Instruction.Range,
-           "encoded instructions and terminal-emission pseudos require complete scheduling, "
-           "encoding, mnemonic, and assembly-format facts");
+           "encoded instructions require complete scheduling, encoding, mnemonic, and "
+           "assembly-format facts");
       return false;
     }
     const auto SchedulingClass = SchedulingClassBySymbol.find(Instruction.SchedulingClassSymbol);

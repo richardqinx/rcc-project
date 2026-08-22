@@ -243,7 +243,15 @@ copyRegisters(const MachineInstr &Instruction) {
   auto Def = Pending->addDef(Destination);
   if (!Def)
     return std::unexpected(Def.error());
-  auto Use = Pending->addUse(Source);
+  RegisterOperandFlags SourceFlags;
+  const RegisterOperandFlags OriginalSourceFlags = Instruction.operandAt(1)->registerFlags();
+  if (OriginalSourceFlags.has(RegisterOperandFlag::Kill))
+    SourceFlags.set(RegisterOperandFlag::Kill);
+  if (*DestinationBank == GPR && *SourceBank == GPR &&
+      OriginalSourceFlags.has(RegisterOperandFlag::Renamable)) {
+    SourceFlags.set(RegisterOperandFlag::Renamable);
+  }
+  auto Use = Pending->addUse(Source, SourceFlags);
   if (!Use)
     return std::unexpected(Use.error());
   if (DuplicateSource) {
@@ -440,53 +448,6 @@ copyRegisters(const MachineInstr &Instruction) {
   return {};
 }
 
-[[nodiscard]] Expected<bool> expandFFLAGSAccess(MachineInstr &Instruction,
-                                                MachineFunction &Function,
-                                                const TargetDescription &Target, bool IsRead) {
-  const MachineOperand *ValueOperand = Instruction.operandAt(0);
-  const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
-  if (Value == nullptr || !Value->isPhysical()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V FFLAGS pseudo retains a nonphysical value register");
-  }
-  auto Zero = physicalRegister(PhysicalRegisterID::X0);
-  if (!Zero)
-    return std::unexpected(Zero.error());
-
-  MachineIRBuilder Builder(Function, Target);
-  auto Point = Builder.setInsertPointBefore(Instruction);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(
-      instructionOpcode(IsRead ? InstructionOpcode::CSRRS : InstructionOpcode::CSRRW));
-  if (!Pending)
-    return std::unexpected(Pending.error());
-  Expected<void> Added = IsRead ? Pending->addOperand(ValueOperand->cloneDetached())
-                                : Pending->addDef(Register::fromPhysical(*Zero));
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = Pending->addImmediate(1);
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = IsRead ? Pending->addUse(Register::fromPhysical(*Zero))
-                 : Pending->addOperand(ValueOperand->cloneDetached());
-  if (!Added)
-    return std::unexpected(Added.error());
-  auto Implicit = copyExtraImplicitOperands(Instruction, 1, *Pending, std::nullopt, std::nullopt);
-  if (!Implicit)
-    return std::unexpected(Implicit.error());
-  auto Replacement = Pending->build();
-  if (!Replacement)
-    return std::unexpected(Replacement.error());
-  auto Decoration = copyCommonDecoration(Instruction, **Replacement, true, true, true);
-  if (!Decoration)
-    return std::unexpected(Decoration.error());
-  auto Removed = removeOldInstruction(Instruction);
-  if (!Removed)
-    return std::unexpected(Removed.error());
-  return true;
-}
-
 [[nodiscard]] Expected<bool> expandCall(MachineInstr &Instruction, MachineFunction &Function,
                                         const TargetDescription &Target, bool IsTail) {
   MachineBasicBlock *Block = Instruction.parent();
@@ -585,126 +546,6 @@ copyRegisters(const MachineInstr &Instruction) {
   return true;
 }
 
-[[nodiscard]] Expected<bool> expandReturn(MachineInstr &Instruction, MachineFunction &Function,
-                                          const TargetDescription &Target) {
-  auto Zero = physicalRegister(PhysicalRegisterID::X0);
-  auto Link = physicalRegister(PhysicalRegisterID::X1);
-  if (!Zero || !Link)
-    return makeUnexpected(ErrorCode::InternalError, "RISC-V return registers are unavailable");
-  MachineIRBuilder Builder(Function, Target);
-  auto Point = Builder.setInsertPointBefore(Instruction);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JALR_RET));
-  if (!Pending)
-    return std::unexpected(Pending.error());
-  auto Def = Pending->addDef(Register::fromPhysical(*Zero));
-  if (!Def)
-    return std::unexpected(Def.error());
-  auto Use = Pending->addUse(Register::fromPhysical(*Link));
-  if (!Use)
-    return std::unexpected(Use.error());
-  auto Immediate = Pending->addImmediate(0);
-  if (!Immediate)
-    return std::unexpected(Immediate.error());
-  auto Implicit = copyExtraImplicitOperands(Instruction, 0, *Pending, std::nullopt, *Link);
-  if (!Implicit)
-    return std::unexpected(Implicit.error());
-  auto Replacement = Pending->build();
-  if (!Replacement)
-    return std::unexpected(Replacement.error());
-  auto Decoration = copyCommonDecoration(Instruction, **Replacement, true, true, true);
-  if (!Decoration)
-    return std::unexpected(Decoration.error());
-  auto Removed = removeOldInstruction(Instruction);
-  if (!Removed)
-    return std::unexpected(Removed.error());
-  return true;
-}
-
-[[nodiscard]] Expected<bool> expandBranch(MachineInstr &Instruction, MachineFunction &Function,
-                                          const TargetDescription &Target) {
-  const MachineOperand *TargetOperand = Instruction.operandAt(0);
-  const BasicBlockOperand *TargetBlock =
-      TargetOperand == nullptr ? nullptr : TargetOperand->getIf<BasicBlockOperand>();
-  if (TargetBlock == nullptr || TargetBlock->Block == nullptr) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V PseudoBR has no basic-block target");
-  }
-
-  auto Zero = physicalRegister(PhysicalRegisterID::X0);
-  if (!Zero)
-    return std::unexpected(Zero.error());
-  MachineIRBuilder Builder(Function, Target);
-  auto Point = Builder.setInsertPointBefore(Instruction);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JAL));
-  if (!Pending)
-    return std::unexpected(Pending.error());
-  auto Def = Pending->addDef(Register::fromPhysical(*Zero));
-  if (!Def)
-    return std::unexpected(Def.error());
-  auto Destination = Pending->addBasicBlock(*TargetBlock->Block);
-  if (!Destination)
-    return std::unexpected(Destination.error());
-  auto Replacement = Pending->build();
-  if (!Replacement)
-    return std::unexpected(Replacement.error());
-  auto Decoration = copyCommonDecoration(Instruction, **Replacement, true, true, true);
-  if (!Decoration)
-    return std::unexpected(Decoration.error());
-  auto Removed = removeOldInstruction(Instruction);
-  if (!Removed)
-    return std::unexpected(Removed.error());
-  return true;
-}
-
-[[nodiscard]] Expected<bool> expandIndirectBranch(MachineInstr &Instruction,
-                                                  MachineFunction &Function,
-                                                  const TargetDescription &Target) {
-  const MachineOperand *Address = Instruction.operandAt(0);
-  const MachineOperand *Offset = Instruction.operandAt(1);
-  if (Address == nullptr || Address->getIf<Register>() == nullptr || Offset == nullptr ||
-      Offset->getIf<std::int64_t>() == nullptr) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V PseudoBRIND has malformed operands");
-  }
-
-  auto Zero = physicalRegister(PhysicalRegisterID::X0);
-  if (!Zero)
-    return std::unexpected(Zero.error());
-  MachineIRBuilder Builder(Function, Target);
-  auto Point = Builder.setInsertPointBefore(Instruction);
-  if (!Point)
-    return std::unexpected(Point.error());
-  auto Pending = Builder.buildInstr(instructionOpcode(InstructionOpcode::JALR));
-  if (!Pending)
-    return std::unexpected(Pending.error());
-  auto Added = Pending->addDef(Register::fromPhysical(*Zero));
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = Pending->addOperand(Address->cloneDetached());
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = Pending->addOperand(Offset->cloneDetached());
-  if (!Added)
-    return std::unexpected(Added.error());
-  auto Implicit = copyExtraImplicitOperands(Instruction, 2, *Pending, std::nullopt, std::nullopt);
-  if (!Implicit)
-    return std::unexpected(Implicit.error());
-  auto Replacement = Pending->build();
-  if (!Replacement)
-    return std::unexpected(Replacement.error());
-  auto Decoration = copyCommonDecoration(Instruction, **Replacement, true, true, true);
-  if (!Decoration)
-    return std::unexpected(Decoration.error());
-  auto Removed = removeOldInstruction(Instruction);
-  if (!Removed)
-    return std::unexpected(Removed.error());
-  return true;
-}
-
 class RISCVPseudoExpansionInfo final : public TargetPseudoExpansionInfo {
 public:
   [[nodiscard]] Expected<bool> preparePostRAPseudo(MachineInstr &Instruction,
@@ -735,16 +576,6 @@ public:
       return expandCall(Instruction, Function, Target, false);
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoTAIL))
       return expandCall(Instruction, Function, Target, true);
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoRET))
-      return expandReturn(Instruction, Function, Target);
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoBR))
-      return expandBranch(Instruction, Function, Target);
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoBRIND))
-      return expandIndirectBranch(Instruction, Function, Target);
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::ReadFFLAGS))
-      return expandFFLAGSAccess(Instruction, Function, Target, true);
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::WriteFFLAGS))
-      return expandFFLAGSAccess(Instruction, Function, Target, false);
     return false;
   }
 };

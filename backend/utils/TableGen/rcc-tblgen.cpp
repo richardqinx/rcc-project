@@ -24,6 +24,7 @@ struct CommandLine final {
   std::string GlobalISelPath;
   std::string GlobalISelCombinerPath;
   std::string MacroFusionPath;
+  std::string MCPseudoLoweringPath;
 };
 
 [[nodiscard]] bool parseCommandLine(int ArgumentCount, char *Arguments[], CommandLine &Result) {
@@ -39,7 +40,8 @@ struct CommandLine final {
     }
     if (Argument == "--register-header" || Argument == "--instruction-header" ||
         Argument == "--tables" || Argument == "--global-isel" ||
-        Argument == "--global-isel-combiner" || Argument == "--macro-fusion") {
+        Argument == "--global-isel-combiner" || Argument == "--macro-fusion" ||
+        Argument == "--mc-pseudo-lowering") {
       if (Index + 1 >= ArgumentCount) {
         std::cerr << "rcc-tblgen: missing value for " << Argument << '\n';
         return false;
@@ -55,6 +57,8 @@ struct CommandLine final {
         Destination = &Result.GlobalISelCombinerPath;
       else if (Argument == "--macro-fusion")
         Destination = &Result.MacroFusionPath;
+      else if (Argument == "--mc-pseudo-lowering")
+        Destination = &Result.MCPseudoLoweringPath;
       else
         Destination = &Result.TablesPath;
       *Destination = Arguments[++Index];
@@ -66,12 +70,13 @@ struct CommandLine final {
   if (!Result.InputPaths.empty() && !Result.RegisterHeaderPath.empty() &&
       !Result.InstructionHeaderPath.empty() && !Result.TablesPath.empty() &&
       !Result.GlobalISelPath.empty() && !Result.GlobalISelCombinerPath.empty() &&
-      !Result.MacroFusionPath.empty()) {
+      !Result.MacroFusionPath.empty() && !Result.MCPseudoLoweringPath.empty()) {
     return true;
   }
   std::cerr << "usage: rcc-tblgen --input <file> [--input <fragment>]... --register-header <file> "
                "--instruction-header <file> --tables <file> --global-isel <file> "
-               "--global-isel-combiner <file> --macro-fusion <file>\n";
+               "--global-isel-combiner <file> --macro-fusion <file> "
+               "--mc-pseudo-lowering <file>\n";
   return false;
 }
 
@@ -176,7 +181,8 @@ combineDescriptionSources(const std::vector<std::string> &Paths,
         continue;
       }
       if (Section.Name != "instructions" && Section.Name != "selection_rules" &&
-          Section.Name != "combiner_rules") {
+          Section.Name != "combiner_rules" && Section.Name != "macro_fusion_rules" &&
+          Section.Name != "mc_pseudo_expansions") {
         std::cerr << "rcc-tblgen: duplicate description section '" << Section.Name << "' in '"
                   << Paths[Index] << "'\n";
         return std::nullopt;
@@ -238,7 +244,8 @@ int main(int ArgumentCount, char *Arguments[]) {
                  writeFile(Command.TablesPath, Output.TargetTables) &&
                  writeFile(Command.GlobalISelPath, Output.GlobalISel) &&
                  writeFile(Command.GlobalISelCombinerPath, Output.GlobalISelCombiner) &&
-                 writeFile(Command.MacroFusionPath, Output.MacroFusion)
+                 writeFile(Command.MacroFusionPath, Output.MacroFusion) &&
+                 writeFile(Command.MCPseudoLoweringPath, Output.MCPseudoLowering)
              ? 0
              : 1;
 }

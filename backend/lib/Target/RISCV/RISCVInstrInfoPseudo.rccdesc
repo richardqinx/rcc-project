@@ -227,9 +227,9 @@ instructions:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR }
     num_explicit_defs: 1
     implicit_uses: [{ register: FFLAGS }]
-    flags: [pseudo, produces_code, allowed_pre_legalizer, has_side_effects]
-    owner: post_ra_expansion
-    deadline: post_ra_finalized
+    flags: [pseudo, produces_code, allowed_pre_legalizer, has_side_effects, terminal_emission]
+    owner: asm_printer
+    deadline: emission
 
   -
     id: 1246
@@ -239,9 +239,9 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
     num_explicit_defs: 0
     implicit_defs: [{ register: FFLAGS }]
-    flags: [pseudo, produces_code, allowed_pre_legalizer, has_side_effects]
-    owner: post_ra_expansion
-    deadline: post_ra_finalized
+    flags: [pseudo, produces_code, allowed_pre_legalizer, has_side_effects, terminal_emission]
+    owner: asm_printer
+    deadline: emission
   -
     id: 1217
     symbol: PseudoLOAD_STACK_ARG
@@ -342,10 +342,10 @@ instructions:
     operands: []
     num_explicit_defs: 0
     allow_extra_implicit_operands: true
-    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, return, barrier]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, return, barrier, terminal_emission]
     size: 4
-    owner: post_ra_expansion
-    deadline: post_ra_finalized
+    owner: asm_printer
+    deadline: emission
 
   -
     id: 1225
@@ -404,10 +404,10 @@ instructions:
     operands:
       - { kinds: [basic_block], name: TARGET }
     num_explicit_defs: 0
-    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, barrier]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, barrier, terminal_emission]
     size: 4
-    owner: post_ra_expansion
-    deadline: post_ra_finalized
+    owner: asm_printer
+    deadline: emission
   -
     id: 1267
     symbol: PseudoLLA
@@ -441,7 +441,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPRJALRNonX7, register_bank: GPR, name: RS1 }
       - { kinds: [immediate], immediate_predicate: SIMM12, name: IMM }
     num_explicit_defs: 0
-    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, indirect_branch, barrier]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, indirect_branch, barrier, terminal_emission]
     size: 4
-    owner: post_ra_expansion
-    deadline: post_ra_finalized
+    owner: asm_printer
+    deadline: emission

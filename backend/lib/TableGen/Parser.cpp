@@ -41,7 +41,7 @@ public:
                     "register_classes", "register_masks", "mir_operand_flags", "named_operands",
                     "immediate_predicates", "scheduling_classes", "encoding_categories",
                     "assembly_formats", "calling_conventions", "instructions", "selection_rules",
-                    "combiner_rules", "macro_fusion_rules"},
+                    "combiner_rules", "macro_fusion_rules", "mc_pseudo_expansions"},
                    "target description root")) {
       return std::nullopt;
     }
@@ -84,6 +84,7 @@ public:
     const yaml::Node *SelectionRulesNode = optionalNode(*Root, "selection_rules");
     const yaml::Node *CombinerRulesNode = optionalNode(*Root, "combiner_rules");
     const yaml::Node *MacroFusionRulesNode = optionalNode(*Root, "macro_fusion_rules");
+    const yaml::Node *MCPseudoExpansionsNode = optionalNode(*Root, "mc_pseudo_expansions");
     if (UnitsNode == nullptr || RegistersNode == nullptr || BanksNode == nullptr ||
         ClassesNode == nullptr || MasksNode == nullptr || NamedOperandsNode == nullptr ||
         ImmediatePredicatesNode == nullptr || SchedulingClassesNode == nullptr ||
@@ -108,7 +109,9 @@ public:
         (CombinerRulesNode != nullptr &&
          !parseCombinerRules(*CombinerRulesNode, Result.CombinerRules)) ||
         (MacroFusionRulesNode != nullptr &&
-         !parseMacroFusionRules(*MacroFusionRulesNode, Result.MacroFusionRules))) {
+         !parseMacroFusionRules(*MacroFusionRulesNode, Result.MacroFusionRules)) ||
+        (MCPseudoExpansionsNode != nullptr &&
+         !parseMCPseudoExpansions(*MCPseudoExpansionsNode, Result.MCPseudoExpansions))) {
       return std::nullopt;
     }
     return Result;
@@ -2095,6 +2098,68 @@ private:
           return false;
       }
       Result.push_back(std::move(Rule));
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseMCPseudoOperands(const yaml::Node &Node,
+                                           std::vector<SourceMCPseudoOperand> &Result) {
+    if (!requireSequence(&Node, "MC pseudo expansion operands"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "MC pseudo expansion operand") ||
+          !checkKeys(*Element, {"operand", "register", "immediate"},
+                     "MC pseudo expansion operand")) {
+        return false;
+      }
+      SourceMCPseudoOperand Operand;
+      Operand.Range = Element->range();
+      if (const yaml::Node *SourceNode = optionalNode(*Element, "operand")) {
+        const auto Source = unsignedInteger32(*SourceNode, "MC pseudo source operand");
+        if (!Source)
+          return false;
+        Operand.SourceOperandIndex = *Source;
+      }
+      if (const yaml::Node *RegisterNode = optionalNode(*Element, "register")) {
+        const auto Register = scalar(*RegisterNode, "MC pseudo fixed register");
+        if (!Register)
+          return false;
+        Operand.RegisterSymbol = *Register;
+      }
+      if (const yaml::Node *ImmediateNode = optionalNode(*Element, "immediate")) {
+        const auto Immediate = signedInteger(*ImmediateNode, "MC pseudo fixed immediate");
+        if (!Immediate)
+          return false;
+        Operand.Immediate = *Immediate;
+      }
+      Result.push_back(std::move(Operand));
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseMCPseudoExpansions(const yaml::Node &Node,
+                                             std::vector<SourceMCPseudoExpansion> &Result) {
+    if (!requireSequence(&Node, "mc_pseudo_expansions"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "MC pseudo expansion") ||
+          !checkKeys(*Element, {"pseudo", "opcode", "operands"}, "MC pseudo expansion")) {
+        return false;
+      }
+      const auto Pseudo = requiredScalar(*Element, "pseudo", "MC pseudo expansion");
+      const auto Opcode = requiredScalar(*Element, "opcode", "MC pseudo expansion");
+      const yaml::Node *OperandsNode = requiredNode(*Element, "operands", "MC pseudo expansion");
+      if (!Pseudo || !Opcode || OperandsNode == nullptr)
+        return false;
+      SourceMCPseudoExpansion Expansion;
+      Expansion.PseudoOpcodeSymbol = *Pseudo;
+      Expansion.ResultOpcodeSymbol = *Opcode;
+      Expansion.Range = Element->range();
+      if (!parseMCPseudoOperands(*OperandsNode, Expansion.Operands))
+        return false;
+      Result.push_back(std::move(Expansion));
     }
     return true;
   }

@@ -8,8 +8,10 @@ set(
   GlobalISelEmitter.cpp
   GlobalISelCombinerEmitter.cpp
   MacroFusionEmitter.cpp
+  MCPseudoLoweringEmitter.cpp
   Common/CodeGenInstruction.cpp
   Common/CodeGenMacroFusion.cpp
+  Common/CodeGenMCPseudoLowering.cpp
   Common/CodeGenRegisters.cpp
   Common/CodeGenSchedule.cpp
   Common/CodeGenSelection.cpp

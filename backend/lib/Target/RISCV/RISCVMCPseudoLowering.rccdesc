@@ -1,0 +1,35 @@
+mc_pseudo_expansions:
+  -
+    pseudo: PseudoBR
+    opcode: JAL
+    operands:
+      - { register: X0 }
+      - { operand: 0 }
+  -
+    pseudo: PseudoBRIND
+    opcode: JALR
+    operands:
+      - { register: X0 }
+      - { operand: 0 }
+      - { operand: 1 }
+  -
+    pseudo: PseudoRET
+    opcode: JALR
+    operands:
+      - { register: X0 }
+      - { register: X1 }
+      - { immediate: 0 }
+  -
+    pseudo: ReadFFLAGS
+    opcode: CSRRS
+    operands:
+      - { operand: 0 }
+      - { immediate: 1 }
+      - { register: X0 }
+  -
+    pseudo: WriteFFLAGS
+    opcode: CSRRW
+    operands:
+      - { register: X0 }
+      - { immediate: 1 }
+      - { operand: 0 }
