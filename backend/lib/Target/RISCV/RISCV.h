@@ -27,13 +27,18 @@ createRISCVInstructionSelector(const RISCVSubtarget &Subtarget,
                                const RISCVRegisterBankInfo &RegisterBanks);
 [[nodiscard]] const TargetRegisterAllocationInfo &registerAllocationInfo() noexcept;
 [[nodiscard]] const TargetFrameLowering &frameLowering() noexcept;
-[[nodiscard]] const TargetSchedulingModel &schedulingModel() noexcept;
+[[nodiscard]] std::unique_ptr<TargetSchedulingHooks>
+createSchedulingHooks(const RISCVSubtargetFeatures &Features);
+[[nodiscard]] Expected<TargetSchedulingModel>
+createSchedulingModel(const TargetSchedulingHooks &Hooks);
 [[nodiscard]] const TargetMachineCombinerInfo &machineCombinerInfo() noexcept;
 [[nodiscard]] const GIMatchTable &giselCombinerTable() noexcept;
 [[nodiscard]] const GIMatchTableExecutor &giselCombinerExecutor() noexcept;
 [[nodiscard]] const TargetMemoryFoldingInfo &memoryFoldingInfo() noexcept;
 [[nodiscard]] const TargetPseudoExpansionInfo &pseudoExpansionInfo() noexcept;
-[[nodiscard]] MachineOptimizationPipelineTargetInfo optimizationPipelineInfo() noexcept;
+[[nodiscard]] MachineOptimizationPipelineTargetInfo
+optimizationPipelineInfo(const RISCVSubtarget &Subtarget,
+                         bool EmitSchedulerDebugOutput = false) noexcept;
 
 } // namespace riscv
 } // namespace rcc

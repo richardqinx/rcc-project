@@ -49,8 +49,8 @@ bool TargetSchedulingHooks::isSchedulingBoundary(const MachineInstr &,
 }
 
 Expected<void> TargetSchedulingHooks::mutateScheduleDAG(ScheduleDAG &, const MachineFunction &,
-                                                        const TargetDescription &,
-                                                        ScheduleDAGMode) const {
+                                                        const TargetDescription &, ScheduleDAGMode,
+                                                        bool) const {
   return {};
 }
 

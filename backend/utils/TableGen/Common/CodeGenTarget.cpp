@@ -36,7 +36,8 @@ CodeGenTarget::CodeGenTarget(const DescriptionAST &Input, std::string SourceName
       !normalizeNamedOperands(Result) || !normalizeImmediatePredicates(Result) ||
       !normalizeSchedulingClasses(Result) || !normalizeEncodingCategories(Result) ||
       !normalizeAssemblyFormats(Result) || !normalizeInstructions(Result) ||
-      !normalizeSelectionRules(Result) || !normalizeCombinerRules(Result)) {
+      !normalizeSelectionRules(Result) || !normalizeCombinerRules(Result) ||
+      !normalizeMacroFusionRules(Result)) {
     return std::nullopt;
   }
   std::ranges::sort(Result.RegisterUnits, {}, &SourceRegisterUnit::ID);
@@ -217,6 +218,7 @@ DescriptionGenerationResult generateDescription(const std::string &SourceName,
                               emitCallingConventions(*Model),
               .GlobalISel = emitGlobalISel(*Model, DisplayName),
               .GlobalISelCombiner = emitGlobalISelCombiner(*Model, DisplayName),
+              .MacroFusion = emitMacroFusion(*Model, DisplayName),
           },
       .Diagnostics = {},
   };

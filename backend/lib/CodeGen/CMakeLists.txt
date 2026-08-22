@@ -58,6 +58,7 @@ set(
   PostRAScheduler.cpp
   RegisterPressure.cpp
   RegisterScavenger.cpp
+  MacroFusion.cpp
   ScheduleDAG.cpp
   ScheduleHazardRecognizer.cpp
   InlineSpiller.cpp
@@ -95,6 +96,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InlineAsm.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MacroFusion.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineBasicBlockAttributes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCFIInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineCompilationStatus.h"

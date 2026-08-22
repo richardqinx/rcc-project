@@ -55,8 +55,11 @@ template <typename PassT, typename... ArgumentT>
   return addPass<InstructionSelect>(Pipeline, Subtarget.getInstructionSelector());
 }
 
-[[nodiscard]] Expected<void> addSSAExitPipeline(MachineFunctionPassManager &Pipeline) {
-  auto Added = addSelectedSSAOptimizationPipeline(Pipeline, optimizationPipelineInfo());
+[[nodiscard]] Expected<void> addSSAExitPipeline(MachineFunctionPassManager &Pipeline,
+                                                const RISCVSubtarget &Subtarget,
+                                                RISCVPipelineOptions Options) {
+  auto Added = addSelectedSSAOptimizationPipeline(
+      Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler));
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<PHIEliminationPass>(Pipeline, instrInfo());
@@ -65,11 +68,14 @@ template <typename PassT, typename... ArgumentT>
   return addPass<TwoAddressInstructionPass>(Pipeline, instrInfo());
 }
 
-[[nodiscard]] Expected<void> addRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline) {
+[[nodiscard]] Expected<void> addRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
+                                                           const RISCVSubtarget &Subtarget,
+                                                           RISCVPipelineOptions Options) {
   auto Added = addPass<PreRATargetPseudoExpansionPass>(Pipeline, pseudoExpansionInfo());
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addPreRegisterAllocationOptimizationPipeline(Pipeline, optimizationPipelineInfo());
+  Added = addPreRegisterAllocationOptimizationPipeline(
+      Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler));
   if (!Added)
     return std::unexpected(Added.error());
   return addPass<PBQPAllocatorPass>(Pipeline, registerAllocationInfo());
@@ -81,14 +87,14 @@ template <typename PassT, typename... ArgumentT>
   auto Added = addInitialPipeline(Pipeline, Subtarget, Options);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addSSAExitPipeline(Pipeline);
+  Added = addSSAExitPipeline(Pipeline, Subtarget, Options);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = addRegisterAllocationPipeline(Pipeline);
+  Added = addRegisterAllocationPipeline(Pipeline, Subtarget, Options);
   if (!Added)
     return std::unexpected(Added.error());
   return addPostRegisterAllocationPipeline(
-      Pipeline, optimizationPipelineInfo(),
+      Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler),
       MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
                                              Options.UseTargetCopyInstructions});
 }
@@ -119,7 +125,8 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
       return std::unexpected(Added.error());
   }
   if (!Function.properties().has(MachineFunctionProperty::TiedOpsRewritten)) {
-    auto Added = addSelectedSSAOptimizationPipeline(Pipeline, optimizationPipelineInfo());
+    auto Added = addSelectedSSAOptimizationPipeline(
+        Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler));
     if (!Added)
       return std::unexpected(Added.error());
     if (!Function.properties().has(MachineFunctionProperty::NoPHIs)) {
@@ -134,13 +141,13 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
       return std::unexpected(Added.error());
   }
   if (!Function.properties().has(MachineFunctionProperty::NoVRegs)) {
-    auto Added = addRegisterAllocationPipeline(Pipeline);
+    auto Added = addRegisterAllocationPipeline(Pipeline, Subtarget, Options);
     if (!Added)
       return std::unexpected(Added.error());
   }
   if (!Function.properties().has(MachineFunctionProperty::NoExecutablePseudos)) {
     auto Added = addPostRegisterAllocationPipeline(
-        Pipeline, optimizationPipelineInfo(),
+        Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler),
         MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
                                                Options.UseTargetCopyInstructions});
     if (!Added)

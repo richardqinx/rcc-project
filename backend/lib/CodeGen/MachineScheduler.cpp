@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <optional>
 #include <ranges>
@@ -89,14 +90,17 @@ struct ScheduleCandidate final {
   std::uint64_t CriticalPath = 0;
   std::uint32_t Latency = 0;
   std::int64_t TargetPreference = 0;
+  bool ContinuesCluster = false;
   bool OptimizeLatency = false;
-  std::uint64_t StableID = 0;
+  std::size_t StableOrder = 0;
 };
 
 [[nodiscard]] bool isBetterCandidate(const ScheduleCandidate &Left,
                                      const ScheduleCandidate &Right) noexcept {
   if (Left.Cycle != Right.Cycle)
     return Left.Cycle < Right.Cycle;
+  if (Left.ContinuesCluster != Right.ContinuesCluster)
+    return Left.ContinuesCluster;
   if (Left.TargetPreference != Right.TargetPreference)
     return Left.TargetPreference > Right.TargetPreference;
   if (Left.OptimizeLatency && Right.OptimizeLatency) {
@@ -115,8 +119,8 @@ struct ScheduleCandidate final {
     return Left.CriticalPath > Right.CriticalPath;
   if (Left.Latency != Right.Latency)
     return Left.Latency > Right.Latency;
-  if (Left.StableID != Right.StableID)
-    return Left.StableID < Right.StableID;
+  if (Left.StableOrder != Right.StableOrder)
+    return Left.StableOrder < Right.StableOrder;
   return !Left.Bottom && Right.Bottom;
 }
 
@@ -177,8 +181,9 @@ scheduleDAG(const ScheduleDAG &DAG, const MachineFunction &Function,
             Unit.Latency,
             Model.hooks().candidatePreference(Unit, ScheduleDirection::TopDown, DAG.block(),
                                               BlockFrequency),
+            Unit.ClusterPredecessor && Scheduled[*Unit.ClusterPredecessor],
             BlockFrequency >= MachineBlockFrequencyAnalysis::EntryFrequency,
-            Unit.StableID.value()};
+            Unit.ID};
         if (!Best || isBetterCandidate(Candidate, *Best))
           Best = Candidate;
       }
@@ -198,8 +203,9 @@ scheduleDAG(const ScheduleDAG &DAG, const MachineFunction &Function,
             Unit.Latency,
             Model.hooks().candidatePreference(Unit, ScheduleDirection::BottomUp, DAG.block(),
                                               BlockFrequency),
+            Unit.ClusterSuccessor && Scheduled[*Unit.ClusterSuccessor],
             BlockFrequency >= MachineBlockFrequencyAnalysis::EntryFrequency,
-            Unit.StableID.value()};
+            Unit.ID};
         if (!Best || isBetterCandidate(Candidate, *Best))
           Best = Candidate;
       }
@@ -270,7 +276,11 @@ scheduleRegion(MachineBasicBlock &Block, std::span<MachineInstr *const> Instruct
                MachineSchedulerOptions Options, MachineActionReplay *Actions) {
   if (Instructions.size() < 2 || Instructions.size() > Options.MaximumRegionSize)
     return false;
-  auto DAG = ScheduleDAG::build(Block, Instructions, Function, Target, Model, Mode);
+  if (Options.EmitDebugOutput) {
+    std::cerr << Function.name() << ":%bb." << Block.denseNumber().value_or(0) << '\n';
+  }
+  auto DAG = ScheduleDAG::build(Block, Instructions, Function, Target, Model, Mode,
+                                Options.EmitDebugOutput);
   if (!DAG)
     return std::unexpected(DAG.error());
   if (DAG->units().size() < 2)
@@ -408,9 +418,11 @@ Expected<MachinePassResult> MachineSchedulerPass::run(MachineFunction &Function,
   if (!TrialFrequencies)
     return std::unexpected(TrialFrequencies.error());
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  MachineSchedulerOptions TrialOptions = Options;
+  TrialOptions.EmitDebugOutput = false;
   auto TrialResult = runMachineScheduler(*Trial->ClonedFunction, Target, *Model,
                                          ScheduleDAGMode::PreRegisterAllocation, **TrialLiveness,
-                                         **TrialFrequencies, Options, &Actions);
+                                         **TrialFrequencies, TrialOptions, &Actions);
   if (!TrialResult)
     return std::unexpected(TrialResult.error());
 

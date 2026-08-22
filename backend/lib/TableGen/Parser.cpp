@@ -41,7 +41,7 @@ public:
                     "register_classes", "register_masks", "mir_operand_flags", "named_operands",
                     "immediate_predicates", "scheduling_classes", "encoding_categories",
                     "assembly_formats", "calling_conventions", "instructions", "selection_rules",
-                    "combiner_rules"},
+                    "combiner_rules", "macro_fusion_rules"},
                    "target description root")) {
       return std::nullopt;
     }
@@ -83,6 +83,7 @@ public:
         requiredNode(*Root, "instructions", "target description root");
     const yaml::Node *SelectionRulesNode = optionalNode(*Root, "selection_rules");
     const yaml::Node *CombinerRulesNode = optionalNode(*Root, "combiner_rules");
+    const yaml::Node *MacroFusionRulesNode = optionalNode(*Root, "macro_fusion_rules");
     if (UnitsNode == nullptr || RegistersNode == nullptr || BanksNode == nullptr ||
         ClassesNode == nullptr || MasksNode == nullptr || NamedOperandsNode == nullptr ||
         ImmediatePredicatesNode == nullptr || SchedulingClassesNode == nullptr ||
@@ -105,7 +106,9 @@ public:
         (SelectionRulesNode != nullptr &&
          !parseSelectionRules(*SelectionRulesNode, Result.SelectionRules)) ||
         (CombinerRulesNode != nullptr &&
-         !parseCombinerRules(*CombinerRulesNode, Result.CombinerRules))) {
+         !parseCombinerRules(*CombinerRulesNode, Result.CombinerRules)) ||
+        (MacroFusionRulesNode != nullptr &&
+         !parseMacroFusionRules(*MacroFusionRulesNode, Result.MacroFusionRules))) {
       return std::nullopt;
     }
     return Result;
@@ -1886,6 +1889,211 @@ private:
       Rule.Range = Element->range();
       if (!parseCombinerRuleMatch(*MatchNode, Rule) || !parseCombinerRuleApply(*ApplyNode, Rule))
         return false;
+      Result.push_back(std::move(Rule));
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseMacroFusionOpcodePairs(const yaml::Node &Node,
+                                                 std::vector<SourceMacroFusionOpcodePair> &Result) {
+    if (!requireSequence(&Node, "macro fusion opcode pairs"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "macro fusion opcode pair") ||
+          !checkKeys(*Element, {"first", "second"}, "macro fusion opcode pair")) {
+        return false;
+      }
+      const auto First = requiredScalar(*Element, "first", "macro fusion opcode pair");
+      const auto Second = requiredScalar(*Element, "second", "macro fusion opcode pair");
+      if (!First || !Second)
+        return false;
+      Result.push_back({*First, *Second, Element->range()});
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
+  parseMacroFusionImmediatePredicates(const yaml::Node &Node,
+                                      std::vector<SourceMacroFusionImmediatePredicate> &Result) {
+    if (!requireSequence(&Node, "macro fusion immediate predicates"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "macro fusion immediate predicate") ||
+          !checkKeys(*Element, {"instruction", "operand", "min", "max"},
+                     "macro fusion immediate predicate")) {
+        return false;
+      }
+      const auto Instruction =
+          requiredScalar(*Element, "instruction", "macro fusion immediate predicate");
+      const yaml::Node *OperandNode =
+          requiredNode(*Element, "operand", "macro fusion immediate predicate");
+      const yaml::Node *MinimumNode =
+          requiredNode(*Element, "min", "macro fusion immediate predicate");
+      const yaml::Node *MaximumNode =
+          requiredNode(*Element, "max", "macro fusion immediate predicate");
+      if (!Instruction || OperandNode == nullptr || MinimumNode == nullptr ||
+          MaximumNode == nullptr) {
+        return false;
+      }
+      const auto Operand = unsignedInteger32(*OperandNode, "macro fusion immediate operand");
+      const auto Minimum = signedInteger(*MinimumNode, "macro fusion immediate minimum");
+      const auto Maximum = signedInteger(*MaximumNode, "macro fusion immediate maximum");
+      if (!Operand || !Minimum || !Maximum)
+        return false;
+      Result.push_back({*Instruction, *Operand, *Minimum, *Maximum, Element->range()});
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
+  parseMacroFusionRegisterInequalities(const yaml::Node &Node,
+                                       std::vector<SourceMacroFusionRegisterInequality> &Result) {
+    if (!requireSequence(&Node, "macro fusion register inequalities"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "macro fusion register inequality") ||
+          !checkKeys(*Element, {"instruction", "left", "right"},
+                     "macro fusion register inequality")) {
+        return false;
+      }
+      const auto Instruction =
+          requiredScalar(*Element, "instruction", "macro fusion register inequality");
+      const yaml::Node *LeftNode =
+          requiredNode(*Element, "left", "macro fusion register inequality");
+      const yaml::Node *RightNode =
+          requiredNode(*Element, "right", "macro fusion register inequality");
+      if (!Instruction || LeftNode == nullptr || RightNode == nullptr)
+        return false;
+      const auto Left = unsignedInteger32(*LeftNode, "macro fusion left register operand");
+      const auto Right = unsignedInteger32(*RightNode, "macro fusion right register operand");
+      if (!Left || !Right)
+        return false;
+      Result.push_back({*Instruction, *Left, *Right, Element->range()});
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool
+  parseMacroFusionImmediateRelations(const yaml::Node &Node,
+                                     std::vector<SourceMacroFusionImmediateRelation> &Result) {
+    if (!requireSequence(&Node, "macro fusion immediate relations"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "macro fusion immediate relation") ||
+          !checkKeys(*Element, {"kind", "first_operand", "second_operand"},
+                     "macro fusion immediate relation")) {
+        return false;
+      }
+      const auto Kind = requiredScalar(*Element, "kind", "macro fusion immediate relation");
+      const yaml::Node *FirstNode =
+          requiredNode(*Element, "first_operand", "macro fusion immediate relation");
+      const yaml::Node *SecondNode =
+          requiredNode(*Element, "second_operand", "macro fusion immediate relation");
+      if (!Kind || FirstNode == nullptr || SecondNode == nullptr)
+        return false;
+      const auto First = unsignedInteger32(*FirstNode, "macro fusion first immediate operand");
+      const auto Second = unsignedInteger32(*SecondNode, "macro fusion second immediate operand");
+      if (!First || !Second)
+        return false;
+      Result.push_back({*Kind, *First, *Second, Element->range()});
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseMacroFusionLink(const yaml::Node &Node, SourceMacroFusionRule &Result) {
+    if (!requireMapping(&Node, "macro fusion link") ||
+        !checkKeys(Node,
+                   {"first_definition", "second_use", "second_definition", "commutable_second_use",
+                    "one_non_debug_use", "second_destination_tied"},
+                   "macro fusion link")) {
+      return false;
+    }
+    const yaml::Node *FirstNode = requiredNode(Node, "first_definition", "macro fusion link");
+    const yaml::Node *SecondUseNode = requiredNode(Node, "second_use", "macro fusion link");
+    const yaml::Node *SecondDefinitionNode =
+        requiredNode(Node, "second_definition", "macro fusion link");
+    const yaml::Node *SingleUseNode = requiredNode(Node, "one_non_debug_use", "macro fusion link");
+    const yaml::Node *TiedNode = requiredNode(Node, "second_destination_tied", "macro fusion link");
+    if (FirstNode == nullptr || SecondUseNode == nullptr || SecondDefinitionNode == nullptr ||
+        SingleUseNode == nullptr || TiedNode == nullptr) {
+      return false;
+    }
+    const auto First = unsignedInteger32(*FirstNode, "macro fusion first definition");
+    const auto SecondUse = unsignedInteger32(*SecondUseNode, "macro fusion second use");
+    const auto SecondDefinition =
+        unsignedInteger32(*SecondDefinitionNode, "macro fusion second definition");
+    const auto SingleUse = boolean(*SingleUseNode, "macro fusion one_non_debug_use");
+    const auto Tied = boolean(*TiedNode, "macro fusion second_destination_tied");
+    if (!First || !SecondUse || !SecondDefinition || !SingleUse || !Tied)
+      return false;
+    Result.FirstDefinitionOperand = *First;
+    Result.SecondUseOperand = *SecondUse;
+    Result.SecondDefinitionOperand = *SecondDefinition;
+    Result.RequireSingleNonDebugUse = *SingleUse;
+    Result.RequireSecondDestinationTie = *Tied;
+    if (const yaml::Node *Commutable = optionalNode(Node, "commutable_second_use")) {
+      const auto Value = unsignedInteger32(*Commutable, "macro fusion commutable second use");
+      if (!Value)
+        return false;
+      Result.CommutableSecondUseOperand = *Value;
+    }
+    return true;
+  }
+
+  [[nodiscard]] bool parseMacroFusionRules(const yaml::Node &Node,
+                                           std::vector<SourceMacroFusionRule> &Result) {
+    if (!requireSequence(&Node, "macro_fusion_rules"))
+      return false;
+    for (const yaml::NodeID ElementID : Node.sequence()) {
+      const yaml::Node *Element = Input.node(ElementID);
+      if (!requireMapping(Element, "macro fusion rule") ||
+          !checkKeys(*Element,
+                     {"id", "feature", "first_opcodes", "second_opcodes", "opcode_pairs",
+                      "immediates", "register_not_equal", "immediate_relations", "link"},
+                     "macro fusion rule")) {
+        return false;
+      }
+      const auto Symbol = requiredScalar(*Element, "id", "macro fusion rule");
+      const auto Feature = requiredScalar(*Element, "feature", "macro fusion rule");
+      const yaml::Node *FirstNode = requiredNode(*Element, "first_opcodes", "macro fusion rule");
+      const yaml::Node *SecondNode = requiredNode(*Element, "second_opcodes", "macro fusion rule");
+      const yaml::Node *LinkNode = requiredNode(*Element, "link", "macro fusion rule");
+      if (!Symbol || !Feature || FirstNode == nullptr || SecondNode == nullptr ||
+          LinkNode == nullptr) {
+        return false;
+      }
+      auto FirstOpcodes = scalarSequence(*FirstNode, "macro fusion first opcodes");
+      auto SecondOpcodes = scalarSequence(*SecondNode, "macro fusion second opcodes");
+      if (!FirstOpcodes || !SecondOpcodes)
+        return false;
+      SourceMacroFusionRule Rule;
+      Rule.Symbol = *Symbol;
+      Rule.Feature = *Feature;
+      Rule.FirstOpcodeSymbols = std::move(*FirstOpcodes);
+      Rule.SecondOpcodeSymbols = std::move(*SecondOpcodes);
+      Rule.Range = Element->range();
+      if (!parseMacroFusionLink(*LinkNode, Rule))
+        return false;
+      if (const yaml::Node *Pairs = optionalNode(*Element, "opcode_pairs")) {
+        if (!parseMacroFusionOpcodePairs(*Pairs, Rule.OpcodePairs))
+          return false;
+      }
+      if (const yaml::Node *Immediates = optionalNode(*Element, "immediates")) {
+        if (!parseMacroFusionImmediatePredicates(*Immediates, Rule.ImmediatePredicates))
+          return false;
+      }
+      if (const yaml::Node *Inequalities = optionalNode(*Element, "register_not_equal")) {
+        if (!parseMacroFusionRegisterInequalities(*Inequalities, Rule.RegisterInequalities))
+          return false;
+      }
+      if (const yaml::Node *Relations = optionalNode(*Element, "immediate_relations")) {
+        if (!parseMacroFusionImmediateRelations(*Relations, Rule.ImmediateRelations))
+          return false;
+      }
       Result.push_back(std::move(Rule));
     }
     return true;

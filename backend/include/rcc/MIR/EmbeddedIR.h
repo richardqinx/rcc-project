@@ -170,7 +170,7 @@ private:
   std::optional<TextRange> DataLayoutRange;
   std::vector<EmbeddedIRFunction> Functions;
   std::vector<EmbeddedIRReference> GlobalObjects;
-  std::unordered_map<std::string, GlobalValueProperties, StringHash, std::equal_to<> >
+  std::unordered_map<std::string, GlobalValueProperties, StringHash, std::equal_to<>>
       GlobalProperties;
   std::vector<EmbeddedIRMetadataDefinition> MetadataDefinitions;
   std::vector<EmbeddedIRTypeDefinition> TypeDefinitions;

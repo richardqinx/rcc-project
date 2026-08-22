@@ -5,9 +5,9 @@
 #include "RISCVInstrInfo.h"
 #include "RISCVRegisterBankInfo.h"
 #include "rcc/CodeGen/GenericOpcodes.h"
-#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/GlobalISel/GISelValueTracking.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelector.h"
+#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/LowLevelType.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
@@ -727,8 +727,8 @@ public:
   }
 
 private:
-  [[nodiscard]] Expected<const MachineMemOperand *>
-  createGOTLoad(MachineFunction &Function, LowLevelType Type) const {
+  [[nodiscard]] Expected<const MachineMemOperand *> createGOTLoad(MachineFunction &Function,
+                                                                  LowLevelType Type) const {
     auto Size = MemorySize::fixed(Type.minimumBitWidth() / 8U);
     if (!Size)
       return std::unexpected(Size.error());
@@ -745,9 +745,9 @@ private:
     return Function.createMemOperand(std::move(Description));
   }
 
-  [[nodiscard]] Expected<void>
-  selectGlobalAddress(MachineInstr &Instruction, MachineFunction &Function,
-                      const TargetDescription &Target) const {
+  [[nodiscard]] Expected<void> selectGlobalAddress(MachineInstr &Instruction,
+                                                   MachineFunction &Function,
+                                                   const TargetDescription &Target) const {
     const MachineOperand *DestinationOperand = Instruction.operandAt(0);
     const MachineOperand *SymbolOperand = Instruction.operandAt(1);
     const Register *Destination =
@@ -775,8 +775,8 @@ private:
     }
 
     const bool TaggedGlobals = Subtarget.features().has(RISCVSubtargetOption::TaggedGlobals);
-    const bool UseGOT = Subtarget.relocationModel() == RelocationModel::PositionIndependent ||
-                        TaggedGlobals;
+    const bool UseGOT =
+        Subtarget.relocationModel() == RelocationModel::PositionIndependent || TaggedGlobals;
     const auto ReplaceWithPseudo = [&](InstructionOpcode OpcodeValue) -> Expected<void> {
       auto SetOpcode = Instruction.setOpcode(instructionOpcode(OpcodeValue));
       if (!SetOpcode)

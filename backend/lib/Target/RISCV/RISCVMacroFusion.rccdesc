@@ -1,0 +1,139 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+macro_fusion_rules:
+  -
+    id: TuneLUIADDIFusion
+    feature: fusion-lui-addi
+    first_opcodes: [LUI]
+    second_opcodes: [ADDI, ADDIW]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneAUIPCADDIFusion
+    feature: fusion-auipc-addi
+    first_opcodes: [AUIPC]
+    second_opcodes: [ADDI]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneZExtHFusion
+    feature: fusion-zexth
+    first_opcodes: [SLLI]
+    second_opcodes: [SRLI]
+    immediates:
+      - { instruction: first, operand: 2, min: 48, max: 48 }
+      - { instruction: second, operand: 2, min: 48, max: 48 }
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneZExtWFusion
+    feature: fusion-zextw
+    first_opcodes: [SLLI]
+    second_opcodes: [SRLI]
+    immediates:
+      - { instruction: first, operand: 2, min: 32, max: 32 }
+      - { instruction: second, operand: 2, min: 32, max: 32 }
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneShiftedZExtWFusion
+    feature: fusion-shifted-zextw
+    first_opcodes: [SLLI]
+    second_opcodes: [SRLI]
+    immediates:
+      - { instruction: first, operand: 2, min: 32, max: 32 }
+      - { instruction: second, operand: 2, min: 0, max: 31 }
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneLDADDFusion
+    feature: fusion-ld-add
+    first_opcodes: [ADD]
+    second_opcodes: [LD]
+    immediates:
+      - { instruction: second, operand: 2, min: 0, max: 0 }
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneADDLoadFusion
+    feature: fusion-add-load
+    first_opcodes: [ADD, ADD_UW]
+    second_opcodes: [LB, LH, LW, LD, LBU, LHU, LWU]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneAUIPCLoadFusion
+    feature: fusion-auipc-load
+    first_opcodes: [AUIPC]
+    second_opcodes: [LB, LH, LW, LD, LBU, LHU, LWU]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneLUILoadFusion
+    feature: fusion-lui-load
+    first_opcodes: [LUI]
+    second_opcodes: [LB, LH, LW, LD, LBU, LHU, LWU]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneBFExtFusion
+    feature: fusion-bfext
+    first_opcodes: [SLLI]
+    second_opcodes: [SRLI]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneADDILoadFusion
+    feature: fusion-addi-load
+    first_opcodes: [ADDI]
+    second_opcodes: [LB, LH, LW, LD, LBU, LHU, LWU]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneSHXADDLoadFusion
+    feature: fusion-shxadd-load
+    first_opcodes: [SH1ADD, SH2ADD, SH3ADD, SH1ADD_UW, SH2ADD_UW, SH3ADD_UW]
+    second_opcodes: [LB, LH, LW, LD, LBU, LHU, LWU]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneFusionLogicRegReg
+    feature: fusion-logic-reg-reg
+    first_opcodes: [AND, OR, XOR]
+    second_opcodes: [AND, OR, XOR]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, commutable_second_use: 2, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneFusionLogicRegImm
+    feature: fusion-logic-reg-imm
+    first_opcodes: [AND, OR, XOR]
+    second_opcodes: [ANDI, ORI, XORI]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneFusionLogicImmReg
+    feature: fusion-logic-imm-reg
+    first_opcodes: [ANDI, ORI, XORI]
+    second_opcodes: [AND, OR, XOR]
+    link: { first_definition: 0, second_use: 1, second_definition: 0, commutable_second_use: 2, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneFusionMulAdd
+    feature: fusion-mul-add
+    first_opcodes: [MUL, MULW]
+    second_opcodes: [ADD, ADDW]
+    opcode_pairs:
+      - { first: MUL, second: ADD }
+      - { first: MULW, second: ADDW }
+    register_not_equal:
+      - { instruction: second, left: 0, right: 2 }
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }
+  -
+    id: TuneFusionAddMem
+    feature: fusion-add-mem
+    first_opcodes: [ADD]
+    second_opcodes: [LB, LBU, LH, LHU, LW, LWU, LD, FLW, FLD, SB, SH, SW, SD, FSW, FSD]
+    immediates:
+      - { instruction: second, operand: 2, min: 0, max: 0 }
+    register_not_equal:
+      - { instruction: first, left: 0, right: 1 }
+      - { instruction: first, left: 0, right: 2 }
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: false, second_destination_tied: false }
+  -
+    id: TuneFusionShiftBitExtract
+    feature: fusion-shift-bit-extract
+    first_opcodes: [SLLI, SLLIW]
+    second_opcodes: [SRLI, SRLIW, SRAI, SRAIW]
+    opcode_pairs:
+      - { first: SLLI, second: SRLI }
+      - { first: SLLI, second: SRAI }
+      - { first: SLLIW, second: SRLIW }
+      - { first: SLLIW, second: SRAIW }
+    immediate_relations:
+      - { kind: less_equal, first_operand: 2, second_operand: 2 }
+    link: { first_definition: 0, second_use: 1, second_definition: 0, one_non_debug_use: true, second_destination_tied: true }

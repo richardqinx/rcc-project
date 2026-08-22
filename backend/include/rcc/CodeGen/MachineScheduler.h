@@ -14,6 +14,7 @@ class TargetSchedulingModel;
 struct MachineSchedulerOptions final {
   std::size_t MaximumRegionSize = 512;
   bool EnableBidirectionalScheduling = true;
+  bool EmitDebugOutput = false;
 };
 
 class MachineSchedulerPass final : public MachineFunctionPass {

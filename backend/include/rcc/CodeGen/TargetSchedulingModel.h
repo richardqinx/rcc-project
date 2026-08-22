@@ -107,7 +107,8 @@ public:
   [[nodiscard]] virtual Expected<void> mutateScheduleDAG(ScheduleDAG &DAG,
                                                          const MachineFunction &Function,
                                                          const TargetDescription &Target,
-                                                         ScheduleDAGMode Mode) const;
+                                                         ScheduleDAGMode Mode,
+                                                         bool EmitDebugOutput) const;
   [[nodiscard]] virtual std::int64_t
   candidatePreference(const ScheduleUnit &Unit, ScheduleDirection Direction,
                       const MachineBasicBlock &Block, std::uint64_t BlockFrequency) const noexcept;

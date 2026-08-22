@@ -10,12 +10,15 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace rcc {
 
 class InstructionSelector;
 class LegalizerInfo;
 class TargetCallLowering;
+class TargetSchedulingHooks;
+class TargetSchedulingModel;
 
 namespace riscv {
 
@@ -45,6 +48,7 @@ enum class RISCVSubtargetOption : std::uint8_t {
   FusionAddImmediateLoad,
   FusionAUIPCAddImmediate,
   FusionAUIPCLoad,
+  FusionBitfieldExtract,
   FusionLoadDoubleAdd,
   FusionLogicImmediateRegister,
   FusionLogicRegisterImmediate,
@@ -53,6 +57,7 @@ enum class RISCVSubtargetOption : std::uint8_t {
   FusionLUILoad,
   FusionMultiplyAdd,
   FusionShiftBitExtract,
+  FusionShiftedAddLoad,
   FusionShiftedZeroExtendWord,
   FusionZeroExtendHalf,
   FusionZeroExtendWord,
@@ -74,6 +79,7 @@ public:
 
   [[nodiscard]] bool has(RISCVExtension Extension) const noexcept;
   [[nodiscard]] bool has(RISCVSubtargetOption Option) const noexcept;
+  [[nodiscard]] bool hasFeature(std::string_view Feature) const noexcept;
 
   friend bool operator==(const RISCVSubtargetFeatures &Left,
                          const RISCVSubtargetFeatures &Right) = default;
@@ -114,6 +120,7 @@ public:
   [[nodiscard]] InstructionSelector *getInstructionSelector() const;
   [[nodiscard]] const LegalizerInfo *getLegalizerInfo() const;
   [[nodiscard]] const RISCVRegisterBankInfo *getRegBankInfo() const;
+  [[nodiscard]] const TargetSchedulingModel &schedulingModel() const noexcept;
 
 private:
   RISCVSubtargetFeatures Features;
@@ -123,6 +130,8 @@ private:
   mutable std::unique_ptr<InstructionSelector> InstSelector;
   mutable std::unique_ptr<LegalizerInfo> Legalizer;
   mutable std::unique_ptr<RISCVRegisterBankInfo> RegBankInfo;
+  std::unique_ptr<TargetSchedulingHooks> SchedulingHooks;
+  std::unique_ptr<TargetSchedulingModel> SchedulingModel;
 };
 
 } // namespace riscv

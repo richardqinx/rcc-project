@@ -79,6 +79,24 @@ struct FunctionRunResult final {
   });
 }
 
+[[nodiscard]] bool hasDebugType(const BackendInvocation &Invocation,
+                                std::string_view DebugType) noexcept {
+  const auto Option = std::ranges::find(Invocation.TargetOptions, std::string_view{"debug-only"},
+                                        &BackendOption::Name);
+  if (Option == Invocation.TargetOptions.end())
+    return false;
+  std::string_view Types = Option->Value;
+  while (!Types.empty()) {
+    const std::size_t Comma = Types.find(',');
+    if (Types.substr(0, Comma) == DebugType)
+      return true;
+    if (Comma == std::string_view::npos)
+      break;
+    Types.remove_prefix(Comma + 1U);
+  }
+  return false;
+}
+
 [[nodiscard]] std::optional<BackendStage> stageAfterPass(std::string_view Pass) noexcept {
   if (Pass == "legalizer")
     return BackendStage::LegalizedMIR;
@@ -108,12 +126,14 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
     GlobalISelAbort = *Parsed;
   }
   MachineFunctionPassManager Pipeline(Options);
+  const bool DebugMachineScheduler = hasDebugType(Invocation, "machine-scheduler");
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
     auto Added = riscv::addCanonicalPipeline(
         Pipeline, Function, Subtarget,
         riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
                                     .UseTargetCopyInstructions = true,
-                                    .GlobalISelAbort = GlobalISelAbort});
+                                    .GlobalISelAbort = GlobalISelAbort,
+                                    .DebugMachineScheduler = DebugMachineScheduler});
     if (!Added)
       return std::unexpected(Added.error());
   } else {
@@ -130,7 +150,8 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
           Name, Subtarget,
           riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
                                       .UseTargetCopyInstructions = UseTargetCopyInstructions,
-                                      .GlobalISelAbort = GlobalISelAbort});
+                                      .GlobalISelAbort = GlobalISelAbort,
+                                      .DebugMachineScheduler = DebugMachineScheduler});
       if (!Pass)
         return std::unexpected(Pass.error());
       auto Added = Pipeline.addPass(std::move(*Pass));

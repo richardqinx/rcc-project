@@ -7,10 +7,13 @@
 #include "GISel/RISCVRegisterBankInfo.h"
 #include "RISCV.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelector.h"
+#include "rcc/CodeGen/TargetSchedulingModel.h"
 
 #include <array>
 #include <cstddef>
+#include <cstdlib>
 #include <string_view>
+#include <utility>
 
 namespace rcc::riscv {
 namespace {
@@ -50,6 +53,7 @@ constexpr std::array OptionNames{
     OptionName{"fusion-addi-load", RISCVSubtargetOption::FusionAddImmediateLoad},
     OptionName{"fusion-auipc-addi", RISCVSubtargetOption::FusionAUIPCAddImmediate},
     OptionName{"fusion-auipc-load", RISCVSubtargetOption::FusionAUIPCLoad},
+    OptionName{"fusion-bfext", RISCVSubtargetOption::FusionBitfieldExtract},
     OptionName{"fusion-ld-add", RISCVSubtargetOption::FusionLoadDoubleAdd},
     OptionName{"fusion-logic-imm-reg", RISCVSubtargetOption::FusionLogicImmediateRegister},
     OptionName{"fusion-logic-reg-imm", RISCVSubtargetOption::FusionLogicRegisterImmediate},
@@ -58,6 +62,7 @@ constexpr std::array OptionNames{
     OptionName{"fusion-lui-load", RISCVSubtargetOption::FusionLUILoad},
     OptionName{"fusion-mul-add", RISCVSubtargetOption::FusionMultiplyAdd},
     OptionName{"fusion-shift-bit-extract", RISCVSubtargetOption::FusionShiftBitExtract},
+    OptionName{"fusion-shxadd-load", RISCVSubtargetOption::FusionShiftedAddLoad},
     OptionName{"fusion-shifted-zextw", RISCVSubtargetOption::FusionShiftedZeroExtendWord},
     OptionName{"fusion-zexth", RISCVSubtargetOption::FusionZeroExtendHalf},
     OptionName{"fusion-zextw", RISCVSubtargetOption::FusionZeroExtendWord},
@@ -171,9 +176,23 @@ bool RISCVSubtargetFeatures::has(RISCVSubtargetOption Option) const noexcept {
   return (Options & optionBit(Option)) != 0;
 }
 
+bool RISCVSubtargetFeatures::hasFeature(std::string_view Feature) const noexcept {
+  if (const OptionName *Option = findOption(Feature))
+    return has(Option->Option);
+  if (const ExtensionName *Extension = findExtension(Feature))
+    return has(Extension->Extension);
+  return false;
+}
+
 RISCVSubtarget::RISCVSubtarget(RISCVSubtargetFeatures Features, RelocationModel Relocation,
                                CodeModel Code)
-    : Features(Features), Relocation(Relocation), Code(Code) {}
+    : Features(Features), Relocation(Relocation), Code(Code),
+      SchedulingHooks(createSchedulingHooks(Features)) {
+  auto Model = createSchedulingModel(*SchedulingHooks);
+  if (!Model)
+    std::abort();
+  SchedulingModel = std::make_unique<TargetSchedulingModel>(std::move(*Model));
+}
 
 RISCVSubtarget::~RISCVSubtarget() = default;
 
@@ -199,6 +218,10 @@ const RISCVRegisterBankInfo *RISCVSubtarget::getRegBankInfo() const {
   if (!RegBankInfo)
     RegBankInfo = std::make_unique<RISCVRegisterBankInfo>();
   return RegBankInfo.get();
+}
+
+const TargetSchedulingModel &RISCVSubtarget::schedulingModel() const noexcept {
+  return *SchedulingModel;
 }
 
 } // namespace rcc::riscv

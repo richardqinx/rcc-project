@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -32,6 +33,7 @@ enum class ScheduleDependencyKind : std::uint8_t {
   Memory,
   Barrier,
   Artificial,
+  Cluster,
   RegisterUnit,
   RegisterMask,
 };
@@ -57,6 +59,8 @@ struct ScheduleUnit final {
   std::uint64_t Depth = 0;
   std::uint64_t Height = 0;
   MachineInstrStableID StableID;
+  std::optional<std::size_t> ClusterPredecessor;
+  std::optional<std::size_t> ClusterSuccessor;
 };
 
 class ScheduleDAG final {
@@ -64,7 +68,7 @@ public:
   [[nodiscard]] static Expected<ScheduleDAG>
   build(MachineBasicBlock &Block, std::span<MachineInstr *const> Instructions,
         const MachineFunction &Function, const TargetDescription &Target,
-        const TargetSchedulingModel &Model, ScheduleDAGMode Mode);
+        const TargetSchedulingModel &Model, ScheduleDAGMode Mode, bool EmitDebugOutput = false);
 
   [[nodiscard]] MachineBasicBlock &block() const noexcept {
     return *Block;
@@ -84,6 +88,7 @@ public:
 
   [[nodiscard]] Expected<void> addArtificialDependency(std::size_t Source, std::size_t Destination,
                                                        std::uint32_t Latency);
+  [[nodiscard]] Expected<bool> fuseInstructionPair(std::size_t First, std::size_t Second);
 
 private:
   explicit ScheduleDAG(MachineBasicBlock &Block) : Block(&Block) {}
@@ -97,9 +102,11 @@ private:
                                                          ScheduleDAGMode Mode);
   [[nodiscard]] Expected<void> buildMemoryDependencies(const TargetDescription &Target);
   [[nodiscard]] Expected<void> buildOrderDependencies(const TargetDescription &Target);
+  [[nodiscard]] bool hasPath(std::size_t Source, std::size_t Destination) const;
+  [[nodiscard]] bool hasDirectDependency(std::size_t Source, std::size_t Destination) const;
   void addDependency(std::size_t Source, std::size_t Destination, ScheduleDependencyKind Kind,
                      std::uint32_t Latency);
-  void computeCriticalPaths();
+  [[nodiscard]] Expected<void> computeCriticalPaths();
 
   MachineBasicBlock *Block;
   std::vector<ScheduleUnit> Units;

@@ -106,6 +106,51 @@ struct NormalizedSchedulingClass final {
   std::uint32_t Latency = 0;
 };
 
+enum class NormalizedMacroFusionInstruction : std::uint8_t {
+  First,
+  Second,
+};
+
+struct NormalizedMacroFusionOpcodePair final {
+  std::uint32_t FirstOpcode = 0;
+  std::uint32_t SecondOpcode = 0;
+};
+
+struct NormalizedMacroFusionImmediatePredicate final {
+  NormalizedMacroFusionInstruction Instruction = NormalizedMacroFusionInstruction::First;
+  std::uint32_t OperandIndex = 0;
+  std::int64_t Minimum = 0;
+  std::int64_t Maximum = 0;
+};
+
+struct NormalizedMacroFusionRegisterInequality final {
+  NormalizedMacroFusionInstruction Instruction = NormalizedMacroFusionInstruction::First;
+  std::uint32_t LeftOperand = 0;
+  std::uint32_t RightOperand = 0;
+};
+
+struct NormalizedMacroFusionImmediateRelation final {
+  std::uint32_t FirstOperand = 0;
+  std::uint32_t SecondOperand = 0;
+};
+
+struct NormalizedMacroFusionRule final {
+  std::string Symbol;
+  std::string Feature;
+  std::vector<std::uint32_t> FirstOpcodes;
+  std::vector<std::uint32_t> SecondOpcodes;
+  std::vector<NormalizedMacroFusionOpcodePair> OpcodePairs;
+  std::vector<NormalizedMacroFusionImmediatePredicate> ImmediatePredicates;
+  std::vector<NormalizedMacroFusionRegisterInequality> RegisterInequalities;
+  std::vector<NormalizedMacroFusionImmediateRelation> ImmediateRelations;
+  std::uint32_t FirstDefinitionOperand = 0;
+  std::uint32_t SecondUseOperand = 0;
+  std::uint32_t SecondDefinitionOperand = 0;
+  std::optional<std::uint32_t> CommutableSecondUseOperand;
+  bool RequireSingleNonDebugUse = false;
+  bool RequireSecondDestinationTie = false;
+};
+
 struct NormalizedEncodingCategory final {
   std::uint32_t ID = 0;
   std::string Symbol;
@@ -347,6 +392,7 @@ struct NormalizedTargetModel final {
   std::vector<NormalizedInstruction> Instructions;
   std::vector<NormalizedSelectionRule> SelectionRules;
   std::vector<NormalizedCombinerRule> CombinerRules;
+  std::vector<NormalizedMacroFusionRule> MacroFusionRules;
 };
 
 [[nodiscard]] std::optional<std::string_view>
@@ -390,6 +436,7 @@ private:
   [[nodiscard]] bool normalizeInstructions(NormalizedTargetModel &Result);
   [[nodiscard]] bool normalizeSelectionRules(NormalizedTargetModel &Result);
   [[nodiscard]] bool normalizeCombinerRules(NormalizedTargetModel &Result);
+  [[nodiscard]] bool normalizeMacroFusionRules(NormalizedTargetModel &Result);
 
   const DescriptionAST &Input;
   std::string SourceName;

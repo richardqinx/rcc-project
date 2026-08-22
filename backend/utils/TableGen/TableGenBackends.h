@@ -19,6 +19,7 @@ struct GeneratedDescription final {
   std::string TargetTables;
   std::string GlobalISel;
   std::string GlobalISelCombiner;
+  std::string MacroFusion;
 };
 
 struct DescriptionGenerationResult final {
@@ -47,6 +48,8 @@ struct DescriptionGenerationResult final {
                                          std::string_view SourceName);
 [[nodiscard]] std::string emitGlobalISelCombiner(const NormalizedTargetModel &Model,
                                                  std::string_view SourceName);
+[[nodiscard]] std::string emitMacroFusion(const NormalizedTargetModel &Model,
+                                          std::string_view SourceName);
 
 [[nodiscard]] DescriptionGenerationResult generateDescription(const std::string &SourceName,
                                                               std::string SourceText);

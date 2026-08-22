@@ -1,17 +1,43 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "RISCV.h"
+#include "rcc/CodeGen/MacroFusion.h"
+#include "rcc/CodeGen/ScheduleDAG.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
+#include <array>
 #include <cstdint>
-#include <cstdlib>
+#include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace rcc::riscv {
 namespace {
+
+#define GET_MACRO_FUSION_RULES
+#include "RISCVGenMacroFusion.inc"
+
+class RISCVSchedulingHooks final : public TargetSchedulingHooks {
+public:
+  explicit RISCVSchedulingHooks(const RISCVSubtargetFeatures &Features) {
+    for (const MacroFusionRule &Rule : generatedMacroFusionRules()) {
+      if (Features.hasFeature(Rule.Feature))
+        MacroFusionRules.push_back(Rule);
+    }
+  }
+
+  [[nodiscard]] Expected<void> mutateScheduleDAG(ScheduleDAG &DAG, const MachineFunction &,
+                                                 const TargetDescription &Target, ScheduleDAGMode,
+                                                 bool EmitDebugOutput) const override {
+    return applyMacroFusion(DAG, MacroFusionRules, Target, EmitDebugOutput);
+  }
+
+private:
+  std::vector<MacroFusionRule> MacroFusionRules;
+};
 
 enum class Resource : std::uint32_t {
   Core = 1,
@@ -72,7 +98,7 @@ enum class PressureSet : std::uint32_t {
   return {};
 }
 
-[[nodiscard]] TargetSchedulingModelDesc createDescription() {
+[[nodiscard]] TargetSchedulingModelDesc createDescription(const TargetSchedulingHooks &Hooks) {
   TargetSchedulingModelDesc Description;
   Description.IssueWidth = 2;
   Description.DispatchLimit = 2;
@@ -121,17 +147,19 @@ enum class PressureSet : std::uint32_t {
         registerClass(RegisterClass::FPR32), registerClass(RegisterClass::FPR32C)},
        32},
   };
+  Description.Hooks = &Hooks;
   return Description;
 }
 
 } // namespace
 
-const TargetSchedulingModel &schedulingModel() noexcept {
-  static const Expected<TargetSchedulingModel> Model =
-      TargetSchedulingModel::create(createDescription());
-  if (!Model)
-    std::abort();
-  return *Model;
+std::unique_ptr<TargetSchedulingHooks>
+createSchedulingHooks(const RISCVSubtargetFeatures &Features) {
+  return std::make_unique<RISCVSchedulingHooks>(Features);
+}
+
+Expected<TargetSchedulingModel> createSchedulingModel(const TargetSchedulingHooks &Hooks) {
+  return TargetSchedulingModel::create(createDescription(Hooks));
 }
 
 } // namespace rcc::riscv

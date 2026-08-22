@@ -3,9 +3,9 @@
 #ifndef RCC_CODEGEN_MIRPARSER_MIPARSER_H
 #define RCC_CODEGEN_MIRPARSER_MIPARSER_H
 
+#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/MachineIRTypes.h"
 #include "rcc/CodeGen/MachineMetadata.h"
-#include "rcc/CodeGen/GlobalObject.h"
 #include "rcc/CodeGen/Register.h"
 #include "rcc/Support/Error.h"
 #include "rcc/Support/TextDiagnostic.h"

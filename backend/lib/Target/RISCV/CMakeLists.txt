@@ -20,6 +20,7 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelShift.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelFloating.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelCombiner.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMacroFusion.rccdesc"
 )
 set(RCCBackendRISCVTableGenArguments)
 foreach(RCCBackendRISCVDescriptionSource IN LISTS RCCBackendRISCVDescriptionSources)
@@ -45,6 +46,10 @@ set(
   RCCBackendRISCVGeneratedGlobalISelCombiner
   "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV/RISCVGenGlobalISelCombiner.inc"
 )
+set(
+  RCCBackendRISCVGeneratedMacroFusion
+  "${RCC_BACKEND_BINARY_DIR}/generated/lib/Target/RISCV/RISCVGenMacroFusion.inc"
+)
 
 add_custom_command(
   OUTPUT
@@ -53,6 +58,7 @@ add_custom_command(
     "${RCCBackendRISCVGeneratedTables}"
     "${RCCBackendRISCVGeneratedGlobalISel}"
     "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
+    "${RCCBackendRISCVGeneratedMacroFusion}"
   COMMAND
     "$<TARGET_FILE:RCCBackendTableGenTool>"
     ${RCCBackendRISCVTableGenArguments}
@@ -61,6 +67,7 @@ add_custom_command(
     --tables "${RCCBackendRISCVGeneratedTables}"
     --global-isel "${RCCBackendRISCVGeneratedGlobalISel}"
     --global-isel-combiner "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
+    --macro-fusion "${RCCBackendRISCVGeneratedMacroFusion}"
   DEPENDS RCCBackendTableGenTool ${RCCBackendRISCVDescriptionSources}
   COMMENT "Generating RCC RV64GC target tables"
   VERBATIM
@@ -74,6 +81,7 @@ add_custom_target(
     "${RCCBackendRISCVGeneratedTables}"
     "${RCCBackendRISCVGeneratedGlobalISel}"
     "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
+    "${RCCBackendRISCVGeneratedMacroFusion}"
 )
 
 set_source_files_properties(
@@ -82,6 +90,7 @@ set_source_files_properties(
   "${RCCBackendRISCVGeneratedTables}"
   "${RCCBackendRISCVGeneratedGlobalISel}"
   "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
+  "${RCCBackendRISCVGeneratedMacroFusion}"
   PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE
 )
 
@@ -117,6 +126,7 @@ add_library(
   "${RCCBackendRISCVGeneratedTables}"
   "${RCCBackendRISCVGeneratedGlobalISel}"
   "${RCCBackendRISCVGeneratedGlobalISelCombiner}"
+  "${RCCBackendRISCVGeneratedMacroFusion}"
 )
 add_library(RCCBackend::RISCV ALIAS RCCBackendRISCV)
 add_dependencies(RCCBackendRISCV RCCBackendRISCVGeneratedTablesTarget)

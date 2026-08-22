@@ -5,14 +5,16 @@
 
 namespace rcc::riscv {
 
-MachineOptimizationPipelineTargetInfo optimizationPipelineInfo() noexcept {
+MachineOptimizationPipelineTargetInfo
+optimizationPipelineInfo(const RISCVSubtarget &Subtarget, bool EmitSchedulerDebugOutput) noexcept {
   return {
       .InstrInfo = instrInfo(),
       .Combiner = machineCombinerInfo(),
       .MemoryFolding = memoryFoldingInfo(),
       .FrameLowering = frameLowering(),
       .PseudoExpansion = pseudoExpansionInfo(),
-      .SchedulingModel = schedulingModel(),
+      .SchedulingModel = Subtarget.schedulingModel(),
+      .SchedulerOptions = {.EmitDebugOutput = EmitSchedulerDebugOutput},
   };
 }
 

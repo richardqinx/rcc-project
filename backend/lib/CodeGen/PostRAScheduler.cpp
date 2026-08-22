@@ -73,9 +73,11 @@ Expected<MachinePassResult> PostRASchedulerPass::run(MachineFunction &Function,
   if (!TrialFrequencies)
     return std::unexpected(TrialFrequencies.error());
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
+  MachineSchedulerOptions TrialOptions = Options;
+  TrialOptions.EmitDebugOutput = false;
   auto TrialRun = runMachineScheduler(*Trial->ClonedFunction, Target, *Model,
                                       ScheduleDAGMode::PostRegisterAllocation, **TrialLiveness,
-                                      **TrialFrequencies, Options, &Actions);
+                                      **TrialFrequencies, TrialOptions, &Actions);
   if (!TrialRun)
     return std::unexpected(TrialRun.error());
   auto TrialRepair =

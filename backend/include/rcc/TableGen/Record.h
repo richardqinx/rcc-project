@@ -143,6 +143,52 @@ struct SourceSchedulingClass final {
   TextRange Range;
 };
 
+struct SourceMacroFusionOpcodePair final {
+  std::string FirstOpcodeSymbol;
+  std::string SecondOpcodeSymbol;
+  TextRange Range;
+};
+
+struct SourceMacroFusionImmediatePredicate final {
+  std::string Instruction;
+  std::uint32_t OperandIndex = 0;
+  std::int64_t Minimum = 0;
+  std::int64_t Maximum = 0;
+  TextRange Range;
+};
+
+struct SourceMacroFusionRegisterInequality final {
+  std::string Instruction;
+  std::uint32_t LeftOperand = 0;
+  std::uint32_t RightOperand = 0;
+  TextRange Range;
+};
+
+struct SourceMacroFusionImmediateRelation final {
+  std::string Kind;
+  std::uint32_t FirstOperand = 0;
+  std::uint32_t SecondOperand = 0;
+  TextRange Range;
+};
+
+struct SourceMacroFusionRule final {
+  std::string Symbol;
+  std::string Feature;
+  std::vector<std::string> FirstOpcodeSymbols;
+  std::vector<std::string> SecondOpcodeSymbols;
+  std::vector<SourceMacroFusionOpcodePair> OpcodePairs;
+  std::vector<SourceMacroFusionImmediatePredicate> ImmediatePredicates;
+  std::vector<SourceMacroFusionRegisterInequality> RegisterInequalities;
+  std::vector<SourceMacroFusionImmediateRelation> ImmediateRelations;
+  std::uint32_t FirstDefinitionOperand = 0;
+  std::uint32_t SecondUseOperand = 0;
+  std::uint32_t SecondDefinitionOperand = 0;
+  std::optional<std::uint32_t> CommutableSecondUseOperand;
+  bool RequireSingleNonDebugUse = false;
+  bool RequireSecondDestinationTie = false;
+  TextRange Range;
+};
+
 struct SourceEncodingCategory final {
   std::uint32_t ID = 0;
   std::string Symbol;
@@ -394,6 +440,7 @@ struct DescriptionAST final {
   std::vector<SourceInstruction> Instructions;
   std::vector<SourceSelectionRule> SelectionRules;
   std::vector<SourceCombinerRule> CombinerRules;
+  std::vector<SourceMacroFusionRule> MacroFusionRules;
 };
 
 [[nodiscard]] std::string lowerASCII(std::string_view Value);

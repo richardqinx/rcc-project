@@ -7,7 +7,9 @@ set(
   CodeEmitterGen.cpp
   GlobalISelEmitter.cpp
   GlobalISelCombinerEmitter.cpp
+  MacroFusionEmitter.cpp
   Common/CodeGenInstruction.cpp
+  Common/CodeGenMacroFusion.cpp
   Common/CodeGenRegisters.cpp
   Common/CodeGenSchedule.cpp
   Common/CodeGenSelection.cpp

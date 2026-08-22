@@ -188,7 +188,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [produces_code, commutable]
     scheduling_class: ALU
     encoding_category: R
     assembly_format: RD_RS1_RS2
@@ -233,7 +233,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [produces_code, commutable]
     scheduling_class: ALU
     encoding_category: R
     assembly_format: RD_RS1_RS2
@@ -248,7 +248,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [produces_code, commutable]
     scheduling_class: ALU
     encoding_category: R
     assembly_format: RD_RS1_RS2
@@ -263,7 +263,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [produces_code, commutable]
     scheduling_class: ALU
     encoding_category: R
     assembly_format: RD_RS1_RS2
@@ -666,7 +666,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS2 }
     num_explicit_defs: 1
-    flags: [produces_code]
+    flags: [produces_code, commutable]
     scheduling_class: ALU
     encoding_category: R
     assembly_format: RD_RS1_RS2

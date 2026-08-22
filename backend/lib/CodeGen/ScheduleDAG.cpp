@@ -168,13 +168,16 @@ maskKeys(const RegisterMask &Mask, const TargetDescription &Target) {
   });
 }
 
+[[nodiscard]] bool isHazardDependency(ScheduleDependencyKind Kind) noexcept {
+  return Kind == ScheduleDependencyKind::Anti || Kind == ScheduleDependencyKind::Output;
+}
+
 } // namespace
 
-Expected<ScheduleDAG> ScheduleDAG::build(MachineBasicBlock &Block,
-                                         std::span<MachineInstr *const> Instructions,
-                                         const MachineFunction &Function,
-                                         const TargetDescription &Target,
-                                         const TargetSchedulingModel &Model, ScheduleDAGMode Mode) {
+Expected<ScheduleDAG>
+ScheduleDAG::build(MachineBasicBlock &Block, std::span<MachineInstr *const> Instructions,
+                   const MachineFunction &Function, const TargetDescription &Target,
+                   const TargetSchedulingModel &Model, ScheduleDAGMode Mode, bool EmitDebugOutput) {
   if (&Block.function() != &Function)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "schedule DAG block belongs to another function");
@@ -191,10 +194,12 @@ Expected<ScheduleDAG> ScheduleDAG::build(MachineBasicBlock &Block,
   auto Order = Result.buildOrderDependencies(Target);
   if (!Order)
     return std::unexpected(Order.error());
-  auto Mutated = Model.hooks().mutateScheduleDAG(Result, Function, Target, Mode);
+  auto Mutated = Model.hooks().mutateScheduleDAG(Result, Function, Target, Mode, EmitDebugOutput);
   if (!Mutated)
     return std::unexpected(Mutated.error());
-  Result.computeCriticalPaths();
+  auto CriticalPaths = Result.computeCriticalPaths();
+  if (!CriticalPaths)
+    return std::unexpected(CriticalPaths.error());
   return Result;
 }
 
@@ -382,13 +387,99 @@ Expected<void> ScheduleDAG::buildRegisterDependencies(const MachineFunction &Fun
 
 Expected<void> ScheduleDAG::addArtificialDependency(std::size_t Source, std::size_t Destination,
                                                     std::uint32_t Latency) {
-  if (Source >= Units.size() || Destination >= Units.size() || Source >= Destination) {
-    return makeUnexpected(
-        ErrorCode::InvalidArgument,
-        "target schedule mutation requires a forward dependency between known units");
+  if (Source >= Units.size() || Destination >= Units.size() || Source == Destination) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "target schedule mutation requires distinct known schedule units");
   }
+  if (hasPath(Destination, Source))
+    return makeUnexpected(ErrorCode::SchedulingFailed,
+                          "target schedule mutation would introduce a dependency cycle");
   addDependency(Source, Destination, ScheduleDependencyKind::Artificial, Latency);
   return {};
+}
+
+bool ScheduleDAG::hasPath(std::size_t Source, std::size_t Destination) const {
+  if (Source >= Units.size() || Destination >= Units.size())
+    return false;
+  std::vector<bool> Visited(Units.size());
+  std::vector<std::size_t> Pending = {Source};
+  Visited[Source] = true;
+  while (!Pending.empty()) {
+    const std::size_t Current = Pending.back();
+    Pending.pop_back();
+    for (const ScheduleDependency &Dependency : Units[Current].Successors) {
+      if (Dependency.Destination == Destination)
+        return true;
+      if (!Visited[Dependency.Destination]) {
+        Visited[Dependency.Destination] = true;
+        Pending.push_back(Dependency.Destination);
+      }
+    }
+  }
+  return false;
+}
+
+bool ScheduleDAG::hasDirectDependency(std::size_t Source, std::size_t Destination) const {
+  if (Source >= Units.size() || Destination >= Units.size())
+    return false;
+  return std::ranges::any_of(Units[Source].Successors,
+                             [Destination](const ScheduleDependency &Dependency) {
+                               return Dependency.Destination == Destination;
+                             });
+}
+
+Expected<bool> ScheduleDAG::fuseInstructionPair(std::size_t First, std::size_t Second) {
+  if (First >= Units.size() || Second >= Units.size() || First == Second) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "macro fusion requires two distinct known schedule units");
+  }
+  ScheduleUnit &FirstUnit = Units[First];
+  ScheduleUnit &SecondUnit = Units[Second];
+  if (FirstUnit.ClusterPredecessor || FirstUnit.ClusterSuccessor || SecondUnit.ClusterPredecessor ||
+      SecondUnit.ClusterSuccessor || hasPath(Second, First)) {
+    return false;
+  }
+
+  struct Binding final {
+    std::size_t Source = 0;
+    std::size_t Destination = 0;
+  };
+  std::vector<Binding> Bindings;
+  const std::vector<ScheduleDependency> FirstSuccessors = FirstUnit.Successors;
+  const std::vector<ScheduleDependency> SecondPredecessors = SecondUnit.Predecessors;
+  for (const ScheduleDependency &Dependency : FirstSuccessors) {
+    if (Dependency.Kind == ScheduleDependencyKind::Cluster || isHazardDependency(Dependency.Kind) ||
+        Dependency.Destination == Second || hasDirectDependency(Dependency.Destination, Second)) {
+      continue;
+    }
+    if (hasPath(Dependency.Destination, Second))
+      return false;
+    Bindings.push_back({Second, Dependency.Destination});
+  }
+  for (const ScheduleDependency &Dependency : SecondPredecessors) {
+    if (Dependency.Kind == ScheduleDependencyKind::Cluster || isHazardDependency(Dependency.Kind) ||
+        Dependency.Source == First || hasDirectDependency(First, Dependency.Source)) {
+      continue;
+    }
+    if (hasPath(First, Dependency.Source))
+      return false;
+    Bindings.push_back({Dependency.Source, First});
+  }
+
+  addDependency(First, Second, ScheduleDependencyKind::Cluster, 0);
+  FirstUnit.ClusterSuccessor = Second;
+  SecondUnit.ClusterPredecessor = First;
+  for (ScheduleDependency &Dependency : FirstUnit.Successors) {
+    if (Dependency.Destination == Second)
+      Dependency.Latency = 0;
+  }
+  for (ScheduleDependency &Dependency : SecondUnit.Predecessors) {
+    if (Dependency.Source == First)
+      Dependency.Latency = 0;
+  }
+  for (const Binding &Binding : Bindings)
+    addDependency(Binding.Source, Binding.Destination, ScheduleDependencyKind::Artificial, 0);
+  return true;
 }
 
 Expected<void> ScheduleDAG::buildMemoryDependencies(const TargetDescription &Target) {
@@ -488,8 +579,38 @@ void ScheduleDAG::addDependency(std::size_t Source, std::size_t Destination,
   Units[Destination].Predecessors.push_back(Dependency);
 }
 
-void ScheduleDAG::computeCriticalPaths() {
-  for (ScheduleUnit &Unit : Units) {
+Expected<void> ScheduleDAG::computeCriticalPaths() {
+  std::vector<std::size_t> RemainingPredecessors;
+  RemainingPredecessors.reserve(Units.size());
+  for (const ScheduleUnit &Unit : Units)
+    RemainingPredecessors.push_back(Unit.Predecessors.size());
+  std::vector<std::size_t> TopologicalOrder;
+  TopologicalOrder.reserve(Units.size());
+  std::vector<bool> Emitted(Units.size());
+  for (std::size_t Count = 0; Count < Units.size(); ++Count) {
+    std::optional<std::size_t> Next;
+    for (const ScheduleUnit &Unit : Units) {
+      if (!Emitted[Unit.ID] && RemainingPredecessors[Unit.ID] == 0) {
+        Next = Unit.ID;
+        break;
+      }
+    }
+    if (!Next) {
+      return makeUnexpected(ErrorCode::SchedulingFailed,
+                            "schedule DAG contains a cyclic target mutation");
+    }
+    Emitted[*Next] = true;
+    TopologicalOrder.push_back(*Next);
+    for (const ScheduleDependency &Dependency : Units[*Next].Successors) {
+      if (RemainingPredecessors[Dependency.Destination] == 0) {
+        return makeUnexpected(ErrorCode::InternalError,
+                              "schedule DAG predecessor count underflowed");
+      }
+      --RemainingPredecessors[Dependency.Destination];
+    }
+  }
+  for (const std::size_t ID : TopologicalOrder) {
+    ScheduleUnit &Unit = Units[ID];
     Unit.Depth = 0;
     for (const ScheduleDependency &Dependency : Unit.Predecessors) {
       Unit.Depth =
@@ -497,18 +618,20 @@ void ScheduleDAG::computeCriticalPaths() {
                                              static_cast<std::uint64_t>(Dependency.Latency)));
     }
   }
-  for (auto Position = Units.rbegin(); Position != Units.rend(); ++Position) {
-    Position->Height = Position->Latency;
-    for (const ScheduleDependency &Dependency : Position->Successors) {
-      Position->Height =
-          std::max(Position->Height, saturatingAdd(Units[Dependency.Destination].Height,
-                                                   static_cast<std::uint64_t>(Dependency.Latency)));
+  for (auto Position = TopologicalOrder.rbegin(); Position != TopologicalOrder.rend(); ++Position) {
+    ScheduleUnit &Unit = Units[*Position];
+    Unit.Height = Unit.Latency;
+    for (const ScheduleDependency &Dependency : Unit.Successors) {
+      Unit.Height =
+          std::max(Unit.Height, saturatingAdd(Units[Dependency.Destination].Height,
+                                              static_cast<std::uint64_t>(Dependency.Latency)));
     }
   }
   for (ScheduleUnit &Unit : Units) {
     std::ranges::sort(Unit.Predecessors, {}, &ScheduleDependency::Source);
     std::ranges::sort(Unit.Successors, {}, &ScheduleDependency::Destination);
   }
+  return {};
 }
 
 } // namespace rcc

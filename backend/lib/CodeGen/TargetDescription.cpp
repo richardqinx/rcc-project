@@ -345,10 +345,10 @@ Expected<void> TargetDescription::validateTargetOperand(const OperandDescriptor 
     if (!EffectiveClass || !Registers.isSubclass(*EffectiveClass, *Descriptor->RegClass)) {
       const std::string ActualClass =
           EffectiveClass ? std::to_string(EffectiveClass->value()) : "<none>";
-      return makeUnexpected(
-          ErrorCode::VerificationError,
-          "virtual register class " + ActualClass + " does not satisfy required class " +
-              std::to_string(Descriptor->RegClass->value()));
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "virtual register class " + ActualClass +
+                                " does not satisfy required class " +
+                                std::to_string(Descriptor->RegClass->value()));
     }
   }
   return {};
@@ -469,9 +469,9 @@ TargetDescription::validateExplicitOperands(Opcode InstructionOpcode,
     auto TargetValidation =
         validateTargetOperand(&descriptorForOperand(*Descriptor, Index), Operands[Index], RegInfo);
     if (!TargetValidation)
-      return std::unexpected(withErrorContext(
-          TargetValidation.error(), "operand " + std::to_string(Index) + " of '" +
-              Descriptor->Name + "': "));
+      return std::unexpected(
+          withErrorContext(TargetValidation.error(), "operand " + std::to_string(Index) + " of '" +
+                                                         Descriptor->Name + "': "));
   }
   return {};
 }
