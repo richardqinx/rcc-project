@@ -4,14 +4,15 @@
 #define RCC_CODEGEN_PROLOGUEEPILOGUEINSERTION_H
 
 #include "rcc/CodeGen/MachinePassManager.h"
+#include "rcc/CodeGen/TargetFrameLowering.h"
 
 namespace rcc {
 
-class TargetFrameLowering;
-
 class PrologueEpilogueInsertionPass final : public MachineFunctionPass {
 public:
-  explicit PrologueEpilogueInsertionPass(const TargetFrameLowering &Info) noexcept : Info(&Info) {}
+  explicit PrologueEpilogueInsertionPass(const TargetFrameLowering &Info,
+                                         FrameLoweringOptions Options = {}) noexcept
+      : Info(&Info), Options(Options) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
@@ -20,9 +21,11 @@ public:
 
 private:
   [[nodiscard]] Expected<MachinePassResult>
-  runImplementation(MachineFunction &Function, const TargetDescription &Target) const;
+  runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                    FrameLoweringOptions RunOptions) const;
 
   const TargetFrameLowering *Info;
+  FrameLoweringOptions Options;
 };
 
 } // namespace rcc

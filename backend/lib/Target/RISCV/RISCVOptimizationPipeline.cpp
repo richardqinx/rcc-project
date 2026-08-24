@@ -5,8 +5,9 @@
 
 namespace rcc::riscv {
 
-MachineOptimizationPipelineTargetInfo
-optimizationPipelineInfo(const RISCVSubtarget &Subtarget, bool EmitSchedulerDebugOutput) noexcept {
+MachineOptimizationPipelineTargetInfo optimizationPipelineInfo(const RISCVSubtarget &Subtarget,
+                                                               bool EmitSchedulerDebugOutput,
+                                                               bool EmitFrameDebugOutput) noexcept {
   return {
       .InstrInfo = instrInfo(),
       .Combiner = machineCombinerInfo(),
@@ -15,6 +16,7 @@ optimizationPipelineInfo(const RISCVSubtarget &Subtarget, bool EmitSchedulerDebu
       .PseudoExpansion = pseudoExpansionInfo(),
       .SchedulingModel = Subtarget.schedulingModel(),
       .SchedulerOptions = {.EmitDebugOutput = EmitSchedulerDebugOutput},
+      .FrameOptions = {.EmitDebugOutput = EmitFrameDebugOutput},
   };
 }
 

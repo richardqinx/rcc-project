@@ -63,11 +63,11 @@ public:
                                   bool SkipFrameIndexElimination = false) noexcept
       : Delegate(&Delegate), SkipFrameIndexElimination(SkipFrameIndexElimination) {}
 
-  [[nodiscard]] rcc::Expected<void>
-  prepareFrame(rcc::MachineFunction &Function,
-               const rcc::TargetDescription &Target) const override {
+  [[nodiscard]] rcc::Expected<void> prepareFrame(rcc::MachineFunction &Function,
+                                                 const rcc::TargetDescription &Target,
+                                                 rcc::FrameLoweringOptions Options) const override {
     PrepareSawUnfrozen = !Function.frameInfo().isFrozen();
-    return Delegate->prepareFrame(Function, Target);
+    return Delegate->prepareFrame(Function, Target, Options);
   }
 
   [[nodiscard]] rcc::Expected<void>

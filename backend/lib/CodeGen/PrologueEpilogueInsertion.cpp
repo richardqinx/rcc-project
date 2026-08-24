@@ -55,7 +55,7 @@ Expected<MachinePassResult> PrologueEpilogueInsertionPass::run(MachineFunction &
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
   if (!Trial)
     return std::unexpected(withErrorContext(Trial.error(), "frame transaction setup failed: "));
-  auto TrialRun = runImplementation(*Trial->ClonedFunction, Target);
+  auto TrialRun = runImplementation(*Trial->ClonedFunction, Target, {});
   if (!TrialRun)
     return std::unexpected(
         withErrorContext(TrialRun.error(), "frame transaction rejected input: "));
@@ -75,7 +75,7 @@ Expected<MachinePassResult> PrologueEpilogueInsertionPass::run(MachineFunction &
         withErrorContext(Verified.error(), "frame transaction postcondition failed: "));
   }
 
-  auto Result = runImplementation(Function, Target);
+  auto Result = runImplementation(Function, Target, Options);
   if (!Result) {
     return std::unexpected(withErrorContext(
         Result.error(), "frame lowering diverged after successful transaction preflight: "));
@@ -85,8 +85,9 @@ Expected<MachinePassResult> PrologueEpilogueInsertionPass::run(MachineFunction &
 
 Expected<MachinePassResult>
 PrologueEpilogueInsertionPass::runImplementation(MachineFunction &Function,
-                                                 const TargetDescription &Target) const {
-  auto Prepared = Info->prepareFrame(Function, Target);
+                                                 const TargetDescription &Target,
+                                                 FrameLoweringOptions RunOptions) const {
+  auto Prepared = Info->prepareFrame(Function, Target, RunOptions);
   if (!Prepared)
     return std::unexpected(Prepared.error());
 

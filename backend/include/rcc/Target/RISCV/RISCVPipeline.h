@@ -25,6 +25,7 @@ struct RISCVPipelineOptions final {
   bool UseTargetCopyInstructions = false;
   GlobalISelAbortMode GlobalISelAbort = GlobalISelAbortMode::Enable;
   bool DebugMachineScheduler = false;
+  bool DebugPrologueEpilogue = false;
 };
 
 [[nodiscard]] Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,

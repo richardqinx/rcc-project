@@ -5,6 +5,7 @@
 
 #include "rcc/CodeGen/MachinePassManager.h"
 #include "rcc/CodeGen/MachineScheduler.h"
+#include "rcc/CodeGen/TargetFrameLowering.h"
 
 namespace rcc {
 
@@ -23,6 +24,7 @@ struct MachineOptimizationPipelineTargetInfo final {
   const TargetPseudoExpansionInfo &PseudoExpansion;
   const TargetSchedulingModel &SchedulingModel;
   MachineSchedulerOptions SchedulerOptions;
+  FrameLoweringOptions FrameOptions;
 };
 
 struct MachineOptimizationPipelineOptions final {

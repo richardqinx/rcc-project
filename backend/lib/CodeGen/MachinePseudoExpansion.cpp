@@ -169,7 +169,6 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
     MachinePassContract Value{
         .Name = "target-late-pseudo-expansion",
         .Requires = {MachineFunctionProperty::NoPHIs, MachineFunctionProperty::NoVRegs,
-                     MachineFunctionProperty::TracksLiveness,
                      MachineFunctionProperty::FrameFinalized,
                      MachineFunctionProperty::NoFrameIndices},
         .Sets = {},

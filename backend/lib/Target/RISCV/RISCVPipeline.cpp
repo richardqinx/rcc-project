@@ -61,7 +61,8 @@ template <typename PassT, typename... ArgumentT>
                                                 const RISCVSubtarget &Subtarget,
                                                 RISCVPipelineOptions Options) {
   auto Added = addSelectedSSAOptimizationPipeline(
-      Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler));
+      Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
+                                         Options.DebugPrologueEpilogue));
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<PHIEliminationPass>(Pipeline, instrInfo());
@@ -77,7 +78,8 @@ template <typename PassT, typename... ArgumentT>
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPreRegisterAllocationOptimizationPipeline(
-      Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler));
+      Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
+                                         Options.DebugPrologueEpilogue));
   if (!Added)
     return std::unexpected(Added.error());
   return addPass<PBQPAllocatorPass>(Pipeline, registerAllocationInfo());
@@ -96,7 +98,9 @@ template <typename PassT, typename... ArgumentT>
   if (!Added)
     return std::unexpected(Added.error());
   return addPostRegisterAllocationPipeline(
-      Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler),
+      Pipeline,
+      optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
+                               Options.DebugPrologueEpilogue),
       MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
                                              Options.UseTargetCopyInstructions});
 }
@@ -128,7 +132,8 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
   }
   if (!Function.properties().has(MachineFunctionProperty::TiedOpsRewritten)) {
     auto Added = addSelectedSSAOptimizationPipeline(
-        Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler));
+        Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
+                                           Options.DebugPrologueEpilogue));
     if (!Added)
       return std::unexpected(Added.error());
     if (!Function.properties().has(MachineFunctionProperty::NoPHIs)) {
@@ -149,7 +154,9 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
   }
   if (!Function.properties().has(MachineFunctionProperty::NoExecutablePseudos)) {
     auto Added = addPostRegisterAllocationPipeline(
-        Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler),
+        Pipeline,
+        optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
+                                 Options.DebugPrologueEpilogue),
         MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
                                                Options.UseTargetCopyInstructions});
     if (!Added)

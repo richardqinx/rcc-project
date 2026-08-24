@@ -37,8 +37,8 @@ createSchedulingModel(const TargetSchedulingHooks &Hooks);
 [[nodiscard]] const TargetMemoryFoldingInfo &memoryFoldingInfo() noexcept;
 [[nodiscard]] const TargetPseudoExpansionInfo &pseudoExpansionInfo() noexcept;
 [[nodiscard]] MachineOptimizationPipelineTargetInfo
-optimizationPipelineInfo(const RISCVSubtarget &Subtarget,
-                         bool EmitSchedulerDebugOutput = false) noexcept;
+optimizationPipelineInfo(const RISCVSubtarget &Subtarget, bool EmitSchedulerDebugOutput = false,
+                         bool EmitFrameDebugOutput = false) noexcept;
 
 } // namespace riscv
 } // namespace rcc

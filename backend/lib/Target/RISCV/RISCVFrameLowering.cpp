@@ -24,6 +24,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <optional>
@@ -171,7 +172,12 @@ struct CallFrameRequirement final {
 }
 
 [[nodiscard]] bool requiresBasePointer(const MachineFunction &Function) noexcept {
-  return requiresStackRealignment(Function);
+  const MachineFrameInfo &Frame = Function.frameInfo();
+  const bool HasReservedCallFrame =
+      !hasVariableObject(Function) && !Frame.state().HasOpaqueSPAdjustment;
+  return requiresStackRealignment(Function) &&
+         (hasVariableObject(Function) ||
+          (!HasReservedCallFrame && Frame.maxCallFrameSize().value_or(0) != 0));
 }
 
 [[nodiscard]] Expected<void> validateFrameRegisterUses(const MachineFunction &Function,
@@ -205,53 +211,6 @@ struct CallFrameRequirement final {
               ErrorCode::VerificationError,
               "RISC-V post-allocation code uses a register reserved for frame lowering");
         }
-      }
-    }
-  }
-  if (!requiresStackRealignment(Function))
-    return {};
-  auto OldFPScratch = physicalRegister(PhysicalRegisterID::X5);
-  if (!OldFPScratch)
-    return std::unexpected(OldFPScratch.error());
-  const auto OverlapsScratch = [&](PhysicalRegister Reg) {
-    return Target.registers().regsOverlap(Reg, *OldFPScratch);
-  };
-  if (std::ranges::any_of(Function.registerInfo().liveIns(), [&](const PhysicalRegisterLiveIn &In) {
-        return OverlapsScratch(In.PhysReg);
-      })) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V realignment scratch register is a function live-in");
-  }
-  const MachineBasicBlock *Entry = Function.firstBlock();
-  if (Entry == nullptr)
-    return {};
-  if (std::ranges::any_of(Entry->liveIns(), [&](const MachineBasicBlockLiveIn &In) {
-        return OverlapsScratch(In.PhysReg);
-      })) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V realignment scratch register is an entry live-in");
-  }
-  bool Defined = false;
-  for (const MachineInstr *Instruction = Entry->firstInstruction(); Instruction != nullptr;
-       Instruction = Instruction->next()) {
-    for (const MachineOperand &Operand : Instruction->operands()) {
-      const Register *Reg = Operand.getIf<Register>();
-      const auto Physical =
-          Reg != nullptr && Reg->isPhysical() ? Reg->physicalRegister() : std::nullopt;
-      if (Physical && OverlapsScratch(*Physical) && Operand.isUse() && !Operand.isDebugUse() &&
-          !Operand.registerFlags().has(RegisterOperandFlag::Undef) && !Defined) {
-        return makeUnexpected(ErrorCode::VerificationError,
-                              "RISC-V realignment scratch register is used before its first def");
-      }
-    }
-    for (const MachineOperand &Operand : Instruction->operands()) {
-      const Register *Reg = Operand.getIf<Register>();
-      const auto Physical =
-          Reg != nullptr && Reg->isPhysical() ? Reg->physicalRegister() : std::nullopt;
-      Defined |= Physical && OverlapsScratch(*Physical) && Operand.isDef();
-      if (const auto *Mask = Operand.getIf<RegisterMaskOperand>();
-          Mask != nullptr && Mask->Mask && Mask->Mask->clobbers(*OldFPScratch)) {
-        Defined = true;
       }
     }
   }
@@ -589,6 +548,39 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
 [[nodiscard]] Expected<void> emitConstant(MachineIRBuilder &Builder, PhysicalRegister Destination,
                                           PhysicalRegister Zero, std::int64_t Value,
                                           std::optional<MachineInstrFlag> Flag) {
+  if (Value > MaxSigned12 && Value <= std::numeric_limits<std::int32_t>::max()) {
+    const std::int64_t Upper = (Value + 0x800) >> 12;
+    const std::int64_t Lower = Value - (Upper << 12);
+    auto High = Builder.buildInstr(instructionOpcode(InstructionOpcode::LUI));
+    if (!High)
+      return std::unexpected(High.error());
+    if (auto Result = High->addDef(Register::fromPhysical(Destination)); !Result)
+      return std::unexpected(Result.error());
+    if (auto Result = High->addImmediate(Upper); !Result)
+      return std::unexpected(Result.error());
+    if (auto Result = setFrameFlag(*High, Flag); !Result)
+      return std::unexpected(Result.error());
+    if (auto Result = High->build(); !Result)
+      return std::unexpected(Result.error());
+    if (Lower == 0)
+      return {};
+    auto Low = Builder.buildInstr(instructionOpcode(InstructionOpcode::ADDI));
+    if (!Low)
+      return std::unexpected(Low.error());
+    if (auto Result = Low->addDef(Register::fromPhysical(Destination)); !Result)
+      return std::unexpected(Result.error());
+    if (auto Result = Low->addUse(Register::fromPhysical(Destination)); !Result)
+      return std::unexpected(Result.error());
+    if (auto Result = Low->addImmediate(Lower); !Result)
+      return std::unexpected(Result.error());
+    if (auto Result = setFrameFlag(*Low, Flag); !Result)
+      return std::unexpected(Result.error());
+    auto Built = Low->build();
+    if (!Built)
+      return std::unexpected(Built.error());
+    return {};
+  }
+
   std::uint64_t Remaining = static_cast<std::uint64_t>(Value);
   std::vector<std::int64_t> Digits;
   while (!fitsSigned12(std::bit_cast<std::int64_t>(Remaining))) {
@@ -669,6 +661,75 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   return {};
 }
 
+[[nodiscard]] Expected<void> emitRegisterSub(MachineIRBuilder &Builder,
+                                             PhysicalRegister Destination, PhysicalRegister Left,
+                                             PhysicalRegister Right,
+                                             std::optional<MachineInstrFlag> Flag) {
+  auto Sub = Builder.buildInstr(instructionOpcode(InstructionOpcode::SUB));
+  if (!Sub)
+    return std::unexpected(Sub.error());
+  if (auto Result = Sub->addDef(Register::fromPhysical(Destination)); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = Sub->addUse(Register::fromPhysical(Left)); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = Sub->addUse(Register::fromPhysical(Right)); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = setFrameFlag(*Sub, Flag); !Result)
+    return std::unexpected(Result.error());
+  auto Built = Sub->build();
+  if (!Built)
+    return std::unexpected(Built.error());
+  return {};
+}
+
+[[nodiscard]] Expected<void> emitShiftImmediate(MachineIRBuilder &Builder, Opcode OpcodeValue,
+                                                PhysicalRegister Destination,
+                                                PhysicalRegister Source, std::int64_t Amount,
+                                                std::optional<MachineInstrFlag> Flag) {
+  auto Shift = Builder.buildInstr(OpcodeValue);
+  if (!Shift)
+    return std::unexpected(Shift.error());
+  if (auto Result = Shift->addDef(Register::fromPhysical(Destination)); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = Shift->addUse(Register::fromPhysical(Source)); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = Shift->addImmediate(Amount); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = setFrameFlag(*Shift, Flag); !Result)
+    return std::unexpected(Result.error());
+  auto Built = Shift->build();
+  if (!Built)
+    return std::unexpected(Built.error());
+  return {};
+}
+
+[[nodiscard]] Expected<void> emitScratchAccess(MachineIRBuilder &Builder, PhysicalRegister Scratch,
+                                               FrameIndexReference Reference, bool Restore) {
+  auto Memory = createResolvedStackMemory(
+      Builder.function(), Restore ? MemoryAccessFlag::Load : MemoryAccessFlag::Store,
+      Reference.Offset);
+  if (!Memory)
+    return std::unexpected(Memory.error());
+  auto Pending = Builder.buildInstr(
+      instructionOpcode(Restore ? InstructionOpcode::LD : InstructionOpcode::SD));
+  if (!Pending)
+    return std::unexpected(Pending.error());
+  auto Value = Restore ? Pending->addDef(Register::fromPhysical(Scratch))
+                       : Pending->addUse(Register::fromPhysical(Scratch));
+  if (!Value)
+    return std::unexpected(Value.error());
+  if (auto Result = Pending->addUse(Register::fromPhysical(Reference.BaseRegister)); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = Pending->addImmediate(Reference.Offset); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = Pending->addMemOperand(**Memory); !Result)
+    return std::unexpected(Result.error());
+  auto Built = Pending->build();
+  if (!Built)
+    return std::unexpected(Built.error());
+  return {};
+}
+
 [[nodiscard]] Expected<void> emitAddImmediate(MachineIRBuilder &Builder,
                                               PhysicalRegister Destination, PhysicalRegister Source,
                                               std::int64_t Amount,
@@ -711,31 +772,14 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   return {};
 }
 
-[[nodiscard]] Expected<void> emitRegisterAnd(MachineIRBuilder &Builder,
-                                             PhysicalRegister Destination, PhysicalRegister Left,
-                                             PhysicalRegister Right,
-                                             std::optional<MachineInstrFlag> Flag) {
-  auto And = Builder.buildInstr(instructionOpcode(InstructionOpcode::AND));
-  if (!And)
-    return std::unexpected(And.error());
-  if (auto Result = And->addDef(Register::fromPhysical(Destination)); !Result)
-    return std::unexpected(Result.error());
-  if (auto Result = And->addUse(Register::fromPhysical(Left)); !Result)
-    return std::unexpected(Result.error());
-  if (auto Result = And->addUse(Register::fromPhysical(Right)); !Result)
-    return std::unexpected(Result.error());
-  if (auto Result = setFrameFlag(*And, Flag); !Result)
-    return std::unexpected(Result.error());
-  auto Built = And->build();
-  if (!Built)
-    return std::unexpected(Built.error());
-  return {};
-}
-
-[[nodiscard]] std::array<PhysicalRegisterID, 7> scratchOrder() noexcept {
-  return {PhysicalRegisterID::X5,  PhysicalRegisterID::X6,  PhysicalRegisterID::X7,
-          PhysicalRegisterID::X28, PhysicalRegisterID::X29, PhysicalRegisterID::X30,
-          PhysicalRegisterID::X31};
+[[nodiscard]] std::array<PhysicalRegisterID, 15> scratchOrder() noexcept {
+  return {
+      PhysicalRegisterID::X10, PhysicalRegisterID::X11, PhysicalRegisterID::X12,
+      PhysicalRegisterID::X13, PhysicalRegisterID::X14, PhysicalRegisterID::X15,
+      PhysicalRegisterID::X16, PhysicalRegisterID::X17, PhysicalRegisterID::X5,
+      PhysicalRegisterID::X6,  PhysicalRegisterID::X7,  PhysicalRegisterID::X28,
+      PhysicalRegisterID::X29, PhysicalRegisterID::X30, PhysicalRegisterID::X31,
+  };
 }
 
 [[nodiscard]] Expected<std::vector<PhysicalRegister>> scratchRegisters() {
@@ -769,8 +813,8 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   return Function.frameInfo().createObject(std::move(Description));
 }
 
-[[nodiscard]] Expected<std::uint64_t> layoutFrame(MachineFunction &Function, bool HasFP,
-                                                  bool ReserveCallFrame) {
+[[nodiscard]] Expected<std::uint64_t> layoutFrame(MachineFunction &Function, bool ReserveCallFrame,
+                                                  bool EmitDebugOutput = false) {
   MachineFrameInfo &Frame = Function.frameInfo();
   const std::uint64_t CallFrame = ReserveCallFrame ? Frame.maxCallFrameSize().value_or(0) : 0;
   auto Initial = alignTo(CallFrame, StackAlignmentBytes);
@@ -780,6 +824,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
 
   std::vector<const StackObject *> Specials;
   std::vector<const StackObject *> Locals;
+  std::vector<const StackObject *> Emergencies;
   std::vector<const StackObject *> PreallocatedLocals;
   std::uint64_t LocalBlobSize = Frame.state().LocalFrameSize;
   std::uint64_t LocalBlobAlignment = 1;
@@ -821,9 +866,10 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
     }
     if (Object.isFixed())
       continue;
-    if (Description.Kind == StackObjectKind::CalleeSaved ||
-        Description.Kind == StackObjectKind::EmergencySpill) {
+    if (Description.Kind == StackObjectKind::CalleeSaved) {
       Specials.push_back(&Object);
+    } else if (Description.Kind == StackObjectKind::EmergencySpill) {
+      Emergencies.push_back(&Object);
     } else {
       Locals.push_back(&Object);
     }
@@ -839,6 +885,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   };
   std::ranges::sort(Locals, Order);
   std::ranges::sort(Specials, Order);
+  std::ranges::sort(Emergencies, Order);
   std::ranges::sort(PreallocatedLocals, [](const StackObject *Left, const StackObject *Right) {
     return Left->index().value() < Right->index().value();
   });
@@ -846,14 +893,14 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   const auto Place = [&](std::span<const StackObject *const> Objects) -> Expected<void> {
     for (const StackObject *Object : Objects) {
       const StackObjectDesc &Description = *Object->description();
-      auto Aligned = alignTo(Cursor, Description.Align.bytes());
-      if (!Aligned)
-        return std::unexpected(Aligned.error());
-      Cursor = *Aligned;
       if (Description.Size.value_or(0) > std::numeric_limits<std::uint64_t>::max() - Cursor) {
         return makeUnexpected(ErrorCode::FrameLayoutFailed, "RISC-V frame size overflows uint64");
       }
       Cursor += Description.Size.value_or(0);
+      auto Aligned = alignTo(Cursor, Description.Align.bytes());
+      if (!Aligned)
+        return std::unexpected(Aligned.error());
+      Cursor = *Aligned;
       if (Cursor > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
         return makeUnexpected(ErrorCode::FrameLayoutFailed,
                               "RISC-V frame offset exceeds signed 64-bit range");
@@ -897,22 +944,18 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
     return {};
   };
 
-  if (!HasFP || requiresStackRealignment(Function)) {
-    auto Placed = Place(Specials);
-    if (!Placed)
-      return std::unexpected(Placed.error());
-  }
+  auto PlacedSpecials = Place(Specials);
+  if (!PlacedSpecials)
+    return std::unexpected(PlacedSpecials.error());
   auto PlacedLocals = Place(Locals);
   if (!PlacedLocals)
     return std::unexpected(PlacedLocals.error());
   auto PlacedPreallocated = PlacePreallocated();
   if (!PlacedPreallocated)
     return std::unexpected(PlacedPreallocated.error());
-  if (HasFP && !requiresStackRealignment(Function)) {
-    auto Placed = Place(Specials);
-    if (!Placed)
-      return std::unexpected(Placed.error());
-  }
+  auto PlacedEmergencies = Place(Emergencies);
+  if (!PlacedEmergencies)
+    return std::unexpected(PlacedEmergencies.error());
 
   for (const StackObject &Object : Frame.objects()) {
     if (Object.isTombstone() || Object.description()->IsDead || Object.isVariableSized())
@@ -933,14 +976,49 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   auto UpdatedState = Frame.setState(std::move(State));
   if (!UpdatedState)
     return std::unexpected(UpdatedState.error());
+  const std::uint64_t SizeBeforeFinalAlignment = Cursor;
   auto FinalSize = alignTo(Cursor, MaximumAlignment);
   if (!FinalSize)
     return std::unexpected(FinalSize.error());
+  if (*FinalSize != SizeBeforeFinalAlignment) {
+    const std::uint64_t Delta = *FinalSize - SizeBeforeFinalAlignment;
+    if (Delta > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      return makeUnexpected(ErrorCode::FrameLayoutFailed,
+                            "RISC-V emergency spill adjustment exceeds int64");
+    }
+    if (EmitDebugOutput && !Emergencies.empty())
+      std::cerr << "Adjusting emergency spill slots!\n";
+    for (const StackObject *Object : Emergencies) {
+      if (!Object->description()->Offset)
+        return makeUnexpected(ErrorCode::InternalError,
+                              "RISC-V emergency spill slot has no preliminary offset");
+      const std::int64_t PreliminaryOffset = *Object->description()->Offset;
+      auto Adjusted = checkedAdd(PreliminaryOffset, -static_cast<std::int64_t>(Delta));
+      if (!Adjusted)
+        return std::unexpected(Adjusted.error());
+      if (EmitDebugOutput) {
+        std::cerr << "Adjusting offset of emergency spill slot #" << Object->index().value()
+                  << " from " << PreliminaryOffset << " to " << *Adjusted << '\n';
+      }
+      auto Set = Frame.setObjectOffset(Object->index(), *Adjusted);
+      if (!Set)
+        return std::unexpected(Set.error());
+    }
+  }
   if (*FinalSize > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
     return makeUnexpected(ErrorCode::FrameLayoutFailed,
                           "RISC-V frame size exceeds signed 64-bit range");
   }
   return *FinalSize;
+}
+
+[[nodiscard]] std::uint64_t firstSPAdjustAmount(const MachineFunction &Function) noexcept {
+  const std::uint64_t StackSize = Function.frameInfo().state().StackSize;
+  if (StackSize <= static_cast<std::uint64_t>(MaxSigned12) ||
+      Function.records().calleeSavedRegisters().empty()) {
+    return 0;
+  }
+  return 2048U - StackAlignmentBytes;
 }
 
 [[nodiscard]] Expected<std::int64_t> objectReferenceOffset(const MachineFunction &Function,
@@ -954,8 +1032,20 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   std::int64_t BaseOffset = *Object.Offset;
   if (Object.LocalOffset && isOutgoingCallObject(Object))
     BaseOffset = *Object.LocalOffset;
-  else if (Object.Kind == StackObjectKind::FixedABI ||
-           Object.Kind == StackObjectKind::FixedSpillSlot) {
+  else if (Object.Kind == StackObjectKind::CalleeSaved) {
+    const std::uint64_t FirstAdjustment = firstSPAdjustAmount(Function);
+    const std::uint64_t Adjustment =
+        FirstAdjustment == 0 ? Function.frameInfo().state().StackSize : FirstAdjustment;
+    if (Adjustment > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      return makeUnexpected(ErrorCode::FrameLayoutFailed,
+                            "RISC-V callee-save adjustment exceeds int64");
+    }
+    auto Added = checkedAdd(BaseOffset, static_cast<std::int64_t>(Adjustment));
+    if (!Added)
+      return std::unexpected(Added.error());
+    BaseOffset = *Added;
+  } else if (Object.Kind == StackObjectKind::FixedABI ||
+             Object.Kind == StackObjectKind::FixedSpillSlot) {
     if (!HasFP) {
       if (Function.frameInfo().state().StackSize >
           static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
@@ -968,7 +1058,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
         return std::unexpected(Added.error());
       BaseOffset = *Added;
     }
-  } else if (!HasFP || requiresBasePointer(Function) ||
+  } else if (!HasFP || requiresBasePointer(Function) || requiresStackRealignment(Function) ||
              Instruction.flags().has(MachineInstrFlag::FrameSetup)) {
     if (Function.frameInfo().state().StackSize >
         static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
@@ -992,25 +1082,19 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   }
   PhysicalRegisterID BaseID = PhysicalRegisterID::X2;
   std::int64_t Offset = *Object.Offset;
-  bool UsesPostAllocationBase = true;
   if (requiresBasePointer(Function)) {
     BaseID = PhysicalRegisterID::X9;
-  } else if (requiresFramePointer(Function)) {
-    BaseID = PhysicalRegisterID::X8;
-    UsesPostAllocationBase = false;
   }
-  if (UsesPostAllocationBase) {
-    if (Function.frameInfo().state().StackSize >
-        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
-      return makeUnexpected(ErrorCode::FrameLayoutFailed,
-                            "RISC-V stack size exceeds signed 64-bit range");
-    }
-    auto Adjusted =
-        checkedAdd(Offset, static_cast<std::int64_t>(Function.frameInfo().state().StackSize));
-    if (!Adjusted)
-      return std::unexpected(Adjusted.error());
-    Offset = *Adjusted;
+  if (Function.frameInfo().state().StackSize >
+      static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+    return makeUnexpected(ErrorCode::FrameLayoutFailed,
+                          "RISC-V stack size exceeds signed 64-bit range");
   }
+  auto Adjusted =
+      checkedAdd(Offset, static_cast<std::int64_t>(Function.frameInfo().state().StackSize));
+  if (!Adjusted)
+    return std::unexpected(Adjusted.error());
+  Offset = *Adjusted;
   auto Base = physicalRegister(BaseID);
   if (!Base)
     return std::unexpected(Base.error());
@@ -1178,7 +1262,8 @@ public:
   }
 
   [[nodiscard]] Expected<void> prepareFrame(MachineFunction &Function,
-                                            const TargetDescription &Target) const override {
+                                            const TargetDescription &Target,
+                                            FrameLoweringOptions Options) const override {
     MachineFrameInfo &Frame = Function.frameInfo();
     if (Frame.isFrozen())
       return makeUnexpected(ErrorCode::InvalidArgument, "RISC-V frame layout is already frozen");
@@ -1234,9 +1319,8 @@ public:
     if (!CompleteSlots)
       return std::unexpected(CompleteSlots.error());
 
-    const bool HasFP = requiresFramePointer(Function);
     const bool ReserveCallFrame = hasReservedCallFrame(Function);
-    auto StackSize = layoutFrame(Function, HasFP, ReserveCallFrame);
+    auto StackSize = layoutFrame(Function, ReserveCallFrame, Options.EmitDebugOutput);
     if (!StackSize)
       return std::unexpected(StackSize.error());
 
@@ -1293,7 +1377,7 @@ public:
       auto Emergency = createEmergencyObject(Function);
       if (!Emergency)
         return std::unexpected(Emergency.error());
-      StackSize = layoutFrame(Function, HasFP, ReserveCallFrame);
+      StackSize = layoutFrame(Function, ReserveCallFrame, Options.EmitDebugOutput);
       if (!StackSize)
         return std::unexpected(StackSize.error());
     }
@@ -1359,8 +1443,7 @@ public:
     }
     auto FP = physicalRegister(PhysicalRegisterID::X8);
     auto BP = physicalRegister(PhysicalRegisterID::X9);
-    auto OldFP = physicalRegister(PhysicalRegisterID::X5);
-    if (!FP || !BP || !OldFP)
+    if (!FP || !BP)
       return makeUnexpected(ErrorCode::InternalError, "RISC-V frame registers are unavailable");
     const bool Realign = requiresStackRealignment(Function);
 
@@ -1376,8 +1459,7 @@ public:
         return makeUnexpected(ErrorCode::InternalError,
                               "RISC-V callee-save register has no stack slot");
       }
-      const PhysicalRegister Value = Realign && Reg == *FP ? *OldFP : Reg;
-      auto Stored = emitCalleeSave(SaveBuilder, Value, *Slot, false);
+      auto Stored = emitCalleeSave(SaveBuilder, Reg, *Slot, false);
       if (!Stored)
         return std::unexpected(Stored.error());
     }
@@ -1445,8 +1527,7 @@ public:
                                                         : Object.description()->Offset);
     }
     const std::uint64_t PreliminarySize = Frame.state().StackSize;
-    auto StackSize =
-        layoutFrame(Function, requiresFramePointer(Function), hasReservedCallFrame(Function));
+    auto StackSize = layoutFrame(Function, hasReservedCallFrame(Function));
     if (!StackSize)
       return std::unexpected(StackSize.error());
     if (*StackSize != PreliminarySize || Frame.objects().size() != PreliminaryOffsets.size()) {
@@ -1523,14 +1604,18 @@ public:
     auto FP = physicalRegister(PhysicalRegisterID::X8);
     auto BP = physicalRegister(PhysicalRegisterID::X9);
     auto Zero = physicalRegister(PhysicalRegisterID::X0);
-    auto OldFP = physicalRegister(PhysicalRegisterID::X5);
     auto DefaultTemporary = physicalRegister(PhysicalRegisterID::X6);
-    if (!SP || !FP || !BP || !Zero || !OldFP || !DefaultTemporary) {
+    if (!SP || !FP || !BP || !Zero || !DefaultTemporary) {
       return makeUnexpected(ErrorCode::InternalError, "RISC-V frame registers are unavailable");
     }
     PhysicalRegister Temporary = *DefaultTemporary;
+    std::optional<ScavengedRegister> Scratch;
+    const std::uint64_t FirstAdjustment = firstSPAdjustAmount(Function);
+    const std::uint64_t InitialAllocation = FirstAdjustment == 0 ? StackSize : FirstAdjustment;
+    const std::uint64_t SecondAdjustment = StackSize - InitialAllocation;
     const std::int64_t AlignmentMask = std::bit_cast<std::int64_t>(~(StackAlignment - 1U));
-    const bool NeedsTemporary = StackSize > 2048U ||
+    const bool NeedsTemporary = InitialAllocation > static_cast<std::uint64_t>(MaxSigned12) ||
+                                SecondAdjustment > static_cast<std::uint64_t>(MaxSigned12) ||
                                 (!Realign && requiresFramePointer(Function) &&
                                  StackSize > static_cast<std::uint64_t>(MaxSigned12)) ||
                                 (Realign && !fitsSigned12(AlignmentMask));
@@ -1539,32 +1624,17 @@ public:
       if (!Candidates)
         return std::unexpected(Candidates.error());
       if (Anchor != nullptr) {
-        auto Scratch = Scavenger.scavenge(*Anchor, *Candidates);
-        if (!Scratch)
-          return std::unexpected(Scratch.error());
-        if (Scratch->RequiresSpill) {
-          return makeUnexpected(ErrorCode::RegisterAllocationFailed,
-                                "RISC-V prologue has no dead scratch register");
-        }
-        Temporary = Scratch->Reg;
+        auto Scavenged = Scavenger.scavenge(*Anchor, *Candidates);
+        if (!Scavenged)
+          return std::unexpected(Scavenged.error());
+        Temporary = Scavenged->Reg;
+        Scratch = *Scavenged;
       } else {
         Temporary = Candidates->front();
       }
     }
 
-    if (Realign) {
-      auto PreserveFP = emitAddImmediate(Builder, *OldFP, *FP, 0, MachineInstrFlag::FrameSetup);
-      if (!PreserveFP)
-        return std::unexpected(PreserveFP.error());
-      auto CaptureIncomingSP = emitAddImmediate(Builder, *FP, *SP, 0, MachineInstrFlag::FrameSetup);
-      if (!CaptureIncomingSP)
-        return std::unexpected(CaptureIncomingSP.error());
-      auto CFA = emitDefCFI(Builder, Target, *FP, 0, MachineInstrFlag::FrameSetup);
-      if (!CFA)
-        return std::unexpected(CFA.error());
-    }
-
-    const std::uint64_t AllocationSize = StackSize;
+    const std::uint64_t AllocationSize = InitialAllocation;
     if (AllocationSize > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
       return makeUnexpected(ErrorCode::FrameLayoutFailed, "RISC-V stack adjustment exceeds int64");
     }
@@ -1575,36 +1645,26 @@ public:
         if (!Adjust)
           return std::unexpected(Adjust.error());
       } else {
+        if (Scratch && Scratch->RequiresSpill) {
+          return makeUnexpected(ErrorCode::RegisterAllocationFailed,
+                                "RISC-V initial stack adjustment has no dead scratch register");
+        }
         auto Constant =
-            emitConstant(Builder, Temporary, *Zero, Amount, MachineInstrFlag::FrameSetup);
+            emitConstant(Builder, Temporary, *Zero, static_cast<std::int64_t>(AllocationSize),
+                         MachineInstrFlag::FrameSetup);
         if (!Constant)
           return std::unexpected(Constant.error());
-        auto Adjust = emitRegisterAdd(Builder, *SP, *SP, Temporary, MachineInstrFlag::FrameSetup);
+        auto Adjust = emitRegisterSub(Builder, *SP, *SP, Temporary, MachineInstrFlag::FrameSetup);
         if (!Adjust)
           return std::unexpected(Adjust.error());
       }
       if (!Realign) {
-        auto CFA = emitDefCFAOffset(Builder, static_cast<std::int64_t>(StackSize),
+        auto CFA = emitDefCFAOffset(Builder, static_cast<std::int64_t>(AllocationSize),
                                     MachineInstrFlag::FrameSetup);
         if (!CFA)
           return std::unexpected(CFA.error());
       }
     }
-    if (Realign) {
-      const std::int64_t Mask = AlignmentMask;
-      Expected<void> Aligned =
-          fitsSigned12(Mask)
-              ? emitAndImmediate(Builder, *SP, *SP, Mask, MachineInstrFlag::FrameSetup)
-              : emitConstant(Builder, Temporary, *Zero, Mask, MachineInstrFlag::FrameSetup);
-      if (!Aligned)
-        return std::unexpected(Aligned.error());
-      if (!fitsSigned12(Mask)) {
-        Aligned = emitRegisterAnd(Builder, *SP, *SP, Temporary, MachineInstrFlag::FrameSetup);
-        if (!Aligned)
-          return std::unexpected(Aligned.error());
-      }
-    }
-
     if (Realign) {
       if (Saves.empty()) {
         return makeUnexpected(ErrorCode::InternalError,
@@ -1614,9 +1674,14 @@ public:
       auto PointAfterSaves = AfterSaves.setInsertPointAfter(*Saves.back().Instruction);
       if (!PointAfterSaves)
         return std::unexpected(PointAfterSaves.error());
-      auto Set = emitAddImmediate(AfterSaves, *BP, *SP, 0, MachineInstrFlag::FrameSetup);
+      auto Set =
+          emitAddImmediate(AfterSaves, *FP, *SP, static_cast<std::int64_t>(InitialAllocation),
+                           MachineInstrFlag::FrameSetup);
       if (!Set)
         return std::unexpected(Set.error());
+      auto CFA = emitDefCFI(AfterSaves, Target, *FP, 0, MachineInstrFlag::FrameSetup);
+      if (!CFA)
+        return std::unexpected(CFA.error());
       for (const PhysicalRegister Reg : Function.records().calleeSavedRegisters()) {
         const auto Slot = calleeSaveSlot(Function, Reg);
         const StackObject *Object = Slot ? Function.frameInfo().object(*Slot) : nullptr;
@@ -1625,9 +1690,81 @@ public:
                                 "RISC-V realigned CFI slot is incomplete");
         }
         auto CFI = emitSavedRegisterCFI(AfterSaves, Target, Reg, *Object->description()->Offset,
-                                        MachineInstrFlag::FrameSetup, *BP);
+                                        MachineInstrFlag::FrameSetup, *FP);
         if (!CFI)
           return std::unexpected(CFI.error());
+      }
+
+      std::optional<FrameIndexReference> Emergency;
+      if (Scratch && Scratch->RequiresSpill) {
+        const StackObject *Object = emergencyObject(Function);
+        if (Object == nullptr) {
+          return makeUnexpected(ErrorCode::RegisterAllocationFailed,
+                                "RISC-V prologue requires an emergency spill slot");
+        }
+        auto Reference = emergencyFrameReference(Function, *Object->description());
+        if (!Reference || !fitsSigned12(Reference->Offset)) {
+          return makeUnexpected(ErrorCode::RegisterAllocationFailed,
+                                "RISC-V prologue emergency spill slot is unavailable");
+        }
+        Emergency = *Reference;
+        auto Saved = emitScratchAccess(AfterSaves, Temporary, *Emergency, false);
+        if (!Saved)
+          return std::unexpected(Saved.error());
+      }
+
+      if (SecondAdjustment != 0) {
+        if (SecondAdjustment >
+            static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+          return makeUnexpected(ErrorCode::FrameLayoutFailed,
+                                "RISC-V second stack adjustment exceeds int64");
+        }
+        if (SecondAdjustment <= static_cast<std::uint64_t>(MaxSigned12)) {
+          auto Adjust =
+              emitAddImmediate(AfterSaves, *SP, *SP, -static_cast<std::int64_t>(SecondAdjustment),
+                               MachineInstrFlag::FrameSetup);
+          if (!Adjust)
+            return std::unexpected(Adjust.error());
+        } else {
+          auto Constant = emitConstant(AfterSaves, Temporary, *Zero,
+                                       static_cast<std::int64_t>(SecondAdjustment),
+                                       MachineInstrFlag::FrameSetup);
+          if (!Constant)
+            return std::unexpected(Constant.error());
+          auto Adjust =
+              emitRegisterSub(AfterSaves, *SP, *SP, Temporary, MachineInstrFlag::FrameSetup);
+          if (!Adjust)
+            return std::unexpected(Adjust.error());
+        }
+      }
+
+      if (fitsSigned12(AlignmentMask)) {
+        auto Aligned =
+            emitAndImmediate(AfterSaves, *SP, *SP, AlignmentMask, MachineInstrFlag::FrameSetup);
+        if (!Aligned)
+          return std::unexpected(Aligned.error());
+      } else {
+        const std::int64_t ShiftAmount =
+            static_cast<std::int64_t>(std::countr_zero(StackAlignment));
+        auto Shifted =
+            emitShiftImmediate(AfterSaves, instructionOpcode(InstructionOpcode::SRLI), Temporary,
+                               *SP, ShiftAmount, MachineInstrFlag::FrameSetup);
+        if (!Shifted)
+          return std::unexpected(Shifted.error());
+        Shifted = emitShiftImmediate(AfterSaves, instructionOpcode(InstructionOpcode::SLLI), *SP,
+                                     Temporary, ShiftAmount, MachineInstrFlag::FrameSetup);
+        if (!Shifted)
+          return std::unexpected(Shifted.error());
+      }
+      if (requiresBasePointer(Function)) {
+        auto Base = emitAddImmediate(AfterSaves, *BP, *SP, 0, MachineInstrFlag::FrameSetup);
+        if (!Base)
+          return std::unexpected(Base.error());
+      }
+      if (Emergency) {
+        auto Restored = emitScratchAccess(AfterSaves, Temporary, *Emergency, true);
+        if (!Restored)
+          return std::unexpected(Restored.error());
       }
       return {};
     }
@@ -1746,17 +1883,21 @@ public:
     }
 
     if (Realign) {
+      const std::uint64_t FirstAdjustment = firstSPAdjustAmount(Function);
+      if (FirstAdjustment > static_cast<std::uint64_t>(MaxSigned12)) {
+        return makeUnexpected(ErrorCode::FrameLayoutFailed,
+                              "RISC-V first epilogue adjustment exceeds signed 12 bits");
+      }
       const auto FPRestore = std::ranges::find(Restores, *FP, &CalleeSaveOperation::Reg);
       const auto BPRestore = std::ranges::find(Restores, *BP, &CalleeSaveOperation::Reg);
       MachineIRBuilder Teardown(Function, Target);
-      MachineInstr *SpecialRestore =
-          FPRestore != Restores.end()
-              ? FPRestore->Instruction
-              : (BPRestore != Restores.end() ? BPRestore->Instruction : &Terminator);
-      auto Point = Teardown.setInsertPointBefore(*SpecialRestore);
+      MachineInstr *FirstRestore = Restores.empty() ? &Terminator : Restores.front().Instruction;
+      auto Point = Teardown.setInsertPointBefore(*FirstRestore);
       if (!Point)
         return std::unexpected(Point.error());
-      auto RestoreSP = emitAddImmediate(Teardown, *SP, *FP, 0, MachineInstrFlag::FrameDestroy);
+      auto RestoreSP =
+          emitAddImmediate(Teardown, *SP, *FP, -static_cast<std::int64_t>(FirstAdjustment),
+                           MachineInstrFlag::FrameDestroy);
       if (!RestoreSP)
         return std::unexpected(RestoreSP.error());
       auto CFA = emitDefCFI(Teardown, Target, *SP, 0, MachineInstrFlag::FrameDestroy);
@@ -1779,6 +1920,17 @@ public:
         auto BPCFI = emitRestoreRegisterCFI(AfterBP, Target, *BP, MachineInstrFlag::FrameDestroy);
         if (!BPCFI)
           return std::unexpected(BPCFI.error());
+      }
+      if (FirstAdjustment != 0) {
+        MachineIRBuilder Deallocate(Function, Target);
+        auto BeforeTerminator = Deallocate.setInsertPointBefore(Terminator);
+        if (!BeforeTerminator)
+          return std::unexpected(BeforeTerminator.error());
+        auto Adjust =
+            emitAddImmediate(Deallocate, *SP, *SP, static_cast<std::int64_t>(FirstAdjustment),
+                             MachineInstrFlag::FrameDestroy);
+        if (!Adjust)
+          return std::unexpected(Adjust.error());
       }
     } else if (HasFP) {
       const auto FPRestore = std::ranges::find(Restores, *FP, &CalleeSaveOperation::Reg);
@@ -1860,8 +2012,12 @@ public:
       return std::unexpected(Offset.error());
     const StackObjectDesc &Description = *Object->description();
     PhysicalRegisterID BaseID = PhysicalRegisterID::X2;
-    if (!isOutgoingCallObject(Description) &&
-        !Instruction.flags().has(MachineInstrFlag::FrameSetup)) {
+    if (Description.Kind == StackObjectKind::CalleeSaved) {
+      BaseID = PhysicalRegisterID::X2;
+    } else if (requiresStackRealignment(Function) && !Object->isFixed()) {
+      BaseID = requiresBasePointer(Function) ? PhysicalRegisterID::X9 : PhysicalRegisterID::X2;
+    } else if (!isOutgoingCallObject(Description) &&
+               !Instruction.flags().has(MachineInstrFlag::FrameSetup)) {
       const bool FixedObject = Description.Kind == StackObjectKind::FixedABI ||
                                Description.Kind == StackObjectKind::FixedSpillSlot;
       const bool HasFP = requiresFramePointer(Function);
@@ -1939,7 +2095,15 @@ public:
     auto Zero = physicalRegister(PhysicalRegisterID::X0);
     if (!Zero)
       return std::unexpected(Zero.error());
-    auto Constant = emitConstant(Builder, Scratch->Reg, *Zero, Reference->Offset, std::nullopt);
+    std::int64_t InstructionOffset = 0;
+    std::int64_t AddressOffset = Reference->Offset;
+    if (Instruction.opcode() != instructionOpcode(InstructionOpcode::ADDI)) {
+      InstructionOffset = Reference->Offset & 0xFFF;
+      if (InstructionOffset >= 0x800)
+        InstructionOffset -= 0x1000;
+      AddressOffset -= InstructionOffset;
+    }
+    auto Constant = emitConstant(Builder, Scratch->Reg, *Zero, AddressOffset, std::nullopt);
     if (!Constant)
       return std::unexpected(Constant.error());
     auto Address =
@@ -1949,7 +2113,7 @@ public:
     auto Base = replaceWithRegister(Instruction, OperandIndex, Scratch->Reg);
     if (!Base)
       return std::unexpected(Base.error());
-    auto Offset = replaceImmediate(Instruction, OperandIndex + 1U, 0);
+    auto Offset = replaceImmediate(Instruction, OperandIndex + 1U, InstructionOffset);
     if (!Offset)
       return std::unexpected(Offset.error());
     if (Emergency) {
@@ -2028,28 +2192,7 @@ private:
         Restore ? Builder.setInsertPointAfter(Anchor) : Builder.setInsertPointBefore(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
-    auto Memory = createResolvedStackMemory(
-        Function, Restore ? MemoryAccessFlag::Load : MemoryAccessFlag::Store, Reference.Offset);
-    if (!Memory)
-      return std::unexpected(Memory.error());
-    auto Pending = Builder.buildInstr(
-        instructionOpcode(Restore ? InstructionOpcode::LD : InstructionOpcode::SD));
-    if (!Pending)
-      return std::unexpected(Pending.error());
-    auto Value = Restore ? Pending->addDef(Register::fromPhysical(Scratch))
-                         : Pending->addUse(Register::fromPhysical(Scratch));
-    if (!Value)
-      return std::unexpected(Value.error());
-    if (auto Result = Pending->addUse(Register::fromPhysical(Reference.BaseRegister)); !Result)
-      return std::unexpected(Result.error());
-    if (auto Result = Pending->addImmediate(Reference.Offset); !Result)
-      return std::unexpected(Result.error());
-    if (auto Result = Pending->addMemOperand(**Memory); !Result)
-      return std::unexpected(Result.error());
-    auto Built = Pending->build();
-    if (!Built)
-      return std::unexpected(Built.error());
-    return {};
+    return emitScratchAccess(Builder, Scratch, Reference, Restore);
   }
 
   RISCVABI ABI;

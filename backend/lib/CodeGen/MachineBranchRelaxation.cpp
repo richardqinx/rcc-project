@@ -29,7 +29,7 @@ struct MachineLayout final {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
         .Name = "branch-relaxation",
-        .Requires = {MachineFunctionProperty::TracksLiveness},
+        .Requires = {},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {},
@@ -100,10 +100,6 @@ const MachinePassContract &MachineBranchRelaxationPass::contract() const noexcep
 Expected<MachinePassResult>
 MachineBranchRelaxationPass::run(MachineFunction &Function, const TargetDescription &Target,
                                  MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "branch relaxation requires tracked liveness");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

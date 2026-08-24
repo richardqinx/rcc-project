@@ -128,13 +128,15 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
   }
   MachineFunctionPassManager Pipeline(Options);
   const bool DebugMachineScheduler = hasDebugType(Invocation, "machine-scheduler");
+  const bool DebugPrologueEpilogue = hasDebugType(Invocation, "prologepilog");
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
     auto Added = riscv::addCanonicalPipeline(
         Pipeline, Function, Subtarget,
         riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
                                     .UseTargetCopyInstructions = true,
                                     .GlobalISelAbort = GlobalISelAbort,
-                                    .DebugMachineScheduler = DebugMachineScheduler});
+                                    .DebugMachineScheduler = DebugMachineScheduler,
+                                    .DebugPrologueEpilogue = DebugPrologueEpilogue});
     if (!Added)
       return std::unexpected(Added.error());
   } else {
@@ -152,7 +154,8 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
           riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
                                       .UseTargetCopyInstructions = UseTargetCopyInstructions,
                                       .GlobalISelAbort = GlobalISelAbort,
-                                      .DebugMachineScheduler = DebugMachineScheduler});
+                                      .DebugMachineScheduler = DebugMachineScheduler,
+                                      .DebugPrologueEpilogue = DebugPrologueEpilogue});
       if (!Pass)
         return std::unexpected(Pass.error());
       auto Added = Pipeline.addPass(std::move(*Pass));

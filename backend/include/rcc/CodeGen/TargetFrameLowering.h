@@ -23,12 +23,17 @@ struct FrameIndexReference final {
   std::int64_t Offset = 0;
 };
 
+struct FrameLoweringOptions final {
+  bool EmitDebugOutput = false;
+};
+
 class TargetFrameLowering {
 public:
   virtual ~TargetFrameLowering() = default;
 
   [[nodiscard]] virtual Expected<void> prepareFrame(MachineFunction &Function,
-                                                    const TargetDescription &Target) const = 0;
+                                                    const TargetDescription &Target,
+                                                    FrameLoweringOptions Options = {}) const = 0;
   [[nodiscard]] virtual Expected<void>
   insertCalleeSavedSpillsAndRestores(MachineFunction &Function,
                                      const TargetDescription &Target) const = 0;
