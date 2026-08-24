@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 
 namespace rcc::mir {
@@ -185,6 +186,7 @@ public:
       return failureResult();
     }
 
+    resolveFunctionAttributes();
     validateLocalReferences();
     if (Failed)
       return failureResult();
@@ -348,6 +350,10 @@ private:
     }
     if (startsWord(Line, Position, End, "declare")) {
       parseFunctionHeader(Line, LineOffset, Position, End, false);
+      return;
+    }
+    if (startsWord(Line, Position, End, "attributes")) {
+      parseAttributeGroup(Line, LineOffset, Position, End);
       return;
     }
     if (Line[Position] == '@') {
@@ -531,6 +537,19 @@ private:
       }
       if (InQuote)
         continue;
+      if (HeaderParenthesisDepth == 0 && startsWord(Line, Position, End, "minsize")) {
+        Index.Functions[ActiveFunction.value()].HasMinSize = true;
+        Position += std::string_view("minsize").size() - 1U;
+        continue;
+      }
+      if (HeaderParenthesisDepth == 0 && Character == '#') {
+        auto Group = parseIdentifier(Line, LineOffset, Position, End, '#');
+        if (!Group || Failed)
+          return;
+        Index.Functions[ActiveFunction.value()].AttributeGroup = std::move(Group->Name);
+        Position = Group->End - 1U;
+        continue;
+      }
       if (Character == '%' && HeaderParenthesisDepth != 0 && ActiveFunction) {
         const std::size_t IdentifierBegin = Position;
         auto Name = parseIdentifier(Line, LineOffset, Position, End, '%');
@@ -801,6 +820,25 @@ private:
     }
   }
 
+  void parseAttributeGroup(std::string_view Line, std::size_t LineOffset, std::size_t Position,
+                           std::size_t End) {
+    Position += std::string_view("attributes").size();
+    Position = skipHorizontalSpace(Line, Position, End);
+    auto Group = parseIdentifier(Line, LineOffset, Position, End, '#');
+    if (!Group || Failed)
+      return;
+    if (containsWord(Line, End, "minsize"))
+      MinSizeAttributeGroups.insert(std::move(Group->Name));
+  }
+
+  void resolveFunctionAttributes() {
+    for (EmbeddedIRFunction &Function : Index.Functions) {
+      if (Function.AttributeGroup && MinSizeAttributeGroups.contains(*Function.AttributeGroup)) {
+        Function.HasMinSize = true;
+      }
+    }
+  }
+
   void parseGlobalObject(std::string_view Line, std::size_t LineOffset, std::size_t Position,
                          std::size_t End) {
     auto Name = parseIdentifier(Line, LineOffset, Position, End, '@');
@@ -893,6 +931,7 @@ private:
   EmbeddedIRReferenceIndex Index;
   std::vector<TextDiagnostic> Diagnostics;
   std::optional<std::size_t> ActiveFunction;
+  std::unordered_set<std::string> MinSizeAttributeGroups;
   std::size_t HeaderParenthesisDepth = 0;
   std::size_t FunctionBraceDepth = 0;
   bool Failed = false;

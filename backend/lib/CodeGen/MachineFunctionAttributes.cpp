@@ -31,6 +31,8 @@ std::string_view getMachineFunctionAttributeName(MachineFunctionAttribute Attrib
     return "DebugInstrRef";
   case MachineFunctionAttribute::TracksDebugUserValues:
     return "TracksDebugUserValues";
+  case MachineFunctionAttribute::MinSize:
+    return "MinSize";
   case MachineFunctionAttribute::Count:
     return "Invalid";
   }

@@ -24,6 +24,7 @@ enum class MachineFunctionAttribute : std::uint8_t {
   IsOutlined,
   DebugInstrRef,
   TracksDebugUserValues,
+  MinSize,
   Count,
 };
 

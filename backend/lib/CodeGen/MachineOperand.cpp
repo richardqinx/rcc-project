@@ -300,6 +300,11 @@ Expected<void> MachineOperand::setRegister(Register Reg) {
     return makeUnexpected(ErrorCode::InvalidArgument, "setRegister requires a register operand");
   }
 
+  if (std::get<Register>(Storage) == Reg)
+    return {};
+
+  RegFlags.clear(RegisterOperandFlag::Renamable);
+
   MachineRegisterInfo *RegInfo = LinkedRegInfo;
   if (RegInfo == nullptr && Parent != nullptr)
     RegInfo = &Parent->function().registerInfo();

@@ -276,6 +276,8 @@ bool MIRDocumentParser::parseFunction(const yaml::Node &Root, MIRDocument &Docum
     return importError(NameNode->range(), Created.error());
   MachineFunction &Function = **Created;
   ActiveFunction = &Function;
+  if (IRFunction != nullptr && IRFunction->hasMinSize())
+    Function.attributes().set(MachineFunctionAttribute::MinSize);
 
   MIRFunctionDocumentInfo DocumentInfo{
       .Function = Function.stableID(),

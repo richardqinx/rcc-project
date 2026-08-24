@@ -74,6 +74,10 @@ public:
     return HasSectionPrefix;
   }
 
+  [[nodiscard]] bool hasMinSize() const noexcept {
+    return HasMinSize;
+  }
+
   [[nodiscard]] std::span<const EmbeddedIRReference> blocks() const noexcept {
     return Blocks;
   }
@@ -107,6 +111,8 @@ private:
   bool HasSection = false;
   bool HasComdat = false;
   bool HasSectionPrefix = false;
+  bool HasMinSize = false;
+  std::optional<std::string> AttributeGroup;
   std::uint64_t NextUnnamedSlot = 0;
   std::vector<EmbeddedIRReference> Blocks;
   std::vector<EmbeddedIRReference> Allocas;
