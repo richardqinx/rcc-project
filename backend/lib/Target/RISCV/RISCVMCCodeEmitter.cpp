@@ -88,6 +88,20 @@ namespace {
   return *Encoding - 8U;
 }
 
+[[nodiscard]] Expected<std::uint32_t> savedRegisterEncoding(const mc::MCInst &Instruction,
+                                                            std::size_t Index,
+                                                            const TargetDescription &Target) {
+  auto Encoding = registerEncoding(Instruction, Index, Target);
+  if (!Encoding)
+    return std::unexpected(Encoding.error());
+  if (*Encoding == 8 || *Encoding == 9)
+    return *Encoding - 8U;
+  if (*Encoding >= 18 && *Encoding <= 23)
+    return *Encoding - 16U;
+  return makeUnexpected(ErrorCode::InstructionEncodingFailed,
+                        "Zcmp move requires an s0-s7 register");
+}
+
 [[nodiscard]] bool fitsSigned(std::int64_t Value, unsigned Bits) noexcept {
   const std::int64_t Minimum = -(std::int64_t{1} << (Bits - 1U));
   const std::int64_t Maximum = (std::int64_t{1} << (Bits - 1U)) - 1;
@@ -648,6 +662,20 @@ namespace {
                              bool PCRelative = false) {
     return immediateOrFixup(Instruction, Index, Kind, PCRelative, Result);
   };
+
+  if (Opcode == InstructionOpcode::CM_MVA01S || Opcode == InstructionOpcode::CM_MVSA01) {
+    auto Count = requireOperandCount(Instruction, 2);
+    if (!Count)
+      return std::unexpected(Count.error());
+    auto First = savedRegisterEncoding(Instruction, 0, Target);
+    auto Second = savedRegisterEncoding(Instruction, 1, Target);
+    if (!First)
+      return std::unexpected(First.error());
+    if (!Second)
+      return std::unexpected(Second.error());
+    return static_cast<std::uint16_t>((Encoding & ~std::uint16_t{0x039c}) | *First << 7U |
+                                      *Second << 2U);
+  }
 
   if (Opcode == InstructionOpcode::C_ADDI4SPN) {
     auto Count = requireOperandCount(Instruction, 2);

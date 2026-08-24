@@ -41,6 +41,7 @@ constexpr std::array ExtensionNames{
     ExtensionName{"zifencei", RISCVExtension::Zifencei},
     ExtensionName{"zacas", RISCVExtension::Zacas},
     ExtensionName{"zabha", RISCVExtension::Zabha},
+    ExtensionName{"zcmp", RISCVExtension::Zcmp},
 };
 
 constexpr std::array OptionNames{

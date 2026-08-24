@@ -378,6 +378,18 @@ register_classes:
     lanes: 1
     registers: [X6, X8, X9, X10, X11, X12, X13, X14, X15, X16, X17, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, X31]
     allocation_order: [X10, X11, X12, X13, X14, X15, X16, X17, X6, X28, X29, X30, X31, X8, X9, X18, X19, X20, X21, X22, X23, X24, X25, X26, X27]
+  -
+    id: 13
+    symbol: SR07
+    name: SR07
+    bank: GPR
+    superclasses: [GPR]
+    size_bits: 64
+    spill_size_bits: 64
+    spill_alignment_bits: 64
+    lanes: 1
+    registers: [X8, X9, X18, X19, X20, X21, X22, X23]
+    allocation_order: [X8, X9, X18, X19, X20, X21, X22, X23]
 
 register_masks:
   -

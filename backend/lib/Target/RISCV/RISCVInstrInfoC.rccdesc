@@ -513,3 +513,33 @@ instructions:
     scheduling_class: STORE
     encoding_category: C
     assembly_format: RS2_OFFSET_SP
+  -
+    id: 1270
+    symbol: CM_MVA01S
+    name: CM_MVA01S
+    assembly_mnemonic: cm.mva01s
+    encoding: 44130
+    operands:
+      - { kinds: [register], role: use, register_class: SR07, register_bank: GPR, name: RS1 }
+      - { kinds: [register], role: use, register_class: SR07, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 0
+    flags: [produces_code]
+    implicit_defs: [{ register: X10 }, { register: X11 }]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2
+  -
+    id: 1271
+    symbol: CM_MVSA01
+    name: CM_MVSA01
+    assembly_mnemonic: cm.mvsa01
+    encoding: 44066
+    operands:
+      - { kinds: [register], role: def, register_class: SR07, register_bank: GPR, name: RD }
+      - { kinds: [register], role: def, register_class: SR07, register_bank: GPR, name: RS2 }
+    num_explicit_defs: 2
+    flags: [produces_code]
+    implicit_uses: [{ register: X10 }, { register: X11 }]
+    scheduling_class: COMPRESSED
+    encoding_category: C
+    assembly_format: RD_RS2

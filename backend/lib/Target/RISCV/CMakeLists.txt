@@ -122,6 +122,7 @@ add_library(
   RISCVMCTargetLowering.cpp
   RISCVMachineCombiner.cpp
   RISCVMachineMemoryFolding.cpp
+  RISCVMoveMerger.cpp
   RISCVOptimizationPipeline.cpp
   RISCVPipeline.cpp
   RISCVPseudoExpansion.cpp
@@ -205,6 +206,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCTargetLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMachineMemoryFolding.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMoveMerger.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"

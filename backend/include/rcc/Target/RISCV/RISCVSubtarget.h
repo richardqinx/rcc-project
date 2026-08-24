@@ -38,6 +38,7 @@ enum class RISCVExtension : std::uint8_t {
   Zifencei,
   Zacas,
   Zabha,
+  Zcmp,
   Count,
 };
 

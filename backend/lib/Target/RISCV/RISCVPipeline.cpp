@@ -106,6 +106,9 @@ template <typename PassT, typename... ArgumentT>
                                              Options.UseTargetCopyInstructions});
   if (!Added)
     return std::unexpected(Added.error());
+  Added = Pipeline.addPass(createMoveMergePass(Subtarget));
+  if (!Added)
+    return std::unexpected(Added.error());
   return addPass<CFIInstrInserterPass>(Pipeline, Subtarget.frameLowering());
 }
 
@@ -166,6 +169,8 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
     if (!Added)
       return std::unexpected(Added.error());
   }
+  if (Subtarget.features().has(RISCVExtension::Zcmp))
+    return Pipeline.addPass(createMoveMergePass(Subtarget));
   return {};
 }
 

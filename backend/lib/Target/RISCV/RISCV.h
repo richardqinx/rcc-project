@@ -16,6 +16,7 @@
 namespace rcc {
 
 class InstructionSelector;
+class MachineFunctionPass;
 
 namespace riscv {
 
@@ -37,6 +38,8 @@ createSchedulingModel(const TargetSchedulingHooks &Hooks);
 [[nodiscard]] const GIMatchTableExecutor &giselCombinerExecutor() noexcept;
 [[nodiscard]] const TargetMemoryFoldingInfo &memoryFoldingInfo() noexcept;
 [[nodiscard]] const TargetPseudoExpansionInfo &pseudoExpansionInfo() noexcept;
+[[nodiscard]] std::unique_ptr<MachineFunctionPass>
+createMoveMergePass(const RISCVSubtarget &Subtarget);
 [[nodiscard]] MachineOptimizationPipelineTargetInfo
 optimizationPipelineInfo(const RISCVSubtarget &Subtarget, bool EmitSchedulerDebugOutput = false,
                          bool EmitFrameDebugOutput = false) noexcept;
