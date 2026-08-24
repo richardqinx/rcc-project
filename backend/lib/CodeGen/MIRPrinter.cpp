@@ -959,27 +959,9 @@ Expected<void> MIRDocumentPrinter::printStackObjects(const MachineFunction &Func
                             "stack object contains state not represented by fixed LLVM MIR");
     }
 
-    std::string_view Type;
-    switch (Description->Kind) {
-    case StackObjectKind::Default:
-    case StackObjectKind::FixedABI:
-      Type = "default";
-      break;
-    case StackObjectKind::FixedSpillSlot:
-    case StackObjectKind::SpillSlot:
-      Type = "spill-slot";
-      break;
-    case StackObjectKind::VariableSized:
-      Type = "variable-sized";
-      break;
-    case StackObjectKind::DynamicAlloca:
-    case StackObjectKind::CalleeSaved:
-    case StackObjectKind::EmergencySpill:
-    case StackObjectKind::Target:
-    case StackObjectKind::Count:
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "stack object kind has no fixed LLVM MIR representation");
-    }
+    const std::string_view Type = Object->isSpill()           ? "spill-slot"
+                                  : Object->isVariableSized() ? "variable-sized"
+                                                              : "default";
 
     Output.append("  - { id: ");
     Output.append(std::to_string(Slot.TextID));

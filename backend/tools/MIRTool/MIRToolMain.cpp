@@ -706,9 +706,14 @@ void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::st
     Command.Invocation.CPU = *CodeGenFlags.CPU;
   if (CodeGenFlags.TuneCPU)
     Command.Invocation.TuneCPU = *CodeGenFlags.TuneCPU;
-  if (CodeGenFlags.ABI)
-    Command.Invocation.ABI = *CodeGenFlags.ABI;
   applyFeatureOverrides(std::move(CodeGenFlags.FeatureOverrides), Command.Invocation.Features);
+  if (CodeGenFlags.ABI) {
+    Command.Invocation.ABI = *CodeGenFlags.ABI;
+  } else {
+    const bool HasDoubleFloat =
+        std::ranges::find(Command.Invocation.Features, "+d") != Command.Invocation.Features.end();
+    Command.Invocation.ABI = HasDoubleFloat ? "lp64d" : "lp64";
+  }
   if (CodeGenFlags.Relocation)
     Command.Invocation.Relocation = *CodeGenFlags.Relocation;
   if (CodeGenFlags.Code)
@@ -923,8 +928,11 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
         rcc::riscv::RISCVSubtargetFeatures::fromFeatureList(Command.Invocation.Features);
     if (!Features)
       return std::unexpected(Features.error());
+    auto ABI = rcc::riscv::parseRISCVABI(Command.Invocation.ABI);
+    if (!ABI)
+      return std::unexpected(ABI.error());
     const rcc::riscv::RISCVSubtarget Subtarget(*Features, Command.Invocation.Relocation,
-                                               Command.Invocation.Code);
+                                               Command.Invocation.Code, *ABI);
     std::vector<std::string> Names;
     for (std::size_t Index = 0; Index < Input->Document.unit().functionCount(); ++Index) {
       const rcc::MachineFunction *Function = Input->Document.unit().functionAt(Index);

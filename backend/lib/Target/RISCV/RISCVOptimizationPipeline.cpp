@@ -11,7 +11,7 @@ optimizationPipelineInfo(const RISCVSubtarget &Subtarget, bool EmitSchedulerDebu
       .InstrInfo = instrInfo(),
       .Combiner = machineCombinerInfo(),
       .MemoryFolding = memoryFoldingInfo(),
-      .FrameLowering = frameLowering(),
+      .FrameLowering = frameLowering(Subtarget.targetABI()),
       .PseudoExpansion = pseudoExpansionInfo(),
       .SchedulingModel = Subtarget.schedulingModel(),
       .SchedulerOptions = {.EmitDebugOutput = EmitSchedulerDebugOutput},

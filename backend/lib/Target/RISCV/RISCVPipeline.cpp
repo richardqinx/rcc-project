@@ -29,7 +29,9 @@ namespace rcc::riscv {
 namespace {
 
 [[nodiscard]] LibcallLoweringInfo libcallLoweringInfo(const RISCVSubtarget &Subtarget) {
-  return {Subtarget.getCallLowering(), callingConventionID(CallingConvention::LP64)};
+  const CallingConvention Convention =
+      Subtarget.targetABI() == RISCVABI::LP64D ? CallingConvention::LP64D : CallingConvention::LP64;
+  return {Subtarget.getCallLowering(), callingConventionID(Convention)};
 }
 
 template <typename PassT, typename... ArgumentT>

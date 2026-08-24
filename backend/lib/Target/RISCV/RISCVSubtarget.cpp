@@ -102,6 +102,15 @@ constexpr std::array OptionNames{
 
 } // namespace
 
+Expected<RISCVABI> parseRISCVABI(std::string_view Name) {
+  if (Name == "lp64")
+    return RISCVABI::LP64;
+  if (Name == "lp64d")
+    return RISCVABI::LP64D;
+  return makeUnexpected(ErrorCode::InvalidInvocation,
+                        "RISC-V backend does not support target ABI '" + std::string(Name) + "'");
+}
+
 Expected<RISCVSubtargetFeatures>
 RISCVSubtargetFeatures::fromFeatureList(std::span<const std::string> Features) {
   std::uint16_t Enabled = extensionBit(RISCVExtension::I);
@@ -185,8 +194,8 @@ bool RISCVSubtargetFeatures::hasFeature(std::string_view Feature) const noexcept
 }
 
 RISCVSubtarget::RISCVSubtarget(RISCVSubtargetFeatures Features, RelocationModel Relocation,
-                               CodeModel Code)
-    : Features(Features), Relocation(Relocation), Code(Code),
+                               CodeModel Code, RISCVABI ABI)
+    : Features(Features), Relocation(Relocation), Code(Code), ABI(ABI),
       SchedulingHooks(createSchedulingHooks(Features)) {
   auto Model = createSchedulingModel(*SchedulingHooks);
   if (!Model)

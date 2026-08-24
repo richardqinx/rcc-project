@@ -71,6 +71,13 @@ enum class RISCVSubtargetOption : std::uint8_t {
   Count,
 };
 
+enum class RISCVABI : std::uint8_t {
+  LP64,
+  LP64D,
+};
+
+[[nodiscard]] Expected<RISCVABI> parseRISCVABI(std::string_view Name);
+
 class RISCVSubtargetFeatures final {
 public:
   [[nodiscard]] static Expected<RISCVSubtargetFeatures>
@@ -97,7 +104,7 @@ class RISCVSubtarget final {
 public:
   explicit RISCVSubtarget(RISCVSubtargetFeatures Features,
                           RelocationModel Relocation = RelocationModel::Static,
-                          CodeModel Code = CodeModel::Small);
+                          CodeModel Code = CodeModel::Small, RISCVABI ABI = RISCVABI::LP64D);
   RISCVSubtarget(const RISCVSubtarget &) = delete;
   RISCVSubtarget &operator=(const RISCVSubtarget &) = delete;
   RISCVSubtarget(RISCVSubtarget &&) = delete;
@@ -116,6 +123,10 @@ public:
     return Code;
   }
 
+  [[nodiscard]] RISCVABI targetABI() const noexcept {
+    return ABI;
+  }
+
   [[nodiscard]] const TargetCallLowering *getCallLowering() const;
   [[nodiscard]] InstructionSelector *getInstructionSelector() const;
   [[nodiscard]] const LegalizerInfo *getLegalizerInfo() const;
@@ -126,6 +137,7 @@ private:
   RISCVSubtargetFeatures Features;
   RelocationModel Relocation;
   CodeModel Code;
+  RISCVABI ABI;
   mutable std::unique_ptr<TargetCallLowering> CallLoweringInfo;
   mutable std::unique_ptr<InstructionSelector> InstSelector;
   mutable std::unique_ptr<LegalizerInfo> Legalizer;

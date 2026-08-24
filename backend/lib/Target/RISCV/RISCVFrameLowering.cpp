@@ -311,22 +311,34 @@ struct CallFrameRequirement final {
   return Function.frameInfo().setMaxCallFrameSize(Maximum);
 }
 
-[[nodiscard]] std::array<PhysicalRegisterID, 25> saveOrder() noexcept {
-  return {
-      PhysicalRegisterID::X1,    PhysicalRegisterID::X8,    PhysicalRegisterID::X9,
-      PhysicalRegisterID::X18,   PhysicalRegisterID::X19,   PhysicalRegisterID::X20,
-      PhysicalRegisterID::X21,   PhysicalRegisterID::X22,   PhysicalRegisterID::X23,
-      PhysicalRegisterID::X24,   PhysicalRegisterID::X25,   PhysicalRegisterID::X26,
-      PhysicalRegisterID::X27,   PhysicalRegisterID::F8_D,  PhysicalRegisterID::F9_D,
-      PhysicalRegisterID::F18_D, PhysicalRegisterID::F19_D, PhysicalRegisterID::F20_D,
-      PhysicalRegisterID::F21_D, PhysicalRegisterID::F22_D, PhysicalRegisterID::F23_D,
-      PhysicalRegisterID::F24_D, PhysicalRegisterID::F25_D, PhysicalRegisterID::F26_D,
-      PhysicalRegisterID::F27_D,
-  };
+constexpr std::array LP64SaveOrder{
+    PhysicalRegisterID::X1,  PhysicalRegisterID::X8,  PhysicalRegisterID::X9,
+    PhysicalRegisterID::X18, PhysicalRegisterID::X19, PhysicalRegisterID::X20,
+    PhysicalRegisterID::X21, PhysicalRegisterID::X22, PhysicalRegisterID::X23,
+    PhysicalRegisterID::X24, PhysicalRegisterID::X25, PhysicalRegisterID::X26,
+    PhysicalRegisterID::X27,
+};
+
+constexpr std::array LP64DSaveOrder{
+    PhysicalRegisterID::X1,    PhysicalRegisterID::X8,    PhysicalRegisterID::X9,
+    PhysicalRegisterID::X18,   PhysicalRegisterID::X19,   PhysicalRegisterID::X20,
+    PhysicalRegisterID::X21,   PhysicalRegisterID::X22,   PhysicalRegisterID::X23,
+    PhysicalRegisterID::X24,   PhysicalRegisterID::X25,   PhysicalRegisterID::X26,
+    PhysicalRegisterID::X27,   PhysicalRegisterID::F8_D,  PhysicalRegisterID::F9_D,
+    PhysicalRegisterID::F18_D, PhysicalRegisterID::F19_D, PhysicalRegisterID::F20_D,
+    PhysicalRegisterID::F21_D, PhysicalRegisterID::F22_D, PhysicalRegisterID::F23_D,
+    PhysicalRegisterID::F24_D, PhysicalRegisterID::F25_D, PhysicalRegisterID::F26_D,
+    PhysicalRegisterID::F27_D,
+};
+
+[[nodiscard]] std::span<const PhysicalRegisterID> saveOrder(RISCVABI ABI) noexcept {
+  return ABI == RISCVABI::LP64D ? std::span<const PhysicalRegisterID>(LP64DSaveOrder)
+                                : std::span<const PhysicalRegisterID>(LP64SaveOrder);
 }
 
 [[nodiscard]] Expected<std::vector<PhysicalRegister>>
-modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescription &Target) {
+modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescription &Target,
+                             RISCVABI ABI) {
   std::unordered_set<PhysicalRegister> Modified;
   for (const StackObject &Object : Function.frameInfo().objects()) {
     if (!Object.isTombstone() && !Object.description()->IsDead &&
@@ -344,7 +356,7 @@ modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescri
             return makeUnexpected(ErrorCode::VerificationError,
                                   "RISC-V callee-save analysis found a null register mask");
           }
-          for (const PhysicalRegisterID ID : saveOrder()) {
+          for (const PhysicalRegisterID ID : saveOrder(ABI)) {
             auto Reg = physicalRegister(ID);
             if (!Reg)
               return std::unexpected(Reg.error());
@@ -363,7 +375,7 @@ modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescri
   }
 
   std::vector<PhysicalRegister> Result;
-  for (const PhysicalRegisterID ID : saveOrder()) {
+  for (const PhysicalRegisterID ID : saveOrder(ABI)) {
     auto Reg = physicalRegister(ID);
     if (!Reg)
       return std::unexpected(Reg.error());
@@ -403,11 +415,13 @@ modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescri
 createStackMemory(MachineFunction &Function, FrameIndex Index, MemoryAccessFlag Access) {
   auto Size = MemorySize::fixed(8);
   auto Align = Alignment::create(8);
-  if (!Size || !Align)
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
+  if (!Size || !Align || !Type)
     return makeUnexpected(ErrorCode::InternalError, "RISC-V spill facts are invalid");
   MachineMemOperandDesc Description;
   Description.Accesses = {Access};
   Description.Size = *Size;
+  Description.MemoryType = *Type;
   Description.Align = *Align;
   Description.Base = MemoryBase::frameIndex(Index);
   return Function.createMemOperand(std::move(Description));
@@ -417,11 +431,13 @@ createStackMemory(MachineFunction &Function, FrameIndex Index, MemoryAccessFlag 
 createResolvedStackMemory(MachineFunction &Function, MemoryAccessFlag Access, std::int64_t Offset) {
   auto Size = MemorySize::fixed(8);
   auto Align = Alignment::create(8);
-  if (!Size || !Align)
+  auto Type = LowLevelType::makeCategoryNeutralScalar(64);
+  if (!Size || !Align || !Type)
     return makeUnexpected(ErrorCode::InternalError, "RISC-V spill facts are invalid");
   MachineMemOperandDesc Description;
   Description.Accesses = {Access};
   Description.Size = *Size;
+  Description.MemoryType = *Type;
   Description.Align = *Align;
   Description.Base = MemoryBase::stack();
   Description.Offset = Offset;
@@ -474,7 +490,8 @@ createResolvedStackMemory(MachineFunction &Function, MemoryAccessFlag Access, st
   return DwarfRegisterNumber::fromValue(*Number);
 }
 
-[[nodiscard]] Expected<void> emitCFI(MachineIRBuilder &Builder, MachineCFIInstruction Instruction) {
+[[nodiscard]] Expected<void> emitCFI(MachineIRBuilder &Builder, MachineCFIInstruction Instruction,
+                                     MachineInstrFlag Flag) {
   auto Index = Builder.function().cfiInfo().addInstruction(std::move(Instruction));
   if (!Index)
     return std::unexpected(Index.error());
@@ -482,6 +499,8 @@ createResolvedStackMemory(MachineFunction &Function, MemoryAccessFlag Access, st
   if (!Pending)
     return std::unexpected(Pending.error());
   if (auto Result = Pending->addCFIInstruction(*Index); !Result)
+    return std::unexpected(Result.error());
+  if (auto Result = setFrameFlag(*Pending, Flag); !Result)
     return std::unexpected(Result.error());
   auto Built = Pending->build();
   if (!Built)
@@ -514,13 +533,13 @@ void appendSLEB128(std::vector<std::uint8_t> &Bytes, std::int64_t Value) {
 
 [[nodiscard]] Expected<void>
 emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
-                     PhysicalRegister Reg, std::int64_t Offset,
+                     PhysicalRegister Reg, std::int64_t Offset, MachineInstrFlag Flag,
                      std::optional<PhysicalRegister> ExpressionBase = std::nullopt) {
   auto DwarfReg = dwarfRegister(Target, Reg);
   if (!DwarfReg)
     return std::unexpected(DwarfReg.error());
   if (!ExpressionBase)
-    return emitCFI(Builder, MachineCFIInstruction::offset(*DwarfReg, Offset));
+    return emitCFI(Builder, MachineCFIInstruction::offset(*DwarfReg, Offset), Flag);
 
   auto DwarfBase = dwarfRegister(Target, *ExpressionBase);
   if (!DwarfBase)
@@ -541,24 +560,30 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   auto Rule = MachineCFIInstruction::escape(std::move(Escape));
   if (!Rule)
     return std::unexpected(Rule.error());
-  return emitCFI(Builder, std::move(*Rule));
+  return emitCFI(Builder, std::move(*Rule), Flag);
 }
 
 [[nodiscard]] Expected<void> emitRestoreRegisterCFI(MachineIRBuilder &Builder,
                                                     const TargetDescription &Target,
-                                                    PhysicalRegister Reg) {
+                                                    PhysicalRegister Reg, MachineInstrFlag Flag) {
   auto DwarfReg = dwarfRegister(Target, Reg);
   if (!DwarfReg)
     return std::unexpected(DwarfReg.error());
-  return emitCFI(Builder, MachineCFIInstruction::restore(*DwarfReg));
+  return emitCFI(Builder, MachineCFIInstruction::restore(*DwarfReg), Flag);
 }
 
 [[nodiscard]] Expected<void> emitDefCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
-                                        PhysicalRegister Reg, std::int64_t Offset) {
+                                        PhysicalRegister Reg, std::int64_t Offset,
+                                        MachineInstrFlag Flag) {
   auto DwarfReg = dwarfRegister(Target, Reg);
   if (!DwarfReg)
     return std::unexpected(DwarfReg.error());
-  return emitCFI(Builder, MachineCFIInstruction::defCFA(*DwarfReg, Offset));
+  return emitCFI(Builder, MachineCFIInstruction::defCFA(*DwarfReg, Offset), Flag);
+}
+
+[[nodiscard]] Expected<void> emitDefCFAOffset(MachineIRBuilder &Builder, std::int64_t Offset,
+                                              MachineInstrFlag Flag) {
+  return emitCFI(Builder, MachineCFIInstruction::defCFAOffset(Offset), Flag);
 }
 
 [[nodiscard]] Expected<void> emitConstant(MachineIRBuilder &Builder, PhysicalRegister Destination,
@@ -825,17 +850,17 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
       if (!Aligned)
         return std::unexpected(Aligned.error());
       Cursor = *Aligned;
-      if (Cursor > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
-        return makeUnexpected(ErrorCode::FrameLayoutFailed,
-                              "RISC-V frame offset exceeds signed 64-bit range");
-      }
-      auto Set = Frame.setObjectOffset(Object->index(), static_cast<std::int64_t>(Cursor));
-      if (!Set)
-        return std::unexpected(Set.error());
       if (Description.Size.value_or(0) > std::numeric_limits<std::uint64_t>::max() - Cursor) {
         return makeUnexpected(ErrorCode::FrameLayoutFailed, "RISC-V frame size overflows uint64");
       }
       Cursor += Description.Size.value_or(0);
+      if (Cursor > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+        return makeUnexpected(ErrorCode::FrameLayoutFailed,
+                              "RISC-V frame offset exceeds signed 64-bit range");
+      }
+      auto Set = Frame.setObjectOffset(Object->index(), -static_cast<std::int64_t>(Cursor));
+      if (!Set)
+        return std::unexpected(Set.error());
     }
     return {};
   };
@@ -850,14 +875,18 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
     for (const StackObject *Object : PreallocatedLocals) {
       const std::uint64_t LocalOffset =
           static_cast<std::uint64_t>(*Object->description()->LocalOffset);
-      if (BlobStart > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) ||
-          LocalOffset >
-              static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) - BlobStart) {
+      const std::uint64_t Size = Object->description()->Size.value_or(0);
+      if (BlobStart > std::numeric_limits<std::uint64_t>::max() - LocalOffset ||
+          BlobStart + LocalOffset > std::numeric_limits<std::uint64_t>::max() - Size) {
+        return makeUnexpected(ErrorCode::FrameLayoutFailed,
+                              "RISC-V local frame offset overflows uint64");
+      }
+      const std::uint64_t End = BlobStart + LocalOffset + Size;
+      if (End > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
         return makeUnexpected(ErrorCode::FrameLayoutFailed,
                               "RISC-V local frame offset exceeds int64");
       }
-      auto Set = Frame.setObjectOffset(Object->index(),
-                                       static_cast<std::int64_t>(BlobStart + LocalOffset));
+      auto Set = Frame.setObjectOffset(Object->index(), -static_cast<std::int64_t>(End));
       if (!Set)
         return std::unexpected(Set.error());
     }
@@ -939,15 +968,15 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
         return std::unexpected(Added.error());
       BaseOffset = *Added;
     }
-  } else if (!requiresStackRealignment(Function) && HasFP &&
-             !Instruction.flags().has(MachineInstrFlag::FrameSetup)) {
+  } else if (!HasFP || requiresBasePointer(Function) ||
+             Instruction.flags().has(MachineInstrFlag::FrameSetup)) {
     if (Function.frameInfo().state().StackSize >
         static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
       return makeUnexpected(ErrorCode::FrameLayoutFailed,
                             "RISC-V stack size exceeds signed 64-bit range");
     }
     auto Added =
-        checkedAdd(BaseOffset, -static_cast<std::int64_t>(Function.frameInfo().state().StackSize));
+        checkedAdd(BaseOffset, static_cast<std::int64_t>(Function.frameInfo().state().StackSize));
     if (!Added)
       return std::unexpected(Added.error());
     BaseOffset = *Added;
@@ -963,17 +992,21 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   }
   PhysicalRegisterID BaseID = PhysicalRegisterID::X2;
   std::int64_t Offset = *Object.Offset;
+  bool UsesPostAllocationBase = true;
   if (requiresBasePointer(Function)) {
     BaseID = PhysicalRegisterID::X9;
   } else if (requiresFramePointer(Function)) {
     BaseID = PhysicalRegisterID::X8;
+    UsesPostAllocationBase = false;
+  }
+  if (UsesPostAllocationBase) {
     if (Function.frameInfo().state().StackSize >
         static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
       return makeUnexpected(ErrorCode::FrameLayoutFailed,
                             "RISC-V stack size exceeds signed 64-bit range");
     }
     auto Adjusted =
-        checkedAdd(Offset, -static_cast<std::int64_t>(Function.frameInfo().state().StackSize));
+        checkedAdd(Offset, static_cast<std::int64_t>(Function.frameInfo().state().StackSize));
     if (!Adjusted)
       return std::unexpected(Adjusted.error());
     Offset = *Adjusted;
@@ -1029,8 +1062,8 @@ emitCalleeSave(MachineIRBuilder &Builder, PhysicalRegister Reg, FrameIndex Index
   return std::nullopt;
 }
 
-[[nodiscard]] bool isABIStackSaveRegister(PhysicalRegister Reg) {
-  return std::ranges::any_of(saveOrder(), [Reg](PhysicalRegisterID ID) {
+[[nodiscard]] bool isABIStackSaveRegister(PhysicalRegister Reg, RISCVABI ABI) {
+  return std::ranges::any_of(saveOrder(ABI), [Reg](PhysicalRegisterID ID) {
     auto Candidate = physicalRegister(ID);
     return Candidate && *Candidate == Reg;
   });
@@ -1038,7 +1071,7 @@ emitCalleeSave(MachineIRBuilder &Builder, PhysicalRegister Reg, FrameIndex Index
 
 [[nodiscard]] Expected<void>
 validateCalleeSaveObjects(const MachineFunction &Function,
-                          std::span<const PhysicalRegister> SavedRegisters) {
+                          std::span<const PhysicalRegister> SavedRegisters, RISCVABI ABI) {
   std::unordered_set<PhysicalRegister> Slots;
   for (const StackObject &Object : Function.frameInfo().objects()) {
     if (Object.isTombstone() || Object.description()->IsDead ||
@@ -1047,7 +1080,7 @@ validateCalleeSaveObjects(const MachineFunction &Function,
     }
     const StackObjectDesc &Description = *Object.description();
     const PhysicalRegister Reg = *Description.CalleeSavedRegister;
-    if (!isABIStackSaveRegister(Reg)) {
+    if (!isABIStackSaveRegister(Reg, ABI)) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V callee-save object names a caller-saved register");
     }
@@ -1133,10 +1166,12 @@ calleeSaveOperations(MachineBasicBlock &Block, const MachineFunction &Function, 
 
 class RISCVFrameLowering final : public TargetFrameLowering {
 public:
+  explicit RISCVFrameLowering(RISCVABI ABI) noexcept : ABI(ABI) {}
+
   [[nodiscard]] bool
   isCalleeSavedRegister(PhysicalRegister Reg, const MachineFunction &,
                         const TargetDescription &Target) const noexcept override {
-    return std::ranges::any_of(saveOrder(), [&](PhysicalRegisterID ID) {
+    return std::ranges::any_of(saveOrder(ABI), [&](PhysicalRegisterID ID) {
       const auto Candidate = physicalRegister(ID);
       return Candidate && Target.registers().regsOverlap(Reg, *Candidate);
     });
@@ -1174,10 +1209,10 @@ public:
     if (!FrameRegisters)
       return std::unexpected(FrameRegisters.error());
 
-    auto SavedRegisters = modifiedCalleeSavedRegisters(Function, Target);
+    auto SavedRegisters = modifiedCalleeSavedRegisters(Function, Target, ABI);
     if (!SavedRegisters)
       return std::unexpected(SavedRegisters.error());
-    auto ExistingSlots = validateCalleeSaveObjects(Function, *SavedRegisters);
+    auto ExistingSlots = validateCalleeSaveObjects(Function, *SavedRegisters, ABI);
     if (!ExistingSlots)
       return std::unexpected(ExistingSlots.error());
     auto Align8 = Alignment::create(8);
@@ -1195,7 +1230,7 @@ public:
       if (!Created)
         return std::unexpected(Created.error());
     }
-    auto CompleteSlots = validateCalleeSaveObjects(Function, *SavedRegisters);
+    auto CompleteSlots = validateCalleeSaveObjects(Function, *SavedRegisters, ABI);
     if (!CompleteSlots)
       return std::unexpected(CompleteSlots.error());
 
@@ -1524,7 +1559,7 @@ public:
       auto CaptureIncomingSP = emitAddImmediate(Builder, *FP, *SP, 0, MachineInstrFlag::FrameSetup);
       if (!CaptureIncomingSP)
         return std::unexpected(CaptureIncomingSP.error());
-      auto CFA = emitDefCFI(Builder, Target, *FP, 0);
+      auto CFA = emitDefCFI(Builder, Target, *FP, 0, MachineInstrFlag::FrameSetup);
       if (!CFA)
         return std::unexpected(CFA.error());
     }
@@ -1549,7 +1584,8 @@ public:
           return std::unexpected(Adjust.error());
       }
       if (!Realign) {
-        auto CFA = emitDefCFI(Builder, Target, *SP, static_cast<std::int64_t>(StackSize));
+        auto CFA = emitDefCFAOffset(Builder, static_cast<std::int64_t>(StackSize),
+                                    MachineInstrFlag::FrameSetup);
         if (!CFA)
           return std::unexpected(CFA.error());
       }
@@ -1588,8 +1624,8 @@ public:
           return makeUnexpected(ErrorCode::InternalError,
                                 "RISC-V realigned CFI slot is incomplete");
         }
-        auto CFI =
-            emitSavedRegisterCFI(AfterSaves, Target, Reg, *Object->description()->Offset, *BP);
+        auto CFI = emitSavedRegisterCFI(AfterSaves, Target, Reg, *Object->description()->Offset,
+                                        MachineInstrFlag::FrameSetup, *BP);
         if (!CFI)
           return std::unexpected(CFI.error());
       }
@@ -1604,15 +1640,12 @@ public:
         return makeUnexpected(ErrorCode::InternalError,
                               "RISC-V callee-save CFI slot is incomplete");
       }
-      auto Offset =
-          checkedAdd(*Object->description()->Offset, -static_cast<std::int64_t>(StackSize));
-      if (!Offset)
-        return std::unexpected(Offset.error());
       MachineIRBuilder AfterSave(Function, Target);
       auto PointAfterSave = AfterSave.setInsertPointAfter(*Save.Instruction);
       if (!PointAfterSave)
         return std::unexpected(PointAfterSave.error());
-      auto CFI = emitSavedRegisterCFI(AfterSave, Target, Save.Reg, *Offset);
+      auto CFI = emitSavedRegisterCFI(AfterSave, Target, Save.Reg, *Object->description()->Offset,
+                                      MachineInstrFlag::FrameSetup);
       if (!CFI)
         return std::unexpected(CFI.error());
       if (Index + 1U != Saves.size() || !requiresFramePointer(Function))
@@ -1630,7 +1663,7 @@ public:
         if (!Set)
           return std::unexpected(Set.error());
       }
-      auto CFA = emitDefCFI(AfterSave, Target, *FP, 0);
+      auto CFA = emitDefCFI(AfterSave, Target, *FP, 0, MachineInstrFlag::FrameSetup);
       if (!CFA)
         return std::unexpected(CFA.error());
     }
@@ -1648,7 +1681,7 @@ public:
         if (!Set)
           return std::unexpected(Set.error());
       }
-      auto CFA = emitDefCFI(Builder, Target, *FP, 0);
+      auto CFA = emitDefCFI(Builder, Target, *FP, 0, MachineInstrFlag::FrameSetup);
       if (!CFA)
         return std::unexpected(CFA.error());
     }
@@ -1678,7 +1711,6 @@ public:
     const bool HasFP = requiresFramePointer(Function);
     const bool Realign = requiresStackRealignment(Function);
     const std::uint64_t StackSize = Function.frameInfo().state().StackSize;
-    const bool HasFrameCFI = StackSize != 0 || !Function.records().calleeSavedRegisters().empty();
 
     const std::vector<CalleeSaveOperation> BlockRestores =
         calleeSaveOperations(Block, Function, true);
@@ -1700,18 +1732,6 @@ public:
                             "RISC-V epilogue has an incomplete callee-restore sequence");
     }
 
-    if (HasFrameCFI) {
-      MachineIRBuilder RememberBuilder(Function, Target);
-      auto Point = Restores.empty()
-                       ? RememberBuilder.setInsertPointBefore(Terminator)
-                       : RememberBuilder.setInsertPointBefore(*Restores.front().Instruction);
-      if (!Point)
-        return std::unexpected(Point.error());
-      auto Remember = emitCFI(RememberBuilder, MachineCFIInstruction::rememberState());
-      if (!Remember)
-        return std::unexpected(Remember.error());
-    }
-
     for (const CalleeSaveOperation &Restore : Restores) {
       if ((HasFP && Restore.Reg == *FP) || (Realign && Restore.Reg == *BP))
         continue;
@@ -1719,7 +1739,8 @@ public:
       auto Point = AfterRestore.setInsertPointAfter(*Restore.Instruction);
       if (!Point)
         return std::unexpected(Point.error());
-      auto CFI = emitRestoreRegisterCFI(AfterRestore, Target, Restore.Reg);
+      auto CFI =
+          emitRestoreRegisterCFI(AfterRestore, Target, Restore.Reg, MachineInstrFlag::FrameDestroy);
       if (!CFI)
         return std::unexpected(CFI.error());
     }
@@ -1738,7 +1759,7 @@ public:
       auto RestoreSP = emitAddImmediate(Teardown, *SP, *FP, 0, MachineInstrFlag::FrameDestroy);
       if (!RestoreSP)
         return std::unexpected(RestoreSP.error());
-      auto CFA = emitDefCFI(Teardown, Target, *SP, 0);
+      auto CFA = emitDefCFI(Teardown, Target, *SP, 0, MachineInstrFlag::FrameDestroy);
       if (!CFA)
         return std::unexpected(CFA.error());
       if (FPRestore != Restores.end()) {
@@ -1746,7 +1767,7 @@ public:
         auto After = AfterFP.setInsertPointAfter(*FPRestore->Instruction);
         if (!After)
           return std::unexpected(After.error());
-        auto FPCFI = emitRestoreRegisterCFI(AfterFP, Target, *FP);
+        auto FPCFI = emitRestoreRegisterCFI(AfterFP, Target, *FP, MachineInstrFlag::FrameDestroy);
         if (!FPCFI)
           return std::unexpected(FPCFI.error());
       }
@@ -1755,7 +1776,7 @@ public:
         auto After = AfterBP.setInsertPointAfter(*BPRestore->Instruction);
         if (!After)
           return std::unexpected(After.error());
-        auto BPCFI = emitRestoreRegisterCFI(AfterBP, Target, *BP);
+        auto BPCFI = emitRestoreRegisterCFI(AfterBP, Target, *BP, MachineInstrFlag::FrameDestroy);
         if (!BPCFI)
           return std::unexpected(BPCFI.error());
       }
@@ -1770,7 +1791,7 @@ public:
       auto RestoreSP = emitAddImmediate(Teardown, *SP, *FP, 0, MachineInstrFlag::FrameDestroy);
       if (!RestoreSP)
         return std::unexpected(RestoreSP.error());
-      auto CFA = emitDefCFI(Teardown, Target, *SP, 0);
+      auto CFA = emitDefCFI(Teardown, Target, *SP, 0, MachineInstrFlag::FrameDestroy);
       if (!CFA)
         return std::unexpected(CFA.error());
       if (FPRestore != Restores.end()) {
@@ -1778,7 +1799,7 @@ public:
         auto After = AfterFP.setInsertPointAfter(*FPRestore->Instruction);
         if (!After)
           return std::unexpected(After.error());
-        auto FPCFI = emitRestoreRegisterCFI(AfterFP, Target, *FP);
+        auto FPCFI = emitRestoreRegisterCFI(AfterFP, Target, *FP, MachineInstrFlag::FrameDestroy);
         if (!FPCFI)
           return std::unexpected(FPCFI.error());
       }
@@ -1816,18 +1837,9 @@ public:
         if (!Adjust)
           return std::unexpected(Adjust.error());
       }
-      auto CFA = emitDefCFI(Teardown, Target, *SP, 0);
+      auto CFA = emitDefCFAOffset(Teardown, 0, MachineInstrFlag::FrameDestroy);
       if (!CFA)
         return std::unexpected(CFA.error());
-    }
-    if (HasFrameCFI) {
-      MachineIRBuilder RestoreBuilder(Function, Target);
-      auto After = RestoreBuilder.setInsertPointAfter(Terminator);
-      if (!After)
-        return std::unexpected(After.error());
-      auto Restore = emitCFI(RestoreBuilder, MachineCFIInstruction::restoreState());
-      if (!Restore)
-        return std::unexpected(Restore.error());
     }
     return {};
   }
@@ -2039,13 +2051,16 @@ private:
       return std::unexpected(Built.error());
     return {};
   }
+
+  RISCVABI ABI;
 };
 
 } // namespace
 
-const TargetFrameLowering &frameLowering() noexcept {
-  static const RISCVFrameLowering Info;
-  return Info;
+const TargetFrameLowering &frameLowering(RISCVABI ABI) noexcept {
+  static const RISCVFrameLowering LP64Info(RISCVABI::LP64);
+  static const RISCVFrameLowering LP64DInfo(RISCVABI::LP64D);
+  return ABI == RISCVABI::LP64D ? LP64DInfo : LP64Info;
 }
 
 } // namespace rcc::riscv

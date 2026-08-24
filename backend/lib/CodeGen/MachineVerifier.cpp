@@ -692,7 +692,6 @@ private:
     for (const MachineMemOperand *MemOperand : Instruction.memOperands()) {
       const MemoryBase &Base = MemOperand->description().Base;
       if (const auto Frame = Base.frameIndex()) {
-        HasFrameIndex = true;
         auto FrameResult = verifyFrameIndex(*Frame);
         if (!FrameResult)
           return FrameResult;

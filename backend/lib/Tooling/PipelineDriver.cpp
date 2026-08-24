@@ -262,7 +262,10 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
             riscv::RISCVSubtargetFeatures Features, bool AllowSnapshots,
             MachinePassInstrumentation *Instrumentation) {
   FunctionRunResult Result;
-  const riscv::RISCVSubtarget Subtarget(Features, Invocation.Relocation, Invocation.Code);
+  auto ABI = riscv::parseRISCVABI(Invocation.ABI);
+  if (!ABI)
+    return std::unexpected(ABI.error());
+  const riscv::RISCVSubtarget Subtarget(Features, Invocation.Relocation, Invocation.Code, *ABI);
   MachinePassManagerOptions ManagerOptions{
       .VerifyBefore = true,
       .VerifyEach = Controls.VerifyEach,
@@ -455,11 +458,16 @@ Expected<void> verifyRV64GCInvocation(const BackendInvocation &Invocation) {
   auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
   if (!Features)
     return std::unexpected(Features.error());
+  auto ABI = riscv::parseRISCVABI(Invocation.ABI);
+  if (!ABI)
+    return std::unexpected(ABI.error());
+  if (*ABI == riscv::RISCVABI::LP64D && !Features->has(riscv::RISCVExtension::D)) {
+    return makeUnexpected(ErrorCode::InvalidInvocation, "RISC-V LP64D requires the D extension");
+  }
   if (Invocation.Triple != Expected.Triple || Invocation.CPU != Expected.CPU ||
-      Invocation.TuneCPU != Expected.TuneCPU || Invocation.ABI != Expected.ABI ||
-      Invocation.DataLayout != Expected.DataLayout) {
+      Invocation.TuneCPU != Expected.TuneCPU || Invocation.DataLayout != Expected.DataLayout) {
     return makeUnexpected(ErrorCode::InvalidInvocation,
-                          "backend invocation does not select the supported RV64 LP64D target");
+                          "backend invocation does not select a supported RV64 target");
   }
   if (Invocation.MIRReferenceRevision != LLVMReferenceRevision ||
       Invocation.GenericOpcodeVersion != GenericOpcodeReferenceVersion ||

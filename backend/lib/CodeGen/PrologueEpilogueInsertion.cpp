@@ -3,7 +3,6 @@
 #include "rcc/CodeGen/PrologueEpilogueInsertion.h"
 
 #include "rcc/CodeGen/FrameIndexElimination.h"
-#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
@@ -141,12 +140,6 @@ PrologueEpilogueInsertionPass::runImplementation(MachineFunction &Function,
   auto FrameIndices = eliminateFrameIndices(Function, Target, *Info, Scavenger);
   if (!FrameIndices)
     return std::unexpected(FrameIndices.error());
-
-  if (Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
-    auto Rebuilt = rebuildMachineLiveness(Function, Target);
-    if (!Rebuilt)
-      return std::unexpected(Rebuilt.error());
-  }
 
   MachinePassResult Result;
   Result.Changed = true;
