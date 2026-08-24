@@ -78,6 +78,9 @@ template <typename PassT, typename... ArgumentT>
   auto Added = addPass<PreRATargetPseudoExpansionPass>(Pipeline, pseudoExpansionInfo());
   if (!Added)
     return std::unexpected(Added.error());
+  Added = Pipeline.addPass(createMergeBaseOffsetPass());
+  if (!Added)
+    return std::unexpected(Added.error());
   Added = addPreRegisterAllocationOptimizationPipeline(
       Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
                                          Options.DebugPrologueEpilogue));

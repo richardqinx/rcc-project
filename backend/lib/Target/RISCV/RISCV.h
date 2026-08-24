@@ -40,6 +40,7 @@ createSchedulingModel(const TargetSchedulingHooks &Hooks);
 [[nodiscard]] const TargetPseudoExpansionInfo &pseudoExpansionInfo() noexcept;
 [[nodiscard]] std::unique_ptr<MachineFunctionPass>
 createMoveMergePass(const RISCVSubtarget &Subtarget);
+[[nodiscard]] std::unique_ptr<MachineFunctionPass> createMergeBaseOffsetPass();
 [[nodiscard]] MachineOptimizationPipelineTargetInfo
 optimizationPipelineInfo(const RISCVSubtarget &Subtarget, bool EmitSchedulerDebugOutput = false,
                          bool EmitFrameDebugOutput = false) noexcept;
