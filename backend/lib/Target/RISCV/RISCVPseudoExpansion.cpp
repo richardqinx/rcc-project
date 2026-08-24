@@ -451,10 +451,15 @@ copyRegisters(const MachineInstr &Instruction) {
 [[nodiscard]] Expected<bool> expandCall(MachineInstr &Instruction, MachineFunction &Function,
                                         const TargetDescription &Target, bool IsTail) {
   MachineBasicBlock *Block = Instruction.parent();
-  const MachineOperand *Callee = Instruction.operandAt(0);
-  const MachineOperand *Mask = Instruction.operandAt(1);
-  if (Block == nullptr || Callee == nullptr || Mask == nullptr ||
-      Mask->kind() != MachineOperand::Kind::RegisterMask) {
+  const bool HasExplicitLink =
+      Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoCALLReg);
+  const std::size_t CalleeIndex = HasExplicitLink ? 1U : 0U;
+  const MachineOperand *Callee = Instruction.operandAt(CalleeIndex);
+  const MachineOperand *Mask = Instruction.operandAt(CalleeIndex + 1U);
+  const bool HasMask =
+      Mask != nullptr && !Mask->isImplicit() && Mask->kind() == MachineOperand::Kind::RegisterMask;
+  if (Block == nullptr || Callee == nullptr ||
+      (Mask != nullptr && !Mask->isImplicit() && !HasMask)) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "RISC-V call pseudo has malformed explicit operands");
   }
@@ -463,6 +468,19 @@ copyRegisters(const MachineInstr &Instruction) {
   auto Scratch = physicalRegister(PhysicalRegisterID::X6);
   if (!Zero || !Link || !Scratch)
     return makeUnexpected(ErrorCode::InternalError, "RISC-V call registers are unavailable");
+  PhysicalRegister DestinationRegister = IsTail ? *Zero : *Link;
+  if (HasExplicitLink) {
+    const MachineOperand *Destination = Instruction.operandAt(0);
+    const Register *DestinationValue =
+        Destination == nullptr ? nullptr : Destination->getIf<Register>();
+    const auto PhysicalDestination =
+        DestinationValue == nullptr ? std::nullopt : DestinationValue->physicalRegister();
+    if (!PhysicalDestination || !Destination->isDef()) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V call-register pseudo has an invalid link register");
+    }
+    DestinationRegister = *PhysicalDestination;
+  }
 
   MachineIRBuilder Builder(Function, Target);
   auto Point = Builder.setInsertPointBefore(Instruction);
@@ -473,7 +491,7 @@ copyRegisters(const MachineInstr &Instruction) {
   const bool Direct = Callee->kind() == MachineOperand::Kind::GlobalSymbol ||
                       Callee->kind() == MachineOperand::Kind::ExternalSymbol;
   if (Direct) {
-    const PhysicalRegister HighRegister = IsTail ? *Scratch : *Link;
+    const PhysicalRegister HighRegister = IsTail ? *Scratch : DestinationRegister;
     Base = Register::fromPhysical(HighRegister);
     Anchor = Instruction.preInstrSymbol()
                  ? std::optional<std::string>{std::string(*Instruction.preInstrSymbol())}
@@ -511,7 +529,6 @@ copyRegisters(const MachineInstr &Instruction) {
   auto LowPending = Builder.buildInstr(instructionOpcode(LowOpcode));
   if (!LowPending)
     return std::unexpected(LowPending.error());
-  const PhysicalRegister DestinationRegister = IsTail ? *Zero : *Link;
   auto LowDef = LowPending->addDef(Register::fromPhysical(DestinationRegister));
   if (!LowDef)
     return std::unexpected(LowDef.error());
@@ -522,12 +539,15 @@ copyRegisters(const MachineInstr &Instruction) {
       Anchor ? LowPending->addMCSymbol(*Anchor, 0, PCRelativeLowFlag) : LowPending->addImmediate(0);
   if (!LowOffset)
     return std::unexpected(LowOffset.error());
-  auto LowMask = LowPending->addOperand(Mask->cloneDetached());
-  if (!LowMask)
-    return std::unexpected(LowMask.error());
+  if (HasMask) {
+    auto LowMask = LowPending->addOperand(Mask->cloneDetached());
+    if (!LowMask)
+      return std::unexpected(LowMask.error());
+  }
+  const std::size_t FirstImplicit = CalleeIndex + 1U + static_cast<std::size_t>(HasMask);
   auto Implicit = copyExtraImplicitOperands(
-      Instruction, 2, *LowPending, IsTail ? std::nullopt : std::optional<PhysicalRegister>{*Link},
-      std::nullopt);
+      Instruction, FirstImplicit, *LowPending,
+      IsTail ? std::nullopt : std::optional<PhysicalRegister>{DestinationRegister}, std::nullopt);
   if (!Implicit)
     return std::unexpected(Implicit.error());
   auto Low = LowPending->build();
@@ -573,6 +593,8 @@ public:
     if (!Subregister || *Subregister)
       return Subregister;
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoCALL))
+      return expandCall(Instruction, Function, Target, false);
+    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoCALLReg))
       return expandCall(Instruction, Function, Target, false);
     if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoTAIL))
       return expandCall(Instruction, Function, Target, true);

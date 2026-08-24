@@ -336,6 +336,20 @@ instructions:
     owner: post_ra_expansion
     deadline: post_ra_finalized
   -
+    id: 1269
+    symbol: PseudoCALLReg
+    name: PseudoCALLReg
+    operands:
+      - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
+      - { kinds: [global_symbol, external_symbol], allowed_target_flags: 1 }
+      - { kinds: [register_mask], optional: true }
+    num_explicit_defs: 1
+    allow_extra_implicit_operands: true
+    flags: [pseudo, produces_code, allowed_pre_legalizer, call, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
+    size: 8
+    owner: post_ra_expansion
+    deadline: post_ra_finalized
+  -
     id: 1224
     symbol: PseudoRET
     name: PseudoRET
@@ -357,7 +371,7 @@ instructions:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [immediate, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
-      - { kinds: [register_mask] }
+      - { kinds: [register_mask], optional: true }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
     flags: [call, may_load, may_store, has_side_effects, produces_code, not_duplicable, unmodeled_side_effects]
@@ -374,7 +388,7 @@ instructions:
       - { kinds: [register], role: def, register_class: GPR, register_bank: GPR, name: RD }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR, name: RS1 }
       - { kinds: [immediate, mc_symbol], immediate_predicate: SIMM12, allowed_target_flags: 4, name: IMM }
-      - { kinds: [register_mask] }
+      - { kinds: [register_mask], optional: true }
     num_explicit_defs: 1
     allow_extra_implicit_operands: true
     flags: [terminator, branch, indirect_branch, call, barrier, may_load, may_store, has_side_effects, produces_code, not_duplicable, unmodeled_side_effects]
