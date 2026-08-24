@@ -1448,7 +1448,7 @@ public:
 
     if (Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
       for (const PhysicalRegister Reg : Saved) {
-        if (Reg == *FP || Reg == *BP)
+        if (Function.registerInfo().isReserved(Reg))
           continue;
         auto LiveIn = SaveBlock->addLiveIn(Reg);
         if (!LiveIn)
