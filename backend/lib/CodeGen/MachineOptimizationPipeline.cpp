@@ -47,8 +47,7 @@ Expected<void> registerMachineOptimizationAnalyses(MachineFunctionAnalysisManage
 Expected<void>
 addSelectedSSAOptimizationPipeline(MachineFunctionPassManager &Pipeline,
                                    const MachineOptimizationPipelineTargetInfo &TargetInfo) {
-  auto Added = addPass<MachineCombinerPass>(Pipeline, TargetInfo.Combiner,
-                                            MachineCombinerStage::SelectedSSA);
+  auto Added = addPass<MachineCombinerPass>(Pipeline, TargetInfo.Combiner);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<MachineMemoryFoldingPass>(Pipeline, TargetInfo.MemoryFolding);
@@ -74,10 +73,6 @@ addSelectedSSAOptimizationPipeline(MachineFunctionPassManager &Pipeline,
 
 Expected<void> addPreRegisterAllocationOptimizationPipeline(
     MachineFunctionPassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo) {
-  auto Added = addPass<MachineCombinerPass>(Pipeline, TargetInfo.Combiner,
-                                            MachineCombinerStage::PreRegisterAllocation);
-  if (!Added)
-    return std::unexpected(Added.error());
   return addPass<MachineSchedulerPass>(Pipeline, TargetInfo.SchedulingModel,
                                        TargetInfo.SchedulerOptions);
 }
@@ -87,10 +82,6 @@ addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
                                   const MachineOptimizationPipelineTargetInfo &TargetInfo,
                                   MachineOptimizationPipelineOptions Options) {
   auto Added = addPass<MachineStackSlotColoringPass>(Pipeline);
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = addPass<MachineCombinerPass>(Pipeline, TargetInfo.Combiner,
-                                       MachineCombinerStage::PostRegisterAllocation);
   if (!Added)
     return std::unexpected(Added.error());
   Added = addPass<MachineLICMPass>(Pipeline, MachineCodeMotionStage::PostRegisterAllocation);

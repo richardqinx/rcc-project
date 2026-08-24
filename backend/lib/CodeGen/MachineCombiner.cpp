@@ -2,47 +2,28 @@
 
 #include "rcc/CodeGen/MachineCombiner.h"
 
-#include "rcc/CodeGen/InstructionDescriptor.h"
-#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineFunctionCloner.h"
+#include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
-#include "rcc/CodeGen/TargetRegisterInfo.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <span>
 #include <string>
-#include <utility>
-#include <vector>
 
 namespace rcc {
 namespace {
 
-[[nodiscard]] const MachinePassContract &combinerContract(MachineCombinerStage Stage) {
-  static const MachinePassContract PreLegalizer = [] {
+[[nodiscard]] const MachinePassContract &combinerContract() {
+  static const MachinePassContract Contract = [] {
     MachinePassContract Value{
-        .Name = "riscv-prelegalizer-combiner",
+        .Name = "machine-combiner",
         .Requires = {MachineFunctionProperty::IsSSA},
-        .Sets = {},
-        .Clears = {},
-        .RequiredAnalyses = {},
-        .VerificationStage = PipelineStage::MachineIRInput,
-    };
-    Value.ThreadSafety = PassThreadSafety::ThreadSafe;
-    Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands,
-                             MachinePassChange::Registers};
-    return Value;
-  }();
-  static const MachinePassContract SelectedSSA = [] {
-    MachinePassContract Value{
-        .Name = "machine-combiner-selected-ssa",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::IsSSA},
         .Sets = {},
         .Clears = {},
         .RequiredAnalyses = {},
@@ -53,46 +34,7 @@ namespace {
                              MachinePassChange::Registers};
     return Value;
   }();
-  static const MachinePassContract PreRA = [] {
-    MachinePassContract Value{
-        .Name = "machine-combiner-pre-ra",
-        .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                     MachineFunctionProperty::TiedOpsRewritten},
-        .Sets = {},
-        .Clears = {},
-        .RequiredAnalyses = {},
-        .VerificationStage = PipelineStage::TiedOpsRewritten,
-    };
-    Value.ThreadSafety = PassThreadSafety::ThreadSafe;
-    Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands,
-                             MachinePassChange::Registers};
-    return Value;
-  }();
-  static const MachinePassContract PostRA = [] {
-    MachinePassContract Value{
-        .Name = "machine-combiner-post-ra",
-        .Requires = {},
-        .Sets = {},
-        .Clears = {},
-        .RequiredAnalyses = {},
-        .VerificationStage = PipelineStage::RegisterAllocated,
-    };
-    Value.ThreadSafety = PassThreadSafety::ThreadSafe;
-    Value.DeclaredChanges = {MachinePassChange::Instructions, MachinePassChange::Operands,
-                             MachinePassChange::Registers};
-    return Value;
-  }();
-  switch (Stage) {
-  case MachineCombinerStage::PreLegalizer:
-    return PreLegalizer;
-  case MachineCombinerStage::SelectedSSA:
-    return SelectedSSA;
-  case MachineCombinerStage::PreRegisterAllocation:
-    return PreRA;
-  case MachineCombinerStage::PostRegisterAllocation:
-    return PostRA;
-  }
-  return PreLegalizer;
+  return Contract;
 }
 
 [[nodiscard]] bool hasProtectedAttachment(const MachineInstr &Instruction) noexcept {
@@ -104,170 +46,159 @@ namespace {
          Instruction.cfiType().has_value() || Instruction.deactivationSymbol().has_value();
 }
 
-[[nodiscard]] bool matchesPredicate(const MachineInstr &Instruction,
-                                    const MachineCombinerPredicate &Predicate) {
-  const MachineOperand *Operand = Instruction.operandAt(Predicate.Operand);
-  if (Operand == nullptr)
-    return false;
-  switch (Predicate.Kind) {
-  case MachineCombinerPredicateKind::ImmediateEquals: {
-    const auto *Immediate = Operand->getIf<std::int64_t>();
-    return Immediate != nullptr && *Immediate == Predicate.Value;
+[[nodiscard]] MachineInstrFlags intersectFlags(MachineInstrFlags Left,
+                                               MachineInstrFlags Right) noexcept {
+  MachineInstrFlags Result;
+  for (std::uint32_t Index = 0; Index < static_cast<std::uint32_t>(MachineInstrFlag::Count);
+       ++Index) {
+    const auto Flag = static_cast<MachineInstrFlag>(Index);
+    if (Left.has(Flag) && Right.has(Flag))
+      Result.set(Flag);
   }
-  case MachineCombinerPredicateKind::RegisterEquals: {
-    const MachineOperand *Other = Instruction.operandAt(Predicate.OtherOperand);
-    const Register *LeftReg = Operand->getIf<Register>();
-    const Register *RightReg = Other == nullptr ? nullptr : Other->getIf<Register>();
-    return LeftReg != nullptr && RightReg != nullptr && *LeftReg == *RightReg &&
-           Operand->subReg() == Other->subReg();
-  }
-  case MachineCombinerPredicateKind::PhysicalRegisterEquals: {
-    const Register *Reg = Operand->getIf<Register>();
-    const std::optional<PhysicalRegister> Physical =
-        Reg == nullptr ? std::nullopt : Reg->physicalRegister();
-    return Physical && Physical->number() == static_cast<std::uint32_t>(Predicate.Value);
-  }
-  case MachineCombinerPredicateKind::RegisterIsVirtual: {
-    const Register *Reg = Operand->getIf<Register>();
-    return Reg != nullptr && Reg->isVirtual();
-  }
-  case MachineCombinerPredicateKind::RegisterIsPhysical: {
-    const Register *Reg = Operand->getIf<Register>();
-    return Reg != nullptr && Reg->isPhysical();
-  }
-  }
-  return false;
+  return Result;
 }
 
-[[nodiscard]] bool matchesPattern(const MachineInstr &Instruction,
-                                  const MachineCombinerPattern &Pattern,
-                                  MachineCombinerStage Stage) {
-  if ((Pattern.Stages & machineCombinerStageMask(Stage)) == 0)
-    return false;
-  for (const MachineCombinerPredicate &Predicate : Pattern.Predicates) {
-    if (!matchesPredicate(Instruction, Predicate))
-      return false;
-  }
-  return true;
+[[nodiscard]] bool hasEqualRoundingMode(const MachineInstr &Root,
+                                        const MachineInstr &Producer) noexcept {
+  const MachineOperand *RootMode = Root.operandAt(3);
+  const MachineOperand *ProducerMode = Producer.operandAt(3);
+  const auto *RootImmediate = RootMode == nullptr ? nullptr : RootMode->getIf<std::int64_t>();
+  const auto *ProducerImmediate =
+      ProducerMode == nullptr ? nullptr : ProducerMode->getIf<std::int64_t>();
+  return RootImmediate != nullptr && ProducerImmediate != nullptr &&
+         *RootImmediate == *ProducerImmediate;
 }
 
-[[nodiscard]] bool compatibleReplacement(Register Destination, Register Source,
-                                         const MachineFunction &Function,
-                                         const TargetDescription &Target) {
-  if (!Destination.isVirtual() || Source.isNoRegister())
-    return false;
-  auto DestinationInfo = Function.registerInfo().virtualRegisterInfo(Destination);
-  if (!DestinationInfo)
-    return false;
-  const VirtualRegisterInfo &DestinationValue = DestinationInfo->get();
-  if (Source.isPhysical()) {
-    const std::optional<PhysicalRegister> Physical = Source.physicalRegister();
-    if (!Physical)
-      return false;
-    if (DestinationValue.RegClass &&
-        !Target.registers().registerClassContains(*DestinationValue.RegClass, *Physical)) {
-      return false;
-    }
-    return !DestinationValue.Bank ||
-           Target.registers().bankContainsRegister(*DestinationValue.Bank, *Physical);
+[[nodiscard]] MachineInstr *findProducer(MachineInstr &Root,
+                                         const MachineCombinerPattern &Pattern) noexcept {
+  const MachineOperand *ProducerUse = Root.operandAt(Pattern.ProducerOperand);
+  const Register *ProducerRegister =
+      ProducerUse == nullptr ? nullptr : ProducerUse->getIf<Register>();
+  if (ProducerRegister == nullptr || !ProducerUse->isUse() || !ProducerRegister->isVirtual()) {
+    return nullptr;
   }
-  auto SourceInfo = Function.registerInfo().virtualRegisterInfo(Source);
-  if (!SourceInfo)
-    return false;
-  const VirtualRegisterInfo &SourceValue = SourceInfo->get();
-  if (DestinationValue.Type != SourceValue.Type)
-    return false;
-  if (DestinationValue.Bank &&
-      (!SourceValue.Bank ||
-       !Target.registers().registerBanksOverlap(*DestinationValue.Bank, *SourceValue.Bank))) {
-    return false;
+  MachineInstr *Producer = Root.function().registerInfo().getVRegDef(*ProducerRegister);
+  if (Producer == nullptr || Producer->opcode() != Pattern.ProducerOpcode ||
+      Producer->parent() != Root.parent() || Producer->operandCount() < 4 ||
+      hasProtectedAttachment(*Producer)) {
+    return nullptr;
   }
-  if (DestinationValue.RegClass &&
-      (!SourceValue.RegClass || !Target.registers().registerClassesOverlap(
-                                    *DestinationValue.RegClass, *SourceValue.RegClass))) {
-    return false;
+  const MachineOperand *Definition = Producer->operandAt(0);
+  const Register *DefinedRegister = Definition == nullptr ? nullptr : Definition->getIf<Register>();
+  if (DefinedRegister == nullptr || !Definition->isDef() || Definition->isUse() ||
+      *DefinedRegister != *ProducerRegister) {
+    return nullptr;
   }
-  return true;
+  if (!Root.flags().has(MachineInstrFlag::FastMathAllowContract) ||
+      !Producer->flags().has(MachineInstrFlag::FastMathAllowContract) ||
+      !hasEqualRoundingMode(Root, *Producer)) {
+    return nullptr;
+  }
+  return Producer;
 }
 
-[[nodiscard]] Expected<bool> executeReplacement(MachineInstr &Instruction,
-                                                const MachineCombinerAction &Action,
-                                                MachineFunction &Function,
-                                                const TargetDescription &Target) {
-  MachineOperand *Definition = Instruction.operandAt(Action.DefinitionOperand);
-  const MachineOperand *SourceOperand = Instruction.operandAt(Action.SourceOperand);
-  const Register *Destination = Definition == nullptr ? nullptr : Definition->getIf<Register>();
-  const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
-  if (Destination == nullptr || Source == nullptr || !Definition->isDef() || Definition->isUse() ||
-      !SourceOperand->isUse() || Definition->subReg().value() != 0 ||
-      SourceOperand->subReg().value() != 0 || Destination->isNoRegister() ||
-      Source->isNoRegister()) {
+[[nodiscard]] Expected<void> clearKillFlags(MachineRegisterInfo &Registers, Register Reg) {
+  for (MachineOperand &Operand : Registers.regOperands(Reg)) {
+    RegisterOperandFlags Flags = Operand.registerFlags();
+    if (!Flags.has(RegisterOperandFlag::Kill))
+      continue;
+    Flags.clear(RegisterOperandFlag::Kill);
+    auto Changed = Operand.setRegisterFlags(Flags);
+    if (!Changed)
+      return std::unexpected(Changed.error());
+  }
+  return {};
+}
+
+[[nodiscard]] Expected<bool> combineFusedMultiplyAdd(MachineInstr &Root, MachineInstr &Producer,
+                                                     const MachineCombinerPattern &Pattern,
+                                                     MachineFunction &Function,
+                                                     const TargetDescription &Target) {
+  const MachineOperand *RootDefinition = Root.operandAt(0);
+  const MachineOperand *MultiplyLeft = Producer.operandAt(1);
+  const MachineOperand *MultiplyRight = Producer.operandAt(2);
+  const MachineOperand *Addend = Root.operandAt(Pattern.AddendOperand);
+  const Register *ProducerResult = Producer.operandAt(0)->getIf<Register>();
+  const Register *MultiplyLeftRegister =
+      MultiplyLeft == nullptr ? nullptr : MultiplyLeft->getIf<Register>();
+  const Register *MultiplyRightRegister =
+      MultiplyRight == nullptr ? nullptr : MultiplyRight->getIf<Register>();
+  if (RootDefinition == nullptr || MultiplyLeftRegister == nullptr ||
+      MultiplyRightRegister == nullptr || Addend == nullptr || ProducerResult == nullptr) {
     return false;
   }
-  MachineBasicBlock *Block = Instruction.parent();
+
+  MachineRegisterInfo &Registers = Function.registerInfo();
+  const bool EraseProducer = Registers.hasOneUse(*ProducerResult, false);
+  auto Cleared = clearKillFlags(Registers, *MultiplyLeftRegister);
+  if (!Cleared)
+    return std::unexpected(Cleared.error());
+  Cleared = clearKillFlags(Registers, *MultiplyRightRegister);
+  if (!Cleared)
+    return std::unexpected(Cleared.error());
+
+  MachineIRBuilder Builder(Function, Target);
+  auto Point = Builder.setInsertPointBefore(Root);
+  if (!Point)
+    return std::unexpected(Point.error());
+  auto Pending = Builder.buildInstr(Pattern.ReplacementOpcode);
+  if (!Pending)
+    return std::unexpected(Pending.error());
+
+  auto Added = Pending->addOperand(RootDefinition->cloneDetached());
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = Pending->addOperand(MultiplyLeft->cloneDetached());
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = Pending->addOperand(MultiplyRight->cloneDetached());
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = Pending->addOperand(Addend->cloneDetached());
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = Pending->addOperand(Root.operandAt(3)->cloneDetached());
+  if (!Added)
+    return std::unexpected(Added.error());
+  for (std::size_t Index = 4; Index < Root.operandCount(); ++Index) {
+    Added = Pending->addImplicitOperand(Root.operandAt(Index)->cloneDetached());
+    if (!Added)
+      return std::unexpected(Added.error());
+  }
+  Added = Pending->setFlags(intersectFlags(Root.flags(), Producer.flags()));
+  if (!Added)
+    return std::unexpected(Added.error());
+  if (Root.debugLocation()) {
+    Added = Pending->setDebugLocation(*Root.debugLocation());
+    if (!Added)
+      return std::unexpected(Added.error());
+  }
+  auto Fused = Pending->build();
+  if (!Fused)
+    return std::unexpected(Fused.error());
+
+  MachineBasicBlock *Block = Root.parent();
   if (Block == nullptr)
     return makeUnexpected(ErrorCode::InternalError, "machine combiner root is detached");
-
-  if (*Destination == *Source) {
-    auto Removed = Block->removeInstruction(Instruction);
-    if (!Removed)
-      return std::unexpected(Removed.error());
-    return true;
-  }
-  if (!Destination->isVirtual() ||
-      Function.registerInfo().getUniqueVRegDef(*Destination) != Definition ||
-      !compatibleReplacement(*Destination, *Source, Function, Target)) {
-    return false;
-  }
-
-  std::vector<MachineOperand *> Uses;
-  for (MachineOperand &Use : Function.registerInfo().useOperands(*Destination, true))
-    Uses.push_back(&Use);
-  for (MachineOperand *Use : Uses) {
-    auto Replaced = Use->setRegister(*Source);
-    if (!Replaced)
-      return std::unexpected(Replaced.error());
-  }
-  auto Removed = Block->removeInstruction(Instruction);
+  auto Removed = Block->removeInstruction(Root);
   if (!Removed)
     return std::unexpected(Removed.error());
-  if (!Function.registerInfo().useEmpty(*Destination, true) ||
-      Function.registerInfo().getUniqueVRegDef(*Destination) != nullptr) {
-    return makeUnexpected(ErrorCode::InternalError,
-                          "machine combiner left references to a replaced result");
+  if (EraseProducer) {
+    MachineBasicBlock *ProducerBlock = Producer.parent();
+    if (ProducerBlock == nullptr) {
+      return makeUnexpected(ErrorCode::InternalError, "machine combiner producer is detached");
+    }
+    Removed = ProducerBlock->removeInstruction(Producer);
+    if (!Removed)
+      return std::unexpected(Removed.error());
   }
-  auto Erased = Function.registerInfo().eraseVirtualRegister(*Destination);
-  if (!Erased)
-    return std::unexpected(Erased.error());
   return true;
-}
-
-[[nodiscard]] Expected<bool> executePattern(MachineInstr &Instruction,
-                                            const MachineCombinerPattern &Pattern,
-                                            MachineFunction &Function,
-                                            const TargetDescription &Target) {
-  const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
-  if (Descriptor == nullptr)
-    return makeUnexpected(ErrorCode::VerificationError, "machine combiner root has no descriptor");
-  const InstructionFlags Flags = Descriptor->Flags;
-  if (Flags.has(InstructionFlag::Terminator) || Flags.has(InstructionFlag::Call) ||
-      Flags.has(InstructionFlag::Barrier) || Flags.has(InstructionFlag::MayLoad) ||
-      Flags.has(InstructionFlag::MayStore) || Flags.has(InstructionFlag::HasSideEffects) ||
-      Flags.has(InstructionFlag::UnmodeledSideEffects) || !Instruction.memOperands().empty() ||
-      hasProtectedAttachment(Instruction)) {
-    return false;
-  }
-  switch (Pattern.Action.Kind) {
-  case MachineCombinerActionKind::ReplaceDefWithOperandAndErase:
-    return executeReplacement(Instruction, Pattern.Action, Function, Target);
-  }
-  return false;
 }
 
 } // namespace
 
 const MachinePassContract &MachineCombinerPass::contract() const noexcept {
-  return combinerContract(Stage);
+  return combinerContract();
 }
 
 Expected<MachinePassResult> MachineCombinerPass::run(MachineFunction &Function,
@@ -275,7 +206,7 @@ Expected<MachinePassResult> MachineCombinerPass::run(MachineFunction &Function,
                                                      MachineFunctionAnalysisManager &Analyses) {
   if (!Function.properties().containsAll(contract().Requires)) {
     return makeUnexpected(ErrorCode::VerificationError,
-                          "machine combiner input does not satisfy its stage contract");
+                          "machine combiner input does not satisfy its pass contract");
   }
   auto Trial = cloneMachineFunction(
       Function, Target,
@@ -315,10 +246,13 @@ MachineCombinerPass::runImplementation(MachineFunction &Function, const TargetDe
       for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;) {
         MachineInstr *Next = Instruction->next();
         for (const MachineCombinerPattern &Pattern : Info->patterns(Instruction->opcode())) {
-          if (!matchesPattern(*Instruction, Pattern, Stage))
-            continue;
           if (Rewrites == Options.MaximumRewrites)
             break;
+          if (hasProtectedAttachment(*Instruction) || Instruction->operandCount() < 4)
+            continue;
+          MachineInstr *Producer = findProducer(*Instruction, Pattern);
+          if (Producer == nullptr)
+            continue;
           std::string Rule = "combine.";
           Rule.append(Pattern.Name);
           auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
@@ -326,7 +260,8 @@ MachineCombinerPass::runImplementation(MachineFunction &Function, const TargetDe
             return std::unexpected(Accepted.error());
           if (!*Accepted)
             continue;
-          auto Executed = executePattern(*Instruction, Pattern, Function, Target);
+          auto Executed =
+              combineFusedMultiplyAdd(*Instruction, *Producer, Pattern, Function, Target);
           if (!Executed)
             return std::unexpected(Executed.error());
           if (!*Executed)
@@ -346,11 +281,6 @@ MachineCombinerPass::runImplementation(MachineFunction &Function, const TargetDe
   if (!Result.Changed) {
     Result.Preserved = PreservedAnalyses::all();
     return Result;
-  }
-  if (Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
-    auto Rebuilt = rebuildMachineLiveness(Function, Target);
-    if (!Rebuilt)
-      return std::unexpected(Rebuilt.error());
   }
   Result.Changes = {MachinePassChange::Instructions, MachinePassChange::Operands,
                     MachinePassChange::Registers};

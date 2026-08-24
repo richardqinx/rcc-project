@@ -2,8 +2,6 @@
 
 #include "rcc/CodeGen/MachineCombinerPattern.h"
 
-#include <cstddef>
-#include <ranges>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -15,25 +13,12 @@ TargetMachineCombinerInfo::create(std::vector<MachineCombinerPattern> Patterns) 
   TargetMachineCombinerInfo Result(std::move(Patterns));
   std::unordered_set<std::string> Names;
   for (const MachineCombinerPattern &Pattern : Result.Patterns) {
-    if (Pattern.Name.empty() || !Pattern.RootOpcode.isValid() || Pattern.Stages == 0 ||
-        !Names.insert(Pattern.Name).second) {
+    if (Pattern.Name.empty() || !Pattern.RootOpcode.isValid() ||
+        !Pattern.ProducerOpcode.isValid() || !Pattern.ReplacementOpcode.isValid() ||
+        Pattern.ProducerOperand == 0 || Pattern.AddendOperand == 0 ||
+        Pattern.ProducerOperand == Pattern.AddendOperand || !Names.insert(Pattern.Name).second) {
       return makeUnexpected(ErrorCode::InvalidArgument,
-                            "machine combiner pattern has an invalid identity or stage mask");
-    }
-    for (const MachineCombinerPredicate &Predicate : Pattern.Predicates) {
-      switch (Predicate.Kind) {
-      case MachineCombinerPredicateKind::ImmediateEquals:
-      case MachineCombinerPredicateKind::PhysicalRegisterEquals:
-      case MachineCombinerPredicateKind::RegisterIsVirtual:
-      case MachineCombinerPredicateKind::RegisterIsPhysical:
-        break;
-      case MachineCombinerPredicateKind::RegisterEquals:
-        if (Predicate.Operand == Predicate.OtherOperand) {
-          return makeUnexpected(ErrorCode::InvalidArgument,
-                                "register equality pattern compares an operand with itself");
-        }
-        break;
-      }
+                            "machine combiner pattern has an invalid target pattern");
     }
     Result.MatchTable[Pattern.RootOpcode].push_back(Pattern);
   }

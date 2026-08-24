@@ -3,75 +3,45 @@
 #include "RISCV.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
 
-#include <cstdint>
 #include <cstdlib>
-#include <string>
-#include <utility>
 #include <vector>
 
 namespace rcc::riscv {
 namespace {
 
-[[nodiscard]] constexpr MachineCombinerStageMask allOptimizationStages() noexcept {
-  return machineCombinerStageMask(MachineCombinerStage::SelectedSSA) |
-         machineCombinerStageMask(MachineCombinerStage::PreRegisterAllocation) |
-         machineCombinerStageMask(MachineCombinerStage::PostRegisterAllocation);
-}
-
-[[nodiscard]] MachineCombinerPattern immediateIdentity(InstructionOpcode OpcodeValue,
-                                                       std::string Name, std::int64_t Immediate) {
+[[nodiscard]] MachineCombinerPattern
+fusedMultiplyAdd(const char *Name, InstructionOpcode RootOpcode, InstructionOpcode ProducerOpcode,
+                 InstructionOpcode ReplacementOpcode, std::size_t ProducerOperand,
+                 std::size_t AddendOperand) {
   return {
-      .Name = std::move(Name),
-      .RootOpcode = instructionOpcode(OpcodeValue),
-      .Stages = allOptimizationStages(),
-      .Predicates = {{MachineCombinerPredicateKind::ImmediateEquals, 2, 0, Immediate}},
-      .Action = {MachineCombinerActionKind::ReplaceDefWithOperandAndErase, 0, 1},
-  };
-}
-
-[[nodiscard]] MachineCombinerPattern zeroRegisterIdentity(InstructionOpcode OpcodeValue,
-                                                          std::string Name, std::size_t ZeroOperand,
-                                                          std::size_t SourceOperand) {
-  return {
-      .Name = std::move(Name),
-      .RootOpcode = instructionOpcode(OpcodeValue),
-      .Stages = allOptimizationStages(),
-      .Predicates = {{MachineCombinerPredicateKind::PhysicalRegisterEquals, ZeroOperand, 0,
-                      static_cast<std::int64_t>(PhysicalRegisterID::X0)}},
-      .Action = {MachineCombinerActionKind::ReplaceDefWithOperandAndErase, 0, SourceOperand},
-  };
-}
-
-[[nodiscard]] MachineCombinerPattern equalSourceIdentity(InstructionOpcode OpcodeValue,
-                                                         std::string Name) {
-  return {
-      .Name = std::move(Name),
-      .RootOpcode = instructionOpcode(OpcodeValue),
-      .Stages = allOptimizationStages(),
-      .Predicates = {{MachineCombinerPredicateKind::RegisterEquals, 1, 2, 0}},
-      .Action = {MachineCombinerActionKind::ReplaceDefWithOperandAndErase, 0, 1},
+      .Name = Name,
+      .RootOpcode = instructionOpcode(RootOpcode),
+      .ProducerOpcode = instructionOpcode(ProducerOpcode),
+      .ReplacementOpcode = instructionOpcode(ReplacementOpcode),
+      .ProducerOperand = ProducerOperand,
+      .AddendOperand = AddendOperand,
   };
 }
 
 [[nodiscard]] std::vector<MachineCombinerPattern> createPatterns() {
-  std::vector<MachineCombinerPattern> Patterns;
-  Patterns.push_back(immediateIdentity(InstructionOpcode::ADDI, "addi-zero", 0));
-  Patterns.push_back(immediateIdentity(InstructionOpcode::XORI, "xori-zero", 0));
-  Patterns.push_back(immediateIdentity(InstructionOpcode::ORI, "ori-zero", 0));
-  Patterns.push_back(immediateIdentity(InstructionOpcode::ANDI, "andi-all-ones", -1));
-  Patterns.push_back(immediateIdentity(InstructionOpcode::SLLI, "slli-zero", 0));
-  Patterns.push_back(immediateIdentity(InstructionOpcode::SRLI, "srli-zero", 0));
-  Patterns.push_back(immediateIdentity(InstructionOpcode::SRAI, "srai-zero", 0));
-  Patterns.push_back(zeroRegisterIdentity(InstructionOpcode::ADD, "add-zero-right", 2, 1));
-  Patterns.push_back(zeroRegisterIdentity(InstructionOpcode::ADD, "add-zero-left", 1, 2));
-  Patterns.push_back(zeroRegisterIdentity(InstructionOpcode::OR, "or-zero-right", 2, 1));
-  Patterns.push_back(zeroRegisterIdentity(InstructionOpcode::OR, "or-zero-left", 1, 2));
-  Patterns.push_back(zeroRegisterIdentity(InstructionOpcode::XOR, "xor-zero-right", 2, 1));
-  Patterns.push_back(zeroRegisterIdentity(InstructionOpcode::XOR, "xor-zero-left", 1, 2));
-  Patterns.push_back(zeroRegisterIdentity(InstructionOpcode::SUB, "sub-zero-right", 2, 1));
-  Patterns.push_back(equalSourceIdentity(InstructionOpcode::FSGNJ_S, "fsgnj-s-copy"));
-  Patterns.push_back(equalSourceIdentity(InstructionOpcode::FSGNJ_D, "fsgnj-d-copy"));
-  return Patterns;
+  return {
+      fusedMultiplyAdd("fmadd-s-ax", InstructionOpcode::FADD_S, InstructionOpcode::FMUL_S,
+                       InstructionOpcode::FMADD_S, 1, 2),
+      fusedMultiplyAdd("fmadd-s-xa", InstructionOpcode::FADD_S, InstructionOpcode::FMUL_S,
+                       InstructionOpcode::FMADD_S, 2, 1),
+      fusedMultiplyAdd("fmsub-s", InstructionOpcode::FSUB_S, InstructionOpcode::FMUL_S,
+                       InstructionOpcode::FMSUB_S, 1, 2),
+      fusedMultiplyAdd("fnmsub-s", InstructionOpcode::FSUB_S, InstructionOpcode::FMUL_S,
+                       InstructionOpcode::FNMSUB_S, 2, 1),
+      fusedMultiplyAdd("fmadd-d-ax", InstructionOpcode::FADD_D, InstructionOpcode::FMUL_D,
+                       InstructionOpcode::FMADD_D, 1, 2),
+      fusedMultiplyAdd("fmadd-d-xa", InstructionOpcode::FADD_D, InstructionOpcode::FMUL_D,
+                       InstructionOpcode::FMADD_D, 2, 1),
+      fusedMultiplyAdd("fmsub-d", InstructionOpcode::FSUB_D, InstructionOpcode::FMUL_D,
+                       InstructionOpcode::FMSUB_D, 1, 2),
+      fusedMultiplyAdd("fnmsub-d", InstructionOpcode::FSUB_D, InstructionOpcode::FMUL_D,
+                       InstructionOpcode::FNMSUB_D, 2, 1),
+  };
 }
 
 } // namespace

@@ -7,7 +7,6 @@
 #include "rcc/Support/Error.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -15,51 +14,13 @@
 
 namespace rcc {
 
-enum class MachineCombinerStage : std::uint8_t {
-  PreLegalizer,
-  SelectedSSA,
-  PreRegisterAllocation,
-  PostRegisterAllocation,
-};
-
-using MachineCombinerStageMask = std::uint8_t;
-
-[[nodiscard]] constexpr MachineCombinerStageMask
-machineCombinerStageMask(MachineCombinerStage Stage) noexcept {
-  return static_cast<MachineCombinerStageMask>(1U << static_cast<std::uint8_t>(Stage));
-}
-
-enum class MachineCombinerPredicateKind : std::uint8_t {
-  ImmediateEquals,
-  RegisterEquals,
-  PhysicalRegisterEquals,
-  RegisterIsVirtual,
-  RegisterIsPhysical,
-};
-
-struct MachineCombinerPredicate final {
-  MachineCombinerPredicateKind Kind = MachineCombinerPredicateKind::ImmediateEquals;
-  std::size_t Operand = 0;
-  std::size_t OtherOperand = 0;
-  std::int64_t Value = 0;
-};
-
-enum class MachineCombinerActionKind : std::uint8_t {
-  ReplaceDefWithOperandAndErase,
-};
-
-struct MachineCombinerAction final {
-  MachineCombinerActionKind Kind = MachineCombinerActionKind::ReplaceDefWithOperandAndErase;
-  std::size_t DefinitionOperand = 0;
-  std::size_t SourceOperand = 0;
-};
-
 struct MachineCombinerPattern final {
   std::string Name;
   Opcode RootOpcode;
-  MachineCombinerStageMask Stages = 0;
-  std::vector<MachineCombinerPredicate> Predicates;
-  MachineCombinerAction Action;
+  Opcode ProducerOpcode;
+  Opcode ReplacementOpcode;
+  std::size_t ProducerOperand = 0;
+  std::size_t AddendOperand = 0;
 };
 
 class TargetMachineCombinerInfo final {

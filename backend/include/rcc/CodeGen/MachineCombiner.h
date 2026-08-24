@@ -17,9 +17,9 @@ struct MachineCombinerOptions final {
 
 class MachineCombinerPass final : public MachineFunctionPass {
 public:
-  MachineCombinerPass(const TargetMachineCombinerInfo &Info, MachineCombinerStage Stage,
+  MachineCombinerPass(const TargetMachineCombinerInfo &Info,
                       MachineCombinerOptions Options = {}) noexcept
-      : Info(&Info), Stage(Stage), Options(Options) {}
+      : Info(&Info), Options(Options) {}
 
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
@@ -32,7 +32,6 @@ private:
                                                               MachineActionReplay &Actions) const;
 
   const TargetMachineCombinerInfo *Info;
-  MachineCombinerStage Stage;
   MachineCombinerOptions Options;
 };
 
