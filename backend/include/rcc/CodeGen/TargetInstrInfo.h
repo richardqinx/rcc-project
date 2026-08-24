@@ -73,6 +73,11 @@ public:
     return false;
   }
 
+  [[nodiscard]] virtual Expected<bool> optimizeCondBranch(MachineInstr &, MachineFunction &,
+                                                          const TargetDescription &) const {
+    return false;
+  }
+
   [[nodiscard]] virtual Expected<bool> tryConvertToThreeAddress(MachineInstr &, std::size_t,
                                                                 std::size_t, MachineFunction &,
                                                                 const TargetDescription &) const {

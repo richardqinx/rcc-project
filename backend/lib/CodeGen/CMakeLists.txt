@@ -43,6 +43,7 @@ set(
   LivePhysRegs.cpp
   LiveRegUnits.cpp
   MachineMemoryFolding.cpp
+  MachinePeepholeOptimizer.cpp
   MachineMemOperand.cpp
   MachineMetadata.cpp
   MachineOperand.cpp
@@ -132,6 +133,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LivePhysRegs.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LiveRegUnits.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemoryFolding.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePeepholeOptimizer.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMemOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMetadata.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"

@@ -595,6 +595,116 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   return true;
 }
 
+[[nodiscard]] bool loadImmediate(const MachineInstr *Instruction, std::int64_t &Immediate) {
+  if (Instruction == nullptr ||
+      Instruction->opcode() != instructionOpcode(InstructionOpcode::ADDI) ||
+      !isPhysicalRegister(Instruction->operandAt(1), PhysicalRegisterID::X0)) {
+    return false;
+  }
+  const auto *Value = Instruction->operandAt(2) == nullptr
+                          ? nullptr
+                          : Instruction->operandAt(2)->getIf<std::int64_t>();
+  if (Value == nullptr)
+    return false;
+  Immediate = *Value;
+  return true;
+}
+
+[[nodiscard]] bool loadImmediateSource(const MachineRegisterInfo &Registers,
+                                       const MachineOperand &Operand, std::int64_t &Immediate) {
+  const Register *Reg = Operand.getIf<Register>();
+  if (Reg == nullptr)
+    return false;
+  if (const std::optional<PhysicalRegister> Physical = Reg->physicalRegister()) {
+    if (Physical->number() != static_cast<std::uint32_t>(PhysicalRegisterID::X0))
+      return false;
+    Immediate = 0;
+    return true;
+  }
+  return Reg->isVirtual() && loadImmediate(Registers.getVRegDef(*Reg), Immediate);
+}
+
+[[nodiscard]] std::optional<BranchConditionCode> branchCondition(Opcode Value) noexcept {
+  if (Value == instructionOpcode(InstructionOpcode::BEQ))
+    return BranchConditionCode::Equal;
+  if (Value == instructionOpcode(InstructionOpcode::BNE))
+    return BranchConditionCode::NotEqual;
+  if (Value == instructionOpcode(InstructionOpcode::BLT))
+    return BranchConditionCode::SignedLessThan;
+  if (Value == instructionOpcode(InstructionOpcode::BGE))
+    return BranchConditionCode::SignedGreaterEqual;
+  if (Value == instructionOpcode(InstructionOpcode::BLTU))
+    return BranchConditionCode::UnsignedLessThan;
+  if (Value == instructionOpcode(InstructionOpcode::BGEU))
+    return BranchConditionCode::UnsignedGreaterEqual;
+  return std::nullopt;
+}
+
+[[nodiscard]] bool evaluateBranch(BranchConditionCode Condition, std::int64_t Left,
+                                  std::int64_t Right) noexcept {
+  switch (Condition) {
+  case BranchConditionCode::Equal:
+    return Left == Right;
+  case BranchConditionCode::NotEqual:
+    return Left != Right;
+  case BranchConditionCode::SignedLessThan:
+    return Left < Right;
+  case BranchConditionCode::SignedGreaterEqual:
+    return Left >= Right;
+  case BranchConditionCode::UnsignedLessThan:
+    return static_cast<std::uint64_t>(Left) < static_cast<std::uint64_t>(Right);
+  case BranchConditionCode::UnsignedGreaterEqual:
+    return static_cast<std::uint64_t>(Left) >= static_cast<std::uint64_t>(Right);
+  }
+  return false;
+}
+
+[[nodiscard]] Expected<void> setRegisterUse(MachineOperand &Operand, Register Reg) {
+  auto Changed = Operand.setRegister(Reg);
+  if (!Changed)
+    return std::unexpected(Changed.error());
+  Changed = Operand.setRegisterFlags({RegisterOperandFlag::Use});
+  if (!Changed)
+    return std::unexpected(Changed.error());
+  Changed = Operand.setSubReg({});
+  if (!Changed)
+    return std::unexpected(Changed.error());
+  Operand.setTargetFlags(0);
+  return {};
+}
+
+[[nodiscard]] Expected<void> copyRegisterUse(MachineOperand &Destination,
+                                             const MachineOperand &Source) {
+  const Register *Reg = Source.getIf<Register>();
+  if (Reg == nullptr || !Source.isUse())
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "RISC-V branch optimization requires register uses");
+  auto Changed = Destination.setRegister(*Reg);
+  if (!Changed)
+    return std::unexpected(Changed.error());
+  Changed = Destination.setRegisterFlags(Source.registerFlags());
+  if (!Changed)
+    return std::unexpected(Changed.error());
+  Changed = Destination.setSubReg(Source.subReg());
+  if (!Changed)
+    return std::unexpected(Changed.error());
+  Destination.setTargetFlags(Source.targetFlags());
+  return {};
+}
+
+[[nodiscard]] Expected<void> clearKillFlags(MachineRegisterInfo &Registers, Register Reg) {
+  for (MachineOperand &Operand : Registers.useOperands(Reg)) {
+    RegisterOperandFlags Flags = Operand.registerFlags();
+    if (!Flags.has(RegisterOperandFlag::Kill))
+      continue;
+    Flags.clear(RegisterOperandFlag::Kill);
+    auto Changed = Operand.setRegisterFlags(Flags);
+    if (!Changed)
+      return std::unexpected(Changed.error());
+  }
+  return {};
+}
+
 class RISCVInstrInfo final : public TargetInstrInfo {
 public:
   [[nodiscard]] Expected<MachineBranchAnalysis>
@@ -1081,6 +1191,116 @@ public:
       return SetOpcode(Value == instructionOpcode(InstructionOpcode::BLTU)
                            ? InstructionOpcode::BNE
                            : InstructionOpcode::BEQ);
+    }
+    return false;
+  }
+
+  [[nodiscard]] Expected<bool> optimizeCondBranch(MachineInstr &Instruction,
+                                                  MachineFunction &Function,
+                                                  const TargetDescription &) const override {
+    if (&Instruction.function() != &Function)
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "RISC-V branch optimization references another function");
+    const auto Condition = branchCondition(Instruction.opcode());
+    if (!Condition)
+      return false;
+    MachineOperand *Left = Instruction.operandAt(0);
+    MachineOperand *Right = Instruction.operandAt(1);
+    if (Left == nullptr || Right == nullptr || Instruction.operandAt(2) == nullptr ||
+        Instruction.operandAt(2)->getIf<BasicBlockOperand>() == nullptr) {
+      return makeUnexpected(ErrorCode::VerificationError,
+                            "RISC-V conditional branch has malformed operands");
+    }
+
+    MachineRegisterInfo &Registers = Function.registerInfo();
+    std::int64_t LeftConstant = 0;
+    std::int64_t RightConstant = 0;
+    if (loadImmediateSource(Registers, *Left, LeftConstant) &&
+        loadImmediateSource(Registers, *Right, RightConstant)) {
+      const InstructionOpcode NewOpcode = evaluateBranch(*Condition, LeftConstant, RightConstant)
+                                              ? InstructionOpcode::BEQ
+                                              : InstructionOpcode::BNE;
+      auto Zero = physicalRegister(PhysicalRegisterID::X0);
+      if (!Zero)
+        return std::unexpected(Zero.error());
+      auto Changed = Instruction.setOpcode(instructionOpcode(NewOpcode));
+      if (!Changed)
+        return std::unexpected(Changed.error());
+      Changed = setRegisterUse(*Left, Register::fromPhysical(*Zero));
+      if (!Changed)
+        return std::unexpected(Changed.error());
+      Changed = setRegisterUse(*Right, Register::fromPhysical(*Zero));
+      if (!Changed)
+        return std::unexpected(Changed.error());
+      return true;
+    }
+
+    const bool IsEquality =
+        *Condition == BranchConditionCode::Equal || *Condition == BranchConditionCode::NotEqual;
+    if (IsEquality)
+      return false;
+    const bool IsSigned = *Condition == BranchConditionCode::SignedLessThan ||
+                          *Condition == BranchConditionCode::SignedGreaterEqual;
+    const auto SearchConstant = [&Instruction](std::int64_t Value) -> Register {
+      for (MachineInstr *Candidate = Instruction.previous(); Candidate != nullptr;
+           Candidate = Candidate->previous()) {
+        std::int64_t CandidateValue = 0;
+        if (!loadImmediate(Candidate, CandidateValue) || CandidateValue != Value)
+          continue;
+        const MachineOperand *Definition = Candidate->operandAt(0);
+        const Register *Reg = Definition == nullptr ? nullptr : Definition->getIf<Register>();
+        if (Reg != nullptr && Reg->isVirtual())
+          return *Reg;
+      }
+      return {};
+    };
+    const std::optional<Opcode> NewOpcode = reversedOpcode(Instruction.opcode());
+    if (!NewOpcode)
+      return false;
+
+    const Register *LeftReg = Left->getIf<Register>();
+    if (loadImmediateSource(Registers, *Left, LeftConstant) && LeftConstant != 0 &&
+        LeftReg != nullptr && LeftReg->isVirtual() && Registers.hasOneUse(*LeftReg, false) &&
+        (IsSigned || LeftConstant != -1)) {
+      const Register Replacement = SearchConstant(LeftConstant + 1);
+      if (!Replacement.isNoRegister()) {
+        MachineOperand SavedRight = Right->cloneDetached();
+        auto Changed = Instruction.setOpcode(*NewOpcode);
+        if (!Changed)
+          return std::unexpected(Changed.error());
+        Changed = copyRegisterUse(*Left, SavedRight);
+        if (!Changed)
+          return std::unexpected(Changed.error());
+        Changed = setRegisterUse(*Right, Replacement);
+        if (!Changed)
+          return std::unexpected(Changed.error());
+        Changed = clearKillFlags(Registers, Replacement);
+        if (!Changed)
+          return std::unexpected(Changed.error());
+        return true;
+      }
+    }
+
+    const Register *RightReg = Right->getIf<Register>();
+    if (loadImmediateSource(Registers, *Right, RightConstant) && RightConstant != 0 &&
+        RightReg != nullptr && RightReg->isVirtual() && Registers.hasOneUse(*RightReg, false)) {
+      const Register Replacement = SearchConstant(RightConstant - 1);
+      if (!Replacement.isNoRegister()) {
+        MachineOperand SavedLeft = Left->cloneDetached();
+        auto Changed = Instruction.setOpcode(*NewOpcode);
+        if (!Changed)
+          return std::unexpected(Changed.error());
+        Changed = setRegisterUse(*Left, Replacement);
+        if (!Changed)
+          return std::unexpected(Changed.error());
+        Changed = copyRegisterUse(*Right, SavedLeft);
+        if (!Changed)
+          return std::unexpected(Changed.error());
+        Changed = clearKillFlags(Registers, Replacement);
+        if (!Changed)
+          return std::unexpected(Changed.error());
+        return true;
+      }
     }
     return false;
   }

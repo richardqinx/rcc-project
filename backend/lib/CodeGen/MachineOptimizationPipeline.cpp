@@ -14,6 +14,7 @@
 #include "rcc/CodeGen/MachineFinalization.h"
 #include "rcc/CodeGen/MachineLICM.h"
 #include "rcc/CodeGen/MachineMemoryFolding.h"
+#include "rcc/CodeGen/MachinePeepholeOptimizer.h"
 #include "rcc/CodeGen/MachinePseudoExpansion.h"
 #include "rcc/CodeGen/MachineScheduler.h"
 #include "rcc/CodeGen/MachineShrinkWrapping.h"
@@ -62,7 +63,13 @@ addSelectedSSAOptimizationPipeline(MachineFunctionPassManager &Pipeline,
   Added = addPass<MachineLICMPass>(Pipeline, MachineCodeMotionStage::SelectedSSA);
   if (!Added)
     return std::unexpected(Added.error());
-  return addPass<MachineSinkPass>(Pipeline, MachineCodeMotionStage::SelectedSSA);
+  Added = addPass<MachineSinkPass>(Pipeline, MachineCodeMotionStage::SelectedSSA);
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = addPass<MachinePeepholeOptimizerPass>(Pipeline, TargetInfo.InstrInfo);
+  if (!Added)
+    return std::unexpected(Added.error());
+  return addPass<MachineDCEPass>(Pipeline);
 }
 
 Expected<void> addPreRegisterAllocationOptimizationPipeline(
