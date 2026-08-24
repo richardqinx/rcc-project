@@ -58,6 +58,22 @@ public:
     return IsUnnamed;
   }
 
+  [[nodiscard]] bool hasLinkOnceODRLinkage() const noexcept {
+    return HasLinkOnceODRLinkage;
+  }
+
+  [[nodiscard]] bool hasSection() const noexcept {
+    return HasSection;
+  }
+
+  [[nodiscard]] bool hasComdat() const noexcept {
+    return HasComdat;
+  }
+
+  [[nodiscard]] bool hasSectionPrefix() const noexcept {
+    return HasSectionPrefix;
+  }
+
   [[nodiscard]] std::span<const EmbeddedIRReference> blocks() const noexcept {
     return Blocks;
   }
@@ -87,6 +103,10 @@ private:
   TextRange NameRange;
   bool IsDefinition = false;
   bool IsUnnamed = false;
+  bool HasLinkOnceODRLinkage = false;
+  bool HasSection = false;
+  bool HasComdat = false;
+  bool HasSectionPrefix = false;
   std::uint64_t NextUnnamedSlot = 0;
   std::vector<EmbeddedIRReference> Blocks;
   std::vector<EmbeddedIRReference> Allocas;

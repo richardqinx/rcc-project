@@ -6,6 +6,7 @@
 #include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
+#include "rcc/CodeGen/MachineOutliner.h"
 #include "rcc/CodeGen/MachineStripDebug.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/Target/RISCV/RISCVPipeline.h"
@@ -98,6 +99,12 @@ struct FunctionRunResult final {
   return false;
 }
 
+[[nodiscard]] bool booleanTargetOption(const BackendInvocation &Invocation,
+                                       std::string_view Name) noexcept {
+  const auto Option = std::ranges::find(Invocation.TargetOptions, Name, &BackendOption::Name);
+  return Option != Invocation.TargetOptions.end() && Option->Value == "true";
+}
+
 [[nodiscard]] std::optional<BackendStage> stageAfterPass(std::string_view Pass) noexcept {
   if (Pass == "legalizer")
     return BackendStage::LegalizedMIR;
@@ -175,9 +182,11 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
       Comma == std::string_view::npos ? Selector : Selector.substr(0, Comma);
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidInvocation, "empty pipeline pass selector");
-  auto Pass = riscv::createCanonicalPipelinePass(Name, Subtarget);
-  if (!Pass)
-    return std::unexpected(Pass.error());
+  if (Name != "machine-outliner") {
+    auto Pass = riscv::createCanonicalPipelinePass(Name, Subtarget);
+    if (!Pass)
+      return std::unexpected(Pass.error());
+  }
   if (Comma != std::string_view::npos) {
     const std::string_view InstanceText = Selector.substr(Comma + 1U);
     std::uint32_t Instance = 0;
@@ -383,6 +392,47 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
          !Controls.PrintAfter.empty();
 }
 
+[[nodiscard]] Expected<PipelineRunResult>
+runMachineOutliner(mir::MIRDocument &Document, const TargetDescription &Target,
+                   const BackendInvocation &Invocation, const PipelineControls &Controls,
+                   MachinePassInstrumentation *Instrumentation) {
+  auto TargetInfo =
+      riscv::createMachineOutlinerInfo(booleanTargetOption(Invocation, "function-sections"),
+                                       booleanTargetOption(Invocation, "riscv-outliner-regsave"));
+  if (!TargetInfo)
+    return std::unexpected(TargetInfo.error());
+
+  MachineOutlinerOptions Options;
+  if (const mir::EmbeddedIRReferenceIndex *Embedded = Document.embeddedIR()) {
+    for (const mir::EmbeddedIRFunction &IRFunction : Embedded->functions()) {
+      Options.FunctionProperties.emplace(std::string(IRFunction.name()),
+                                         MachineOutlinerFunctionProperties{
+                                             .LinkOnceODR = IRFunction.hasLinkOnceODRLinkage(),
+                                             .HasSection = IRFunction.hasSection(),
+                                             .HasComdat = IRFunction.hasComdat(),
+                                             .HasSectionPrefix = IRFunction.hasSectionPrefix(),
+                                         });
+    }
+  }
+
+  CompilationUnitPassManager Pipeline({.VerifyBefore = true, .VerifyEach = Controls.VerifyEach});
+  auto Added =
+      Pipeline.addPass(createMachineOutlinerPass(std::move(*TargetInfo), std::move(Options)));
+  if (!Added)
+    return std::unexpected(Added.error());
+  CompilationUnitAnalysisManager UnitAnalyses;
+  MachineFunctionAnalysisManager FunctionAnalyses;
+  auto Registered = registerMachineOptimizationAnalyses(FunctionAnalyses);
+  if (!Registered)
+    return std::unexpected(Registered.error());
+  auto Run = Pipeline.run(Document.unit(), Target, UnitAnalyses, FunctionAnalyses, Instrumentation);
+  if (!Run)
+    return std::unexpected(Run.error());
+  PipelineRunResult Result;
+  Result.ExecutedPasses.push_back({.Function = {}, .Pass = "machine-outliner", .Occurrence = 1});
+  return Result;
+}
+
 } // namespace
 
 bool isEarlierStage(BackendStage Left, BackendStage Right) noexcept {
@@ -514,6 +564,17 @@ Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
              std::ranges::binary_search(Enabled, Action.Pass) ||
              std::ranges::binary_search(Enabled, Action.toString());
     });
+  }
+
+  const bool ContainsMachineOutliner =
+      std::ranges::find(Invocation.PassPipeline, "machine-outliner") !=
+      Invocation.PassPipeline.end();
+  if (ContainsMachineOutliner) {
+    if (Invocation.PassPipeline.size() != 1) {
+      return makeUnexpected(ErrorCode::InvalidInvocation,
+                            "machine-outliner cannot be mixed with per-function passes");
+    }
+    return runMachineOutliner(Document, Target, Invocation, Controls, ActiveInstrumentation);
   }
 
   const std::size_t FunctionCount = Document.unit().functionCount();

@@ -125,6 +125,7 @@ add_library(
   RISCVMergeBaseOffset.cpp
   RISCVMoveMerger.cpp
   RISCVOptimizationPipeline.cpp
+  RISCVOutliner.cpp
   RISCVPipeline.cpp
   RISCVPseudoExpansion.cpp
   RISCVRegisterAllocation.cpp

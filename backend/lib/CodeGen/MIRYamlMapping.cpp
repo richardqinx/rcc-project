@@ -1009,14 +1009,16 @@ Expected<void> verifyMIRDocumentReferences(const MIRDocument &Document,
     } else {
       IRFunction = Embedded->function(Function.name());
     }
-    if (IRFunction == nullptr) {
+    if (IRFunction == nullptr && !Function.attributes().has(MachineFunctionAttribute::IsOutlined)) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "machine function has no matching embedded LLVM IR function");
     }
   }
 
-  const auto ValidateGlobal = [Embedded](std::string_view Name,
-                                         std::string_view Description) -> Expected<void> {
+  const auto ValidateGlobal =
+      [&Document, Embedded](std::string_view Name, std::string_view Description) -> Expected<void> {
+    if (Document.unit().function(Name) != nullptr)
+      return {};
     if (Embedded == nullptr) {
       return makeUnexpected(ErrorCode::VerificationError,
                             std::string(Description) +

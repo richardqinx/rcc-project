@@ -67,6 +67,18 @@ struct ParsedIdentifier final {
   return WordEnd == End || !isWordBody(Line[WordEnd]);
 }
 
+[[nodiscard]] bool containsWord(std::string_view Line, std::size_t End,
+                                std::string_view Word) noexcept {
+  std::size_t Position = 0;
+  while ((Position = Line.find(Word, Position)) != std::string_view::npos && Position < End) {
+    const bool BeginsWord = Position == 0 || !isWordBody(Line[Position - 1]);
+    if (BeginsWord && startsWord(Line, Position, End, Word))
+      return true;
+    Position += Word.size();
+  }
+  return false;
+}
+
 } // namespace
 
 const EmbeddedIRReference *EmbeddedIRFunction::block(std::string_view QueryName) const noexcept {
@@ -459,6 +471,11 @@ private:
     auto FunctionIndex = addFunction(*Name, IsDefinition);
     if (!FunctionIndex || Failed || !IsDefinition)
       return;
+    EmbeddedIRFunction &Function = Index.Functions[*FunctionIndex];
+    Function.HasLinkOnceODRLinkage = containsWord(Line, End, "linkonce_odr");
+    Function.HasSection = containsWord(Line, End, "section");
+    Function.HasComdat = containsWord(Line, End, "comdat");
+    Function.HasSectionPrefix = containsWord(Line, End, "section_prefix");
     ActiveFunction = FunctionIndex;
     HeaderParenthesisDepth = 0;
     parseFunctionHeaderRemainder(Line, LineOffset, Name->End, End);

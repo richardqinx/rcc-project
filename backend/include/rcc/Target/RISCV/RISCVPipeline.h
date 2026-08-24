@@ -17,6 +17,7 @@ namespace rcc {
 
 class MachineFunction;
 class TargetDescription;
+class TargetMachineOutlinerInfo;
 
 namespace riscv {
 
@@ -37,6 +38,8 @@ createCanonicalPipelinePass(std::string_view Name, const RISCVSubtarget &Subtarg
                             RISCVPipelineOptions Options = {});
 [[nodiscard]] Expected<std::vector<std::string>>
 canonicalPipelinePassNames(const MachineFunction &Function, const RISCVSubtarget &Subtarget);
+[[nodiscard]] Expected<std::unique_ptr<TargetMachineOutlinerInfo>>
+createMachineOutlinerInfo(bool FunctionSections, bool EnableRegisterSave);
 } // namespace riscv
 } // namespace rcc
 

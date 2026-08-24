@@ -49,6 +49,7 @@ set(
   MachineMetadata.cpp
   MachineOperand.cpp
   MachineOptimizationPipeline.cpp
+  MachineOutliner.cpp
   MachinePassManager.cpp
   MachinePseudoExpansion.cpp
   MachineRegisterInfo.cpp
@@ -140,6 +141,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMetadata.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOperand.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOptimizationPipeline.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineOutliner.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/IR/PassManager.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/IR/PassInstrumentation.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineFunctionAnalysisManager.h"
