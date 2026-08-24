@@ -60,10 +60,14 @@ createStackMemoryOperand(MachineIRBuilder &Builder, FrameIndex StackSlot, Memory
   auto Align = Alignment::create(AlignmentInBytes);
   if (!Align)
     return std::unexpected(Align.error());
+  auto Type = LowLevelType::makeCategoryNeutralScalar(SizeInBytes * 8U);
+  if (!Type)
+    return std::unexpected(Type.error());
 
   MachineMemOperandDesc Description;
   Description.Accesses = {Access};
   Description.Size = *Size;
+  Description.MemoryType = *Type;
   Description.Align = *Align;
   Description.Base = MemoryBase::frameIndex(StackSlot);
   return Builder.function().createMemOperand(std::move(Description));

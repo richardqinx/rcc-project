@@ -36,10 +36,10 @@ orderedAllocationIntervals(const LiveIntervalsAnalysis::Result &Intervals,
   return Result;
 }
 
-Expected<regalloc_detail::AllocationRunResult> RegAllocBase::run() {
+Expected<regalloc_detail::AllocationRunResult> RegAllocBase::run(VirtRegMap &Mapping) {
   const std::uint64_t InitialFingerprint = regalloc_detail::allocationFingerprint(Function);
   const std::size_t InitialFrameObjects = Function.frameInfo().liveObjectCount();
-  VirtRegMap Mapping(Function);
+  Mapping = VirtRegMap(Function);
   auto Initialized = regalloc_detail::initializeMapping(Function, Mapping);
   if (!Initialized)
     return std::unexpected(Initialized.error());
@@ -75,15 +75,13 @@ Expected<regalloc_detail::AllocationRunResult> RegAllocBase::run() {
       if (!NewRegisters)
         return std::unexpected(NewRegisters.error());
     }
-    Analyses.clear(Function);
+    PreservedAnalyses Preserved;
+    Preserved.preserve<VirtRegMapAnalysis>();
+    Analyses.invalidate(Function, Preserved, MachinePassChanges::all());
   }
-
-  auto Rewritten = rewriteVirtualRegisters(Function, Target, Mapping);
-  if (!Rewritten)
-    return std::unexpected(Rewritten.error());
   const std::uint64_t FinalFingerprint = regalloc_detail::allocationFingerprint(Function);
   regalloc_detail::AllocationRunResult Result;
-  Result.Changed = InitialFingerprint != FinalFingerprint || *Rewritten;
+  Result.Changed = InitialFingerprint != FinalFingerprint;
   Result.ChangedInstructions = InitialFingerprint != FinalFingerprint;
   Result.ChangedFrame = InitialFrameObjects != Function.frameInfo().liveObjectCount();
   return Result;

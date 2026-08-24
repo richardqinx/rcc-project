@@ -493,7 +493,7 @@ MIRDocumentPrinter::createBodyContext(const MachineFunction &Function) const {
   std::uint32_t FixedID = 0;
   for (const StackObject &Object : Function.frameInfo().objects()) {
     const StackObjectDesc *Description = Object.description();
-    if (Description == nullptr)
+    if (Description == nullptr || Description->IsDead)
       continue;
     MIFrameObjectSlot Slot{
         .TextID = Object.isFixed() ? FixedID++ : StackID++,

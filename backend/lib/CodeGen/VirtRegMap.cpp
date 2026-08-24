@@ -236,6 +236,18 @@ Expected<bool> rewriteVirtualRegisters(MachineFunction &Function, const TargetDe
     auto SetRegister = Plan.Operand->setRegister(Plan.NewRegister);
     if (!SetRegister)
       return std::unexpected(SetRegister.error());
+    if (const auto Physical = Plan.NewRegister.physicalRegister()) {
+      const PhysicalRegisterDesc *Description = Target.registers().physicalRegister(*Physical);
+      if (Description != nullptr && !Description->IsConstant && !Description->IsArtificial &&
+          !Description->IsReserved && !Target.registers().isReservedRegister(*Physical) &&
+          !Function.registerInfo().isReserved(*Physical)) {
+        RegisterOperandFlags Flags = Plan.Operand->registerFlags();
+        Flags.set(RegisterOperandFlag::Renamable);
+        auto Updated = Plan.Operand->setRegisterFlags(Flags);
+        if (!Updated)
+          return std::unexpected(Updated.error());
+      }
+    }
     if (Plan.Operand->subReg().value() != 0) {
       auto Cleared = Plan.Operand->setSubReg(SubRegIndex{});
       if (!Cleared)
@@ -269,24 +281,29 @@ Expected<bool> rewriteVirtualRegisters(MachineFunction &Function, const TargetDe
 
 const MachinePassContract &VirtualRegisterRewritePass::contract() const noexcept {
   static const MachinePassContract Contract{
-      .Name = "VirtualRegisterRewrite",
-      .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
-                   MachineFunctionProperty::TiedOpsRewritten},
+      .Name = "virtregrewriter",
+      .Requires = {MachineFunctionProperty::NoPHIs},
       .Sets = {MachineFunctionProperty::NoVRegs},
-      .Clears = {},
-      .RequiredAnalyses = {},
+      .Clears = {MachineFunctionProperty::IsSSA},
+      .RequiredAnalyses = {MachineFunctionAnalysisManager::id<VirtRegMapAnalysis>()},
       .VerificationStage = PipelineStage::RegisterAllocated,
   };
   return Contract;
 }
 
-Expected<MachinePassResult> VirtualRegisterRewritePass::run(MachineFunction &Function,
-                                                            const TargetDescription &Target,
-                                                            MachineFunctionAnalysisManager &) {
-  if (Mapping == nullptr)
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "VirtualRegisterRewrite requires a VirtRegMap");
-  auto Rewritten = rewriteVirtualRegisters(Function, Target, *Mapping);
+Expected<VirtRegMapAnalysis::Result> VirtRegMapAnalysis::run(MachineFunction &Function,
+                                                             const TargetDescription &,
+                                                             MachineFunctionAnalysisManager &) {
+  return VirtRegMap(Function);
+}
+
+Expected<MachinePassResult>
+VirtualRegisterRewritePass::run(MachineFunction &Function, const TargetDescription &Target,
+                                MachineFunctionAnalysisManager &Analyses) {
+  auto Mapping = Analyses.getResult<VirtRegMapAnalysis>(Function, Target);
+  if (!Mapping)
+    return std::unexpected(Mapping.error());
+  auto Rewritten = rewriteVirtualRegisters(Function, Target, **Mapping);
   if (!Rewritten)
     return std::unexpected(Rewritten.error());
   MachinePassResult Result;

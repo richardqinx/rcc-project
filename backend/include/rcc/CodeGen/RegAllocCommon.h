@@ -19,6 +19,9 @@ struct RegisterAllocationOptions final {
 [[nodiscard]] std::unique_ptr<MachineFunctionPass>
 createBasicAllocatorPass(const TargetRegisterAllocationInfo &Info,
                          RegisterAllocationOptions Options = {});
+[[nodiscard]] std::unique_ptr<MachineFunctionPass>
+createGreedyAllocatorPass(const TargetRegisterAllocationInfo &Info,
+                          RegisterAllocationOptions Options = {});
 
 } // namespace rcc
 

@@ -15,9 +15,11 @@
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
 #include "rcc/CodeGen/MachinePseudoExpansion.h"
 #include "rcc/CodeGen/PHIElimination.h"
+#include "rcc/CodeGen/RegAllocCommon.h"
 #include "rcc/CodeGen/RegAllocPBQP.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TwoAddressInstructionPass.h"
+#include "rcc/CodeGen/VirtRegMap.h"
 
 #include <memory>
 #include <ranges>
@@ -86,7 +88,10 @@ template <typename PassT, typename... ArgumentT>
                                          Options.DebugPrologueEpilogue));
   if (!Added)
     return std::unexpected(Added.error());
-  return addPass<PBQPAllocatorPass>(Pipeline, registerAllocationInfo());
+  Added = addPass<PBQPAllocatorPass>(Pipeline, registerAllocationInfo());
+  if (!Added)
+    return std::unexpected(Added.error());
+  return addPass<VirtualRegisterRewritePass>(Pipeline);
 }
 
 [[nodiscard]] Expected<void> addCompleteRegistry(MachineFunctionPassManager &Pipeline,
@@ -96,6 +101,9 @@ template <typename PassT, typename... ArgumentT>
   if (!Added)
     return std::unexpected(Added.error());
   Added = addSSAExitPipeline(Pipeline, Subtarget, Options);
+  if (!Added)
+    return std::unexpected(Added.error());
+  Added = Pipeline.addPass(createGreedyAllocatorPass(registerAllocationInfo()));
   if (!Added)
     return std::unexpected(Added.error());
   Added = addRegisterAllocationPipeline(Pipeline, Subtarget, Options);

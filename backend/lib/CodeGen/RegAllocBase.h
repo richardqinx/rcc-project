@@ -23,7 +23,7 @@ class RegAllocBase {
 public:
   virtual ~RegAllocBase() = default;
 
-  [[nodiscard]] Expected<regalloc_detail::AllocationRunResult> run();
+  [[nodiscard]] Expected<regalloc_detail::AllocationRunResult> run(VirtRegMap &Mapping);
 
 protected:
   RegAllocBase(MachineFunction &Function, const TargetDescription &Target,

@@ -180,6 +180,34 @@ struct CopyOperands final {
   });
 }
 
+[[nodiscard]] Expected<void> clearRegisterKills(MachineInstr &First, MachineInstr &Last,
+                                                PhysicalRegister Reg,
+                                                const TargetRegisterInfo &Registers) {
+  for (MachineInstr *Instruction = &First; Instruction != nullptr;
+       Instruction = Instruction->next()) {
+    if (Instruction == &Last)
+      return {};
+    for (std::size_t Index = 0; Index < Instruction->operandCount(); ++Index) {
+      MachineOperand *Operand = Instruction->operandAt(Index);
+      const Register *OperandReg = Operand == nullptr ? nullptr : Operand->getIf<Register>();
+      const std::optional<PhysicalRegister> Physical =
+          OperandReg == nullptr ? std::nullopt : OperandReg->physicalRegister();
+      if (!Physical || !Operand->isUse() ||
+          !Operand->registerFlags().has(RegisterOperandFlag::Kill) ||
+          !Registers.regsOverlap(*Physical, Reg)) {
+        continue;
+      }
+      RegisterOperandFlags Flags = Operand->registerFlags();
+      Flags.clear(RegisterOperandFlag::Kill);
+      auto Updated = Operand->setRegisterFlags(Flags);
+      if (!Updated)
+        return std::unexpected(Updated.error());
+    }
+  }
+  return makeUnexpected(ErrorCode::InternalError,
+                        "COPY propagation replacement is outside the COPY block");
+}
+
 [[nodiscard]] Expected<bool> propagatePhysicalCopy(MachineInstr &Copy, const CopyOperands &Operands,
                                                    MachineFunction &Function,
                                                    const TargetDescription &Target,
@@ -202,7 +230,9 @@ struct CopyOperands final {
     return makeUnexpected(ErrorCode::InternalError,
                           "physical COPY propagation candidate is detached");
   const bool IsGenericCopy = Copy.opcode() == opcode(GenericOpcode::COPY);
-  if (*Destination == *Source && IsGenericCopy) {
+  if (*Destination == *Source) {
+    if (!IsGenericCopy)
+      return false;
     auto Removed = Block->removeInstruction(Copy);
     if (!Removed)
       return std::unexpected(Removed.error());
@@ -228,11 +258,16 @@ struct CopyOperands final {
           !canReplacePhysicalUse(*Instruction, Index, *Source, Function, Target, Info)) {
         continue;
       }
+      const bool DestinationWasKilled = Operand->registerFlags().has(RegisterOperandFlag::Kill);
       auto Replaced = Operand->setRegister(Operands.Source);
       if (!Replaced)
         return std::unexpected(Replaced.error());
       RegisterOperandFlags Flags = Operand->registerFlags();
       Flags.clear(RegisterOperandFlag::Kill);
+      if (DestinationWasKilled && (clobbersRegister(*Instruction, *Source, Target.registers()) ||
+                                   !valueUsedAfter(*Instruction, *Source, Target))) {
+        Flags.set(RegisterOperandFlag::Kill);
+      }
       if (!Operands.SourceOperand->registerFlags().has(RegisterOperandFlag::Renamable))
         Flags.clear(RegisterOperandFlag::Renamable);
       if (Operands.SourceOperand->registerFlags().has(RegisterOperandFlag::Undef))
@@ -242,6 +277,9 @@ struct CopyOperands final {
       auto SetFlags = Operand->setRegisterFlags(Flags);
       if (!SetFlags)
         return std::unexpected(SetFlags.error());
+      auto ClearedKills = clearRegisterKills(Copy, *Instruction, *Source, Target.registers());
+      if (!ClearedKills)
+        return std::unexpected(ClearedKills.error());
       Changed = true;
     }
   }

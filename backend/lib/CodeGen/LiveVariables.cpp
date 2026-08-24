@@ -13,6 +13,7 @@
 #include "rcc/CodeGen/SlotIndexes.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
+#include "rcc/CodeGen/VirtRegMap.h"
 
 #include <algorithm>
 #include <array>
@@ -655,9 +656,14 @@ buildLivenessRebuildPlan(const MachineFunction &Function, const TargetDescriptio
           }
           continue;
         }
-        const bool IsSemanticUse = !Operand->isDebugUse() &&
-                                   !Operand->registerFlags().has(RegisterOperandFlag::Undef) &&
-                                   !Operand->registerValue()->isNoRegister();
+        const Register OperandRegister = *Operand->registerValue();
+        const auto PhysicalRegister = OperandRegister.physicalRegister();
+        const PhysicalRegisterDesc *PhysicalDescription =
+            PhysicalRegister ? Target.registers().physicalRegister(*PhysicalRegister) : nullptr;
+        const bool IsSemanticUse =
+            !Operand->isDebugUse() && !Operand->registerFlags().has(RegisterOperandFlag::Undef) &&
+            !OperandRegister.isNoRegister() &&
+            (PhysicalDescription == nullptr || !PhysicalDescription->IsConstant);
         bool IsKill = false;
         if (IsSemanticUse) {
           auto IsLive = liveSetIntersects(*Operand, Virtual, Physical, Function, Target);
@@ -985,6 +991,7 @@ Expected<void> registerStage11MachineAnalyses(MachineFunctionAnalysisManager &An
       MachineFunctionAnalysisManager::id<SlotIndexesAnalysis>(),
       MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>(),
       MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>(),
+      MachineFunctionAnalysisManager::id<VirtRegMapAnalysis>(),
   };
   const std::size_t Registered = static_cast<std::size_t>(
       std::ranges::count_if(IDs, [&Analyses](AnalysisID ID) { return Analyses.isRegistered(ID); }));
@@ -1028,6 +1035,14 @@ Expected<void> registerStage11MachineAnalyses(MachineFunctionAnalysisManager &An
   });
   if (!Intervals)
     return std::unexpected(Intervals.error());
+  auto Mapping = Staging.registerAnalysis<VirtRegMapAnalysis>({
+      .Name = "VirtRegMap",
+      .Dependencies = {},
+      .InvalidatedBy = MachinePassChanges::all(),
+      .ThreadSafety = PassThreadSafety::ThreadSafe,
+  });
+  if (!Mapping)
+    return std::unexpected(Mapping.error());
   return Analyses.replaceRegistrations(std::move(Staging));
 }
 

@@ -78,10 +78,11 @@ private:
         .Requires = {MachineFunctionProperty::Selected, MachineFunctionProperty::NoPHIs,
                      MachineFunctionProperty::TiedOpsRewritten,
                      MachineFunctionProperty::TracksLiveness},
-        .Sets = {MachineFunctionProperty::NoVRegs},
-        .Clears = {},
-        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>()},
-        .VerificationStage = PipelineStage::RegisterAllocated,
+        .Sets = {},
+        .Clears = {MachineFunctionProperty::IsSSA},
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>(),
+                             MachineFunctionAnalysisManager::id<VirtRegMapAnalysis>()},
+        .VerificationStage = std::nullopt,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
     return Value;
@@ -118,7 +119,8 @@ Expected<MachinePassResult> BasicAllocatorPass::run(MachineFunction &Function,
     return std::unexpected(Registered.error());
   BasicAllocatorEngine TrialAllocator(*Trial->ClonedFunction, Target, *Info, TrialAnalyses,
                                       Options);
-  auto TrialRun = TrialAllocator.run();
+  VirtRegMap TrialMapping(*Trial->ClonedFunction);
+  auto TrialRun = TrialAllocator.run(TrialMapping);
   if (!TrialRun)
     return std::unexpected(TrialRun.error());
   auto TrialVerification =
@@ -126,7 +128,10 @@ Expected<MachinePassResult> BasicAllocatorPass::run(MachineFunction &Function,
   if (!TrialVerification)
     return std::unexpected(TrialVerification.error());
   BasicAllocatorEngine Allocator(Function, Target, *Info, Analyses, Options);
-  auto Allocated = Allocator.run();
+  auto Mapping = Analyses.getResult<VirtRegMapAnalysis>(Function, Target);
+  if (!Mapping)
+    return std::unexpected(Mapping.error());
+  auto Allocated = Allocator.run(**Mapping);
   if (!Allocated) {
     return std::unexpected(withErrorContext(
         Allocated.error(), "BasicAllocator diverged after a successful transaction preflight: "));
@@ -135,7 +140,9 @@ Expected<MachinePassResult> BasicAllocatorPass::run(MachineFunction &Function,
   if (!Reserved)
     return std::unexpected(Reserved.error());
   Allocated->Changed |= *Reserved;
-  return regalloc_detail::passResult(*Allocated);
+  MachinePassResult Result = regalloc_detail::passResult(*Allocated);
+  Result.Preserved.preserve<VirtRegMapAnalysis>();
+  return Result;
 }
 
 std::unique_ptr<MachineFunctionPass>

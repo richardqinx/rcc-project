@@ -71,6 +71,7 @@ set(
   RegAllocBase.cpp
   RegAllocBasic.cpp
   RegAllocFast.cpp
+  RegAllocGreedy.cpp
   RegAllocPBQP.cpp
   VirtRegMap.cpp
   PHIElimination.cpp
@@ -234,6 +235,7 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/MachineSchedulerInternal.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBase.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocBasic.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocGreedy.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegAllocInternal.h"
 )
 rcc_backend_register_format_files(

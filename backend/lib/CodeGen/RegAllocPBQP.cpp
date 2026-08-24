@@ -273,10 +273,11 @@ private:
     MachinePassContract Value{
         .Name = "PBQPAllocator",
         .Requires = {MachineFunctionProperty::NoPHIs},
-        .Sets = {MachineFunctionProperty::NoVRegs},
+        .Sets = {},
         .Clears = {MachineFunctionProperty::IsSSA},
-        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>()},
-        .VerificationStage = PipelineStage::RegisterAllocated,
+        .RequiredAnalyses = {MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>(),
+                             MachineFunctionAnalysisManager::id<VirtRegMapAnalysis>()},
+        .VerificationStage = std::nullopt,
     };
     Value.ThreadSafety = PassThreadSafety::ThreadSafe;
     return Value;
@@ -314,7 +315,8 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
   MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
   PBQPAllocatorEngine TrialAllocator(*Trial->ClonedFunction, Target, *Info, TrialAnalyses, Options,
                                      &Actions);
-  auto TrialRun = TrialAllocator.run();
+  VirtRegMap TrialMapping(*Trial->ClonedFunction);
+  auto TrialRun = TrialAllocator.run(TrialMapping);
   if (!TrialRun)
     return std::unexpected(TrialRun.error());
   auto TrialVerification =
@@ -323,7 +325,10 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
     return std::unexpected(TrialVerification.error());
   Actions.beginReplay();
   PBQPAllocatorEngine Allocator(Function, Target, *Info, Analyses, Options, &Actions);
-  auto Allocated = Allocator.run();
+  auto Mapping = Analyses.getResult<VirtRegMapAnalysis>(Function, Target);
+  if (!Mapping)
+    return std::unexpected(Mapping.error());
+  auto Allocated = Allocator.run(**Mapping);
   if (!Allocated) {
     return std::unexpected(withErrorContext(
         Allocated.error(), "PBQPAllocator diverged after a successful transaction preflight: "));
@@ -335,7 +340,9 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
   if (!Reserved)
     return std::unexpected(Reserved.error());
   Allocated->Changed |= *Reserved;
-  return regalloc_detail::passResult(*Allocated);
+  MachinePassResult Result = regalloc_detail::passResult(*Allocated);
+  Result.Preserved.preserve<VirtRegMapAnalysis>();
+  return Result;
 }
 
 } // namespace rcc

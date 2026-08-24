@@ -26,7 +26,7 @@ namespace {
 [[nodiscard]] const MachinePassContract &stackSlotColoringContract() {
   static const MachinePassContract Contract = [] {
     MachinePassContract Value{
-        .Name = "machine-stack-slot-coloring",
+        .Name = "stack-slot-coloring",
         .Requires = {},
         .Sets = {},
         .Clears = {},

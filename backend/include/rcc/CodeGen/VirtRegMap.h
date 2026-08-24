@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -75,17 +76,24 @@ private:
                                                      const TargetDescription &Target,
                                                      const VirtRegMap &Mapping);
 
+class VirtRegMapAnalysis final {
+public:
+  using Result = VirtRegMap;
+
+  [[nodiscard]] static constexpr std::string_view name() noexcept {
+    return "VirtRegMap";
+  }
+  [[nodiscard]] static Expected<Result> run(MachineFunction &Function,
+                                            const TargetDescription &Target,
+                                            MachineFunctionAnalysisManager &Analyses);
+};
+
 class VirtualRegisterRewritePass final : public MachineFunctionPass {
 public:
-  explicit VirtualRegisterRewritePass(const VirtRegMap &Mapping) noexcept : Mapping(&Mapping) {}
-
   [[nodiscard]] const MachinePassContract &contract() const noexcept override;
   [[nodiscard]] Expected<MachinePassResult> run(MachineFunction &Function,
                                                 const TargetDescription &Target,
                                                 MachineFunctionAnalysisManager &Analyses) override;
-
-private:
-  const VirtRegMap *Mapping;
 };
 
 } // namespace rcc
