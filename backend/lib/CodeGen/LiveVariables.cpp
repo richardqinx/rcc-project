@@ -441,10 +441,11 @@ struct LivenessRebuildPlan final {
   std::vector<OperandFlagPlan> Operands;
 };
 
-[[nodiscard]] Expected<bool>
-liveSetIntersects(const MachineOperand &Operand, const RegisterLaneSet &Virtual,
-                  const LiveRegUnits &Physical, const MachineFunction &Function,
-                  const TargetDescription &Target, bool TreatReservedAsLive) {
+[[nodiscard]] Expected<bool> liveSetIntersects(const MachineOperand &Operand,
+                                               const RegisterLaneSet &Virtual,
+                                               const LiveRegUnits &Physical,
+                                               const MachineFunction &Function,
+                                               const TargetDescription &Target) {
   const Register *Reg = Operand.getIf<Register>();
   if (Reg == nullptr || Reg->isNoRegister())
     return false;
@@ -454,8 +455,6 @@ liveSetIntersects(const MachineOperand &Operand, const RegisterLaneSet &Virtual,
       return std::unexpected(Lanes.error());
     return Virtual.intersects(*Reg, *Lanes);
   }
-  if (TreatReservedAsLive && isReservedPhysicalRegister(*Reg, Function, Target))
-    return true;
   auto Units = physicalOperandUnits(Operand, Target);
   if (!Units)
     return std::unexpected(Units.error());
@@ -546,6 +545,11 @@ liveSetIntersects(const MachineOperand &Operand, const RegisterLaneSet &Virtual,
     for (const MachineOperand &Operand : Instruction->operands()) {
       if (!Operand.isRegister() || !Operand.isUse())
         continue;
+      const Register *Reg = Operand.getIf<Register>();
+      if (Reg != nullptr && Reg->isPhysical() &&
+          isReservedPhysicalRegister(*Reg, Function, Target)) {
+        continue;
+      }
       auto Added = addOperandToLiveSet(Operand, Virtual, Physical, Function, Target);
       if (!Added)
         return std::unexpected(Added.error());
@@ -600,7 +604,7 @@ buildLivenessRebuildPlan(const MachineFunction &Function, const TargetDescriptio
         const MachineOperand *Operand = Instruction->operandAt(Index);
         if (Operand == nullptr || !Operand->isRegister() || !Operand->isDef())
           continue;
-        auto IsLive = liveSetIntersects(*Operand, Virtual, Physical, Function, Target, false);
+        auto IsLive = liveSetIntersects(*Operand, Virtual, Physical, Function, Target);
         if (!IsLive)
           return std::unexpected(IsLive.error());
         RegisterOperandFlags Flags = Operand->registerFlags();
@@ -656,7 +660,7 @@ buildLivenessRebuildPlan(const MachineFunction &Function, const TargetDescriptio
                                    !Operand->registerValue()->isNoRegister();
         bool IsKill = false;
         if (IsSemanticUse) {
-          auto IsLive = liveSetIntersects(*Operand, Virtual, Physical, Function, Target, true);
+          auto IsLive = liveSetIntersects(*Operand, Virtual, Physical, Function, Target);
           if (!IsLive)
             return std::unexpected(IsLive.error());
           IsKill = !*IsLive;

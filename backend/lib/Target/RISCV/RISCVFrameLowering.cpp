@@ -38,11 +38,9 @@ namespace rcc::riscv {
 namespace {
 
 constexpr std::uint64_t StackAlignmentBytes = 16;
+constexpr std::int64_t MaxSigned11 = 1023;
 constexpr std::int64_t MinSigned12 = -2048;
 constexpr std::int64_t MaxSigned12 = 2047;
-constexpr std::uint8_t DwarfCFAExpression = 0x10U;
-constexpr std::uint8_t DwarfOpBaseRegister0 = 0x70U;
-constexpr std::uint8_t DwarfOpBaseRegisterExtended = 0x92U;
 
 [[nodiscard]] constexpr bool fitsSigned12(std::int64_t Value) noexcept {
   return Value >= MinSigned12 && Value <= MaxSigned12;
@@ -157,6 +155,10 @@ struct CallFrameRequirement final {
   if (State.IsFrameAddressTaken || State.HasOpaqueSPAdjustment || hasVariableObject(Function) ||
       requiresStackRealignment(Function))
     return true;
+  if (Function.frameInfo().maxCallFrameSize().value_or(0) >
+      static_cast<std::uint64_t>(MaxSigned12)) {
+    return true;
+  }
   switch (State.FramePointerPolicy) {
   case MachineFramePointerPolicy::All:
     return true;
@@ -224,6 +226,8 @@ struct CallFrameRequirement final {
 
 [[nodiscard]] Expected<void> computeMaxCallFrameSize(MachineFunction &Function) {
   std::uint64_t Maximum = Function.frameInfo().maxCallFrameSize().value_or(0);
+  if (Maximum == std::numeric_limits<std::uint32_t>::max())
+    Maximum = 0;
   bool SawPseudo = false;
   for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
        Block = Block->next()) {
@@ -246,7 +250,7 @@ struct CallFrameRequirement final {
                                 "RISC-V call-frame sequences must not be nested");
         }
         Active = *Requirement;
-        Maximum = std::max(Maximum, static_cast<std::uint64_t>(Requirement->AlignedAmount));
+        Maximum = std::max(Maximum, static_cast<std::uint64_t>(Requirement->Amount));
         continue;
       }
       if (!Active) {
@@ -333,6 +337,21 @@ modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescri
     }
   }
 
+  if (requiresFramePointer(Function)) {
+    auto RA = physicalRegister(PhysicalRegisterID::X1);
+    auto FP = physicalRegister(PhysicalRegisterID::X8);
+    if (!RA || !FP)
+      return std::unexpected(!RA ? RA.error() : FP.error());
+    Modified.insert(*RA);
+    Modified.insert(*FP);
+  }
+  if (requiresBasePointer(Function)) {
+    auto BP = physicalRegister(PhysicalRegisterID::X9);
+    if (!BP)
+      return std::unexpected(BP.error());
+    Modified.insert(*BP);
+  }
+
   std::vector<PhysicalRegister> Result;
   for (const PhysicalRegisterID ID : saveOrder(ABI)) {
     auto Reg = physicalRegister(ID);
@@ -340,26 +359,6 @@ modifiedCalleeSavedRegisters(const MachineFunction &Function, const TargetDescri
       return std::unexpected(Reg.error());
     if (Modified.contains(*Reg))
       Result.push_back(*Reg);
-  }
-  if (requiresFramePointer(Function)) {
-    auto FP = physicalRegister(PhysicalRegisterID::X8);
-    if (!FP)
-      return std::unexpected(FP.error());
-    if (std::ranges::find(Result, *FP) == Result.end()) {
-      const auto Position = static_cast<std::vector<PhysicalRegister>::difference_type>(
-          std::min<std::size_t>(1, Result.size()));
-      Result.insert(Result.begin() + Position, *FP);
-    }
-  }
-  if (requiresBasePointer(Function)) {
-    auto BP = physicalRegister(PhysicalRegisterID::X9);
-    if (!BP)
-      return std::unexpected(BP.error());
-    if (std::ranges::find(Result, *BP) == Result.end()) {
-      const auto Position = static_cast<std::vector<PhysicalRegister>::difference_type>(
-          std::min<std::size_t>(2, Result.size()));
-      Result.insert(Result.begin() + Position, *BP);
-    }
   }
   for (const PhysicalRegister Reg : Result) {
     if (Target.registers().physicalRegister(Reg) == nullptr) {
@@ -467,59 +466,14 @@ createResolvedStackMemory(MachineFunction &Function, MemoryAccessFlag Access, st
   return {};
 }
 
-void appendULEB128(std::vector<std::uint8_t> &Bytes, std::uint64_t Value) {
-  do {
-    std::uint8_t Byte = static_cast<std::uint8_t>(Value & 0x7FU);
-    Value >>= 7U;
-    if (Value != 0)
-      Byte |= 0x80U;
-    Bytes.push_back(Byte);
-  } while (Value != 0);
-}
-
-void appendSLEB128(std::vector<std::uint8_t> &Bytes, std::int64_t Value) {
-  bool More = true;
-  while (More) {
-    std::uint8_t Byte = static_cast<std::uint8_t>(Value & 0x7F);
-    const bool Sign = (Byte & 0x40U) != 0;
-    Value >>= 7;
-    More = (Value != 0 || Sign) && (Value != -1 || !Sign);
-    if (More)
-      Byte |= 0x80U;
-    Bytes.push_back(Byte);
-  }
-}
-
-[[nodiscard]] Expected<void>
-emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
-                     PhysicalRegister Reg, std::int64_t Offset, MachineInstrFlag Flag,
-                     std::optional<PhysicalRegister> ExpressionBase = std::nullopt) {
+[[nodiscard]] Expected<void> emitSavedRegisterCFI(MachineIRBuilder &Builder,
+                                                  const TargetDescription &Target,
+                                                  PhysicalRegister Reg, std::int64_t Offset,
+                                                  MachineInstrFlag Flag) {
   auto DwarfReg = dwarfRegister(Target, Reg);
   if (!DwarfReg)
     return std::unexpected(DwarfReg.error());
-  if (!ExpressionBase)
-    return emitCFI(Builder, MachineCFIInstruction::offset(*DwarfReg, Offset), Flag);
-
-  auto DwarfBase = dwarfRegister(Target, *ExpressionBase);
-  if (!DwarfBase)
-    return std::unexpected(DwarfBase.error());
-  std::vector<std::uint8_t> Expression;
-  if (DwarfBase->value() <= 31U) {
-    Expression.push_back(static_cast<std::uint8_t>(DwarfOpBaseRegister0 + DwarfBase->value()));
-  } else {
-    Expression.push_back(DwarfOpBaseRegisterExtended);
-    appendULEB128(Expression, DwarfBase->value());
-  }
-  appendSLEB128(Expression, Offset);
-
-  std::vector<std::uint8_t> Escape{DwarfCFAExpression};
-  appendULEB128(Escape, DwarfReg->value());
-  appendULEB128(Escape, Expression.size());
-  Escape.insert(Escape.end(), Expression.begin(), Expression.end());
-  auto Rule = MachineCFIInstruction::escape(std::move(Escape));
-  if (!Rule)
-    return std::unexpected(Rule.error());
-  return emitCFI(Builder, std::move(*Rule), Flag);
+  return emitCFI(Builder, MachineCFIInstruction::offset(*DwarfReg, Offset), Flag);
 }
 
 [[nodiscard]] Expected<void> emitRestoreRegisterCFI(MachineIRBuilder &Builder,
@@ -643,7 +597,8 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
 [[nodiscard]] Expected<void> emitRegisterAdd(MachineIRBuilder &Builder,
                                              PhysicalRegister Destination, PhysicalRegister Left,
                                              PhysicalRegister Right,
-                                             std::optional<MachineInstrFlag> Flag) {
+                                             std::optional<MachineInstrFlag> Flag,
+                                             bool KillRight = false) {
   auto Add = Builder.buildInstr(instructionOpcode(InstructionOpcode::ADD));
   if (!Add)
     return std::unexpected(Add.error());
@@ -651,7 +606,10 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
     return std::unexpected(Result.error());
   if (auto Result = Add->addUse(Register::fromPhysical(Left)); !Result)
     return std::unexpected(Result.error());
-  if (auto Result = Add->addUse(Register::fromPhysical(Right)); !Result)
+  RegisterOperandFlags RightFlags;
+  if (KillRight)
+    RightFlags.set(RegisterOperandFlag::Kill);
+  if (auto Result = Add->addUse(Register::fromPhysical(Right), RightFlags); !Result)
     return std::unexpected(Result.error());
   if (auto Result = setFrameFlag(*Add, Flag); !Result)
     return std::unexpected(Result.error());
@@ -664,7 +622,8 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
 [[nodiscard]] Expected<void> emitRegisterSub(MachineIRBuilder &Builder,
                                              PhysicalRegister Destination, PhysicalRegister Left,
                                              PhysicalRegister Right,
-                                             std::optional<MachineInstrFlag> Flag) {
+                                             std::optional<MachineInstrFlag> Flag,
+                                             bool KillRight = false) {
   auto Sub = Builder.buildInstr(instructionOpcode(InstructionOpcode::SUB));
   if (!Sub)
     return std::unexpected(Sub.error());
@@ -672,7 +631,10 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
     return std::unexpected(Result.error());
   if (auto Result = Sub->addUse(Register::fromPhysical(Left)); !Result)
     return std::unexpected(Result.error());
-  if (auto Result = Sub->addUse(Register::fromPhysical(Right)); !Result)
+  RegisterOperandFlags RightFlags;
+  if (KillRight)
+    RightFlags.set(RegisterOperandFlag::Kill);
+  if (auto Result = Sub->addUse(Register::fromPhysical(Right), RightFlags); !Result)
     return std::unexpected(Result.error());
   if (auto Result = setFrameFlag(*Sub, Flag); !Result)
     return std::unexpected(Result.error());
@@ -733,13 +695,17 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
 [[nodiscard]] Expected<void> emitAddImmediate(MachineIRBuilder &Builder,
                                               PhysicalRegister Destination, PhysicalRegister Source,
                                               std::int64_t Amount,
-                                              std::optional<MachineInstrFlag> Flag) {
+                                              std::optional<MachineInstrFlag> Flag,
+                                              bool KillSource = false) {
   auto Add = Builder.buildInstr(instructionOpcode(InstructionOpcode::ADDI));
   if (!Add)
     return std::unexpected(Add.error());
   if (auto Result = Add->addDef(Register::fromPhysical(Destination)); !Result)
     return std::unexpected(Result.error());
-  if (auto Result = Add->addUse(Register::fromPhysical(Source)); !Result)
+  RegisterOperandFlags SourceFlags;
+  if (KillSource)
+    SourceFlags.set(RegisterOperandFlag::Kill);
+  if (auto Result = Add->addUse(Register::fromPhysical(Source), SourceFlags); !Result)
     return std::unexpected(Result.error());
   if (auto Result = Add->addImmediate(Amount); !Result)
     return std::unexpected(Result.error());
@@ -749,6 +715,34 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   if (!Built)
     return std::unexpected(Built.error());
   return {};
+}
+
+[[nodiscard]] constexpr bool
+canEmitAddImmediateAdjustment(std::int64_t Amount, std::uint64_t RequiredAlignment) noexcept {
+  if (fitsSigned12(Amount))
+    return true;
+  if (RequiredAlignment == 0 || RequiredAlignment >= 2048U)
+    return false;
+  const std::int64_t MaximumPositiveStep = 2048 - static_cast<std::int64_t>(RequiredAlignment);
+  return Amount > -4096 && Amount <= 2 * MaximumPositiveStep;
+}
+
+[[nodiscard]] Expected<void>
+emitAddImmediateAdjustment(MachineIRBuilder &Builder, PhysicalRegister Destination,
+                           PhysicalRegister Source, std::int64_t Amount,
+                           std::uint64_t RequiredAlignment, std::optional<MachineInstrFlag> Flag) {
+  if (fitsSigned12(Amount))
+    return emitAddImmediate(Builder, Destination, Source, Amount, Flag);
+  if (!canEmitAddImmediateAdjustment(Amount, RequiredAlignment)) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "RISC-V stack adjustment cannot be encoded with ADDI instructions");
+  }
+  const std::int64_t FirstAdjustment =
+      Amount < 0 ? -2048 : 2048 - static_cast<std::int64_t>(RequiredAlignment);
+  auto First = emitAddImmediate(Builder, Destination, Source, FirstAdjustment, Flag);
+  if (!First)
+    return std::unexpected(First.error());
+  return emitAddImmediate(Builder, Destination, Destination, Amount - FirstAdjustment, Flag, true);
 }
 
 [[nodiscard]] Expected<void> emitAndImmediate(MachineIRBuilder &Builder,
@@ -817,10 +811,7 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
                                                   bool EmitDebugOutput = false) {
   MachineFrameInfo &Frame = Function.frameInfo();
   const std::uint64_t CallFrame = ReserveCallFrame ? Frame.maxCallFrameSize().value_or(0) : 0;
-  auto Initial = alignTo(CallFrame, StackAlignmentBytes);
-  if (!Initial)
-    return std::unexpected(Initial.error());
-  std::uint64_t Cursor = *Initial;
+  std::uint64_t Cursor = 0;
 
   std::vector<const StackObject *> Specials;
   std::vector<const StackObject *> Locals;
@@ -947,15 +938,24 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   auto PlacedSpecials = Place(Specials);
   if (!PlacedSpecials)
     return std::unexpected(PlacedSpecials.error());
+  const bool PlaceEmergenciesBeforeLocals =
+      requiresFramePointer(Function) && !requiresStackRealignment(Function);
+  if (PlaceEmergenciesBeforeLocals) {
+    auto PlacedEmergencies = Place(Emergencies);
+    if (!PlacedEmergencies)
+      return std::unexpected(PlacedEmergencies.error());
+  }
   auto PlacedLocals = Place(Locals);
   if (!PlacedLocals)
     return std::unexpected(PlacedLocals.error());
   auto PlacedPreallocated = PlacePreallocated();
   if (!PlacedPreallocated)
     return std::unexpected(PlacedPreallocated.error());
-  auto PlacedEmergencies = Place(Emergencies);
-  if (!PlacedEmergencies)
-    return std::unexpected(PlacedEmergencies.error());
+  if (!PlaceEmergenciesBeforeLocals) {
+    auto PlacedEmergencies = Place(Emergencies);
+    if (!PlacedEmergencies)
+      return std::unexpected(PlacedEmergencies.error());
+  }
 
   for (const StackObject &Object : Frame.objects()) {
     if (Object.isTombstone() || Object.description()->IsDead || Object.isVariableSized())
@@ -976,6 +976,9 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   auto UpdatedState = Frame.setState(std::move(State));
   if (!UpdatedState)
     return std::unexpected(UpdatedState.error());
+  if (CallFrame > std::numeric_limits<std::uint64_t>::max() - Cursor)
+    return makeUnexpected(ErrorCode::FrameLayoutFailed, "RISC-V call frame size overflows uint64");
+  Cursor += CallFrame;
   const std::uint64_t SizeBeforeFinalAlignment = Cursor;
   auto FinalSize = alignTo(Cursor, MaximumAlignment);
   if (!FinalSize)
@@ -1101,8 +1104,9 @@ emitSavedRegisterCFI(MachineIRBuilder &Builder, const TargetDescription &Target,
   return FrameIndexReference{*Base, Offset};
 }
 
-[[nodiscard]] Expected<MachineInstr *>
-emitCalleeSave(MachineIRBuilder &Builder, PhysicalRegister Reg, FrameIndex Index, bool Restore) {
+[[nodiscard]] Expected<MachineInstr *> emitCalleeSave(MachineIRBuilder &Builder,
+                                                      PhysicalRegister Reg, FrameIndex Index,
+                                                      bool Restore, bool KillValue = false) {
   const bool IsFPR = Reg.number() >= static_cast<std::uint32_t>(PhysicalRegisterID::F0_D);
   const InstructionOpcode OpcodeValue =
       Restore ? (IsFPR ? InstructionOpcode::FLD : InstructionOpcode::LD)
@@ -1115,7 +1119,10 @@ emitCalleeSave(MachineIRBuilder &Builder, PhysicalRegister Reg, FrameIndex Index
   if (!Pending)
     return std::unexpected(Pending.error());
   const Register Value = Register::fromPhysical(Reg);
-  auto RegisterResult = Restore ? Pending->addDef(Value) : Pending->addUse(Value);
+  RegisterOperandFlags ValueFlags;
+  if (!Restore && KillValue)
+    ValueFlags.set(RegisterOperandFlag::Kill);
+  auto RegisterResult = Restore ? Pending->addDef(Value) : Pending->addUse(Value, ValueFlags);
   if (!RegisterResult)
     return std::unexpected(RegisterResult.error());
   if (auto Result = Pending->addFrameIndex(Index); !Result)
@@ -1290,6 +1297,26 @@ public:
     auto CallFrame = computeMaxCallFrameSize(Function);
     if (!CallFrame)
       return std::unexpected(CallFrame.error());
+    if (requiresFramePointer(Function)) {
+      auto FP = physicalRegister(PhysicalRegisterID::X8);
+      if (!FP)
+        return std::unexpected(FP.error());
+      if (!Function.registerInfo().isReserved(*FP)) {
+        auto Reserved = Function.registerInfo().reservePhysicalRegister(*FP);
+        if (!Reserved)
+          return std::unexpected(Reserved.error());
+      }
+    }
+    if (requiresBasePointer(Function)) {
+      auto BP = physicalRegister(PhysicalRegisterID::X9);
+      if (!BP)
+        return std::unexpected(BP.error());
+      if (!Function.registerInfo().isReserved(*BP)) {
+        auto Reserved = Function.registerInfo().reservePhysicalRegister(*BP);
+        if (!Reserved)
+          return std::unexpected(Reserved.error());
+      }
+    }
     auto FrameRegisters = validateFrameRegisterUses(Function, Target);
     if (!FrameRegisters)
       return std::unexpected(FrameRegisters.error());
@@ -1334,17 +1361,11 @@ public:
     if (!StateForReferences)
       return std::unexpected(StateForReferences.error());
 
-    bool NeedsEmergency = false;
+    bool NeedsEmergency = *StackSize > static_cast<std::uint64_t>(MaxSigned11);
     for (const MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr;
          Block = Block->next()) {
       for (const MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;
            Instruction = Instruction->next()) {
-        if (isCallFramePseudo(*Instruction)) {
-          auto Amount = callFrameAmount(*Instruction);
-          if (!Amount)
-            return std::unexpected(Amount.error());
-          NeedsEmergency |= !ReserveCallFrame && !fitsSigned12(*Amount);
-        }
         for (std::size_t Index = 0; Index < Instruction->operandCount(); ++Index) {
           const auto *FrameOperand = Instruction->operandAt(Index)->getIf<FrameIndexOperand>();
           if (FrameOperand == nullptr)
@@ -1447,6 +1468,28 @@ public:
       return makeUnexpected(ErrorCode::InternalError, "RISC-V frame registers are unavailable");
     const bool Realign = requiresStackRealignment(Function);
 
+    std::unordered_set<PhysicalRegister> KilledSaves;
+    if (Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
+      for (const PhysicalRegister Reg : Saved) {
+        const bool IsLiveOnEntry =
+            std::ranges::any_of(SaveBlock->liveIns(), [&](const MachineBasicBlockLiveIn &LiveIn) {
+              return Target.registers().regsOverlap(Reg, LiveIn.PhysReg);
+            });
+        if (!IsLiveOnEntry)
+          KilledSaves.insert(Reg);
+      }
+    }
+
+    if (Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
+      for (const PhysicalRegister Reg : Saved) {
+        if (Reg == *FP || Reg == *BP)
+          continue;
+        auto LiveIn = SaveBlock->addLiveIn(Reg);
+        if (!LiveIn)
+          return std::unexpected(LiveIn.error());
+      }
+    }
+
     MachineIRBuilder SaveBuilder(Function, Target);
     auto SavePoint = SaveBlock->firstInstruction() != nullptr
                          ? SaveBuilder.setInsertPointBefore(*SaveBlock->firstInstruction())
@@ -1459,7 +1502,7 @@ public:
         return makeUnexpected(ErrorCode::InternalError,
                               "RISC-V callee-save register has no stack slot");
       }
-      auto Stored = emitCalleeSave(SaveBuilder, Reg, *Slot, false);
+      auto Stored = emitCalleeSave(SaveBuilder, Reg, *Slot, false, KilledSaves.contains(Reg));
       if (!Stored)
         return std::unexpected(Stored.error());
     }
@@ -1566,9 +1609,8 @@ public:
       std::int64_t Adjustment = *Amount;
       if (Instruction.opcode() == instructionOpcode(InstructionOpcode::ADJCALLSTACKDOWN))
         Adjustment = -Adjustment;
-      auto Adjusted = emitStackAdjustment(Instruction, Function, Target, Scavenger, Adjustment,
-                                          Adjustment < 0 ? MachineInstrFlag::FrameSetup
-                                                         : MachineInstrFlag::FrameDestroy);
+      auto Adjusted =
+          emitStackAdjustment(Instruction, Function, Target, Scavenger, Adjustment, std::nullopt);
       if (!Adjusted)
         return std::unexpected(Adjusted.error());
     }
@@ -1613,12 +1655,16 @@ public:
     const std::uint64_t FirstAdjustment = firstSPAdjustAmount(Function);
     const std::uint64_t InitialAllocation = FirstAdjustment == 0 ? StackSize : FirstAdjustment;
     const std::uint64_t SecondAdjustment = StackSize - InitialAllocation;
+    const std::int64_t InitialAmount = -static_cast<std::int64_t>(InitialAllocation);
+    const std::int64_t SecondAmount = -static_cast<std::int64_t>(SecondAdjustment);
     const std::int64_t AlignmentMask = std::bit_cast<std::int64_t>(~(StackAlignment - 1U));
-    const bool NeedsTemporary = InitialAllocation > static_cast<std::uint64_t>(MaxSigned12) ||
-                                SecondAdjustment > static_cast<std::uint64_t>(MaxSigned12) ||
-                                (!Realign && requiresFramePointer(Function) &&
-                                 StackSize > static_cast<std::uint64_t>(MaxSigned12)) ||
-                                (Realign && !fitsSigned12(AlignmentMask));
+    const bool NeedsTemporary =
+        !canEmitAddImmediateAdjustment(InitialAmount, StackAlignmentBytes) ||
+        !canEmitAddImmediateAdjustment(SecondAmount, StackAlignmentBytes) ||
+        (!Realign && requiresFramePointer(Function) &&
+         !canEmitAddImmediateAdjustment(static_cast<std::int64_t>(InitialAllocation),
+                                        StackAlignmentBytes)) ||
+        (Realign && !fitsSigned12(AlignmentMask));
     if (NeedsTemporary) {
       auto Candidates = scratchRegisters();
       if (!Candidates)
@@ -1639,9 +1685,9 @@ public:
       return makeUnexpected(ErrorCode::FrameLayoutFailed, "RISC-V stack adjustment exceeds int64");
     }
     if (AllocationSize != 0) {
-      const std::int64_t Amount = -static_cast<std::int64_t>(AllocationSize);
-      if (fitsSigned12(Amount)) {
-        auto Adjust = emitAddImmediate(Builder, *SP, *SP, Amount, MachineInstrFlag::FrameSetup);
+      if (canEmitAddImmediateAdjustment(InitialAmount, StackAlignmentBytes)) {
+        auto Adjust = emitAddImmediateAdjustment(Builder, *SP, *SP, InitialAmount,
+                                                 StackAlignmentBytes, MachineInstrFlag::FrameSetup);
         if (!Adjust)
           return std::unexpected(Adjust.error());
       } else {
@@ -1690,7 +1736,7 @@ public:
                                 "RISC-V realigned CFI slot is incomplete");
         }
         auto CFI = emitSavedRegisterCFI(AfterSaves, Target, Reg, *Object->description()->Offset,
-                                        MachineInstrFlag::FrameSetup, *FP);
+                                        MachineInstrFlag::FrameSetup);
         if (!CFI)
           return std::unexpected(CFI.error());
       }
@@ -1719,10 +1765,10 @@ public:
           return makeUnexpected(ErrorCode::FrameLayoutFailed,
                                 "RISC-V second stack adjustment exceeds int64");
         }
-        if (SecondAdjustment <= static_cast<std::uint64_t>(MaxSigned12)) {
+        if (canEmitAddImmediateAdjustment(SecondAmount, StackAlignmentBytes)) {
           auto Adjust =
-              emitAddImmediate(AfterSaves, *SP, *SP, -static_cast<std::int64_t>(SecondAdjustment),
-                               MachineInstrFlag::FrameSetup);
+              emitAddImmediateAdjustment(AfterSaves, *SP, *SP, SecondAmount, StackAlignmentBytes,
+                                         MachineInstrFlag::FrameSetup);
           if (!Adjust)
             return std::unexpected(Adjust.error());
         } else {
@@ -1769,51 +1815,74 @@ public:
       return {};
     }
 
-    for (std::size_t Index = 0; Index < Saves.size(); ++Index) {
-      const CalleeSaveOperation &Save = Saves[Index];
-      const auto Slot = calleeSaveSlot(Function, Save.Reg);
-      const StackObject *Object = Slot ? Function.frameInfo().object(*Slot) : nullptr;
-      if (Object == nullptr || !Object->description()->Offset) {
-        return makeUnexpected(ErrorCode::InternalError,
-                              "RISC-V callee-save CFI slot is incomplete");
+    if (!Saves.empty()) {
+      MachineIRBuilder AfterSaves(Function, Target);
+      auto PointAfterSaves = AfterSaves.setInsertPointAfter(*Saves.back().Instruction);
+      if (!PointAfterSaves)
+        return std::unexpected(PointAfterSaves.error());
+      for (const CalleeSaveOperation &Save : Saves) {
+        const auto Slot = calleeSaveSlot(Function, Save.Reg);
+        const StackObject *Object = Slot ? Function.frameInfo().object(*Slot) : nullptr;
+        if (Object == nullptr || !Object->description()->Offset) {
+          return makeUnexpected(ErrorCode::InternalError,
+                                "RISC-V callee-save CFI slot is incomplete");
+        }
+        auto CFI =
+            emitSavedRegisterCFI(AfterSaves, Target, Save.Reg, *Object->description()->Offset,
+                                 MachineInstrFlag::FrameSetup);
+        if (!CFI)
+          return std::unexpected(CFI.error());
       }
-      MachineIRBuilder AfterSave(Function, Target);
-      auto PointAfterSave = AfterSave.setInsertPointAfter(*Save.Instruction);
-      if (!PointAfterSave)
-        return std::unexpected(PointAfterSave.error());
-      auto CFI = emitSavedRegisterCFI(AfterSave, Target, Save.Reg, *Object->description()->Offset,
-                                      MachineInstrFlag::FrameSetup);
-      if (!CFI)
-        return std::unexpected(CFI.error());
-      if (Index + 1U != Saves.size() || !requiresFramePointer(Function))
-        continue;
-      Expected<void> Set =
-          StackSize <= static_cast<std::uint64_t>(MaxSigned12)
-              ? emitAddImmediate(AfterSave, *FP, *SP, static_cast<std::int64_t>(StackSize),
-                                 MachineInstrFlag::FrameSetup)
-              : emitConstant(AfterSave, Temporary, *Zero, static_cast<std::int64_t>(StackSize),
-                             MachineInstrFlag::FrameSetup);
-      if (!Set)
-        return std::unexpected(Set.error());
-      if (StackSize > static_cast<std::uint64_t>(MaxSigned12)) {
-        Set = emitRegisterAdd(AfterSave, *FP, *SP, Temporary, MachineInstrFlag::FrameSetup);
+      if (requiresFramePointer(Function)) {
+        const std::int64_t FramePointerAdjustment = static_cast<std::int64_t>(InitialAllocation);
+        Expected<void> Set =
+            canEmitAddImmediateAdjustment(FramePointerAdjustment, StackAlignmentBytes)
+                ? emitAddImmediateAdjustment(AfterSaves, *FP, *SP, FramePointerAdjustment,
+                                             StackAlignmentBytes, MachineInstrFlag::FrameSetup)
+                : emitConstant(AfterSaves, Temporary, *Zero, FramePointerAdjustment,
+                               MachineInstrFlag::FrameSetup);
         if (!Set)
           return std::unexpected(Set.error());
+        if (!canEmitAddImmediateAdjustment(FramePointerAdjustment, StackAlignmentBytes)) {
+          Set = emitRegisterAdd(AfterSaves, *FP, *SP, Temporary, MachineInstrFlag::FrameSetup);
+          if (!Set)
+            return std::unexpected(Set.error());
+        }
+        auto CFA = emitDefCFI(AfterSaves, Target, *FP, 0, MachineInstrFlag::FrameSetup);
+        if (!CFA)
+          return std::unexpected(CFA.error());
       }
-      auto CFA = emitDefCFI(AfterSave, Target, *FP, 0, MachineInstrFlag::FrameSetup);
-      if (!CFA)
-        return std::unexpected(CFA.error());
+      if (SecondAdjustment != 0) {
+        if (canEmitAddImmediateAdjustment(SecondAmount, StackAlignmentBytes)) {
+          auto Adjust =
+              emitAddImmediateAdjustment(AfterSaves, *SP, *SP, SecondAmount, StackAlignmentBytes,
+                                         MachineInstrFlag::FrameSetup);
+          if (!Adjust)
+            return std::unexpected(Adjust.error());
+        } else {
+          auto Constant = emitConstant(AfterSaves, Temporary, *Zero,
+                                       static_cast<std::int64_t>(SecondAdjustment),
+                                       MachineInstrFlag::FrameSetup);
+          if (!Constant)
+            return std::unexpected(Constant.error());
+          auto Adjust =
+              emitRegisterSub(AfterSaves, *SP, *SP, Temporary, MachineInstrFlag::FrameSetup);
+          if (!Adjust)
+            return std::unexpected(Adjust.error());
+        }
+      }
     }
     if (Saves.empty() && requiresFramePointer(Function)) {
+      const std::int64_t FramePointerAdjustment = static_cast<std::int64_t>(InitialAllocation);
       Expected<void> Set =
-          StackSize <= static_cast<std::uint64_t>(MaxSigned12)
-              ? emitAddImmediate(Builder, *FP, *SP, static_cast<std::int64_t>(StackSize),
-                                 MachineInstrFlag::FrameSetup)
-              : emitConstant(Builder, Temporary, *Zero, static_cast<std::int64_t>(StackSize),
+          canEmitAddImmediateAdjustment(FramePointerAdjustment, StackAlignmentBytes)
+              ? emitAddImmediateAdjustment(Builder, *FP, *SP, FramePointerAdjustment,
+                                           StackAlignmentBytes, MachineInstrFlag::FrameSetup)
+              : emitConstant(Builder, Temporary, *Zero, FramePointerAdjustment,
                              MachineInstrFlag::FrameSetup);
       if (!Set)
         return std::unexpected(Set.error());
-      if (StackSize > static_cast<std::uint64_t>(MaxSigned12)) {
+      if (!canEmitAddImmediateAdjustment(FramePointerAdjustment, StackAlignmentBytes)) {
         Set = emitRegisterAdd(Builder, *FP, *SP, Temporary, MachineInstrFlag::FrameSetup);
         if (!Set)
           return std::unexpected(Set.error());
@@ -1869,17 +1938,17 @@ public:
                             "RISC-V epilogue has an incomplete callee-restore sequence");
     }
 
-    for (const CalleeSaveOperation &Restore : Restores) {
-      if ((HasFP && Restore.Reg == *FP) || (Realign && Restore.Reg == *BP))
-        continue;
-      MachineIRBuilder AfterRestore(Function, Target);
-      auto Point = AfterRestore.setInsertPointAfter(*Restore.Instruction);
+    if (!Restores.empty()) {
+      MachineIRBuilder AfterRestores(Function, Target);
+      auto Point = AfterRestores.setInsertPointAfter(*Restores.back().Instruction);
       if (!Point)
         return std::unexpected(Point.error());
-      auto CFI =
-          emitRestoreRegisterCFI(AfterRestore, Target, Restore.Reg, MachineInstrFlag::FrameDestroy);
-      if (!CFI)
-        return std::unexpected(CFI.error());
+      for (const CalleeSaveOperation &Restore : Restores) {
+        auto CFI = emitRestoreRegisterCFI(AfterRestores, Target, Restore.Reg,
+                                          MachineInstrFlag::FrameDestroy);
+        if (!CFI)
+          return std::unexpected(CFI.error());
+      }
     }
 
     if (Realign) {
@@ -1888,8 +1957,6 @@ public:
         return makeUnexpected(ErrorCode::FrameLayoutFailed,
                               "RISC-V first epilogue adjustment exceeds signed 12 bits");
       }
-      const auto FPRestore = std::ranges::find(Restores, *FP, &CalleeSaveOperation::Reg);
-      const auto BPRestore = std::ranges::find(Restores, *BP, &CalleeSaveOperation::Reg);
       MachineIRBuilder Teardown(Function, Target);
       MachineInstr *FirstRestore = Restores.empty() ? &Terminator : Restores.front().Instruction;
       auto Point = Teardown.setInsertPointBefore(*FirstRestore);
@@ -1903,24 +1970,6 @@ public:
       auto CFA = emitDefCFI(Teardown, Target, *SP, 0, MachineInstrFlag::FrameDestroy);
       if (!CFA)
         return std::unexpected(CFA.error());
-      if (FPRestore != Restores.end()) {
-        MachineIRBuilder AfterFP(Function, Target);
-        auto After = AfterFP.setInsertPointAfter(*FPRestore->Instruction);
-        if (!After)
-          return std::unexpected(After.error());
-        auto FPCFI = emitRestoreRegisterCFI(AfterFP, Target, *FP, MachineInstrFlag::FrameDestroy);
-        if (!FPCFI)
-          return std::unexpected(FPCFI.error());
-      }
-      if (BPRestore != Restores.end()) {
-        MachineIRBuilder AfterBP(Function, Target);
-        auto After = AfterBP.setInsertPointAfter(*BPRestore->Instruction);
-        if (!After)
-          return std::unexpected(After.error());
-        auto BPCFI = emitRestoreRegisterCFI(AfterBP, Target, *BP, MachineInstrFlag::FrameDestroy);
-        if (!BPCFI)
-          return std::unexpected(BPCFI.error());
-      }
       if (FirstAdjustment != 0) {
         MachineIRBuilder Deallocate(Function, Target);
         auto BeforeTerminator = Deallocate.setInsertPointBefore(Terminator);
@@ -1933,27 +1982,50 @@ public:
           return std::unexpected(Adjust.error());
       }
     } else if (HasFP) {
-      const auto FPRestore = std::ranges::find(Restores, *FP, &CalleeSaveOperation::Reg);
+      const std::uint64_t FirstAdjustment = firstSPAdjustAmount(Function);
+      const std::uint64_t RestoreAreaSize = FirstAdjustment == 0 ? StackSize : FirstAdjustment;
+      const std::uint64_t SecondAdjustment = StackSize - RestoreAreaSize;
+      MachineInstr *FirstRestore = Restores.empty() ? &Terminator : Restores.front().Instruction;
+      if (SecondAdjustment != 0) {
+        if (SecondAdjustment >
+            static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+          return makeUnexpected(ErrorCode::FrameLayoutFailed,
+                                "RISC-V second epilogue adjustment exceeds int64");
+        }
+        auto Adjusted = emitStackAdjustment(*FirstRestore, Function, Target, Scavenger,
+                                            static_cast<std::int64_t>(SecondAdjustment),
+                                            MachineInstrFlag::FrameDestroy);
+        if (!Adjusted)
+          return std::unexpected(Adjusted.error());
+      }
       MachineIRBuilder Teardown(Function, Target);
-      auto Point = FPRestore == Restores.end()
-                       ? Teardown.setInsertPointBefore(Terminator)
-                       : Teardown.setInsertPointBefore(*FPRestore->Instruction);
+      auto Point = Teardown.setInsertPointBefore(*FirstRestore);
       if (!Point)
         return std::unexpected(Point.error());
-      auto RestoreSP = emitAddImmediate(Teardown, *SP, *FP, 0, MachineInstrFlag::FrameDestroy);
-      if (!RestoreSP)
-        return std::unexpected(RestoreSP.error());
-      auto CFA = emitDefCFI(Teardown, Target, *SP, 0, MachineInstrFlag::FrameDestroy);
+      if (SecondAdjustment == 0) {
+        auto RestoreSP = emitAddImmediateAdjustment(
+            Teardown, *SP, *FP, -static_cast<std::int64_t>(RestoreAreaSize), StackAlignmentBytes,
+            MachineInstrFlag::FrameDestroy);
+        if (!RestoreSP)
+          return std::unexpected(RestoreSP.error());
+      }
+      auto CFA = emitDefCFI(Teardown, Target, *SP, static_cast<std::int64_t>(RestoreAreaSize),
+                            MachineInstrFlag::FrameDestroy);
       if (!CFA)
         return std::unexpected(CFA.error());
-      if (FPRestore != Restores.end()) {
-        MachineIRBuilder AfterFP(Function, Target);
-        auto After = AfterFP.setInsertPointAfter(*FPRestore->Instruction);
-        if (!After)
-          return std::unexpected(After.error());
-        auto FPCFI = emitRestoreRegisterCFI(AfterFP, Target, *FP, MachineInstrFlag::FrameDestroy);
-        if (!FPCFI)
-          return std::unexpected(FPCFI.error());
+      if (RestoreAreaSize != 0) {
+        MachineIRBuilder Deallocate(Function, Target);
+        auto BeforeTerminator = Deallocate.setInsertPointBefore(Terminator);
+        if (!BeforeTerminator)
+          return std::unexpected(BeforeTerminator.error());
+        auto Adjust =
+            emitAddImmediate(Deallocate, *SP, *SP, static_cast<std::int64_t>(RestoreAreaSize),
+                             MachineInstrFlag::FrameDestroy);
+        if (!Adjust)
+          return std::unexpected(Adjust.error());
+        auto FinalCFA = emitDefCFAOffset(Deallocate, 0, MachineInstrFlag::FrameDestroy);
+        if (!FinalCFA)
+          return std::unexpected(FinalCFA.error());
       }
     } else if (StackSize != 0) {
       if (StackSize > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
@@ -1964,8 +2036,9 @@ public:
       if (!Point)
         return std::unexpected(Point.error());
       const std::int64_t Amount = static_cast<std::int64_t>(StackSize);
-      if (fitsSigned12(Amount)) {
-        auto Adjust = emitAddImmediate(Teardown, *SP, *SP, Amount, MachineInstrFlag::FrameDestroy);
+      if (canEmitAddImmediateAdjustment(Amount, StackAlignmentBytes)) {
+        auto Adjust = emitAddImmediateAdjustment(Teardown, *SP, *SP, Amount, StackAlignmentBytes,
+                                                 MachineInstrFlag::FrameDestroy);
         if (!Adjust)
           return std::unexpected(Adjust.error());
       } else {
@@ -2130,7 +2203,7 @@ private:
                                                    const TargetDescription &Target,
                                                    RegisterScavenger &Scavenger,
                                                    std::int64_t Amount,
-                                                   MachineInstrFlag Flag) const {
+                                                   std::optional<MachineInstrFlag> Flag) const {
     if (Amount == 0)
       return {};
     auto SP = physicalRegister(PhysicalRegisterID::X2);
@@ -2140,8 +2213,9 @@ private:
     auto Point = Builder.setInsertPointBefore(Anchor);
     if (!Point)
       return std::unexpected(Point.error());
-    if (fitsSigned12(Amount))
-      return emitAddImmediate(Builder, *SP, *SP, Amount, Flag);
+    if (canEmitAddImmediateAdjustment(Amount, StackAlignmentBytes)) {
+      return emitAddImmediateAdjustment(Builder, *SP, *SP, Amount, StackAlignmentBytes, Flag);
+    }
 
     auto Candidates = scratchRegisters();
     if (!Candidates)
@@ -2168,10 +2242,13 @@ private:
     auto Zero = physicalRegister(PhysicalRegisterID::X0);
     if (!Zero)
       return std::unexpected(Zero.error());
-    auto Constant = emitConstant(Builder, Scratch->Reg, *Zero, Amount, Flag);
+    const bool Subtract = Amount < 0;
+    const std::int64_t Magnitude = Subtract ? -Amount : Amount;
+    auto Constant = emitConstant(Builder, Scratch->Reg, *Zero, Magnitude, Flag);
     if (!Constant)
       return std::unexpected(Constant.error());
-    auto Adjust = emitRegisterAdd(Builder, *SP, *SP, Scratch->Reg, Flag);
+    auto Adjust = Subtract ? emitRegisterSub(Builder, *SP, *SP, Scratch->Reg, Flag, true)
+                           : emitRegisterAdd(Builder, *SP, *SP, Scratch->Reg, Flag, true);
     if (!Adjust)
       return std::unexpected(Adjust.error());
     if (Emergency) {

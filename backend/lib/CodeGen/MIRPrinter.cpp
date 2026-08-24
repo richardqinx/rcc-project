@@ -1530,7 +1530,7 @@ namespace {
 
 [[nodiscard]] std::string hexadecimalWords(std::span<const std::uint64_t> Words,
                                            std::uint32_t BitWidth) {
-  constexpr std::string_view Hex = "0123456789ABCDEF";
+  constexpr std::string_view Hex = "0123456789abcdef";
   const std::size_t DigitCount = (static_cast<std::size_t>(BitWidth) + 3U) / 4U;
   std::string Result(DigitCount, '0');
   for (std::size_t Digit = 0; Digit < DigitCount; ++Digit) {
