@@ -2,6 +2,7 @@
 
 set(
   RCCBackendCodeGenSources
+  CFIInstrInserter.cpp
   CompilationUnit.cpp
   CommandFlags.cpp
   GlobalObject.cpp
@@ -89,6 +90,7 @@ set(
 )
 set(
   RCCBackendCodeGenHeaders
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CFIInstrInserter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CompilationUnit.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CommandFlags.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/CSEConfigBase.h"

@@ -6,6 +6,7 @@
 #include "GISel/RISCVRegisterBankInfo.h"
 #include "RISCV.h"
 #include "RISCVInstrInfo.h"
+#include "rcc/CodeGen/CFIInstrInserter.h"
 #include "rcc/CodeGen/GlobalISel/Combiner.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelect.h"
 #include "rcc/CodeGen/GlobalISel/Legalizer.h"
@@ -97,12 +98,15 @@ template <typename PassT, typename... ArgumentT>
   Added = addRegisterAllocationPipeline(Pipeline, Subtarget, Options);
   if (!Added)
     return std::unexpected(Added.error());
-  return addPostRegisterAllocationPipeline(
+  Added = addPostRegisterAllocationPipeline(
       Pipeline,
       optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
                                Options.DebugPrologueEpilogue),
       MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
                                              Options.UseTargetCopyInstructions});
+  if (!Added)
+    return std::unexpected(Added.error());
+  return addPass<CFIInstrInserterPass>(Pipeline, Subtarget.frameLowering());
 }
 
 } // namespace

@@ -1276,6 +1276,12 @@ class RISCVFrameLowering final : public TargetFrameLowering {
 public:
   explicit RISCVFrameLowering(const RISCVSubtarget &Subtarget) noexcept : Subtarget(Subtarget) {}
 
+  [[nodiscard]] PhysicalRegister
+  initialCFARegister(const MachineFunction &,
+                     const TargetDescription &Target) const noexcept override {
+    return Target.stackPointerRegisterToSaveRestore();
+  }
+
   [[nodiscard]] bool
   isCalleeSavedRegister(PhysicalRegister Reg, const MachineFunction &,
                         const TargetDescription &Target) const noexcept override {

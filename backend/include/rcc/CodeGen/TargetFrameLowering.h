@@ -31,6 +31,13 @@ class TargetFrameLowering {
 public:
   virtual ~TargetFrameLowering() = default;
 
+  [[nodiscard]] virtual PhysicalRegister
+  initialCFARegister(const MachineFunction &Function,
+                     const TargetDescription &Target) const noexcept = 0;
+  [[nodiscard]] virtual std::int64_t initialCFAOffset(const MachineFunction &) const noexcept {
+    return 0;
+  }
+
   [[nodiscard]] virtual Expected<void> prepareFrame(MachineFunction &Function,
                                                     const TargetDescription &Target,
                                                     FrameLoweringOptions Options = {}) const = 0;
