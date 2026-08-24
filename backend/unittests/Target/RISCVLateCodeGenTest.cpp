@@ -66,6 +66,11 @@ constexpr rcc::Opcode GrowingLatePseudoOpcode = rcc::Opcode::fromValue(10'000);
 constexpr rcc::Opcode LateExpansionRealOpcode = rcc::Opcode::fromValue(10'001);
 constexpr rcc::Opcode ShrinkingLatePseudoOpcode = rcc::Opcode::fromValue(10'002);
 
+[[nodiscard]] const rcc::riscv::RISCVSubtarget &subtarget() {
+  static const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
+  return Subtarget;
+}
+
 class GrowingLatePseudoInfo final : public rcc::TargetPseudoExpansionInfo {
 public:
   [[nodiscard]] rcc::Expected<bool>
@@ -741,7 +746,7 @@ void testShrinkWrappedFrameRegion(TestContext &Context, const rcc::TargetDescrip
   Context.expect(rcc::rebuildMachineLiveness(*Function, Target).has_value(),
                  "shrink-wrapping fixture liveness must be rebuilt");
   rcc::MachineFunctionAnalysisManager Analyses;
-  rcc::MachineShrinkWrappingPass Shrink{rcc::riscv::frameLowering()};
+  rcc::MachineShrinkWrappingPass Shrink{subtarget().frameLowering()};
   auto Shrunk = Shrink.run(*Function, Target, Analyses);
   Context.expect(Shrunk && Shrunk->Changed &&
                      Function->frameInfo().state().SavePoints.size() == 1 &&
@@ -755,7 +760,7 @@ void testShrinkWrappedFrameRegion(TestContext &Context, const rcc::TargetDescrip
   rcc::MachineFunctionPassManager FramePipeline;
   Context.expect(FramePipeline
                      .addPass(std::make_unique<rcc::PrologueEpilogueInsertionPass>(
-                         rcc::riscv::frameLowering()))
+                         subtarget().frameLowering()))
                      .has_value(),
                  "shrink-wrapped PEI pass must register");
   auto Lowered = FramePipeline.run(*Function, Target, Analyses);
@@ -1058,7 +1063,7 @@ void testPostRAPseudoExpansionAndFinalization(TestContext &Context,
 void testCanonicalOptimizationPipelines(TestContext &Context,
                                         const rcc::TargetDescription &Target) {
   const rcc::MachineOptimizationPipelineTargetInfo TargetInfo =
-      rcc::riscv::optimizationPipelineInfo();
+      rcc::riscv::optimizationPipelineInfo(subtarget());
   rcc::MachineFunctionPassManager SelectedPipeline;
   rcc::MachineFunctionPassManager PreRAPipeline;
   Context.expect(rcc::addSelectedSSAOptimizationPipeline(SelectedPipeline, TargetInfo) &&

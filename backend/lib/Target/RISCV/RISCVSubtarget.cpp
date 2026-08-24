@@ -197,6 +197,7 @@ RISCVSubtarget::RISCVSubtarget(RISCVSubtargetFeatures Features, RelocationModel 
                                CodeModel Code, RISCVABI ABI)
     : Features(Features), Relocation(Relocation), Code(Code), ABI(ABI),
       SchedulingHooks(createSchedulingHooks(Features)) {
+  FrameLoweringInfo = createFrameLowering(*this);
   auto Model = createSchedulingModel(*SchedulingHooks);
   if (!Model)
     std::abort();
@@ -227,6 +228,10 @@ const RISCVRegisterBankInfo *RISCVSubtarget::getRegBankInfo() const {
   if (!RegBankInfo)
     RegBankInfo = std::make_unique<RISCVRegisterBankInfo>();
   return RegBankInfo.get();
+}
+
+const TargetFrameLowering &RISCVSubtarget::frameLowering() const noexcept {
+  return *FrameLoweringInfo;
 }
 
 const TargetSchedulingModel &RISCVSubtarget::schedulingModel() const noexcept {

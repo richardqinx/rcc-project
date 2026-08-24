@@ -26,7 +26,8 @@ class RISCVSubtarget;
 createRISCVInstructionSelector(const RISCVSubtarget &Subtarget,
                                const RISCVRegisterBankInfo &RegisterBanks);
 [[nodiscard]] const TargetRegisterAllocationInfo &registerAllocationInfo() noexcept;
-[[nodiscard]] const TargetFrameLowering &frameLowering(RISCVABI ABI = RISCVABI::LP64D) noexcept;
+[[nodiscard]] std::unique_ptr<TargetFrameLowering>
+createFrameLowering(const RISCVSubtarget &Subtarget);
 [[nodiscard]] std::unique_ptr<TargetSchedulingHooks>
 createSchedulingHooks(const RISCVSubtargetFeatures &Features);
 [[nodiscard]] Expected<TargetSchedulingModel>

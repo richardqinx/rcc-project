@@ -57,6 +57,11 @@ struct FunctionFixture final {
   rcc::MachineBasicBlock *Block = nullptr;
 };
 
+[[nodiscard]] const rcc::riscv::RISCVSubtarget &subtarget() {
+  static const rcc::riscv::RISCVSubtarget Subtarget(rcc::riscv::RISCVSubtargetFeatures::rv64gc());
+  return Subtarget;
+}
+
 class ObservingFrameLowering final : public rcc::TargetFrameLowering {
 public:
   explicit ObservingFrameLowering(const rcc::TargetFrameLowering &Delegate,
@@ -227,7 +232,7 @@ runFrameLoweringWith(rcc::MachineFunction &Function, const rcc::TargetDescriptio
 
 [[nodiscard]] rcc::Expected<void> runFrameLowering(rcc::MachineFunction &Function,
                                                    const rcc::TargetDescription &Target) {
-  return runFrameLoweringWith(Function, Target, rcc::riscv::frameLowering());
+  return runFrameLoweringWith(Function, Target, subtarget().frameLowering());
 }
 
 [[nodiscard]] rcc::Expected<rcc::FrameIndex>
@@ -1173,7 +1178,7 @@ void testPEIOrderingAndPostconditions(TestContext &Context, const rcc::TargetDes
       !buildReturn(*Ordered->Function, Target, *Ordered->Block)) {
     return;
   }
-  ObservingFrameLowering Observer(rcc::riscv::frameLowering());
+  ObservingFrameLowering Observer(subtarget().frameLowering());
   auto OrderedResult = runFrameLoweringWith(*Ordered->Function, Target, Observer);
   Context.expect(
       OrderedResult && Observer.PrepareSawUnfrozen && Observer.InsertSawUnfrozen &&
@@ -1197,7 +1202,7 @@ void testPEIOrderingAndPostconditions(TestContext &Context, const rcc::TargetDes
     return;
   }
   const std::size_t OriginalInstructionCount = InvalidPostcondition->Block->instructionCount();
-  ObservingFrameLowering Broken(rcc::riscv::frameLowering(), true);
+  ObservingFrameLowering Broken(subtarget().frameLowering(), true);
   auto Rejected = runFrameLoweringWith(*InvalidPostcondition->Function, Target, Broken);
   Context.expect(
       !Rejected && !InvalidPostcondition->Function->frameInfo().isFrozen() &&

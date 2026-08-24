@@ -12,7 +12,7 @@ MachineOptimizationPipelineTargetInfo optimizationPipelineInfo(const RISCVSubtar
       .InstrInfo = instrInfo(),
       .Combiner = machineCombinerInfo(),
       .MemoryFolding = memoryFoldingInfo(),
-      .FrameLowering = frameLowering(Subtarget.targetABI()),
+      .FrameLowering = Subtarget.frameLowering(),
       .PseudoExpansion = pseudoExpansionInfo(),
       .SchedulingModel = Subtarget.schedulingModel(),
       .SchedulerOptions = {.EmitDebugOutput = EmitSchedulerDebugOutput},

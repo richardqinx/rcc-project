@@ -17,6 +17,7 @@ namespace rcc {
 class InstructionSelector;
 class LegalizerInfo;
 class TargetCallLowering;
+class TargetFrameLowering;
 class TargetSchedulingHooks;
 class TargetSchedulingModel;
 
@@ -131,6 +132,7 @@ public:
   [[nodiscard]] InstructionSelector *getInstructionSelector() const;
   [[nodiscard]] const LegalizerInfo *getLegalizerInfo() const;
   [[nodiscard]] const RISCVRegisterBankInfo *getRegBankInfo() const;
+  [[nodiscard]] const TargetFrameLowering &frameLowering() const noexcept;
   [[nodiscard]] const TargetSchedulingModel &schedulingModel() const noexcept;
 
 private:
@@ -138,6 +140,7 @@ private:
   RelocationModel Relocation;
   CodeModel Code;
   RISCVABI ABI;
+  std::unique_ptr<TargetFrameLowering> FrameLoweringInfo;
   mutable std::unique_ptr<TargetCallLowering> CallLoweringInfo;
   mutable std::unique_ptr<InstructionSelector> InstSelector;
   mutable std::unique_ptr<LegalizerInfo> Legalizer;
