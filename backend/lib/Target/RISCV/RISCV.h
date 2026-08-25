@@ -42,6 +42,8 @@ createSchedulingModel(const TargetSchedulingHooks &Hooks);
 createMoveMergePass(const RISCVSubtarget &Subtarget);
 [[nodiscard]] std::unique_ptr<MachineFunctionPass>
 createMakeCompressiblePass(const RISCVSubtarget &Subtarget);
+[[nodiscard]] std::unique_ptr<MachineFunctionPass>
+createOptWInstrsPass(const RISCVSubtarget &Subtarget);
 [[nodiscard]] std::unique_ptr<MachineFunctionPass> createMergeBaseOffsetPass();
 [[nodiscard]] MachineOptimizationPipelineTargetInfo
 optimizationPipelineInfo(const RISCVSubtarget &Subtarget, bool EmitSchedulerDebugOutput = false,

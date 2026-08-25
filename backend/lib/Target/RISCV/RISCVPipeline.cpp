@@ -68,6 +68,9 @@ template <typename PassT, typename... ArgumentT>
                                          Options.DebugPrologueEpilogue));
   if (!Added)
     return std::unexpected(Added.error());
+  Added = Pipeline.addPass(createOptWInstrsPass(Subtarget));
+  if (!Added)
+    return std::unexpected(Added.error());
   Added = addPass<PHIEliminationPass>(Pipeline, instrInfo());
   if (!Added)
     return std::unexpected(Added.error());
@@ -155,6 +158,9 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
     auto Added = addSelectedSSAOptimizationPipeline(
         Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
                                            Options.DebugPrologueEpilogue));
+    if (!Added)
+      return std::unexpected(Added.error());
+    Added = Pipeline.addPass(createOptWInstrsPass(Subtarget));
     if (!Added)
       return std::unexpected(Added.error());
     if (!Function.properties().has(MachineFunctionProperty::NoPHIs)) {

@@ -125,6 +125,7 @@ add_library(
   RISCVMakeCompressible.cpp
   RISCVMergeBaseOffset.cpp
   RISCVMoveMerger.cpp
+  RISCVOptWInstrs.cpp
   RISCVOptimizationPipeline.cpp
   RISCVOutliner.cpp
   RISCVPipeline.cpp
