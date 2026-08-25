@@ -9,6 +9,7 @@
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
+#include "rcc/CodeGen/ReachingDefAnalysis.h"
 #include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/CodeGen/SlotIndexes.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -992,6 +993,7 @@ Expected<void> registerStage11MachineAnalyses(MachineFunctionAnalysisManager &An
       MachineFunctionAnalysisManager::id<LiveVariablesAnalysis>(),
       MachineFunctionAnalysisManager::id<LiveIntervalsAnalysis>(),
       MachineFunctionAnalysisManager::id<VirtRegMapAnalysis>(),
+      MachineFunctionAnalysisManager::id<ReachingDefAnalysis>(),
   };
   const std::size_t Registered = static_cast<std::size_t>(
       std::ranges::count_if(IDs, [&Analyses](AnalysisID ID) { return Analyses.isRegistered(ID); }));
@@ -1043,6 +1045,17 @@ Expected<void> registerStage11MachineAnalyses(MachineFunctionAnalysisManager &An
   });
   if (!Mapping)
     return std::unexpected(Mapping.error());
+  auto ReachingDefinitions = Staging.registerAnalysis<ReachingDefAnalysis>({
+      .Name = "ReachingDefAnalysis",
+      .Dependencies = {},
+      .InvalidatedBy = {MachinePassChange::Instructions, MachinePassChange::Operands,
+                        MachinePassChange::Registers, MachinePassChange::CFG,
+                        MachinePassChange::BlockLayout, MachinePassChange::Frame,
+                        MachinePassChange::TargetState},
+      .ThreadSafety = PassThreadSafety::ThreadSafe,
+  });
+  if (!ReachingDefinitions)
+    return std::unexpected(ReachingDefinitions.error());
   return Analyses.replaceRegistrations(std::move(Staging));
 }
 

@@ -61,6 +61,7 @@ set(
   PrologueEpilogueInsertion.cpp
   PostRAScheduler.cpp
   RegisterPressure.cpp
+  ReachingDefAnalysis.cpp
   RegisterScavenger.cpp
   MacroFusion.cpp
   ScheduleDAG.cpp
@@ -150,6 +151,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachinePseudoExpansion.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/PrologueEpilogueInsertion.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterPressure.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/ReachingDefAnalysis.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/RegisterScavenger.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/ScheduleDAG.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/ScheduleHazardRecognizer.h"

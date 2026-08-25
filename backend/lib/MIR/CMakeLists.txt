@@ -3,6 +3,7 @@
 set(
   RCCBackendMIRSources
   EmbeddedIR.cpp
+  ReachingDefPrinter.cpp
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIParser.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIRParser.cpp"
@@ -16,6 +17,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MIRPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MIRYamlMapping.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/EmbeddedIR.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MIR/ReachingDefPrinter.h"
 )
 
 add_library(RCCBackendMIR ${RCCBackendMIRSources})
@@ -54,6 +56,7 @@ install(
 
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ReachingDefPrinter.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.h"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIParser.cpp"
@@ -64,6 +67,7 @@ rcc_backend_register_format_files(
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ReachingDefPrinter.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIParser.cpp"
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIRParser.cpp"

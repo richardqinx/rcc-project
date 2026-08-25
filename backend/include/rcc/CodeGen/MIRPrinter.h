@@ -13,6 +13,8 @@ namespace rcc {
 
 class MachineFunction;
 class MachineBasicBlock;
+class MachineInstr;
+class MachineOperand;
 class TargetDescription;
 
 namespace mir {
@@ -35,6 +37,17 @@ struct MIPrinterOptions final {
                                                              const TargetDescription &Target,
                                                              const MIParserContext &Context = {},
                                                              MIPrinterOptions Options = {});
+
+[[nodiscard]] Expected<MIParserContext>
+createMachineFunctionPrintContext(const MachineFunction &Function);
+[[nodiscard]] Expected<std::string> printMachineInstruction(const MachineInstr &Instruction,
+                                                            const TargetDescription &Target,
+                                                            const MIParserContext &Context,
+                                                            MIPrinterOptions Options = {});
+[[nodiscard]] Expected<std::string> printMachineOperand(const MachineOperand &Operand,
+                                                        const TargetDescription &Target,
+                                                        const MIParserContext &Context,
+                                                        MIPrinterOptions Options = {});
 
 struct MIRDocumentPrinterOptions final {
   MIPrintMode Mode = MIPrintMode::Complete;

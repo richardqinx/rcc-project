@@ -473,48 +473,12 @@ MIRDocumentPrinter::verifyOmittedEmbeddedIRLayout(const MachineFunction &Functio
 
 Expected<MIParserContext>
 MIRDocumentPrinter::createBodyContext(const MachineFunction &Function) const {
-  MIParserContext Context;
+  auto Created = createMachineFunctionPrintContext(Function);
+  if (!Created)
+    return std::unexpected(Created.error());
+  MIParserContext Context = std::move(*Created);
   Context.SyncScopes.assign(Document.syncScopes().begin(), Document.syncScopes().end());
-  const auto VirtualRegisters = Function.registerInfo().virtualRegisters();
-  for (std::size_t Index = 0; Index < VirtualRegisters.size(); ++Index) {
-    if (VirtualRegisters[Index].IsTombstone)
-      continue;
-    auto Reg = Register::makeVirtual(Index);
-    if (!Reg)
-      return std::unexpected(Reg.error());
-    if (Index > std::numeric_limits<std::uint32_t>::max()) {
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "MIR cannot represent more than 2^32 virtual registers");
-    }
-    Context.VirtualRegisters.push_back({.TextID = static_cast<std::uint32_t>(Index), .Reg = *Reg});
-  }
-
-  std::uint32_t StackID = 0;
-  std::uint32_t FixedID = 0;
-  for (const StackObject &Object : Function.frameInfo().objects()) {
-    const StackObjectDesc *Description = Object.description();
-    if (Description == nullptr || Description->IsDead)
-      continue;
-    MIFrameObjectSlot Slot{
-        .TextID = Object.isFixed() ? FixedID++ : StackID++,
-        .Index = Object.index(),
-        .Name = Description->AllocaName,
-    };
-    (Object.isFixed() ? Context.FixedStackObjects : Context.StackObjects)
-        .push_back(std::move(Slot));
-  }
-
-  std::uint32_t ConstantID = 0;
-  for (const MachineConstantPoolEntry &Entry : Function.constantPool().entries()) {
-    if (Entry.description() != nullptr)
-      Context.ConstantPoolItems.push_back({.TextID = ConstantID++, .Index = Entry.index()});
-  }
-  std::uint32_t JumpTableID = 0;
-  for (const MachineJumpTableEntry &Entry : Function.jumpTableInfo().tables()) {
-    if (Entry.description() != nullptr)
-      Context.JumpTables.push_back({.TextID = JumpTableID++, .Index = Entry.index()});
-  }
-
+  Context.Metadata.clear();
   std::unordered_set<std::uint32_t> EmbeddedMetadataSlots;
   if (const EmbeddedIRReferenceIndex *Embedded = Document.embeddedIR()) {
     for (const EmbeddedIRMetadataDefinition &Definition : Embedded->metadataDefinitions()) {
@@ -1680,6 +1644,8 @@ public:
       : Function(Function), Target(Target), Context(Context), Options(Options) {}
 
   [[nodiscard]] Expected<std::string> run();
+  [[nodiscard]] Expected<std::string> runInstruction(const MachineInstr &Instruction);
+  [[nodiscard]] Expected<std::string> runOperand(const MachineOperand &Operand);
 
 private:
   [[nodiscard]] Expected<void> initialize();
@@ -3127,7 +3093,100 @@ Expected<std::string> BodyPrinter::run() {
   return std::move(Output);
 }
 
+Expected<std::string> BodyPrinter::runInstruction(const MachineInstr &Instruction) {
+  if (&Instruction.function() != &Function) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine instruction belongs to a different function");
+  }
+  if (auto Initialized = initialize(); !Initialized)
+    return std::unexpected(Initialized.error());
+  if (auto Printed = printInstruction(Instruction); !Printed)
+    return std::unexpected(Printed.error());
+  if (!Output.starts_with("  "))
+    return makeUnexpected(ErrorCode::InternalError, "machine instruction printer lost indentation");
+  Output.erase(0, 2);
+  return std::move(Output);
+}
+
+Expected<std::string> BodyPrinter::runOperand(const MachineOperand &Operand) {
+  if (Operand.parent() != nullptr && &Operand.parent()->function() != &Function) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "machine operand belongs to a different function");
+  }
+  if (auto Initialized = initialize(); !Initialized)
+    return std::unexpected(Initialized.error());
+  if (auto Printed = printOperand(Operand, false); !Printed)
+    return std::unexpected(Printed.error());
+  return std::move(Output);
+}
+
 } // namespace
+
+Expected<MIParserContext> createMachineFunctionPrintContext(const MachineFunction &Function) {
+  MIParserContext Context;
+  const auto VirtualRegisters = Function.registerInfo().virtualRegisters();
+  for (std::size_t Index = 0; Index < VirtualRegisters.size(); ++Index) {
+    if (VirtualRegisters[Index].IsTombstone)
+      continue;
+    if (Index > std::numeric_limits<std::uint32_t>::max()) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "MIR cannot represent more than 2^32 virtual registers");
+    }
+    auto Reg = Register::makeVirtual(Index);
+    if (!Reg)
+      return std::unexpected(Reg.error());
+    Context.VirtualRegisters.push_back({.TextID = static_cast<std::uint32_t>(Index), .Reg = *Reg});
+  }
+
+  std::uint32_t StackID = 0;
+  std::uint32_t FixedID = 0;
+  for (const StackObject &Object : Function.frameInfo().objects()) {
+    const StackObjectDesc *Description = Object.description();
+    if (Description == nullptr || Description->IsDead)
+      continue;
+    MIFrameObjectSlot Slot{
+        .TextID = Object.isFixed() ? FixedID++ : StackID++,
+        .Index = Object.index(),
+        .Name = Description->AllocaName,
+    };
+    (Object.isFixed() ? Context.FixedStackObjects : Context.StackObjects)
+        .push_back(std::move(Slot));
+  }
+
+  std::uint32_t ConstantID = 0;
+  for (const MachineConstantPoolEntry &Entry : Function.constantPool().entries()) {
+    if (Entry.description() != nullptr)
+      Context.ConstantPoolItems.push_back({.TextID = ConstantID++, .Index = Entry.index()});
+  }
+  std::uint32_t JumpTableID = 0;
+  for (const MachineJumpTableEntry &Entry : Function.jumpTableInfo().tables()) {
+    if (Entry.description() != nullptr)
+      Context.JumpTables.push_back({.TextID = JumpTableID++, .Index = Entry.index()});
+  }
+  for (const MachineMetadataNode &Node : Function.metadata().nodes()) {
+    Context.Metadata.push_back(
+        {.TextID = Node.Slot, .Reference = MachineMetadataReference::machineFunction(Node.Slot)});
+  }
+  return Context;
+}
+
+Expected<std::string> printMachineInstruction(const MachineInstr &Instruction,
+                                              const TargetDescription &Target,
+                                              const MIParserContext &Context,
+                                              MIPrinterOptions Options) {
+  return BodyPrinter(Instruction.function(), Target, Context, Options).runInstruction(Instruction);
+}
+
+Expected<std::string> printMachineOperand(const MachineOperand &Operand,
+                                          const TargetDescription &Target,
+                                          const MIParserContext &Context,
+                                          MIPrinterOptions Options) {
+  if (Operand.parent() == nullptr) {
+    return makeUnexpected(ErrorCode::InvalidArgument,
+                          "standalone machine operand has no owning function");
+  }
+  return BodyPrinter(Operand.parent()->function(), Target, Context, Options).runOperand(Operand);
+}
 
 Expected<void> guessSuccessors(const MachineBasicBlock &Block, const TargetDescription &Target,
                                std::vector<MachineBasicBlock *> &Result, bool &IsFallthrough) {

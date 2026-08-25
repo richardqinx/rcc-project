@@ -9,6 +9,7 @@
 #include "rcc/CodeGen/MachineOutliner.h"
 #include "rcc/CodeGen/MachineStripDebug.h"
 #include "rcc/CodeGen/MachineVerifier.h"
+#include "rcc/MIR/ReachingDefPrinter.h"
 #include "rcc/Target/RISCV/RISCVPipeline.h"
 
 #include <algorithm>
@@ -121,6 +122,14 @@ struct FunctionRunResult final {
   return std::nullopt;
 }
 
+[[nodiscard]] Expected<std::unique_ptr<MachineFunctionPass>>
+createNamedMachinePass(std::string_view Name, const riscv::RISCVSubtarget &Subtarget,
+                       riscv::RISCVPipelineOptions Options = {}) {
+  if (Name == mir::ReachingDefPrinterPass::name())
+    return std::make_unique<mir::ReachingDefPrinterPass>();
+  return riscv::createCanonicalPipelinePass(Name, Subtarget, Options);
+}
+
 [[nodiscard]] Expected<MachineFunctionPassManager::PassList>
 createPasses(const MachineFunction &Function, const BackendInvocation &Invocation,
              const riscv::RISCVSubtarget &Subtarget, MachinePassManagerOptions Options) {
@@ -156,7 +165,7 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
     const bool UseTargetCopyInstructions =
         TargetCopyOption != Invocation.TargetOptions.end() && TargetCopyOption->Value == "true";
     for (const std::string &Name : Invocation.PassPipeline) {
-      auto Pass = riscv::createCanonicalPipelinePass(
+      auto Pass = createNamedMachinePass(
           Name, Subtarget,
           riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
                                       .UseTargetCopyInstructions = UseTargetCopyInstructions,
@@ -183,7 +192,7 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidInvocation, "empty pipeline pass selector");
   if (Name != "machine-outliner") {
-    auto Pass = riscv::createCanonicalPipelinePass(Name, Subtarget);
+    auto Pass = createNamedMachinePass(Name, Subtarget);
     if (!Pass)
       return std::unexpected(Pass.error());
   }
