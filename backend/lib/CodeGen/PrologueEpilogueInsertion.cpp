@@ -44,12 +44,6 @@ Expected<MachinePassResult> PrologueEpilogueInsertionPass::run(MachineFunction &
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "PrologueEpilogueInsertion requires target frame lowering");
-  const MachineFunctionProperties Missing = contract().Requires.missingFrom(Function.properties());
-  if (!Missing.empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "PrologueEpilogueInsertion requires properties: " + Missing.toString());
-  }
-
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

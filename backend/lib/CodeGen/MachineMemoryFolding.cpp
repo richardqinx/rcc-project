@@ -181,10 +181,6 @@ const MachinePassContract &MachineMemoryFoldingPass::contract() const noexcept {
 Expected<MachinePassResult> MachineMemoryFoldingPass::run(MachineFunction &Function,
                                                           const TargetDescription &Target,
                                                           MachineFunctionAnalysisManager &) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "memory folding requires selected SSA MachineIR");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

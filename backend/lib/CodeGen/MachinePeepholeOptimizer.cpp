@@ -41,11 +41,6 @@ const MachinePassContract &MachinePeepholeOptimizerPass::contract() const noexce
 Expected<MachinePassResult> MachinePeepholeOptimizerPass::run(MachineFunction &Function,
                                                               const TargetDescription &Target,
                                                               MachineFunctionAnalysisManager &) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "machine peephole optimizer requires SSA MachineIR");
-  }
-
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

@@ -152,17 +152,6 @@ void combineFingerprint(std::uint64_t &State, std::uint64_t Value) noexcept {
   return Result;
 }
 
-[[nodiscard]] Expected<void> requireProperties(const MachineFunction &Function,
-                                               const MachinePassContract &Contract) {
-  const MachineFunctionProperties Missing = Contract.Requires.missingFrom(Function.properties());
-  if (!Missing.empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "pass '" + Contract.Name +
-                              "' requires properties: " + Missing.toString());
-  }
-  return {};
-}
-
 [[nodiscard]] Error passFailure(std::string Message,
                                 ErrorCode Code = ErrorCode::VerificationError) {
   return Error(Code, std::move(Message));
@@ -225,10 +214,6 @@ Expected<MachinePassResult> InstructionSelect::run(MachineFunction &Function,
   if (Info == nullptr)
     return std::unexpected(passFailure("instruction select has no target behavior interface",
                                        ErrorCode::InvalidArgument));
-  auto Required = requireProperties(Function, contract());
-  if (!Required)
-    return std::unexpected(Required.error());
-
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

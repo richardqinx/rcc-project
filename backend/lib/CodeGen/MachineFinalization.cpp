@@ -92,9 +92,6 @@ const MachinePassContract &FinalizeEmissionPseudosPass::contract() const noexcep
 Expected<MachinePassResult> FinalizeEmissionPseudosPass::run(MachineFunction &Function,
                                                              const TargetDescription &Target,
                                                              MachineFunctionAnalysisManager &) {
-  if (!Function.properties().containsAll(contract().Requires))
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "emission-pseudo finalization requires finalized allocated MIR");
   for (MachineInstr *Instruction : Function.allInstructions()) {
     if (Instruction == nullptr || Instruction->parent() == nullptr)
       continue;
@@ -125,10 +122,6 @@ const MachinePassContract &FinalEncodabilityVerifierPass::contract() const noexc
 Expected<MachinePassResult> FinalEncodabilityVerifierPass::run(MachineFunction &Function,
                                                                const TargetDescription &Target,
                                                                MachineFunctionAnalysisManager &) {
-  if (!Function.properties().containsAll(contract().Requires))
-    return makeUnexpected(ErrorCode::FinalEncodabilityFailed,
-                          "final encodability requires NoExecutablePseudos and finalized MIR");
-
   std::unordered_map<const MachineBasicBlock *, std::uint64_t> BlockOffsets;
   std::unordered_map<const MachineInstr *, std::uint64_t> InstructionOffsets;
   std::uint64_t Offset = 0;

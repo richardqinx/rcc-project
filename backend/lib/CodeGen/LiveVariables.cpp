@@ -923,11 +923,6 @@ const MachinePassContract &RebuildMachineLivenessPass::contract() const noexcept
 Expected<MachinePassResult> RebuildMachineLivenessPass::run(MachineFunction &Function,
                                                             const TargetDescription &Target,
                                                             MachineFunctionAnalysisManager &) {
-  const MachineFunctionProperties Missing = contract().Requires.missingFrom(Function.properties());
-  if (!Missing.empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RebuildMachineLiveness requires properties: " + Missing.toString());
-  }
   auto Applied = rebuildMachineLiveness(Function, Target);
   if (!Applied)
     return std::unexpected(Applied.error());

@@ -343,13 +343,6 @@ const MachinePassContract &MachineSinkPass::contract() const noexcept {
 Expected<MachinePassResult> MachineSinkPass::run(MachineFunction &Function,
                                                  const TargetDescription &Target,
                                                  MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(
-        ErrorCode::VerificationError,
-        Stage == MachineCodeMotionStage::SelectedSSA
-            ? "machine sink requires SSA MachineIR"
-            : "post-RA machine sink requires allocated tracked-liveness MachineIR");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

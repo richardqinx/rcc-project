@@ -222,16 +222,6 @@ reserveFunctionRegisters(MachineFunction &Function, std::span<const PhysicalRegi
   return Result;
 }
 
-[[nodiscard]] inline Expected<void>
-requireAllocationProperties(const MachineFunction &Function, const MachinePassContract &Contract) {
-  const MachineFunctionProperties Missing = Contract.Requires.missingFrom(Function.properties());
-  if (!Missing.empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          Contract.Name + " requires properties: " + Missing.toString());
-  }
-  return {};
-}
-
 [[nodiscard]] inline Expected<void> verifyAllocationTrial(MachineFunction &Function,
                                                           const TargetDescription &Target,
                                                           const MachinePassContract &Contract) {

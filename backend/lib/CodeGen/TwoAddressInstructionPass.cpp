@@ -32,15 +32,6 @@ struct RegisterValue final {
   std::uint32_t TargetFlags = 0;
 };
 
-[[nodiscard]] Expected<void> requireProperties(const MachineFunction &Function,
-                                               const MachinePassContract &Contract) {
-  const MachineFunctionProperties Missing = Contract.Requires.missingFrom(Function.properties());
-  if (Missing.empty())
-    return {};
-  return makeUnexpected(ErrorCode::VerificationError,
-                        Contract.Name + " requires properties: " + Missing.toString());
-}
-
 [[nodiscard]] RegisterOperandFlags generatedDefFlags(RegisterOperandFlags Original) noexcept {
   RegisterOperandFlags Result;
   if (Original.has(RegisterOperandFlag::Undef))
@@ -457,10 +448,6 @@ const MachinePassContract &TwoAddressInstructionPass::contract() const noexcept 
 Expected<MachinePassResult>
 TwoAddressInstructionPass::run(MachineFunction &Function, const TargetDescription &Target,
                                MachineFunctionAnalysisManager &Analyses) {
-  auto Required = requireProperties(Function, contract());
-  if (!Required)
-    return std::unexpected(Required.error());
-
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

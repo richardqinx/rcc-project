@@ -21,9 +21,6 @@ const MachinePassContract &GlobalISelCombinerPass::contract() const noexcept {
 Expected<MachinePassResult> GlobalISelCombinerPass::run(MachineFunction &Function,
                                                         const TargetDescription &Target,
                                                         MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires))
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "GlobalISel combiner input does not satisfy its stage contract");
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

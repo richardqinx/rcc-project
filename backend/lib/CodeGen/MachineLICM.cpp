@@ -321,13 +321,6 @@ const MachinePassContract &MachineLICMPass::contract() const noexcept {
 Expected<MachinePassResult> MachineLICMPass::run(MachineFunction &Function,
                                                  const TargetDescription &Target,
                                                  MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(
-        ErrorCode::VerificationError,
-        Stage == MachineCodeMotionStage::SelectedSSA
-            ? "machine LICM requires selected SSA MachineIR"
-            : "post-RA machine LICM requires allocated tracked-liveness MachineIR");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

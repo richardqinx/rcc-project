@@ -204,10 +204,6 @@ const MachinePassContract &MachineCombinerPass::contract() const noexcept {
 Expected<MachinePassResult> MachineCombinerPass::run(MachineFunction &Function,
                                                      const TargetDescription &Target,
                                                      MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "machine combiner input does not satisfy its pass contract");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

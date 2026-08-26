@@ -64,15 +64,6 @@ struct PhiPlan final {
   std::vector<PhiIncoming> IncomingValues;
 };
 
-[[nodiscard]] Expected<void> requireProperties(const MachineFunction &Function,
-                                               const MachinePassContract &Contract) {
-  const MachineFunctionProperties Missing = Contract.Requires.missingFrom(Function.properties());
-  if (Missing.empty())
-    return {};
-  return makeUnexpected(ErrorCode::VerificationError,
-                        Contract.Name + " requires properties: " + Missing.toString());
-}
-
 [[nodiscard]] bool isPhi(const MachineInstr &Instruction, const TargetDescription &Target) {
   const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
   return Descriptor != nullptr && Descriptor->Flags.has(InstructionFlag::Phi);
@@ -486,10 +477,6 @@ const MachinePassContract &PHIEliminationPass::contract() const noexcept {
 Expected<MachinePassResult> PHIEliminationPass::run(MachineFunction &Function,
                                                     const TargetDescription &Target,
                                                     MachineFunctionAnalysisManager &Analyses) {
-  auto Required = requireProperties(Function, contract());
-  if (!Required)
-    return std::unexpected(Required.error());
-
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

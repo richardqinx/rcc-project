@@ -177,17 +177,6 @@ private:
   return PostOrder;
 }
 
-[[nodiscard]] Expected<void> requireProperties(const MachineFunction &Function,
-                                               const MachinePassContract &Contract) {
-  const MachineFunctionProperties Missing = Contract.Requires.missingFrom(Function.properties());
-  if (!Missing.empty()) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "pass '" + Contract.Name +
-                              "' requires properties: " + Missing.toString());
-  }
-  return {};
-}
-
 [[nodiscard]] Error passFailure(std::string Message,
                                 ErrorCode Code = ErrorCode::VerificationError) {
   return Error(Code, std::move(Message));
@@ -267,10 +256,6 @@ Expected<MachinePassResult> Legalizer::run(MachineFunction &Function,
   if (Info == nullptr)
     return std::unexpected(
         passFailure("legalizer has no target behavior interface", ErrorCode::InvalidArgument));
-  auto Required = requireProperties(Function, contract());
-  if (!Required)
-    return std::unexpected(Required.error());
-
   if (AbortMode != GlobalISelAbortMode::Enable) {
     if (AbortMode != GlobalISelAbortMode::Disable &&
         AbortMode != GlobalISelAbortMode::DisableWithDiagnostic) {

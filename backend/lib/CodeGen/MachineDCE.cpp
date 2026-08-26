@@ -111,11 +111,6 @@ const MachinePassContract &MachineDCEPass::contract() const noexcept {
 Expected<MachinePassResult> MachineDCEPass::run(MachineFunction &Function,
                                                 const TargetDescription &Target,
                                                 MachineFunctionAnalysisManager &) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "machine DCE requires a selected machine function");
-  }
-
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

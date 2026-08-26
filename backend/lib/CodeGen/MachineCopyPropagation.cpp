@@ -303,10 +303,6 @@ const MachinePassContract &MachineCopyPropagationPass::contract() const noexcept
 Expected<MachinePassResult>
 MachineCopyPropagationPass::run(MachineFunction &Function, const TargetDescription &Target,
                                 MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "machine COPY propagation has unmet stage properties");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

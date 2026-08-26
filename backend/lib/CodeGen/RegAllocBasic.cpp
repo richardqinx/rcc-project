@@ -101,9 +101,6 @@ Expected<MachinePassResult> BasicAllocatorPass::run(MachineFunction &Function,
                                                     MachineFunctionAnalysisManager &Analyses) {
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument, "BasicAllocator requires target behavior");
-  auto Required = regalloc_detail::requireAllocationProperties(Function, contract());
-  if (!Required)
-    return std::unexpected(Required.error());
   auto Trial = regalloc_detail::cloneForAllocation(Function, Target);
   if (!Trial)
     return std::unexpected(Trial.error());

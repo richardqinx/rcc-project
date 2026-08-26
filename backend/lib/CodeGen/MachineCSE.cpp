@@ -293,10 +293,6 @@ const MachinePassContract &MachineCSEPass::contract() const noexcept {
 Expected<MachinePassResult> MachineCSEPass::run(MachineFunction &Function,
                                                 const TargetDescription &Target,
                                                 MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "machine CSE requires selected SSA MachineIR");
-  }
   auto Trial = cloneMachineFunction(
       Function, Target,
       MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});

@@ -406,10 +406,6 @@ const MachinePassContract &PreRATargetPseudoExpansionPass::contract() const noex
 Expected<MachinePassResult>
 PreRATargetPseudoExpansionPass::run(MachineFunction &Function, const TargetDescription &Target,
                                     MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires)) {
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "pre-RA pseudo expansion requires selected SSA-exited MIR");
-  }
   return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::PreRA,
                                  nullptr, Analyses);
 }
@@ -421,9 +417,6 @@ const MachinePassContract &PreparePostRAPseudosPass::contract() const noexcept {
 Expected<MachinePassResult>
 PreparePostRAPseudosPass::run(MachineFunction &Function, const TargetDescription &Target,
                               MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires))
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "post-RA pseudo preparation requires selected MachineIR");
   return runPreparationTransaction(Function, Target, *Info, Analyses);
 }
 
@@ -445,9 +438,6 @@ const MachinePassContract &TargetLatePseudoExpansionPass::contract() const noexc
 Expected<MachinePassResult>
 TargetLatePseudoExpansionPass::run(MachineFunction &Function, const TargetDescription &Target,
                                    MachineFunctionAnalysisManager &Analyses) {
-  if (!Function.properties().containsAll(contract().Requires))
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "target-late pseudo expansion requires finalized allocated MIR");
   return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::TargetLate,
                                  BranchInfo, Analyses);
 }
