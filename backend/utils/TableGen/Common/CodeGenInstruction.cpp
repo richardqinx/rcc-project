@@ -76,7 +76,7 @@ memoryRoleEnumerator(std::string_view Value) noexcept {
 
 [[nodiscard]] std::optional<std::string_view>
 instructionFlagEnumerator(std::string_view Value) noexcept {
-  static constexpr std::array<std::pair<std::string_view, std::string_view>, 24> Flags = {{
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 25> Flags = {{
       {"terminator", "Terminator"},
       {"branch", "Branch"},
       {"indirect_branch", "IndirectBranch"},
@@ -101,6 +101,7 @@ instructionFlagEnumerator(std::string_view Value) noexcept {
       {"fake_use", "FakeUse"},
       {"generic", "Generic"},
       {"terminal_emission", "TerminalEmission"},
+      {"uses_custom_inserter", "UsesCustomInserter"},
   }};
   const auto *const Position = std::ranges::find(Flags, Value, &decltype(Flags)::value_type::first);
   if (Position == Flags.end())

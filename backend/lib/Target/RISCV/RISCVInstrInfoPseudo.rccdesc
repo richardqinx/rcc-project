@@ -186,7 +186,7 @@ instructions:
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
       - { kinds: [register], role: use, register_class: GPR, register_bank: GPR }
     num_explicit_defs: 1
-    flags: [pseudo, produces_code, allowed_pre_legalizer]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, uses_custom_inserter]
     owner: instruction_select
     deadline: selected
   -
@@ -201,7 +201,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR }
       - { kinds: [register], role: use, register_class: FPR32, register_bank: FPR }
     num_explicit_defs: 1
-    flags: [pseudo, produces_code, allowed_pre_legalizer]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, uses_custom_inserter]
     owner: instruction_select
     deadline: selected
   -
@@ -216,7 +216,7 @@ instructions:
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR }
       - { kinds: [register], role: use, register_class: FPR64, register_bank: FPR }
     num_explicit_defs: 1
-    flags: [pseudo, produces_code, allowed_pre_legalizer]
+    flags: [pseudo, produces_code, allowed_pre_legalizer, uses_custom_inserter]
     owner: instruction_select
     deadline: selected
   -

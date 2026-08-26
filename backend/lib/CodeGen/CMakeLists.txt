@@ -8,6 +8,7 @@ set(
   GlobalObject.cpp
   GenericOpcodes.cpp
   FrameIndexElimination.cpp
+  FinalizeISel.cpp
   InstructionDescriptor.cpp
   LowLevelType.cpp
   MachineBasicBlockAttributes.cpp
@@ -100,6 +101,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GlobalObject.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/GenericOpcodes.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/FrameIndexElimination.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/FinalizeISel.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InstructionDescriptor.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/InlineAsm.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/LowLevelType.h"

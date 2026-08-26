@@ -7,6 +7,7 @@
 #include "RISCV.h"
 #include "RISCVInstrInfo.h"
 #include "rcc/CodeGen/CFIInstrInserter.h"
+#include "rcc/CodeGen/FinalizeISel.h"
 #include "rcc/CodeGen/GlobalISel/Combiner.h"
 #include "rcc/CodeGen/GlobalISel/InstructionSelect.h"
 #include "rcc/CodeGen/GlobalISel/Legalizer.h"
@@ -57,7 +58,10 @@ template <typename PassT, typename... ArgumentT>
   Added = addPass<RegBankSelect>(Pipeline, Subtarget.getRegBankInfo());
   if (!Added)
     return std::unexpected(Added.error());
-  return addPass<InstructionSelect>(Pipeline, Subtarget.getInstructionSelector());
+  Added = addPass<InstructionSelect>(Pipeline, Subtarget.getInstructionSelector());
+  if (!Added)
+    return std::unexpected(Added.error());
+  return addPass<FinalizeISelPass>(Pipeline, finalizeISelInfo());
 }
 
 [[nodiscard]] Expected<void> addSSAExitPipeline(MachineFunctionPassManager &Pipeline,
@@ -151,6 +155,11 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
   }
   if (!Function.properties().has(MachineFunctionProperty::Selected)) {
     auto Added = addPass<InstructionSelect>(Pipeline, Subtarget.getInstructionSelector());
+    if (!Added)
+      return std::unexpected(Added.error());
+  }
+  if (!Function.properties().has(MachineFunctionProperty::TiedOpsRewritten)) {
+    auto Added = addPass<FinalizeISelPass>(Pipeline, finalizeISelInfo());
     if (!Added)
       return std::unexpected(Added.error());
   }

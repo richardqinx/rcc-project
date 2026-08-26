@@ -113,6 +113,7 @@ add_library(
   RISCVInstrInfo.cpp
   RISCVAssemblyPrinter.cpp
   RISCVFrameLowering.cpp
+  RISCVFinalizeISel.cpp
   RISCVFunctionInfo.cpp
   RISCVImmediateMaterialization.cpp
   RISCVInstPrinter.cpp
@@ -200,6 +201,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFinalizeISel.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFunctionInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVImmediateMaterialization.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVImmediateMaterialization.h"
@@ -245,6 +247,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFinalizeISel.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFunctionInfo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVImmediateMaterialization.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstPrinter.cpp"

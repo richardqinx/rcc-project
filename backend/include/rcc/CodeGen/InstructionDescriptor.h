@@ -147,6 +147,7 @@ enum class InstructionFlag : std::uint8_t {
   FakeUse,
   Generic,
   TerminalEmission,
+  UsesCustomInserter,
   Count,
 };
 

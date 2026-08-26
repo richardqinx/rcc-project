@@ -3,6 +3,7 @@
 #ifndef RCC_LIB_TARGET_RISCV_RISCV_H
 #define RCC_LIB_TARGET_RISCV_RISCV_H
 
+#include "rcc/CodeGen/FinalizeISel.h"
 #include "rcc/CodeGen/GlobalISel/GIMatchTableExecutor.h"
 #include "rcc/CodeGen/MachineCombinerPattern.h"
 #include "rcc/CodeGen/MachineOptimizationPipeline.h"
@@ -38,6 +39,7 @@ createSchedulingModel(const TargetSchedulingHooks &Hooks);
 [[nodiscard]] const GIMatchTableExecutor &giselCombinerExecutor() noexcept;
 [[nodiscard]] const TargetMemoryFoldingInfo &memoryFoldingInfo() noexcept;
 [[nodiscard]] const TargetPseudoExpansionInfo &pseudoExpansionInfo() noexcept;
+[[nodiscard]] const TargetFinalizeISelInfo &finalizeISelInfo() noexcept;
 [[nodiscard]] std::unique_ptr<MachineFunctionPass>
 createMoveMergePass(const RISCVSubtarget &Subtarget);
 [[nodiscard]] std::unique_ptr<MachineFunctionPass>
