@@ -585,19 +585,19 @@ public:
         return expandAddressPseudo(Instruction, Function, Target, true);
       return false;
     }
-    if (Phase != MachinePseudoExpansionPhase::PostRA)
-      return false;
-    if (Instruction.opcode() == opcode(GenericOpcode::COPY))
-      return expandCopy(Instruction, Function, Target);
-    auto Subregister = expandSubregisterCopy(Instruction, Function, Target);
-    if (!Subregister || *Subregister)
-      return Subregister;
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoCALL))
-      return expandCall(Instruction, Function, Target, false);
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoCALLReg))
-      return expandCall(Instruction, Function, Target, false);
-    if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoTAIL))
-      return expandCall(Instruction, Function, Target, true);
+    if (Phase == MachinePseudoExpansionPhase::PostRA) {
+      if (Instruction.opcode() == opcode(GenericOpcode::COPY))
+        return expandCopy(Instruction, Function, Target);
+      return expandSubregisterCopy(Instruction, Function, Target);
+    }
+    if (Phase == MachinePseudoExpansionPhase::TargetLate) {
+      if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoCALL))
+        return expandCall(Instruction, Function, Target, false);
+      if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoCALLReg))
+        return expandCall(Instruction, Function, Target, false);
+      if (Instruction.opcode() == instructionOpcode(InstructionOpcode::PseudoTAIL))
+        return expandCall(Instruction, Function, Target, true);
+    }
     return false;
   }
 };

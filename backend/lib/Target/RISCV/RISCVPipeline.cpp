@@ -121,7 +121,8 @@ template <typename PassT, typename... ArgumentT>
       optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
                                Options.DebugPrologueEpilogue),
       MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
-                                             Options.UseTargetCopyInstructions});
+                                             Options.UseTargetCopyInstructions},
+      createPushPopOptimizationPass(Subtarget));
   if (!Added)
     return std::unexpected(Added.error());
   Added = Pipeline.addPass(createMakeCompressiblePass(Subtarget));
@@ -194,7 +195,8 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
         optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
                                  Options.DebugPrologueEpilogue),
         MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
-                                               Options.UseTargetCopyInstructions});
+                                               Options.UseTargetCopyInstructions},
+        createPushPopOptimizationPass(Subtarget));
     if (!Added)
       return std::unexpected(Added.error());
   }

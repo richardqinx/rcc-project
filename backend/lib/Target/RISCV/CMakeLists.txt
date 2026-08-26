@@ -131,6 +131,7 @@ add_library(
   RISCVOutliner.cpp
   RISCVPipeline.cpp
   RISCVPseudoExpansion.cpp
+  RISCVPushPopOptimizer.cpp
   RISCVRegisterAllocation.cpp
   RISCVScheduling.cpp
   RISCVSubtarget.cpp
@@ -218,6 +219,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPushPopOptimizer.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSubtarget.cpp"
@@ -261,6 +263,7 @@ rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVOptimizationPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPipeline.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPseudoExpansion.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVPushPopOptimizer.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocation.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSubtarget.cpp"

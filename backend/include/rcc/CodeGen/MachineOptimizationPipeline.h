@@ -7,6 +7,8 @@
 #include "rcc/CodeGen/MachineScheduler.h"
 #include "rcc/CodeGen/TargetFrameLowering.h"
 
+#include <memory>
+
 namespace rcc {
 
 class TargetInstrInfo;
@@ -41,10 +43,10 @@ addSelectedSSAOptimizationPipeline(MachineFunctionPassManager &Pipeline,
 [[nodiscard]] Expected<void> addPreRegisterAllocationOptimizationPipeline(
     MachineFunctionPassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo);
 
-[[nodiscard]] Expected<void>
-addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
-                                  const MachineOptimizationPipelineTargetInfo &TargetInfo,
-                                  MachineOptimizationPipelineOptions Options = {});
+[[nodiscard]] Expected<void> addPostRegisterAllocationPipeline(
+    MachineFunctionPassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo,
+    MachineOptimizationPipelineOptions Options = {},
+    std::unique_ptr<MachineFunctionPass> PostRAPseudoExpansionTargetPass = nullptr);
 
 } // namespace rcc
 

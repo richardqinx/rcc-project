@@ -320,7 +320,7 @@ instructions:
     allow_extra_implicit_operands: true
     flags: [pseudo, produces_code, allowed_pre_legalizer, call, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
     size: 8
-    owner: post_ra_expansion
+    owner: target_late_expansion
     deadline: post_ra_finalized
   -
     id: 1223
@@ -333,7 +333,7 @@ instructions:
     allow_extra_implicit_operands: true
     flags: [pseudo, produces_code, allowed_pre_legalizer, terminator, branch, call, barrier, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
     size: 8
-    owner: post_ra_expansion
+    owner: target_late_expansion
     deadline: post_ra_finalized
   -
     id: 1269
@@ -347,7 +347,7 @@ instructions:
     allow_extra_implicit_operands: true
     flags: [pseudo, produces_code, allowed_pre_legalizer, call, may_load, may_store, has_side_effects, not_duplicable, unmodeled_side_effects]
     size: 8
-    owner: post_ra_expansion
+    owner: target_late_expansion
     deadline: post_ra_finalized
   -
     id: 1224

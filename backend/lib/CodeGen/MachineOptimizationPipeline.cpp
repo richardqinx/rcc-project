@@ -77,10 +77,10 @@ Expected<void> addPreRegisterAllocationOptimizationPipeline(
                                        TargetInfo.SchedulerOptions);
 }
 
-Expected<void>
-addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
-                                  const MachineOptimizationPipelineTargetInfo &TargetInfo,
-                                  MachineOptimizationPipelineOptions Options) {
+Expected<void> addPostRegisterAllocationPipeline(
+    MachineFunctionPassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo,
+    MachineOptimizationPipelineOptions Options,
+    std::unique_ptr<MachineFunctionPass> PostRAPseudoExpansionTargetPass) {
   auto Added = addPass<MachineStackSlotColoringPass>(Pipeline);
   if (!Added)
     return std::unexpected(Added.error());
@@ -112,6 +112,11 @@ addPostRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
   Added = addPass<ExpandPostRAPseudosPass>(Pipeline, TargetInfo.PseudoExpansion);
   if (!Added)
     return std::unexpected(Added.error());
+  if (PostRAPseudoExpansionTargetPass != nullptr) {
+    Added = Pipeline.addPass(std::move(PostRAPseudoExpansionTargetPass));
+    if (!Added)
+      return std::unexpected(Added.error());
+  }
   Added = addPass<PostRASchedulerPass>(Pipeline, TargetInfo.SchedulingModel,
                                        TargetInfo.SchedulerOptions);
   if (!Added)

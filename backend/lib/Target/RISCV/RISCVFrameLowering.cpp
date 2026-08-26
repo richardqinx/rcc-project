@@ -2280,6 +2280,12 @@ public:
         if (auto Result = Pending->addImplicitDef(Register::fromPhysical(Reg)); !Result)
           return std::unexpected(Result.error());
       }
+      for (const MachineOperand &Operand : Terminator.operands()) {
+        if (!Operand.isImplicit())
+          continue;
+        if (auto Result = Pending->addImplicitOperand(Operand.cloneDetached()); !Result)
+          return std::unexpected(Result.error());
+      }
       if (auto Result = setFrameFlag(*Pending, MachineInstrFlag::FrameDestroy); !Result)
         return std::unexpected(Result.error());
       auto Built = Pending->build();

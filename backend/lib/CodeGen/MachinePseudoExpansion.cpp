@@ -328,7 +328,8 @@ expandImplementation(MachineFunction &Function, const TargetDescription &Target,
                             "pseudo expansion left an instruction owned by the completed phase");
     }
   }
-  if (Changed && Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
+  if (Changed && Phase != MachinePseudoExpansionPhase::PostRA &&
+      Function.properties().has(MachineFunctionProperty::TracksLiveness)) {
     auto Rebuilt = rebuildMachineLiveness(Function, Target);
     if (!Rebuilt)
       return std::unexpected(Rebuilt.error());
