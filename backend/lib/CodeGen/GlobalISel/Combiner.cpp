@@ -6,10 +6,8 @@
 #include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 
-#include <optional>
 #include <string>
 
 namespace rcc {
@@ -21,31 +19,13 @@ const MachinePassContract &GlobalISelCombinerPass::contract() const noexcept {
 Expected<MachinePassResult> GlobalISelCombinerPass::run(MachineFunction &Function,
                                                         const TargetDescription &Target,
                                                         MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial)
-    return std::unexpected(withErrorContext(Trial.error(), "GlobalISel combiner clone failed: "));
-
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  Actions.beginReplay();
-  auto Result = runImplementation(Function, Target, Actions);
-  if (!Result)
-    return std::unexpected(
-        withErrorContext(Result.error(), "GlobalISel combiner replay diverged: "));
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
+  return runImplementation(Function, Target, Analyses);
 }
 
 Expected<MachinePassResult>
 GlobalISelCombinerPass::runImplementation(MachineFunction &Function,
                                           const TargetDescription &Target,
-                                          MachineActionReplay &Actions) const {
+                                          MachineFunctionAnalysisManager &Analyses) const {
   if (MaximumRewrites == 0 || MaximumIterations == 0)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "GlobalISel combiner iteration limits must be nonzero");
@@ -61,7 +41,8 @@ GlobalISelCombinerPass::runImplementation(MachineFunction &Function,
         if (!Matches)
           return std::unexpected(Matches.error());
         if (*Matches && Rewrites < MaximumRewrites) {
-          auto Accepted = Actions.request("gisel-combiner", Function, Instruction->stableID());
+          auto Accepted =
+              Analyses.requestAction("gisel-combiner", Function, Instruction->stableID());
           if (!Accepted)
             return std::unexpected(Accepted.error());
           if (*Accepted) {

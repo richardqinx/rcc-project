@@ -21,7 +21,8 @@ public:
 private:
   [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
                                                               const TargetDescription &Target,
-                                                              MachineActionReplay &Actions);
+                                                              MachineFunctionAnalysisManager
+                                                                  &Analyses);
 
   const InstructionSelector *Info;
 };

@@ -36,7 +36,8 @@ public:
 private:
   [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
                                                               const TargetDescription &Target,
-                                                              MachineActionReplay &Actions);
+                                                              MachineFunctionAnalysisManager
+                                                                  &Analyses);
 
   std::unique_ptr<LegalizerInfo> OwnedInfo;
   const LegalizerInfo *Info = nullptr;

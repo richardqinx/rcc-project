@@ -14,7 +14,6 @@
 #include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -23,7 +22,6 @@
 #include <array>
 #include <cstddef>
 #include <memory>
-#include <optional>
 #include <ranges>
 #include <string>
 #include <unordered_set>
@@ -262,8 +260,7 @@ Expected<MachinePassResult> Legalizer::run(MachineFunction &Function,
       return std::unexpected(passFailure("legalizer has an unknown GlobalISel abort mode",
                                          ErrorCode::InvalidArgument));
     }
-    MachineActionReplay Actions(Analyses);
-    auto Result = runImplementation(Function, Target, Actions);
+    auto Result = runImplementation(Function, Target, Analyses);
     if (Result || Result.error().code() != ErrorCode::Unsupported)
       return Result;
     Function.properties().set(MachineFunctionProperty::FailedISel);
@@ -274,30 +271,12 @@ Expected<MachinePassResult> Legalizer::run(MachineFunction &Function,
     };
   }
 
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial)
-    return std::unexpected(withErrorContext(Trial.error(), "legalizer transaction setup failed: "));
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  Actions.beginReplay();
-  auto Result = runImplementation(Function, Target, Actions);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "legalizer diverged after a successful transaction preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
+  return runImplementation(Function, Target, Analyses);
 }
 
 Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Function,
                                                          const TargetDescription &Target,
-                                                         MachineActionReplay &Actions) {
+                                                         MachineFunctionAnalysisManager &Analyses) {
   MachinePassResult Result;
   InstList InstructionWorklist;
   ArtifactList ArtifactWorklist;
@@ -365,7 +344,8 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
       }
 
       if (isIntrinsicOpcode(Instruction->opcode())) {
-        auto Accepted = Actions.request("legalize.intrinsic", Function, Instruction->stableID());
+        auto Accepted =
+            Analyses.requestAction("legalize.intrinsic", Function, Instruction->stableID());
         if (!Accepted)
           return std::unexpected(Accepted.error());
         if (!*Accepted)
@@ -409,7 +389,7 @@ Expected<MachinePassResult> Legalizer::runImplementation(MachineFunction &Functi
       Rule.append(legalizationActionName(Decision->Action));
       Rule.push_back('.');
       Rule.append(Descriptor->Name);
-      auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+      auto Accepted = Analyses.requestAction(Rule, Function, Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted) {
