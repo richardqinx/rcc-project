@@ -6,7 +6,6 @@
 #include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
@@ -448,32 +447,12 @@ const MachinePassContract &TwoAddressInstructionPass::contract() const noexcept 
 Expected<MachinePassResult>
 TwoAddressInstructionPass::run(MachineFunction &Function, const TargetDescription &Target,
                                MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial) {
-    return std::unexpected(
-        withErrorContext(Trial.error(), "two-address transaction setup failed: "));
-  }
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-
-  Actions.beginReplay();
-  auto Result = runImplementation(Function, Target, Actions);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "two-address rewrite diverged after a successful transaction preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
+  return runImplementation(Function, Target, Analyses);
 }
 
 Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
-    MachineFunction &Function, const TargetDescription &Target, MachineActionReplay &Actions) {
+    MachineFunction &Function, const TargetDescription &Target,
+    MachineFunctionAnalysisManager &Analyses) {
   MachinePassResult Result;
   const std::vector<MachineInstr *> Instructions(Function.allInstructions().begin(),
                                                  Function.allInstructions().end());
@@ -481,7 +460,8 @@ Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
     if (Instruction->parent() == nullptr)
       continue;
     if (Instruction->opcode() == opcode(GenericOpcode::REG_SEQUENCE)) {
-      auto Accepted = Actions.request("expand-reg-sequence", Function, Instruction->stableID());
+      auto Accepted =
+          Analyses.requestAction("expand-reg-sequence", Function, Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted)
@@ -495,7 +475,8 @@ Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
       continue;
     }
     if (Instruction->opcode() == opcode(GenericOpcode::INSERT_SUBREG)) {
-      auto Accepted = Actions.request("expand-insert-subreg", Function, Instruction->stableID());
+      auto Accepted =
+          Analyses.requestAction("expand-insert-subreg", Function, Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted)
@@ -546,7 +527,8 @@ Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
           continue;
 
         if (isImplicitlyUndef(Function, *Use)) {
-          auto Accepted = Actions.request("rewrite-undef-tie", Function, Instruction->stableID());
+          auto Accepted =
+              Analyses.requestAction("rewrite-undef-tie", Function, Instruction->stableID());
           if (!Accepted)
             return std::unexpected(Accepted.error());
           if (!*Accepted)
@@ -561,7 +543,7 @@ Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
         }
 
         auto AllowCommute =
-            Actions.request("commute-tied-operands", Function, Instruction->stableID());
+            Analyses.requestAction("commute-tied-operands", Function, Instruction->stableID());
         if (!AllowCommute)
           return std::unexpected(AllowCommute.error());
         if (*AllowCommute) {
@@ -576,7 +558,7 @@ Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
         }
 
         auto AllowConversion =
-            Actions.request("convert-three-address", Function, Instruction->stableID());
+            Analyses.requestAction("convert-three-address", Function, Instruction->stableID());
         if (!AllowConversion)
           return std::unexpected(AllowConversion.error());
         if (*AllowConversion) {
@@ -594,7 +576,8 @@ Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
           }
         }
 
-        auto AllowCopy = Actions.request("insert-tied-copy", Function, Instruction->stableID());
+        auto AllowCopy =
+            Analyses.requestAction("insert-tied-copy", Function, Instruction->stableID());
         if (!AllowCopy)
           return std::unexpected(AllowCopy.error());
         if (!*AllowCopy)

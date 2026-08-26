@@ -7,7 +7,6 @@
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
@@ -477,33 +476,13 @@ const MachinePassContract &PHIEliminationPass::contract() const noexcept {
 Expected<MachinePassResult> PHIEliminationPass::run(MachineFunction &Function,
                                                     const TargetDescription &Target,
                                                     MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial) {
-    return std::unexpected(
-        withErrorContext(Trial.error(), "PHI-elimination transaction setup failed: "));
-  }
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-
-  Actions.beginReplay();
-  auto Result = runImplementation(Function, Target, Actions);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "PHI elimination diverged after a successful transaction preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
+  return runImplementation(Function, Target, Analyses);
 }
 
 Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunction &Function,
                                                                   const TargetDescription &Target,
-                                                                  MachineActionReplay &Actions) {
+                                                                  MachineFunctionAnalysisManager
+                                                                      &Analyses) {
   MachinePassResult Result;
   std::unordered_map<EdgeKey, MachineBasicBlock *, EdgeKeyHash> SplitEdges;
   const std::vector<MachineBasicBlock *> Blocks(Function.allBlocks().begin(),
@@ -517,7 +496,8 @@ Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunctio
       continue;
 
     for (PhiPlan &Plan : *Plans) {
-      auto Accepted = Actions.request("eliminate-phi", Function, Plan.Instruction->stableID());
+      auto Accepted =
+          Analyses.requestAction("eliminate-phi", Function, Plan.Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted) {
