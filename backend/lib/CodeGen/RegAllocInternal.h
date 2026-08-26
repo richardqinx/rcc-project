@@ -9,11 +9,9 @@
 #include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
-#include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/CodeGen/RegAllocCommon.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
@@ -23,7 +21,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <ranges>
 #include <span>
 #include <vector>
@@ -220,26 +217,6 @@ reserveFunctionRegisters(MachineFunction &Function, std::span<const PhysicalRegi
     Result.Changes.add(MachinePassChange::Frame);
   Result.Preserved = PreservedAnalyses::none();
   return Result;
-}
-
-[[nodiscard]] inline Expected<void> verifyAllocationTrial(MachineFunction &Function,
-                                                          const TargetDescription &Target,
-                                                          const MachinePassContract &Contract) {
-  auto Transition =
-      Function.properties().applyTransition(Contract.Requires, Contract.Sets, Contract.Clears);
-  if (!Transition)
-    return std::unexpected(Transition.error());
-  return MachineVerifier::verify(Function, Target,
-                                 MachineVerifierOptions{.Mode = MachineVerifierMode::Generic,
-                                                        .Stage = Contract.VerificationStage,
-                                                        .VerifyProperties = true});
-}
-
-[[nodiscard]] inline Expected<MachineFunctionCloneResult>
-cloneForAllocation(const MachineFunction &Function, const TargetDescription &Target) {
-  return cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
 }
 
 [[nodiscard]] bool

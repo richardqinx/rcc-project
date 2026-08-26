@@ -78,9 +78,10 @@ Expected<std::optional<std::vector<Register>>> Spiller::tryRematerialize(Registe
   if (Sites.empty())
     return std::optional<std::vector<Register>>{};
 
-  if (Actions != nullptr) {
+  if (ActionAnalyses != nullptr) {
     for (const UseSite &Site : Sites) {
-      auto Accepted = Actions->request("rematerialize", *Function, Site.Instruction->stableID());
+      auto Accepted = ActionAnalyses->requestAction("rematerialize", *Function,
+                                                    Site.Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted)
@@ -180,11 +181,12 @@ Expected<std::vector<Register>> Spiller::spillAtInstructions(Register VirtualReg
   }
 
   std::vector<Register> NewRegisters;
-  if (Actions != nullptr) {
+  if (ActionAnalyses != nullptr) {
     for (const SpillSite &Site : Sites) {
       if (Site.OperandIndices.empty())
         continue;
-      auto Accepted = Actions->request("split-live-range", *Function, Site.Instruction->stableID());
+      auto Accepted = ActionAnalyses->requestAction("split-live-range", *Function,
+                                                    Site.Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted) {
@@ -283,12 +285,12 @@ Expected<std::vector<Register>> Spiller::spill(Register VirtualReg) {
     return makeUnexpected(ErrorCode::RegisterAllocationFailed,
                           "register pressure requires spilling a non-spillable value");
   }
-  if (Actions != nullptr) {
+  if (ActionAnalyses != nullptr) {
     const MachineOperand *Definition = Function->registerInfo().getUniqueVRegDef(VirtualReg);
     const MachineInstr *Instruction = Definition == nullptr ? nullptr : Definition->parent();
-    auto Accepted =
-        Actions->request("spill", *Function,
-                         Instruction == nullptr ? MachineInstrStableID{} : Instruction->stableID());
+    auto Accepted = ActionAnalyses->requestAction(
+        "spill", *Function,
+        Instruction == nullptr ? MachineInstrStableID{} : Instruction->stableID());
     if (!Accepted)
       return std::unexpected(Accepted.error());
     if (!*Accepted) {

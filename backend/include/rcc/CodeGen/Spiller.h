@@ -4,6 +4,7 @@
 #define RCC_CODEGEN_SPILLER_H
 
 #include "rcc/CodeGen/LiveRangeEdit.h"
+#include "rcc/CodeGen/MachineFunctionAnalysisManager.h"
 #include "rcc/CodeGen/TargetRegisterAllocationInfo.h"
 
 #include <optional>
@@ -11,16 +12,15 @@
 
 namespace rcc {
 
-class MachineActionReplay;
-
 class Spiller final {
 public:
   Spiller(MachineFunction &Function, const TargetDescription &Target,
           const TargetRegisterAllocationInfo &TargetInfo, VirtRegMap &Mapping,
-          bool EnableRematerialization = true, MachineActionReplay *Actions = nullptr)
+          bool EnableRematerialization = true,
+          MachineFunctionAnalysisManager *ActionAnalyses = nullptr)
       : Function(&Function), Target(&Target), TargetInfo(&TargetInfo), Mapping(&Mapping),
         Edit(Function, Target, Mapping), EnableRematerialization(EnableRematerialization),
-        Actions(Actions) {}
+        ActionAnalyses(ActionAnalyses) {}
 
   [[nodiscard]] Expected<std::vector<Register>> spill(Register VirtualReg);
 
@@ -37,7 +37,7 @@ private:
   VirtRegMap *Mapping;
   LiveRangeEdit Edit;
   bool EnableRematerialization;
-  MachineActionReplay *Actions;
+  MachineFunctionAnalysisManager *ActionAnalyses;
 };
 
 } // namespace rcc

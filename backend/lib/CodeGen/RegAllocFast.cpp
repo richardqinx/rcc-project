@@ -11,7 +11,6 @@
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
-#include "rcc/CodeGen/Spiller.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -571,43 +570,18 @@ Expected<MachinePassResult> FastAllocatorPass::run(MachineFunction &Function,
                                                    MachineFunctionAnalysisManager &Analyses) {
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument, "FastAllocator requires target behavior");
-  auto Trial = regalloc_detail::cloneForAllocation(Function, Target);
-  if (!Trial)
-    return std::unexpected(Trial.error());
   const std::vector<PhysicalRegister> FunctionReserved =
       regalloc_detail::functionReservedRegisters(Function, Target, *Info);
-  auto TrialReserved =
-      regalloc_detail::reserveFunctionRegisters(*Trial->ClonedFunction, FunctionReserved);
-  if (!TrialReserved)
-    return std::unexpected(TrialReserved.error());
-  MachineFunctionAnalysisManager TrialAnalyses;
-  auto Registered = registerStage11MachineAnalyses(TrialAnalyses);
-  if (!Registered)
-    return std::unexpected(Registered.error());
-  auto TrialLiveness =
-      TrialAnalyses.getResult<LiveVariablesAnalysis>(*Trial->ClonedFunction, Target);
-  if (!TrialLiveness)
-    return std::unexpected(TrialLiveness.error());
-  FastAllocatorEngine TrialAllocator(*Trial->ClonedFunction, Target, *Info, **TrialLiveness);
-  auto TrialRun = TrialAllocator.run();
-  if (!TrialRun)
-    return std::unexpected(TrialRun.error());
-  auto TrialVerification =
-      regalloc_detail::verifyAllocationTrial(*Trial->ClonedFunction, Target, contract());
-  if (!TrialVerification)
-    return std::unexpected(TrialVerification.error());
+  auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
+  if (!Reserved)
+    return std::unexpected(Reserved.error());
   auto Liveness = Analyses.getResult<LiveVariablesAnalysis>(Function, Target);
   if (!Liveness)
     return std::unexpected(Liveness.error());
   FastAllocatorEngine Allocator(Function, Target, *Info, **Liveness);
   auto Allocated = Allocator.run();
-  if (!Allocated) {
-    return std::unexpected(withErrorContext(
-        Allocated.error(), "FastAllocator diverged after a successful transaction preflight: "));
-  }
-  auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
-  if (!Reserved)
-    return std::unexpected(Reserved.error());
+  if (!Allocated)
+    return std::unexpected(Allocated.error());
   Allocated->Changed |= *Reserved;
   return regalloc_detail::passResult(*Allocated);
 }

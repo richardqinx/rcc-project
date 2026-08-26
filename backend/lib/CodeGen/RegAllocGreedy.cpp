@@ -5,7 +5,6 @@
 #include "RegAllocBase.h"
 #include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/LiveRegMatrix.h"
-#include "rcc/CodeGen/LiveVariables.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -215,42 +214,18 @@ Expected<MachinePassResult> GreedyAllocatorPass::run(MachineFunction &Function,
                                                      MachineFunctionAnalysisManager &Analyses) {
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument, "greedy allocator requires target behavior");
-  auto Trial = regalloc_detail::cloneForAllocation(Function, Target);
-  if (!Trial)
-    return std::unexpected(Trial.error());
   const std::vector<PhysicalRegister> FunctionReserved =
       regalloc_detail::functionReservedRegisters(Function, Target, *Info);
-  auto TrialReserved =
-      regalloc_detail::reserveFunctionRegisters(*Trial->ClonedFunction, FunctionReserved);
-  if (!TrialReserved)
-    return std::unexpected(TrialReserved.error());
-  MachineFunctionAnalysisManager TrialAnalyses;
-  auto Registered = registerStage11MachineAnalyses(TrialAnalyses);
-  if (!Registered)
-    return std::unexpected(Registered.error());
-  GreedyAllocatorEngine TrialAllocator(*Trial->ClonedFunction, Target, *Info, TrialAnalyses,
-                                       Options);
-  VirtRegMap TrialMapping(*Trial->ClonedFunction);
-  auto TrialRun = TrialAllocator.run(TrialMapping);
-  if (!TrialRun)
-    return std::unexpected(TrialRun.error());
-  auto TrialVerification =
-      regalloc_detail::verifyAllocationTrial(*Trial->ClonedFunction, Target, contract());
-  if (!TrialVerification)
-    return std::unexpected(TrialVerification.error());
-
+  auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
+  if (!Reserved)
+    return std::unexpected(Reserved.error());
   auto Mapping = Analyses.getResult<VirtRegMapAnalysis>(Function, Target);
   if (!Mapping)
     return std::unexpected(Mapping.error());
   GreedyAllocatorEngine Allocator(Function, Target, *Info, Analyses, Options);
   auto Allocated = Allocator.run(**Mapping);
-  if (!Allocated) {
-    return std::unexpected(withErrorContext(
-        Allocated.error(), "greedy allocator diverged after a successful transaction preflight: "));
-  }
-  auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
-  if (!Reserved)
-    return std::unexpected(Reserved.error());
+  if (!Allocated)
+    return std::unexpected(Allocated.error());
   Allocated->Changed |= *Reserved;
   MachinePassResult Result = regalloc_detail::passResult(*Allocated);
   Result.Preserved.preserve<VirtRegMapAnalysis>();

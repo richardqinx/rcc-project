@@ -64,7 +64,7 @@ Expected<regalloc_detail::AllocationRunResult> RegAllocBase::run(VirtRegMap &Map
       return Left.opaqueValue() < Right.opaqueValue();
     });
     Spiller ValueSpiller(Function, Target, TargetInfo, Mapping, Options.EnableRematerialization,
-                         Actions);
+                         &Analyses);
     for (const Register VirtualReg : Round->Spilled) {
       VirtRegMapEntry *Entry = Mapping.entry(VirtualReg);
       if (Entry != nullptr) {

@@ -28,10 +28,10 @@ public:
 protected:
   RegAllocBase(MachineFunction &Function, const TargetDescription &Target,
                const TargetRegisterAllocationInfo &TargetInfo,
-               MachineFunctionAnalysisManager &Analyses, RegisterAllocationOptions Options,
-               MachineActionReplay *Actions = nullptr) noexcept
+               MachineFunctionAnalysisManager &Analyses,
+               RegisterAllocationOptions Options) noexcept
       : Function(Function), Target(Target), TargetInfo(TargetInfo), Analyses(Analyses),
-        Options(Options), Actions(Actions) {}
+        Options(Options) {}
 
   [[nodiscard]] virtual Expected<AllocationRoundResult>
   allocateRound(const LiveIntervalsAnalysis::Result &Intervals, VirtRegMap &Mapping) = 0;
@@ -41,7 +41,6 @@ protected:
   const TargetRegisterAllocationInfo &TargetInfo;
   MachineFunctionAnalysisManager &Analyses;
   RegisterAllocationOptions Options;
-  MachineActionReplay *Actions = nullptr;
 };
 
 [[nodiscard]] std::vector<const LiveInterval *>

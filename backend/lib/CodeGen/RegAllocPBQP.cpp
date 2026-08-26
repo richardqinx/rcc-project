@@ -6,7 +6,6 @@
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/LiveIntervals.h"
 #include "rcc/CodeGen/LiveRegMatrix.h"
-#include "rcc/CodeGen/LiveVariables.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineInstr.h"
@@ -86,9 +85,8 @@ class PBQPAllocatorEngine final : public RegAllocBase {
 public:
   PBQPAllocatorEngine(MachineFunction &Function, const TargetDescription &Target,
                       const TargetRegisterAllocationInfo &TargetInfo,
-                      MachineFunctionAnalysisManager &Analyses, RegisterAllocationOptions Options,
-                      MachineActionReplay *Actions)
-      : RegAllocBase(Function, Target, TargetInfo, Analyses, Options, Actions) {}
+                      MachineFunctionAnalysisManager &Analyses, RegisterAllocationOptions Options)
+      : RegAllocBase(Function, Target, TargetInfo, Analyses, Options) {}
 
 private:
   [[nodiscard]] Expected<AllocationRoundResult>
@@ -178,8 +176,9 @@ private:
           std::swap(LeftKey, RightKey);
         const auto CopyPosition = CopyPairs.find({LeftKey, RightKey});
         bool CopyRelated = Options.EnableCopyCoalescing && CopyPosition != CopyPairs.end();
-        if (CopyRelated && Actions != nullptr) {
-          auto Accepted = Actions->request("coalesce-copy", Function, CopyPosition->second);
+        if (CopyRelated) {
+          auto Accepted =
+              Analyses.requestAction("coalesce-copy", Function, CopyPosition->second);
           if (!Accepted)
             return std::unexpected(Accepted.error());
           CopyRelated = *Accepted;
@@ -219,8 +218,6 @@ private:
 
     pbqp::DeterministicSolver Solver;
     auto Solution = Solver.solve(Problem, [&](const pbqp::SolverAction &Action) -> Expected<bool> {
-      if (Actions == nullptr)
-        return true;
       if (Action.Node.value() >= Nodes.size()) {
         return makeUnexpected(ErrorCode::InternalError,
                               "PBQP action names an unknown allocation node");
@@ -233,7 +230,8 @@ private:
         Rule.append(".option-");
         Rule.append(std::to_string(Action.Value));
       }
-      return Actions->request(Rule, Function, actionInstructionForRegister(Function, VirtualReg));
+      return Analyses.requestAction(Rule, Function,
+                                    actionInstructionForRegister(Function, VirtualReg));
     });
     if (!Solution)
       return std::unexpected(Solution.error());
@@ -296,46 +294,18 @@ Expected<MachinePassResult> PBQPAllocatorPass::run(MachineFunction &Function,
                                                    MachineFunctionAnalysisManager &Analyses) {
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument, "PBQPAllocator requires target behavior");
-  auto Trial = regalloc_detail::cloneForAllocation(Function, Target);
-  if (!Trial)
-    return std::unexpected(Trial.error());
   const std::vector<PhysicalRegister> FunctionReserved =
       regalloc_detail::functionReservedRegisters(Function, Target, *Info);
-  auto TrialReserved =
-      regalloc_detail::reserveFunctionRegisters(*Trial->ClonedFunction, FunctionReserved);
-  if (!TrialReserved)
-    return std::unexpected(TrialReserved.error());
-  MachineFunctionAnalysisManager TrialAnalyses;
-  auto Registered = registerStage11MachineAnalyses(TrialAnalyses);
-  if (!Registered)
-    return std::unexpected(Registered.error());
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  PBQPAllocatorEngine TrialAllocator(*Trial->ClonedFunction, Target, *Info, TrialAnalyses, Options,
-                                     &Actions);
-  VirtRegMap TrialMapping(*Trial->ClonedFunction);
-  auto TrialRun = TrialAllocator.run(TrialMapping);
-  if (!TrialRun)
-    return std::unexpected(TrialRun.error());
-  auto TrialVerification =
-      regalloc_detail::verifyAllocationTrial(*Trial->ClonedFunction, Target, contract());
-  if (!TrialVerification)
-    return std::unexpected(TrialVerification.error());
-  Actions.beginReplay();
-  PBQPAllocatorEngine Allocator(Function, Target, *Info, Analyses, Options, &Actions);
+  auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
+  if (!Reserved)
+    return std::unexpected(Reserved.error());
+  PBQPAllocatorEngine Allocator(Function, Target, *Info, Analyses, Options);
   auto Mapping = Analyses.getResult<VirtRegMapAnalysis>(Function, Target);
   if (!Mapping)
     return std::unexpected(Mapping.error());
   auto Allocated = Allocator.run(**Mapping);
-  if (!Allocated) {
-    return std::unexpected(withErrorContext(
-        Allocated.error(), "PBQPAllocator diverged after a successful transaction preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  auto Reserved = regalloc_detail::reserveFunctionRegisters(Function, FunctionReserved);
-  if (!Reserved)
-    return std::unexpected(Reserved.error());
+  if (!Allocated)
+    return std::unexpected(Allocated.error());
   Allocated->Changed |= *Reserved;
   MachinePassResult Result = regalloc_detail::passResult(*Allocated);
   Result.Preserved.preserve<VirtRegMapAnalysis>();
