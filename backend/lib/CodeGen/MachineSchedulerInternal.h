@@ -16,7 +16,6 @@
 namespace rcc {
 
 class MachineBasicBlock;
-class MachineActionReplay;
 class MachineFunction;
 class TargetDescription;
 class TargetSchedulingModel;
@@ -30,7 +29,8 @@ runMachineScheduler(MachineFunction &Function, const TargetDescription &Target,
                     const TargetSchedulingModel &Model, ScheduleDAGMode Mode,
                     const LiveVariablesAnalysis::Result &Liveness,
                     const MachineBlockFrequencyAnalysis::Result &Frequencies,
-                    MachineSchedulerOptions Options, MachineActionReplay *Actions = nullptr);
+                    MachineSchedulerOptions Options,
+                    MachineFunctionAnalysisManager &Analyses);
 
 } // namespace rcc
 

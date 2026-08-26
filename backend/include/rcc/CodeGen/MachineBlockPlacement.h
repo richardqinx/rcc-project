@@ -17,7 +17,7 @@ public:
 private:
   [[nodiscard]] Expected<MachinePassResult>
   runImplementation(MachineFunction &Function, const TargetDescription &Target,
-                    MachineFunctionAnalysisManager &Analyses, MachineActionReplay &Actions) const;
+                    MachineFunctionAnalysisManager &Analyses) const;
 };
 
 } // namespace rcc

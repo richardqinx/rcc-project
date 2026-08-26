@@ -4,7 +4,6 @@
 
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetInstrInfo.h"
@@ -100,31 +99,13 @@ const MachinePassContract &MachineBranchRelaxationPass::contract() const noexcep
 Expected<MachinePassResult>
 MachineBranchRelaxationPass::run(MachineFunction &Function, const TargetDescription &Target,
                                  MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial)
-    return std::unexpected(withErrorContext(Trial.error(), "branch relaxation setup failed: "));
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  Actions.beginReplay();
-  auto Result = runImplementation(Function, Target, Actions);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "branch relaxation diverged after a successful transaction preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
+  return runImplementation(Function, Target, Analyses);
 }
 
 Expected<MachinePassResult>
 MachineBranchRelaxationPass::runImplementation(MachineFunction &Function,
                                                const TargetDescription &Target,
-                                               MachineActionReplay &Actions) const {
+                                               MachineFunctionAnalysisManager &Analyses) const {
   if (Options.ConvergenceWatchdog == 0)
     return makeUnexpected(ErrorCode::InvalidArgument, "branch relaxation watchdog must be nonzero");
   MachinePassResult Result;
@@ -154,7 +135,8 @@ MachineBranchRelaxationPass::runImplementation(MachineFunction &Function,
           return std::unexpected(Offset.error());
         if (Info->isBranchOffsetInRange(*Instruction, *Offset))
           continue;
-        auto Accepted = Actions.request("relax-branch", Function, Instruction->stableID());
+        auto Accepted =
+            Analyses.requestAction("relax-branch", Function, Instruction->stableID());
         if (!Accepted)
           return std::unexpected(Accepted.error());
         if (!*Accepted) {

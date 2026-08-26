@@ -6,7 +6,6 @@
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineBasicBlockAttributes.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -99,31 +98,12 @@ const MachinePassContract &MachineBlockPlacementPass::contract() const noexcept 
 Expected<MachinePassResult>
 MachineBlockPlacementPass::run(MachineFunction &Function, const TargetDescription &Target,
                                MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial)
-    return std::unexpected(withErrorContext(Trial.error(), "block placement setup failed: "));
-  MachineFunctionAnalysisManager TrialAnalyses;
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  Actions.beginReplay();
-  auto Result = runImplementation(Function, Target, Analyses, Actions);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "block placement diverged after a successful transaction preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
+  return runImplementation(Function, Target, Analyses);
 }
 
 Expected<MachinePassResult> MachineBlockPlacementPass::runImplementation(
     MachineFunction &Function, const TargetDescription &Target,
-    MachineFunctionAnalysisManager &Analyses, MachineActionReplay &Actions) const {
+    MachineFunctionAnalysisManager &Analyses) const {
   auto Probabilities = Analyses.getResult<MachineBranchProbabilityAnalysis>(Function, Target);
   if (!Probabilities)
     return std::unexpected(Probabilities.error());
@@ -224,7 +204,7 @@ Expected<MachinePassResult> MachineBlockPlacementPass::runImplementation(
     }
   }
   if (Changed) {
-    auto Accepted = Actions.request("apply-block-layout", Function);
+    auto Accepted = Analyses.requestAction("apply-block-layout", Function);
     if (!Accepted)
       return std::unexpected(Accepted.error());
     if (!*Accepted) {
