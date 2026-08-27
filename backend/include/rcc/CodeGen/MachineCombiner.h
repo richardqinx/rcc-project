@@ -29,7 +29,8 @@ public:
 private:
   [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
                                                               const TargetDescription &Target,
-                                                              MachineActionReplay &Actions) const;
+                                                              MachineFunctionAnalysisManager
+                                                                  &Analyses) const;
 
   const TargetMachineCombinerInfo *Info;
   MachineCombinerOptions Options;

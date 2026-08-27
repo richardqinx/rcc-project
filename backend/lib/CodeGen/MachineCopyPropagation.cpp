@@ -6,7 +6,6 @@
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/RegisterMask.h"
@@ -303,33 +302,13 @@ const MachinePassContract &MachineCopyPropagationPass::contract() const noexcept
 Expected<MachinePassResult>
 MachineCopyPropagationPass::run(MachineFunction &Function, const TargetDescription &Target,
                                 MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial) {
-    return std::unexpected(
-        withErrorContext(Trial.error(), "COPY propagation transaction setup failed: "));
-  }
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  Actions.beginReplay();
-  auto Result = runImplementation(Function, Target, Actions);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "COPY propagation diverged after a successful transaction preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
+  return runImplementation(Function, Target, Analyses);
 }
 
 Expected<MachinePassResult>
 MachineCopyPropagationPass::runImplementation(MachineFunction &Function,
                                               const TargetDescription &Target,
-                                              MachineActionReplay &Actions) const {
+                                              MachineFunctionAnalysisManager &Analyses) const {
   MachinePassResult Result;
   std::size_t PropagatedCopies = 0;
   for (MachineBasicBlock *Block = Function.firstBlock(); Block != nullptr; Block = Block->next()) {
@@ -347,7 +326,8 @@ MachineCopyPropagationPass::runImplementation(MachineFunction &Function,
         Instruction = Next;
         continue;
       }
-      auto Accepted = Actions.request("propagate-copy", Function, Instruction->stableID());
+      auto Accepted =
+          Analyses.requestAction("propagate-copy", Function, Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted) {

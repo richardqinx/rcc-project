@@ -5,7 +5,6 @@
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
@@ -221,28 +220,13 @@ const MachinePassContract &MachineStackSlotColoringPass::contract() const noexce
 }
 
 Expected<MachinePassResult> MachineStackSlotColoringPass::run(MachineFunction &Function,
-                                                              const TargetDescription &Target,
+                                                              const TargetDescription &,
                                                               MachineFunctionAnalysisManager &) {
   if (Function.frameInfo().isFrozen()) {
     return makeUnexpected(ErrorCode::FrameLayoutFailed,
                           "stack-slot coloring must run before frame layout is frozen");
   }
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial) {
-    return std::unexpected(
-        withErrorContext(Trial.error(), "stack-slot coloring transaction setup failed: "));
-  }
-  auto TrialResult = runImplementation(*Trial->ClonedFunction);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  auto Result = runImplementation(Function);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "stack-slot coloring diverged after a successful transaction preflight: "));
-  }
-  return Result;
+  return runImplementation(Function);
 }
 
 Expected<MachinePassResult>

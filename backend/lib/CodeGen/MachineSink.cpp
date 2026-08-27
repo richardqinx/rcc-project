@@ -7,7 +7,6 @@
 #include "rcc/CodeGen/MachineAnalyses.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -343,24 +342,7 @@ const MachinePassContract &MachineSinkPass::contract() const noexcept {
 Expected<MachinePassResult> MachineSinkPass::run(MachineFunction &Function,
                                                  const TargetDescription &Target,
                                                  MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial) {
-    return std::unexpected(
-        withErrorContext(Trial.error(), "machine sink transaction setup failed: "));
-  }
-  MachineFunctionAnalysisManager TrialAnalyses;
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, TrialAnalyses);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-
-  auto Result = runImplementation(Function, Target, Analyses);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "machine sink diverged after a successful transaction preflight: "));
-  }
-  return Result;
+  return runImplementation(Function, Target, Analyses);
 }
 
 Expected<MachinePassResult>

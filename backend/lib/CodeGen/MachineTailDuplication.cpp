@@ -8,7 +8,6 @@
 #include "rcc/CodeGen/MachineBasicBlockAttributes.h"
 #include "rcc/CodeGen/MachineCFGUpdater.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineJumpTableInfo.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
@@ -240,22 +239,7 @@ const MachinePassContract &MachineTailDuplicationPass::contract() const noexcept
 Expected<MachinePassResult> MachineTailDuplicationPass::run(MachineFunction &Function,
                                                             const TargetDescription &Target,
                                                             MachineFunctionAnalysisManager &) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial) {
-    return std::unexpected(
-        withErrorContext(Trial.error(), "tail duplication transaction setup failed: "));
-  }
-  auto TrialResult = runImplementation(*Trial->ClonedFunction, Target);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  auto Result = runImplementation(Function, Target);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "tail duplication diverged after a successful transaction preflight: "));
-  }
-  return Result;
+  return runImplementation(Function, Target);
 }
 
 Expected<MachinePassResult>
