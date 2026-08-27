@@ -17,6 +17,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <ranges>
@@ -293,7 +294,7 @@ struct MatchedRule final {
 
   struct Temporary final {
     std::uint32_t ID = 0;
-    std::uint32_t TypeFromOperand = 0;
+    LowLevelType Type;
   };
 
   struct RenderedOperand final {
@@ -340,6 +341,10 @@ struct MatchedRule final {
   return std::ranges::any_of(
       Rule.CapturedOperands,
       [ID](const MatchedRule::CapturedOperand &Capture) { return Capture.ID == ID; });
+}
+
+[[nodiscard]] bool hasRootInstruction(const MatchedRule &Rule) {
+  return std::ranges::any_of(Rule.Instructions, &MatchedRule::Instruction::ReplacesRoot);
 }
 
 [[nodiscard]] const MatchedRule::CapturedOperand *
@@ -565,12 +570,28 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
       Applying = true;
       Result.Temporaries.push_back({
           .ID = Step.Value,
-          .TypeFromOperand = Step.OperandIndex,
+          .Type = **Type,
       });
       break;
     }
+    case GIMatchTableOpcode::CreateTemporaryType: {
+      if (Complete || Step.Value == 0 || hasTemporary(Result, Step.Value) ||
+          Step.Auxiliary != static_cast<std::uint32_t>(GIMatchTypeKind::Scalar) ||
+          Step.Immediate <= 0 ||
+          static_cast<std::uint64_t>(Step.Immediate) > LowLevelType::MaxBitWidth) {
+        return makeUnexpected(ErrorCode::VerificationError,
+                              "generated match table has an invalid explicit temporary type");
+      }
+      auto Type =
+          LowLevelType::makeCategoryNeutralScalar(static_cast<std::uint64_t>(Step.Immediate));
+      if (!Type)
+        return std::unexpected(Type.error());
+      Applying = true;
+      Result.Temporaries.push_back({.ID = Step.Value, .Type = *Type});
+      break;
+    }
     case GIMatchTableOpcode::MutateOpcode:
-      if (Complete || Step.Value == 0 || !Result.Instructions.empty()) {
+      if (Complete || Step.Value == 0 || hasRootInstruction(Result)) {
         return makeUnexpected(ErrorCode::VerificationError,
                               "generated match table has an invalid root mutation");
       }
@@ -582,7 +603,7 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
       });
       break;
     case GIMatchTableOpcode::BuildInstruction:
-      if (Complete || Step.Value == 0 || Result.Instructions.empty()) {
+      if (Complete || Step.Value == 0) {
         return makeUnexpected(ErrorCode::VerificationError,
                               "generated match table has an invalid instruction action");
       }
@@ -736,7 +757,7 @@ matchRule(const GIMatchTable &Table, const GIMatchTableRule &Rule, const Machine
 
   if (!Complete ||
       (Table.Kind == GIMatchTableKind::Selection &&
-       (Result.Instructions.empty() || !Result.Instructions.front().ReplacesRoot)) ||
+       (Result.Instructions.empty() || !hasRootInstruction(Result))) ||
       (Table.Kind == GIMatchTableKind::Combiner && Result.Instructions.empty() &&
        !Result.ReplaceRootCapture) ||
       (Table.Kind == GIMatchTableKind::Combiner && !Result.Instructions.empty() &&
@@ -1134,6 +1155,13 @@ template <typename Finalizer, typename ComplexRenderer>
     }
     return {};
   }
+  const auto RootPosition =
+      std::ranges::find(Rule.Instructions, true, &MatchedRule::Instruction::ReplacesRoot);
+  if (RootPosition == Rule.Instructions.end())
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "generated match table selection has no root instruction");
+  const std::size_t RootIndex =
+      static_cast<std::size_t>(std::distance(Rule.Instructions.begin(), RootPosition));
   const MachineInstrFlags InputFlags = Instruction.flags();
   const bool InputMayRaiseFPException =
       InputDescriptor->Flags.has(InstructionFlag::MayRaiseFPException);
@@ -1156,31 +1184,7 @@ template <typename Finalizer, typename ComplexRenderer>
   std::vector<MaterializedTemporary> Temporaries;
   Temporaries.reserve(Rule.Temporaries.size());
   for (const MatchedRule::Temporary &Temporary : Rule.Temporaries) {
-    const MachineOperand *SourceOperand = Instruction.operandAt(Temporary.TypeFromOperand);
-    const Register *Source = SourceOperand == nullptr ? nullptr : SourceOperand->getIf<Register>();
-    if (Source == nullptr || !Source->isVirtual()) {
-      auto Cleanup = eraseTemporaries(Function.registerInfo(), Temporaries);
-      if (!Cleanup)
-        return std::unexpected(Cleanup.error());
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "generated match table temporary has an invalid type source");
-    }
-    auto SourceInfo = Function.registerInfo().virtualRegisterInfo(*Source);
-    if (!SourceInfo) {
-      auto Cleanup = eraseTemporaries(Function.registerInfo(), Temporaries);
-      if (!Cleanup)
-        return std::unexpected(Cleanup.error());
-      return std::unexpected(SourceInfo.error());
-    }
-    const std::optional<LowLevelType> Type = SourceInfo->get().Type;
-    if (!Type) {
-      auto Cleanup = eraseTemporaries(Function.registerInfo(), Temporaries);
-      if (!Cleanup)
-        return std::unexpected(Cleanup.error());
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "generated match table temporary type source has no type");
-    }
-    auto Reg = Function.registerInfo().createVirtualRegister(*Type);
+    auto Reg = Function.registerInfo().createVirtualRegister(Temporary.Type);
     if (!Reg) {
       auto Cleanup = eraseTemporaries(Function.registerInfo(), Temporaries);
       if (!Cleanup)
@@ -1272,7 +1276,7 @@ template <typename Finalizer, typename ComplexRenderer>
           return std::unexpected(Cleanup.error());
         return std::unexpected(Operand.error());
       }
-      if (InstructionIndex == 0 &&
+      if (InstructionIndex == RootIndex &&
           Rendered.SourceKind == MatchedRule::RenderedOperand::Kind::RootOperand) {
         if (SourceToOutput[Rendered.Value] &&
             Instruction.operandAt(Rendered.Value)->tiedOperandIndex()) {
@@ -1365,30 +1369,38 @@ template <typename Finalizer, typename ComplexRenderer>
     ComplexAnchor = *Complete;
   }
 
-  MachineInstr *Anchor = &Instruction;
-  for (std::size_t Index = 1; Index < Rule.Instructions.size(); ++Index) {
-    auto Point = Builder.setInsertPointAfter(*Anchor);
+  const auto BuildAction = [&](std::size_t Index, MachineInstr *&Anchor) -> Expected<void> {
+    auto Point = Anchor == nullptr ? Builder.setInsertPointBefore(Instruction)
+                                   : Builder.setInsertPointAfter(*Anchor);
     if (!Point)
-      return Rollback(Point.error());
+      return std::unexpected(Point.error());
     auto Pending = Builder.buildInstr(Rule.Instructions[Index].ResultOpcode);
     if (!Pending)
-      return Rollback(Pending.error());
+      return std::unexpected(Pending.error());
     for (MachineOperand &Operand : RenderedInstructions[Index]) {
       auto Added = Pending->addOperand(std::move(Operand));
       if (!Added)
-        return Rollback(Added.error());
+        return std::unexpected(Added.error());
     }
     auto Built = Pending->build();
     if (!Built)
-      return Rollback(Built.error());
+      return std::unexpected(Built.error());
     AddedInstructions.push_back(*Built);
     auto Finalized = Finalize(**Built, InputFlags, InputMayRaiseFPException);
     if (!Finalized)
-      return Rollback(Finalized.error());
+      return std::unexpected(Finalized.error());
     Anchor = *Built;
+    return {};
+  };
+
+  MachineInstr *BeforeAnchor = ComplexAnchor;
+  for (std::size_t Index = 0; Index < RootIndex; ++Index) {
+    auto Built = BuildAction(Index, BeforeAnchor);
+    if (!Built)
+      return Rollback(Built.error());
   }
 
-  const MatchedRule::Instruction &RootAction = Rule.Instructions.front();
+  const MatchedRule::Instruction &RootAction = Rule.Instructions[RootIndex];
   RootModified = true;
   auto SetOpcode = Instruction.setOpcode(RootAction.ResultOpcode);
   if (!SetOpcode)
@@ -1398,7 +1410,7 @@ template <typename Finalizer, typename ComplexRenderer>
     if (!Erased)
       return Rollback(Erased.error());
   }
-  for (MachineOperand &Operand : RenderedInstructions.front()) {
+  for (MachineOperand &Operand : RenderedInstructions[RootIndex]) {
     auto Added = Instruction.addOperand(std::move(Operand));
     if (!Added)
       return Rollback(Added.error());
@@ -1417,6 +1429,13 @@ template <typename Finalizer, typename ComplexRenderer>
     auto Tied = Instruction.tieOperands(*NewDef, *NewUse);
     if (!Tied)
       return Rollback(Tied.error());
+  }
+
+  MachineInstr *AfterAnchor = &Instruction;
+  for (std::size_t Index = RootIndex + 1U; Index < Rule.Instructions.size(); ++Index) {
+    auto Built = BuildAction(Index, AfterAnchor);
+    if (!Built)
+      return Rollback(Built.error());
   }
 
   for (const Register Reg : Rule.EraseOperandDefinitions) {

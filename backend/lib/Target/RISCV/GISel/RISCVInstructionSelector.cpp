@@ -146,14 +146,6 @@ operandType(const MachineFunction &Function, const MachineInstr &Instruction, st
          (Type.isPointer() && Type.scalarBitWidth() == 64);
 }
 
-[[nodiscard]] constexpr RegisterBankID fprBank() noexcept {
-  return RegisterBankID::fromValue(static_cast<std::uint32_t>(RegisterBank::FPR));
-}
-
-[[nodiscard]] Expected<void> appendImmediate(MachineInstr &Instruction, std::int64_t Value) {
-  return Instruction.addOperand(MachineOperand::immediate(Value));
-}
-
 [[nodiscard]] Expected<void> insertPhysicalRegister(MachineInstr &Instruction, std::size_t Index,
                                                     PhysicalRegister Reg,
                                                     RegisterOperandFlag Flag) {
@@ -577,10 +569,6 @@ public:
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 
     switch (Generic) {
-    case GenericOpcode::G_FPEXTLOAD:
-      return selectFloatExtLoad(Instruction, Function, Target);
-    case GenericOpcode::G_FPTRUNCSTORE:
-      return selectFloatTruncStore(Instruction, Function, Target);
     case GenericOpcode::G_CONSTANT:
       return selectIntegerConstant(Instruction, Function, Target, Type);
     case GenericOpcode::G_FCONSTANT:
@@ -1156,89 +1144,6 @@ private:
     if (!SetSucc)
       return std::unexpected(SetSucc.error());
     return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FENCE));
-  }
-
-  [[nodiscard]] Expected<void> selectFloatExtLoad(MachineInstr &Instruction,
-                                                  MachineFunction &Function,
-                                                  const TargetDescription &Target) const {
-    const MachineOperand *DestinationOperand = Instruction.operandAt(0);
-    const Register *Destination =
-        DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
-    if (Destination == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V floating extension load has no destination register");
-    const Register DestinationRegister = *Destination;
-    auto F32 = LowLevelType::makeCategoryNeutralScalar(32);
-    if (!F32)
-      return std::unexpected(F32.error());
-    auto Temporary = createTemporary(Function, *F32, Target, fprBank());
-    if (!Temporary)
-      return std::unexpected(Temporary.error());
-    auto SetDestination = Instruction.operandAt(0)->setRegister(*Temporary);
-    if (!SetDestination)
-      return std::unexpected(SetDestination.error());
-    auto Immediate = appendImmediate(Instruction, 0);
-    if (!Immediate)
-      return std::unexpected(Immediate.error());
-    auto SetOpcode = Instruction.setOpcode(instructionOpcode(InstructionOpcode::FLW));
-    if (!SetOpcode)
-      return std::unexpected(SetOpcode.error());
-    MachineIRBuilder Builder(Function, Target);
-    auto Conversion = buildImmediateAfter(Builder, Instruction, InstructionOpcode::FCVT_D_S,
-                                          DestinationRegister, *Temporary, 0);
-    if (!Conversion)
-      return std::unexpected(Conversion.error());
-    return {};
-  }
-
-  [[nodiscard]] Expected<void> selectFloatTruncStore(MachineInstr &Instruction,
-                                                     MachineFunction &Function,
-                                                     const TargetDescription &Target) const {
-    const MachineOperand *ValueOperand = Instruction.operandAt(0);
-    const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
-    if (Value == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V floating truncation store has no value register");
-    const Register ValueRegister = *Value;
-    auto F32 = LowLevelType::makeCategoryNeutralScalar(32);
-    if (!F32)
-      return std::unexpected(F32.error());
-    auto Temporary = createTemporary(Function, *F32, Target, fprBank());
-    if (!Temporary)
-      return std::unexpected(Temporary.error());
-    MachineIRBuilder Builder(Function, Target);
-    auto Point = Builder.setInsertPointBefore(Instruction);
-    if (!Point)
-      return std::unexpected(Point.error());
-    auto RegisterConstraints =
-        constrainBuilderRegisters(Function, Target, {*Temporary, ValueRegister});
-    if (!RegisterConstraints)
-      return std::unexpected(RegisterConstraints.error());
-    auto Conversion = Builder.buildInstr(instructionOpcode(InstructionOpcode::FCVT_S_D));
-    if (!Conversion)
-      return std::unexpected(Conversion.error());
-    auto Def = Conversion->addDef(*Temporary);
-    if (!Def)
-      return std::unexpected(Def.error());
-    auto Use = Conversion->addUse(ValueRegister);
-    if (!Use)
-      return std::unexpected(Use.error());
-    auto Rounding = Conversion->addImmediate(0);
-    if (!Rounding)
-      return std::unexpected(Rounding.error());
-    auto Built = Conversion->build();
-    if (!Built)
-      return std::unexpected(Built.error());
-    auto Constraint = constrainSelectedInstruction(**Built, Function, Target);
-    if (!Constraint)
-      return std::unexpected(Constraint.error());
-    auto SetValue = Instruction.operandAt(0)->setRegister(*Temporary);
-    if (!SetValue)
-      return std::unexpected(SetValue.error());
-    auto Immediate = appendImmediate(Instruction, 0);
-    if (!Immediate)
-      return std::unexpected(Immediate.error());
-    return Instruction.setOpcode(instructionOpcode(InstructionOpcode::FSW));
   }
 
   [[nodiscard]] Expected<void> selectIntegerConstant(MachineInstr &Instruction,

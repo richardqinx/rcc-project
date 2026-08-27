@@ -795,3 +795,59 @@ selection_rules:
             - { complex: select_condition_code, operand: 1 }
             - { operand: 2 }
             - { operand: 3 }
+  -
+    id: select_g_fpextload_s32_to_s64
+    priority: 300
+    match:
+      opcode: G_FPEXTLOAD
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: GPR }
+    apply:
+      temporaries:
+        - { id: loaded, type: { kind: scalar, bits: 32 } }
+      instructions:
+        - opcode: FLW
+          root: true
+          operands:
+            - { temporary: loaded, flags: [define] }
+            - { complex: addr_reg_imm_base, operand: 1 }
+            - { complex: addr_reg_imm_offset, operand: 1 }
+        - opcode: FCVT_D_S
+          root: false
+          operands:
+            - { operand: 0 }
+            - { temporary: loaded, flags: [use] }
+            - { immediate: 0 }
+  -
+    id: select_g_fptruncstore_s64_to_s32
+    priority: 300
+    match:
+      opcode: G_FPTRUNCSTORE
+      memory: { index: 0, bytes: 4 }
+      operand_types:
+        - { index: 0, kind: scalar, bits: 64 }
+        - { index: 1, kind: pointer, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: FPR }
+        - { index: 1, bank: GPR }
+    apply:
+      temporaries:
+        - { id: rounded, type: { kind: scalar, bits: 32 } }
+      instructions:
+        - opcode: FCVT_S_D
+          root: false
+          operands:
+            - { temporary: rounded, flags: [define] }
+            - { operand: 0 }
+            - { immediate: 7 }
+        - opcode: FSW
+          root: true
+          operands:
+            - { temporary: rounded, flags: [use] }
+            - { complex: addr_reg_imm_base, operand: 1 }
+            - { complex: addr_reg_imm_offset, operand: 1 }

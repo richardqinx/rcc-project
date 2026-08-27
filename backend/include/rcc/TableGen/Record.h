@@ -348,7 +348,8 @@ struct SourceSelectionDefUsePredicate final {
 
 struct SourceSelectionTemporary final {
   std::string Symbol;
-  std::uint32_t TypeFromOperand = 0;
+  std::optional<std::uint32_t> TypeFromOperand;
+  std::optional<SourceSelectionTypePredicate> Type;
   TextRange Range;
 };
 

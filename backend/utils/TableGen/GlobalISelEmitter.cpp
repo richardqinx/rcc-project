@@ -162,8 +162,16 @@ std::string emitGlobalISel(const NormalizedTargetModel &Model, std::string_view 
         emitInstruction(Output, "CaptureDefOperand", DefUse.RootOperandIndex, Capture.ID,
                         std::to_string(Capture.OperandIndex));
     }
-    for (const NormalizedSelectionTemporary &Temporary : Rule.Temporaries)
-      emitInstruction(Output, "CreateTemporary", Temporary.TypeFromOperand, Temporary.ID);
+    for (const NormalizedSelectionTemporary &Temporary : Rule.Temporaries) {
+      if (Temporary.TypeFromOperand) {
+        emitInstruction(Output, "CreateTemporary", *Temporary.TypeFromOperand, Temporary.ID);
+        continue;
+      }
+      emitInstruction(Output, "CreateTemporaryType", 0, Temporary.ID,
+                      "static_cast<std::uint32_t>(GIMatchTypeKind::" +
+                          std::string(typeKindName(Temporary.Type->Kind)) + ")",
+                      Temporary.Type->Bits);
+    }
     for (const NormalizedSelectionAction &Action : Rule.Actions) {
       emitInstruction(Output, Action.ReplacesRoot ? "MutateOpcode" : "BuildInstruction", 0,
                       Action.ResultOpcode);

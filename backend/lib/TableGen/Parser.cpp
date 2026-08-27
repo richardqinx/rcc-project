@@ -1553,20 +1553,35 @@ private:
     for (const yaml::NodeID ElementID : Node.sequence()) {
       const yaml::Node *Element = Input.node(ElementID);
       if (!requireMapping(Element, "selection temporary") ||
-          !checkKeys(*Element, {"id", "type_from_operand"}, "selection temporary")) {
+          !checkKeys(*Element, {"id", "type_from_operand", "type"}, "selection temporary")) {
         return false;
       }
       const auto Symbol = requiredScalar(*Element, "id", "selection temporary");
-      const yaml::Node *TypeNode =
-          requiredNode(*Element, "type_from_operand", "selection temporary");
-      if (!Symbol || TypeNode == nullptr)
+      const yaml::Node *TypeFromOperandNode = optionalNode(*Element, "type_from_operand");
+      const yaml::Node *TypeNode = optionalNode(*Element, "type");
+      if (!Symbol)
         return false;
-      const auto TypeFromOperand = unsignedInteger32(*TypeNode, "selection temporary type operand");
-      if (!TypeFromOperand)
+      if ((TypeFromOperandNode == nullptr) == (TypeNode == nullptr)) {
+        fail(Element->range(),
+             "selection temporary requires exactly one of type_from_operand and type");
         return false;
+      }
+      std::optional<std::uint32_t> TypeFromOperand;
+      std::optional<SourceSelectionTypePredicate> Type;
+      if (TypeFromOperandNode != nullptr) {
+        TypeFromOperand =
+            unsignedInteger32(*TypeFromOperandNode, "selection temporary type operand");
+        if (!TypeFromOperand)
+          return false;
+      } else {
+        Type = parseSelectionTypePredicate(*TypeNode, "selection temporary type");
+        if (!Type)
+          return false;
+      }
       Result.push_back({
           .Symbol = *Symbol,
-          .TypeFromOperand = *TypeFromOperand,
+          .TypeFromOperand = TypeFromOperand,
+          .Type = std::move(Type),
           .Range = Element->range(),
       });
     }

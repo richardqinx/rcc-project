@@ -481,21 +481,36 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
     for (const SourceSelectionTemporary &Temporary : Rule.Temporaries) {
       if (!isIdentifier(Temporary.Symbol) ||
           !TemporaryIDs.emplace(Temporary.Symbol, TemporaryIDs.size() + 1U).second ||
-          (MatchInstruction != nullptr &&
-           !isRegisterOperand(*MatchInstruction, Temporary.TypeFromOperand))) {
-        fail(Temporary.Range,
-             "selection temporary requires a unique identifier and a register type source");
+          (Temporary.TypeFromOperand.has_value() == Temporary.Type.has_value())) {
+        fail(Temporary.Range, "selection temporary requires a unique identifier and one type");
         return false;
       }
-      Normalized.Temporaries.push_back({
+      NormalizedSelectionTemporary NormalizedTemporary{
           .ID = TemporaryIDs.at(Temporary.Symbol),
-          .TypeFromOperand = Temporary.TypeFromOperand,
-      });
+          .TypeFromOperand = std::nullopt,
+          .Type = std::nullopt,
+      };
+      if (Temporary.TypeFromOperand) {
+        if (MatchInstruction != nullptr &&
+            !isRegisterOperand(*MatchInstruction, *Temporary.TypeFromOperand)) {
+          fail(Temporary.Range,
+               "selection temporary type source must be a matched register operand");
+          return false;
+        }
+        NormalizedTemporary.TypeFromOperand = *Temporary.TypeFromOperand;
+      } else {
+        auto Type = NormalizeType(*Temporary.Type);
+        if (!Type || Type->Kind != NormalizedSelectionTypeKind::Scalar) {
+          fail(Temporary.Range, "selection temporary explicit type must be a scalar");
+          return false;
+        }
+        NormalizedTemporary.Type = *Type;
+      }
+      Normalized.Temporaries.push_back(std::move(NormalizedTemporary));
     }
 
     bool HasRootAction = false;
-    for (std::size_t ActionIndex = 0; ActionIndex < Rule.Actions.size(); ++ActionIndex) {
-      const SourceSelectionAction &Action = Rule.Actions[ActionIndex];
+    for (const SourceSelectionAction &Action : Rule.Actions) {
       const auto ResultOpcode = resolveOpcode(Result, Action.ResultOpcodeSymbol);
       const NormalizedInstruction *ResultInstruction =
           findInstructionBySymbol(Result, Action.ResultOpcodeSymbol);
@@ -509,9 +524,8 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
              "selection instruction opcode must name a declared target instruction or core pseudo");
         return false;
       }
-      if (Action.ReplacesRoot == HasRootAction || (Action.ReplacesRoot && ActionIndex != 0)) {
-        fail(Action.Range,
-             "selection instructions require exactly one root replacement as their first action");
+      if (Action.ReplacesRoot && HasRootAction) {
+        fail(Action.Range, "selection instructions require exactly one root replacement");
         return false;
       }
       HasRootAction |= Action.ReplacesRoot;

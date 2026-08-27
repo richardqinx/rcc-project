@@ -298,7 +298,8 @@ struct NormalizedSelectionDefUsePredicate final {
 
 struct NormalizedSelectionTemporary final {
   std::uint32_t ID = 0;
-  std::uint32_t TypeFromOperand = 0;
+  std::optional<std::uint32_t> TypeFromOperand;
+  std::optional<NormalizedSelectionTypePredicate> Type;
 };
 
 enum class NormalizedSelectionImmediateTransform : std::uint8_t {
