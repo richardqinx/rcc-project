@@ -863,41 +863,6 @@ private:
     return Instruction.insertOperand(Index, MachineOperand::immediate(Value));
   }
 
-  [[nodiscard]] Expected<MachineInstr *> buildBinaryAfter(MachineIRBuilder &Builder,
-                                                          MachineInstr &Anchor,
-                                                          InstructionOpcode Opcode, Register Def,
-                                                          Register Left, Register Right) const {
-    auto Point = Builder.setInsertPointAfter(Anchor);
-    if (!Point)
-      return std::unexpected(Point.error());
-    auto RegisterConstraints =
-        constrainBuilderRegisters(Builder.function(), Builder.target(), {Def, Left, Right});
-    if (!RegisterConstraints)
-      return std::unexpected(RegisterConstraints.error());
-    auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
-    if (!Pending)
-      return std::unexpected(Pending.error());
-    auto DefResult = Pending->addDef(Def);
-    if (!DefResult)
-      return std::unexpected(DefResult.error());
-    auto LeftResult = Pending->addUse(Left);
-    if (!LeftResult)
-      return std::unexpected(LeftResult.error());
-    auto RightResult = Pending->addUse(Right);
-    if (!RightResult)
-      return std::unexpected(RightResult.error());
-    auto Built = Pending->build();
-    if (!Built)
-      return std::unexpected(Built.error());
-    auto FlagPropagation = propagateSelectionFlags(**Built, Anchor, Builder.target());
-    if (!FlagPropagation)
-      return std::unexpected(FlagPropagation.error());
-    auto Constraint = constrainSelectedInstruction(**Built, Builder.function(), Builder.target());
-    if (!Constraint)
-      return std::unexpected(Constraint.error());
-    return *Built;
-  }
-
   [[nodiscard]] Expected<MachineInstr *>
   buildImmediateAfter(MachineIRBuilder &Builder, MachineInstr &Anchor, InstructionOpcode Opcode,
                       Register Def, Register Source, std::int64_t Value) const {
@@ -995,51 +960,6 @@ private:
     if (!Constraint)
       return std::unexpected(Constraint.error());
     return *Built;
-  }
-
-  [[nodiscard]] Expected<Register> normalizeIntegerBefore(MachineInstr &Anchor,
-                                                          MachineFunction &Function,
-                                                          const TargetDescription &Target,
-                                                          Register Source, LowLevelType Type,
-                                                          bool Signed) const {
-    if (!isSupportedIntegerType(Type))
-      return makeUnexpected(
-          ErrorCode::Unsupported,
-          "RISC-V integer normalization requires an integer scalar or a 64-bit pointer");
-    const std::uint32_t Bits = Type.scalarBitWidth();
-    if (Bits == 64)
-      return Source;
-
-    MachineIRBuilder Builder(Function, Target);
-    if (Signed && Bits == 32) {
-      auto Result = createTemporary(Function, Type, Target);
-      if (!Result)
-        return std::unexpected(Result.error());
-      auto Extended =
-          buildImmediateBefore(Builder, Anchor, InstructionOpcode::ADDIW, *Result, Source, 0);
-      if (!Extended)
-        return std::unexpected(Extended.error());
-      return *Result;
-    }
-
-    const std::uint32_t ContainerBits = Bits < 32 ? 32 : 64;
-    const std::int64_t Shift = static_cast<std::int64_t>(ContainerBits - Bits);
-    auto Shifted = createTemporary(Function, Type, Target);
-    auto Result = createTemporary(Function, Type, Target);
-    if (!Shifted || !Result)
-      return std::unexpected(!Shifted ? Shifted.error() : Result.error());
-    const InstructionOpcode ShiftLeft =
-        ContainerBits == 32 ? InstructionOpcode::SLLIW : InstructionOpcode::SLLI;
-    const InstructionOpcode ShiftRight =
-        Signed ? (ContainerBits == 32 ? InstructionOpcode::SRAIW : InstructionOpcode::SRAI)
-               : (ContainerBits == 32 ? InstructionOpcode::SRLIW : InstructionOpcode::SRLI);
-    auto Left = buildImmediateBefore(Builder, Anchor, ShiftLeft, *Shifted, Source, Shift);
-    if (!Left)
-      return std::unexpected(Left.error());
-    auto Right = buildImmediateBefore(Builder, Anchor, ShiftRight, *Result, *Shifted, Shift);
-    if (!Right)
-      return std::unexpected(Right.error());
-    return *Result;
   }
 
   [[nodiscard]] Expected<void> selectAtomicRMW(MachineInstr &Instruction, MachineFunction &Function,
