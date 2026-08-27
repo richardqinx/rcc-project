@@ -19,6 +19,7 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelControlFlow.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelShift.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelFloating.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelAtomic.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelCombiner.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMacroFusion.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCPseudoLowering.rccdesc"

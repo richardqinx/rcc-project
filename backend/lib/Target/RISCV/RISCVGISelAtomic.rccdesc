@@ -1,0 +1,363 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+selection_rules:
+  -
+    id: select_g_atomicrmw_xchg_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_XCHG
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOSWAP_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_xchg_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_XCHG
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOSWAP_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_add_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_ADD
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOADD_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_add_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_ADD
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOADD_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_and_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_AND
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOAND_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_and_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_AND
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOAND_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_or_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_OR
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOOR_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_or_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_OR
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOOR_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_xor_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_XOR
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOXOR_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_xor_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_XOR
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOXOR_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_max_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_MAX
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOMAX_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_max_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_MAX
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOMAX_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_min_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_MIN
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOMIN_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_min_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_MIN
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOMIN_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_umax_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_UMAX
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOMAXU_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_umax_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_UMAX
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOMAXU_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_umin_m32
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_UMIN
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 4 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOMINU_W
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]
+  -
+    id: select_g_atomicrmw_umin_m64
+    priority: 300
+    match:
+      opcode: G_ATOMICRMW_UMIN
+      result_type: { kind: scalar, bits: 64 }
+      memory: { index: 0, bytes: 8 }
+      target_predicates: [a]
+      operand_types:
+        - { index: 1, kind: pointer, bits: 64 }
+        - { index: 2, kind: scalar, bits: 64 }
+      operand_banks:
+        - { index: 0, bank: GPR }
+        - { index: 1, bank: GPR }
+        - { index: 2, bank: GPR }
+    apply:
+      instructions:
+        - opcode: AMOMINU_D
+          root: true
+          operands: [{ operand: 0 }, { operand: 2 }, { operand: 1 }]

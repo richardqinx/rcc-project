@@ -348,6 +348,8 @@ public:
   [[nodiscard]] Expected<bool> matchesTargetPredicate(std::string_view Name, const MachineInstr &,
                                                       const MachineFunction &,
                                                       const TargetDescription &) const override {
+    if (Name == "a")
+      return Subtarget.features().has(RISCVExtension::A);
     if (Name == "zba")
       return Subtarget.features().has(RISCVExtension::Zba);
     return makeUnexpected(ErrorCode::VerificationError,
@@ -603,17 +605,6 @@ public:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
     case GenericOpcode::G_FCMP:
       return selectFloatingCompare(Instruction, Function, Target);
-    case GenericOpcode::G_ATOMICRMW_XCHG:
-    case GenericOpcode::G_ATOMICRMW_ADD:
-    case GenericOpcode::G_ATOMICRMW_SUB:
-    case GenericOpcode::G_ATOMICRMW_AND:
-    case GenericOpcode::G_ATOMICRMW_OR:
-    case GenericOpcode::G_ATOMICRMW_XOR:
-    case GenericOpcode::G_ATOMICRMW_MAX:
-    case GenericOpcode::G_ATOMICRMW_MIN:
-    case GenericOpcode::G_ATOMICRMW_UMAX:
-    case GenericOpcode::G_ATOMICRMW_UMIN:
-      return selectAtomicRMW(Instruction, Function, Target, Type, Generic);
     case GenericOpcode::G_FENCE:
       return selectFence(Instruction);
     case GenericOpcode::G_GLOBAL_VALUE:
@@ -960,90 +951,6 @@ private:
     if (!Constraint)
       return std::unexpected(Constraint.error());
     return *Built;
-  }
-
-  [[nodiscard]] Expected<void> selectAtomicRMW(MachineInstr &Instruction, MachineFunction &Function,
-                                               const TargetDescription &Target,
-                                               std::optional<LowLevelType> Type,
-                                               GenericOpcode Generic) const {
-    const MachineOperand *AddressOperand = Instruction.operandAt(1);
-    const MachineOperand *ValueOperand = Instruction.operandAt(2);
-    const Register *Address =
-        AddressOperand == nullptr ? nullptr : AddressOperand->getIf<Register>();
-    const Register *Value = ValueOperand == nullptr ? nullptr : ValueOperand->getIf<Register>();
-    if (!Type || Address == nullptr || Value == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError, "RISC-V atomic RMW has invalid operands");
-    Register SelectedValue = *Value;
-    const bool IsWord = Type->scalarBitWidth() == 32;
-    if (Generic == GenericOpcode::G_ATOMICRMW_SUB) {
-      auto Negated = createTemporary(Function, *Type, Target);
-      auto Zero = physicalRegister(PhysicalRegisterID::X0);
-      if (!Negated || !Zero)
-        return std::unexpected(!Negated ? Negated.error() : Zero.error());
-      MachineIRBuilder Builder(Function, Target);
-      auto Point = Builder.setInsertPointBefore(Instruction);
-      if (!Point)
-        return std::unexpected(Point.error());
-      auto RegisterConstraints = constrainBuilderRegisters(Function, Target, {*Negated, *Value});
-      if (!RegisterConstraints)
-        return std::unexpected(RegisterConstraints.error());
-      auto Pending = Builder.buildInstr(
-          instructionOpcode(IsWord ? InstructionOpcode::SUBW : InstructionOpcode::SUB));
-      if (!Pending)
-        return std::unexpected(Pending.error());
-      auto Def = Pending->addDef(*Negated);
-      if (!Def)
-        return std::unexpected(Def.error());
-      auto Left = Pending->addUse(Register::fromPhysical(*Zero));
-      if (!Left)
-        return std::unexpected(Left.error());
-      auto Right = Pending->addUse(*Value);
-      if (!Right)
-        return std::unexpected(Right.error());
-      auto Built = Pending->build();
-      if (!Built)
-        return std::unexpected(Built.error());
-      auto Constraint = constrainSelectedInstruction(**Built, Function, Target);
-      if (!Constraint)
-        return std::unexpected(Constraint.error());
-      SelectedValue = *Negated;
-    }
-    const auto SelectOpcode = [Generic, IsWord]() -> InstructionOpcode {
-      switch (Generic) {
-      case GenericOpcode::G_ATOMICRMW_XCHG:
-        return IsWord ? InstructionOpcode::AMOSWAP_W : InstructionOpcode::AMOSWAP_D;
-      case GenericOpcode::G_ATOMICRMW_ADD:
-      case GenericOpcode::G_ATOMICRMW_SUB:
-        return IsWord ? InstructionOpcode::AMOADD_W : InstructionOpcode::AMOADD_D;
-      case GenericOpcode::G_ATOMICRMW_AND:
-        return IsWord ? InstructionOpcode::AMOAND_W : InstructionOpcode::AMOAND_D;
-      case GenericOpcode::G_ATOMICRMW_OR:
-        return IsWord ? InstructionOpcode::AMOOR_W : InstructionOpcode::AMOOR_D;
-      case GenericOpcode::G_ATOMICRMW_XOR:
-        return IsWord ? InstructionOpcode::AMOXOR_W : InstructionOpcode::AMOXOR_D;
-      case GenericOpcode::G_ATOMICRMW_MAX:
-        return IsWord ? InstructionOpcode::AMOMAX_W : InstructionOpcode::AMOMAX_D;
-      case GenericOpcode::G_ATOMICRMW_MIN:
-        return IsWord ? InstructionOpcode::AMOMIN_W : InstructionOpcode::AMOMIN_D;
-      case GenericOpcode::G_ATOMICRMW_UMAX:
-        return IsWord ? InstructionOpcode::AMOMAXU_W : InstructionOpcode::AMOMAXU_D;
-      case GenericOpcode::G_ATOMICRMW_UMIN:
-        return IsWord ? InstructionOpcode::AMOMINU_W : InstructionOpcode::AMOMINU_D;
-      default:
-        return InstructionOpcode::Invalid;
-      }
-    };
-    const InstructionOpcode Selected = SelectOpcode();
-    if (Selected == InstructionOpcode::Invalid)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "RISC-V atomic RMW selection reached an unhandled opcode");
-    auto SetValue = Instruction.operandAt(1)->setRegister(SelectedValue);
-    if (!SetValue)
-      return std::unexpected(SetValue.error());
-    auto SetAddress = Instruction.operandAt(2)->setRegister(*Address);
-    if (!SetAddress)
-      return std::unexpected(SetAddress.error());
-    return Instruction.setOpcode(instructionOpcode(Selected));
   }
 
   [[nodiscard]] Expected<void> selectFloatingCompare(MachineInstr &Instruction,
