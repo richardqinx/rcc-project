@@ -19,12 +19,6 @@ public:
   [[nodiscard]] virtual Expected<void> select(MachineInstr &Instruction, MachineFunction &Function,
                                               const TargetDescription &Target) const = 0;
 
-  // Selection matching is read-only and completes before select() mutates MachineIR.
-  [[nodiscard]] virtual Expected<void> canSelect(const MachineInstr &, const MachineFunction &,
-                                                 const TargetDescription &) const {
-    return {};
-  }
-
   [[nodiscard]] virtual Expected<void>
   constrainSelectedInstruction(MachineInstr &, MachineFunction &, const TargetDescription &) const {
     return {};

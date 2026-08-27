@@ -561,87 +561,6 @@ public:
     };
   }
 
-  [[nodiscard]] Expected<void> canSelect(const MachineInstr &Instruction,
-                                         const MachineFunction &Function,
-                                         const TargetDescription &Target) const override {
-    auto Generated =
-        GIMatchTableExecutor::match(generatedGlobalISelMatchTable(), Instruction, Function, Target);
-    if (!Generated)
-      return std::unexpected(Generated.error());
-    if (*Generated)
-      return {};
-    if (!isGenericOpcode(Instruction.opcode())) {
-      const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction.opcode());
-      if (Descriptor != nullptr && !Descriptor->Flags.has(InstructionFlag::Generic))
-        return {};
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V instruction selector has no generated rule for target pseudo");
-    }
-    const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
-    const std::optional<LowLevelType> Type = resultType(Function, Instruction);
-    const auto Integer = [Type] { return Type && isSupportedIntegerType(*Type); };
-    const auto Float = [Type] { return Type && isSupportedFloatingScalar(*Type); };
-    switch (Generic) {
-    case GenericOpcode::G_CONSTANT:
-      if (!Integer())
-        return makeUnexpected(ErrorCode::Unsupported,
-                              "RISC-V selector requires an i1-i64 integer or 64-bit pointer value");
-      if (Generic == GenericOpcode::G_CONSTANT) {
-        const MachineOperand *Immediate = Instruction.operandAt(1);
-        if (Immediate == nullptr || (Immediate->kind() != MachineOperand::Kind::Immediate &&
-                                     Immediate->kind() != MachineOperand::Kind::IntegerImmediate))
-          return makeUnexpected(ErrorCode::VerificationError,
-                                "RISC-V integer constant requires an immediate operand");
-      }
-      return {};
-    case GenericOpcode::G_FPEXTLOAD:
-    case GenericOpcode::G_FPTRUNCSTORE:
-    case GenericOpcode::G_GLOBAL_VALUE:
-    case GenericOpcode::G_JUMP_TABLE:
-    case GenericOpcode::G_CONSTANT_POOL:
-      return {};
-    case GenericOpcode::G_FCONSTANT: {
-      const MachineOperand *Immediate = Instruction.operandAt(1);
-      const auto *Floating =
-          Immediate == nullptr ? nullptr : Immediate->getIf<FloatingImmediateOperand>();
-      if (!Float() || Floating == nullptr || Floating->Bits.bitWidth() != Type->scalarBitWidth())
-        return makeUnexpected(ErrorCode::Unsupported,
-                              "RISC-V selector requires a matching floating constant");
-      return {};
-    }
-    case GenericOpcode::G_ANYEXT:
-    case GenericOpcode::G_ASSERT_SEXT:
-    case GenericOpcode::G_ASSERT_ZEXT:
-    case GenericOpcode::G_ASSERT_ALIGN:
-    case GenericOpcode::G_FREEZE:
-    case GenericOpcode::G_CONSTANT_FOLD_BARRIER:
-    case GenericOpcode::G_PTRTOINT:
-    case GenericOpcode::G_INTTOPTR:
-    case GenericOpcode::G_TRUNC:
-    case GenericOpcode::G_FCMP:
-    case GenericOpcode::G_SMULH:
-    case GenericOpcode::G_UMULH:
-    case GenericOpcode::G_SELECT:
-    case GenericOpcode::G_ATOMICRMW_XCHG:
-    case GenericOpcode::G_ATOMICRMW_ADD:
-    case GenericOpcode::G_ATOMICRMW_SUB:
-    case GenericOpcode::G_ATOMICRMW_AND:
-    case GenericOpcode::G_ATOMICRMW_OR:
-    case GenericOpcode::G_ATOMICRMW_XOR:
-    case GenericOpcode::G_ATOMICRMW_MAX:
-    case GenericOpcode::G_ATOMICRMW_MIN:
-    case GenericOpcode::G_ATOMICRMW_UMAX:
-    case GenericOpcode::G_ATOMICRMW_UMIN:
-    case GenericOpcode::G_FENCE:
-    case GenericOpcode::G_BRINDIRECT:
-    case GenericOpcode::G_PHI:
-      return {};
-    default:
-      return makeUnexpected(ErrorCode::Unsupported,
-                            "RISC-V instruction selector has no rule for generic opcode");
-    }
-  }
-
   [[nodiscard]] Expected<void> select(MachineInstr &Instruction, MachineFunction &Function,
                                       const TargetDescription &Target) const override {
     auto Generated = GIMatchTableExecutor::select(generatedGlobalISelMatchTable(), Instruction,
@@ -652,9 +571,6 @@ public:
       return {};
     if (Instruction.opcode() == opcode(GenericOpcode::COPY))
       return selectCopy(Instruction, Function, Target);
-    auto Match = canSelect(Instruction, Function, Target);
-    if (!Match)
-      return std::unexpected(Match.error());
     const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
     const std::optional<LowLevelType> Type = resultType(Function, Instruction);
 

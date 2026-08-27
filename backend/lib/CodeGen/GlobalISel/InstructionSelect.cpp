@@ -277,9 +277,6 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
                                              CurrentDescriptor->Name + "'",
                                          ErrorCode::InternalError));
     }
-    auto Match = Info->canSelect(*Instruction, Function, Target);
-    if (!Match)
-      return std::unexpected(Match.error());
     std::string Rule = "select.";
     Rule.append(CurrentDescriptor->Name);
     auto Accepted = Analyses.requestAction(Rule, Function, Instruction->stableID());
