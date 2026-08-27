@@ -199,66 +199,6 @@ std::string MachineActionID::toString() const {
   return Result;
 }
 
-Expected<bool> MachineActionReplay::request(std::string_view Rule, const MachineFunction &Function,
-                                            MachineInstrStableID Instruction, std::uint64_t Cost) {
-  if (!IsReplaying) {
-    const auto Position = RecordingInstructionIDs.find(Instruction);
-    const MachineInstrStableID CanonicalInstruction =
-        Position == RecordingInstructionIDs.end() ? Instruction : Position->second;
-    auto Accepted = Request(Rule, Function, CanonicalInstruction, Cost);
-    if (!Accepted)
-      return std::unexpected(Accepted.error());
-    Decisions.push_back({
-        .Rule = std::string(Rule),
-        .Function = Function.stableID(),
-        .Instruction = CanonicalInstruction,
-        .Cost = Cost,
-        .Accepted = *Accepted,
-    });
-    return *Accepted;
-  }
-
-  if (NextDecision >= Decisions.size()) {
-    return makeUnexpected(ErrorCode::InternalError,
-                          "machine action replay requested an unrecorded decision");
-  }
-  const Decision &Recorded = Decisions[NextDecision++];
-  if (Recorded.Rule != Rule || Recorded.Function != Function.stableID() ||
-      Recorded.Instruction != Instruction || Recorded.Cost != Cost) {
-    std::string Message = "machine action replay diverged from transaction preflight: recorded ";
-    Message.append(Recorded.Rule);
-    Message.append(":f");
-    Message.append(std::to_string(Recorded.Function.value()));
-    Message.append(":i");
-    Message.append(std::to_string(Recorded.Instruction.value()));
-    Message.append(" cost=");
-    Message.append(std::to_string(Recorded.Cost));
-    Message.append(", requested ");
-    Message.append(Rule);
-    Message.append(":f");
-    Message.append(std::to_string(Function.stableID().value()));
-    Message.append(":i");
-    Message.append(std::to_string(Instruction.value()));
-    Message.append(" cost=");
-    Message.append(std::to_string(Cost));
-    return makeUnexpected(ErrorCode::InternalError, std::move(Message));
-  }
-  return Recorded.Accepted;
-}
-
-void MachineActionReplay::beginReplay() noexcept {
-  IsReplaying = true;
-  NextDecision = 0;
-}
-
-Expected<void> MachineActionReplay::finishReplay() const {
-  if (!IsReplaying || NextDecision != Decisions.size()) {
-    return makeUnexpected(ErrorCode::InternalError,
-                          "machine action replay did not consume every recorded decision");
-  }
-  return {};
-}
-
 void MachinePassInstrumentation::addBeforeCallback(BeforeCallback Callback) {
   if (!Callback)
     return;

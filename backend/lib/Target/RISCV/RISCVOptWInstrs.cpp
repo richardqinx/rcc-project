@@ -4,7 +4,6 @@
 #include "rcc/CodeGen/GenericOpcodes.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
@@ -593,20 +592,9 @@ public:
                             "RISC-V W-instruction optimization requires a subtarget");
     const bool PreferWordInstructions =
         Subtarget->features().has(RISCVSubtargetOption::PreferWordInstructions);
-    auto Trial = cloneMachineFunction(
-        Function, Target,
-        MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-    if (!Trial)
-      return std::unexpected(Trial.error());
-    auto TrialResult = runImplementation(*Trial->ClonedFunction, Target, PreferWordInstructions);
-    if (!TrialResult)
-      return std::unexpected(TrialResult.error());
     auto Changed = runImplementation(Function, Target, PreferWordInstructions);
-    if (!Changed) {
-      return std::unexpected(withErrorContext(
-          Changed.error(),
-          "RISC-V W-instruction optimization diverged after transaction preflight: "));
-    }
+    if (!Changed)
+      return std::unexpected(Changed.error());
 
     MachinePassResult Result;
     Result.Changed = *Changed;

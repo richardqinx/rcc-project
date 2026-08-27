@@ -5,15 +5,12 @@
 #include "rcc/CodeGen/FrameIndexElimination.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineMemOperand.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/CodeGen/RegisterScavenger.h"
 #include "rcc/CodeGen/TargetFrameLowering.h"
 
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -44,37 +41,7 @@ Expected<MachinePassResult> PrologueEpilogueInsertionPass::run(MachineFunction &
   if (Info == nullptr)
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "PrologueEpilogueInsertion requires target frame lowering");
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial)
-    return std::unexpected(withErrorContext(Trial.error(), "frame transaction setup failed: "));
-  auto TrialRun = runImplementation(*Trial->ClonedFunction, Target, {});
-  if (!TrialRun)
-    return std::unexpected(
-        withErrorContext(TrialRun.error(), "frame transaction rejected input: "));
-  auto Transition = Trial->ClonedFunction->properties().applyTransition(
-      contract().Requires, contract().Sets, contract().Clears);
-  if (!Transition) {
-    return std::unexpected(
-        withErrorContext(Transition.error(), "frame transaction property update failed: "));
-  }
-  auto Verified =
-      MachineVerifier::verify(*Trial->ClonedFunction, Target,
-                              MachineVerifierOptions{.Mode = MachineVerifierMode::Generic,
-                                                     .Stage = contract().VerificationStage,
-                                                     .VerifyProperties = true});
-  if (!Verified) {
-    return std::unexpected(
-        withErrorContext(Verified.error(), "frame transaction postcondition failed: "));
-  }
-
-  auto Result = runImplementation(Function, Target, Options);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "frame lowering diverged after successful transaction preflight: "));
-  }
-  return Result;
+  return runImplementation(Function, Target, Options);
 }
 
 Expected<MachinePassResult>

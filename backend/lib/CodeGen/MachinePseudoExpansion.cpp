@@ -7,7 +7,6 @@
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFrameInfo.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineRegisterInfo.h"
@@ -202,7 +201,8 @@ using BlockSizeSnapshot = std::vector<std::pair<MachineBlockStableID, std::uint6
 
 [[nodiscard]] Expected<MachinePassResult>
 prepareImplementation(MachineFunction &Function, const TargetDescription &Target,
-                      const TargetPseudoExpansionInfo &Info, MachineActionReplay &Actions) {
+                      const TargetPseudoExpansionInfo &Info,
+                      MachineFunctionAnalysisManager &Analyses) {
   bool Changed = false;
   for (MachineInstr *Instruction : layoutInstructions(Function)) {
     const InstructionDescriptor *Descriptor = Target.instructionDescriptor(Instruction->opcode());
@@ -213,7 +213,7 @@ prepareImplementation(MachineFunction &Function, const TargetDescription &Target
       continue;
     std::string Rule = "prepare-pseudo.";
     Rule.append(Descriptor->Name);
-    auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+    auto Accepted = Analyses.requestAction(Rule, Function, Instruction->stableID());
     if (!Accepted)
       return std::unexpected(Accepted.error());
     if (!*Accepted) {
@@ -239,7 +239,8 @@ prepareImplementation(MachineFunction &Function, const TargetDescription &Target
 [[nodiscard]] Expected<MachinePassResult>
 expandImplementation(MachineFunction &Function, const TargetDescription &Target,
                      const TargetPseudoExpansionInfo &Info, MachinePseudoExpansionPhase Phase,
-                     const TargetInstrInfo *BranchInfo, MachineActionReplay &Actions) {
+                     const TargetInstrInfo *BranchInfo,
+                     MachineFunctionAnalysisManager &Analyses) {
   const ResourceSnapshot Before = snapshotResources(Function);
   std::optional<BlockSizeSnapshot> SizesBefore;
   if (Phase == MachinePseudoExpansionPhase::TargetLate) {
@@ -267,7 +268,7 @@ expandImplementation(MachineFunction &Function, const TargetDescription &Target,
     }
     std::string Rule = "expand-pseudo.";
     Rule.append(Descriptor->Name);
-    auto Accepted = Actions.request(Rule, Function, Instruction->stableID());
+    auto Accepted = Analyses.requestAction(Rule, Function, Instruction->stableID());
     if (!Accepted)
       return std::unexpected(Accepted.error());
     if (!*Accepted) {
@@ -345,58 +346,6 @@ expandImplementation(MachineFunction &Function, const TargetDescription &Target,
   return Result;
 }
 
-[[nodiscard]] Expected<MachinePassResult>
-runPreparationTransaction(MachineFunction &Function, const TargetDescription &Target,
-                          const TargetPseudoExpansionInfo &Info,
-                          MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial)
-    return std::unexpected(withErrorContext(Trial.error(), "pseudo preparation setup failed: "));
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult = prepareImplementation(*Trial->ClonedFunction, Target, Info, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  Actions.beginReplay();
-  auto Result = prepareImplementation(Function, Target, Info, Actions);
-  if (!Result) {
-    return std::unexpected(withErrorContext(
-        Result.error(), "pseudo preparation diverged after successful preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
-}
-
-[[nodiscard]] Expected<MachinePassResult>
-runExpansionTransaction(MachineFunction &Function, const TargetDescription &Target,
-                        const TargetPseudoExpansionInfo &Info, MachinePseudoExpansionPhase Phase,
-                        const TargetInstrInfo *BranchInfo,
-                        MachineFunctionAnalysisManager &Analyses) {
-  auto Trial = cloneMachineFunction(
-      Function, Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (!Trial)
-    return std::unexpected(withErrorContext(Trial.error(), "pseudo expansion setup failed: "));
-  MachineActionReplay Actions(Analyses, Trial->InstructionStableIDs);
-  auto TrialResult =
-      expandImplementation(*Trial->ClonedFunction, Target, Info, Phase, BranchInfo, Actions);
-  if (!TrialResult)
-    return std::unexpected(TrialResult.error());
-  Actions.beginReplay();
-  auto Result = expandImplementation(Function, Target, Info, Phase, BranchInfo, Actions);
-  if (!Result) {
-    return std::unexpected(
-        withErrorContext(Result.error(), "pseudo expansion diverged after successful preflight: "));
-  }
-  auto Replayed = Actions.finishReplay();
-  if (!Replayed)
-    return std::unexpected(Replayed.error());
-  return Result;
-}
-
 } // namespace
 
 const MachinePassContract &PreRATargetPseudoExpansionPass::contract() const noexcept {
@@ -406,8 +355,8 @@ const MachinePassContract &PreRATargetPseudoExpansionPass::contract() const noex
 Expected<MachinePassResult>
 PreRATargetPseudoExpansionPass::run(MachineFunction &Function, const TargetDescription &Target,
                                     MachineFunctionAnalysisManager &Analyses) {
-  return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::PreRA,
-                                 nullptr, Analyses);
+  return expandImplementation(Function, Target, *Info, MachinePseudoExpansionPhase::PreRA, nullptr,
+                              Analyses);
 }
 
 const MachinePassContract &PreparePostRAPseudosPass::contract() const noexcept {
@@ -417,7 +366,7 @@ const MachinePassContract &PreparePostRAPseudosPass::contract() const noexcept {
 Expected<MachinePassResult>
 PreparePostRAPseudosPass::run(MachineFunction &Function, const TargetDescription &Target,
                               MachineFunctionAnalysisManager &Analyses) {
-  return runPreparationTransaction(Function, Target, *Info, Analyses);
+  return prepareImplementation(Function, Target, *Info, Analyses);
 }
 
 const MachinePassContract &ExpandPostRAPseudosPass::contract() const noexcept {
@@ -427,8 +376,8 @@ const MachinePassContract &ExpandPostRAPseudosPass::contract() const noexcept {
 Expected<MachinePassResult> ExpandPostRAPseudosPass::run(MachineFunction &Function,
                                                          const TargetDescription &Target,
                                                          MachineFunctionAnalysisManager &Analyses) {
-  return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::PostRA,
-                                 nullptr, Analyses);
+  return expandImplementation(Function, Target, *Info, MachinePseudoExpansionPhase::PostRA,
+                              nullptr, Analyses);
 }
 
 const MachinePassContract &TargetLatePseudoExpansionPass::contract() const noexcept {
@@ -438,8 +387,8 @@ const MachinePassContract &TargetLatePseudoExpansionPass::contract() const noexc
 Expected<MachinePassResult>
 TargetLatePseudoExpansionPass::run(MachineFunction &Function, const TargetDescription &Target,
                                    MachineFunctionAnalysisManager &Analyses) {
-  return runExpansionTransaction(Function, Target, *Info, MachinePseudoExpansionPhase::TargetLate,
-                                 BranchInfo, Analyses);
+  return expandImplementation(Function, Target, *Info, MachinePseudoExpansionPhase::TargetLate,
+                              BranchInfo, Analyses);
 }
 
 } // namespace rcc

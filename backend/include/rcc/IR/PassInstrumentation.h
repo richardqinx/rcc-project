@@ -180,48 +180,6 @@ private:
   template <typename, typename, typename> friend struct PassManagerCallbacks;
 };
 
-class MachineActionReplay final {
-public:
-  template <typename AnalysisManagerT>
-  explicit MachineActionReplay(AnalysisManagerT &Analyses)
-      : Request([&Analyses](std::string_view Rule, const MachineFunction &Function,
-                            MachineInstrStableID Instruction, std::uint64_t Cost) {
-          return Analyses.requestAction(Rule, Function, Instruction, Cost);
-        }) {}
-
-  template <typename AnalysisManagerT>
-  MachineActionReplay(
-      AnalysisManagerT &Analyses,
-      const std::unordered_map<MachineInstrStableID, MachineInstrStableID> &SourceToClone)
-      : MachineActionReplay(Analyses) {
-    for (const auto &[Source, Clone] : SourceToClone)
-      RecordingInstructionIDs.try_emplace(Clone, Source);
-  }
-
-  [[nodiscard]] Expected<bool> request(std::string_view Rule, const MachineFunction &Function,
-                                       MachineInstrStableID Instruction = {},
-                                       std::uint64_t Cost = 1);
-  void beginReplay() noexcept;
-  [[nodiscard]] Expected<void> finishReplay() const;
-
-private:
-  struct Decision final {
-    std::string Rule;
-    MachineFunctionStableID Function;
-    MachineInstrStableID Instruction;
-    std::uint64_t Cost = 0;
-    bool Accepted = false;
-  };
-
-  std::function<Expected<bool>(std::string_view, const MachineFunction &, MachineInstrStableID,
-                               std::uint64_t)>
-      Request;
-  std::unordered_map<MachineInstrStableID, MachineInstrStableID> RecordingInstructionIDs;
-  std::vector<Decision> Decisions;
-  std::size_t NextDecision = 0;
-  bool IsReplaying = false;
-};
-
 } // namespace rcc
 
 #endif // RCC_IR_PASSINSTRUMENTATION_H
