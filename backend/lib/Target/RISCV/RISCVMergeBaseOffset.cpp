@@ -13,6 +13,7 @@
 #include "rcc/Target/RISCV/RISCVRegisters.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -385,6 +386,7 @@ struct AddressPair final {
       return false;
     CommonOffset = *Offset;
   }
+  assert(CommonOffset && "nonempty validated use list must define a common offset");
 
   MachineOperand *HighAddress = Pair.High->operandAt(1);
   MachineOperand *LowAddress = Pair.Low->operandAt(2);
