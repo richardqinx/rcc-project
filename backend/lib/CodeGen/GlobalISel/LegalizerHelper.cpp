@@ -3788,6 +3788,7 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
     const std::size_t PartCount = static_cast<std::size_t>(DestinationSize / NarrowSize);
     const std::size_t IncomingCount = (Instruction.operandCount() - 1U) / 2U;
     std::vector<std::vector<Register>> IncomingParts(IncomingCount);
+    std::vector<MachineBasicBlock *> IncomingBlocks(IncomingCount);
     Observer.changingInstr(Instruction);
     for (std::size_t Index = 1; Index < Instruction.operandCount(); Index += 2) {
       const MachineOperand *ValueOperand = Instruction.operandAt(Index);
@@ -3800,7 +3801,9 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
                               "G_PHI narrowing has an invalid incoming pair");
       if (auto Point = setInsertPointAtFirstTerminator(MIRBuilder, *Incoming->Block); !Point)
         return std::unexpected(Point.error());
-      auto &Parts = IncomingParts[Index / 2U];
+      const std::size_t IncomingIndex = Index / 2U;
+      IncomingBlocks[IncomingIndex] = Incoming->Block;
+      auto &Parts = IncomingParts[IncomingIndex];
       Parts.reserve(PartCount);
       for (std::size_t PartIndex = 0; PartIndex != PartCount; ++PartIndex) {
         auto Part = MRI.createVirtualRegister(NarrowType);
@@ -3812,9 +3815,7 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
         return std::unexpected(Unmerged.error());
     }
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "G_PHI became detached during narrowing");
+    MachineBasicBlock &Block = *Instruction.parent();
     if (auto Point = MIRBuilder.setInsertPointBefore(Instruction); !Point)
       return std::unexpected(Point.error());
     std::vector<Register> Destinations;
@@ -3829,15 +3830,9 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
       if (auto Added = Phi->addDef(*DestinationPart); !Added)
         return std::unexpected(Added.error());
       for (std::size_t IncomingIndex = 0; IncomingIndex != IncomingCount; ++IncomingIndex) {
-        const MachineOperand *BlockOperand = Instruction.operandAt(IncomingIndex * 2U + 2U);
-        const auto *Incoming =
-            BlockOperand == nullptr ? nullptr : BlockOperand->getIf<BasicBlockOperand>();
-        if (Incoming == nullptr || Incoming->Block == nullptr)
-          return makeUnexpected(ErrorCode::VerificationError,
-                                "G_PHI narrowing has an invalid incoming block");
         if (auto Added = Phi->addUse(IncomingParts[IncomingIndex][PartIndex]); !Added)
           return std::unexpected(Added.error());
-        if (auto Added = Phi->addBasicBlock(*Incoming->Block); !Added)
+        if (auto Added = Phi->addBasicBlock(*IncomingBlocks[IncomingIndex]); !Added)
           return std::unexpected(Added.error());
       }
       if (auto Built = Phi->build(); !Built)
@@ -3845,7 +3840,7 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
       Destinations.push_back(*DestinationPart);
     }
 
-    if (auto Point = setInsertPointAfterPHIs(MIRBuilder, *Block); !Point)
+    if (auto Point = setInsertPointAfterPHIs(MIRBuilder, Block); !Point)
       return std::unexpected(Point.error());
     if (auto Merged = MIRBuilder.buildMergeLikeInstr(*Destination, Destinations); !Merged)
       return std::unexpected(Merged.error());
