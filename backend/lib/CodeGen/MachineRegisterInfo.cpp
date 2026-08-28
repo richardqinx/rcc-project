@@ -339,9 +339,10 @@ Expected<LowLevelType> MachineRegisterInfo::getType(Register Reg) const {
   auto Info = virtualRegisterInfo(Reg);
   if (!Info)
     return std::unexpected(Info.error());
-  if (!Info->get().Type)
+  const std::optional<LowLevelType> &Type = Info->get().Type;
+  if (!Type)
     return makeUnexpected(ErrorCode::InvalidArgument, "virtual register has no LowLevelType");
-  return *Info->get().Type;
+  return *Type;
 }
 
 Expected<std::size_t> MachineRegisterInfo::replaceRegWith(Register OldReg, Register NewReg) {
