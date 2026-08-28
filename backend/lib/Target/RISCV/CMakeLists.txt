@@ -112,6 +112,7 @@ add_library(
   GISel/RISCVLegalizerInfo.cpp
   GISel/RISCVRegisterBankInfo.cpp
   RISCVInstrInfo.cpp
+  RISCVAsmPrinter.cpp
   RISCVAssemblyPrinter.cpp
   RISCVFrameLowering.cpp
   RISCVFinalizeISel.cpp
@@ -139,6 +140,7 @@ add_library(
   RISCVSubtarget.cpp
   RISCVTarget.cpp
   RISCVTargetConstant.cpp
+  RISCVTargetObjectFile.cpp
   "${RCCBackendRISCVGeneratedRegisterHeader}"
   "${RCCBackendRISCVGeneratedInstructionHeader}"
   "${RCCBackendRISCVGeneratedTables}"
@@ -204,6 +206,8 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVRegisterBankInfo.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCV.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAsmPrinter.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAsmPrinter.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinter.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFinalizeISel.cpp"
@@ -229,6 +233,8 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSubtarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetConstant.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetObjectFile.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetObjectFile.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfo.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVAssemblyPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/RISCV/RISCVInstPrinter.h"

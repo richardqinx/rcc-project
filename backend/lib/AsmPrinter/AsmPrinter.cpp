@@ -17,6 +17,7 @@
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/CodeGen/TargetConstant.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/CodeGen/TargetLoweringObjectFile.h"
 #include "rcc/CodeGen/TargetMCInstLowering.h"
 #include "rcc/IR/Constants.h"
 #include "rcc/MC/MCCFI.h"
@@ -26,11 +27,17 @@
 #include "rcc/MC/MCStreamer.h"
 #include "rcc/MC/MCSymbol.h"
 
+#include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <ranges>
+#include <span>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace rcc {
 namespace {
@@ -246,7 +253,381 @@ lowerCFIInstruction(const MachineCFIInstruction &Instruction, MachineMCContext &
                                                   : mc::MCSymbolAttribute::TLSObject);
 }
 
+[[nodiscard]] std::vector<std::uint8_t> bytesFromWords(std::span<const std::uint64_t> Words,
+                                                       std::uint64_t Size) {
+  std::vector<std::uint8_t> Bytes(static_cast<std::size_t>(Size), 0);
+  for (std::uint64_t ByteIndex = 0; ByteIndex < Size; ++ByteIndex) {
+    const std::size_t WordIndex = static_cast<std::size_t>(ByteIndex / 8U);
+    if (WordIndex >= Words.size())
+      break;
+    const unsigned Shift = static_cast<unsigned>((ByteIndex % 8U) * 8U);
+    Bytes[static_cast<std::size_t>(ByteIndex)] =
+        static_cast<std::uint8_t>((Words[WordIndex] >> Shift) & 0xffU);
+  }
+  return Bytes;
+}
+
+[[nodiscard]] Expected<mc::MCExprRef> lowerConstantExpression(const GenericConstantData &Constant,
+                                                              MachineMCContext &Context,
+                                                              std::size_t Depth = 0) {
+  if (Depth > 1024) {
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "constant expression exceeds its nesting limit");
+  }
+  switch (Constant.Kind) {
+  case GenericConstantKind::Integer: {
+    if (!Constant.IntegerValue || Constant.IntegerValue->bitWidth() > 64 ||
+        Constant.IntegerValue->words().size() != 1) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "MC expression requires an integer no wider than 64 bits");
+    }
+    const std::uint64_t Raw = Constant.IntegerValue->words().front();
+    const std::int64_t Value = Constant.IntegerValue->bitWidth() == 64
+                                   ? std::bit_cast<std::int64_t>(Raw)
+                                   : static_cast<std::int64_t>(Raw);
+    return mc::MCExpr::constant(Value);
+  }
+  case GenericConstantKind::NullPointer:
+  case GenericConstantKind::ZeroInitializer:
+  case GenericConstantKind::Undef:
+  case GenericConstantKind::Poison:
+    return mc::MCExpr::constant(0);
+  case GenericConstantKind::GlobalAddress:
+  case GenericConstantKind::DSOLocalEquivalent:
+  case GenericConstantKind::NoCFI: {
+    auto Symbol = Context.symbol(Constant.Symbol, mc::MCSymbolKind::Object);
+    if (!Symbol)
+      return std::unexpected(Symbol.error());
+    return mc::MCExpr::symbol(std::move(*Symbol));
+  }
+  case GenericConstantKind::BlockAddress: {
+    auto Symbol = Context.blockAddressSymbol(Constant.Symbol, Constant.Block);
+    if (!Symbol)
+      return std::unexpected(Symbol.error());
+    return mc::MCExpr::symbol(std::move(*Symbol));
+  }
+  case GenericConstantKind::Expression: {
+    if (Constant.Elements.empty()) {
+      return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                            "generic constant expression has no operands");
+    }
+    auto Left = lowerConstantExpression(Constant.Elements.front(), Context, Depth + 1);
+    if (!Left)
+      return std::unexpected(Left.error());
+    switch (Constant.ExpressionOpcode) {
+    case GenericConstantExpressionOpcode::Trunc:
+    case GenericConstantExpressionOpcode::BitCast:
+    case GenericConstantExpressionOpcode::AddressSpaceCast:
+    case GenericConstantExpressionOpcode::IntToPtr:
+    case GenericConstantExpressionOpcode::PtrToAddr:
+    case GenericConstantExpressionOpcode::PtrToInt:
+      return *Left;
+    case GenericConstantExpressionOpcode::Add:
+    case GenericConstantExpressionOpcode::Sub:
+    case GenericConstantExpressionOpcode::Xor: {
+      if (Constant.Elements.size() != 2) {
+        return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                              "binary constant expression has the wrong operand count");
+      }
+      auto Right = lowerConstantExpression(Constant.Elements[1], Context, Depth + 1);
+      if (!Right)
+        return std::unexpected(Right.error());
+      const mc::MCBinaryOperator Operator =
+          Constant.ExpressionOpcode == GenericConstantExpressionOpcode::Add
+              ? mc::MCBinaryOperator::Add
+          : Constant.ExpressionOpcode == GenericConstantExpressionOpcode::Sub
+              ? mc::MCBinaryOperator::Subtract
+              : mc::MCBinaryOperator::BitwiseXor;
+      return mc::MCExpr::binary(Operator, std::move(*Left), std::move(*Right));
+    }
+    case GenericConstantExpressionOpcode::Invalid:
+    case GenericConstantExpressionOpcode::GetElementPtr:
+    case GenericConstantExpressionOpcode::ShuffleVector:
+    case GenericConstantExpressionOpcode::InsertElement:
+    case GenericConstantExpressionOpcode::ExtractElement:
+    case GenericConstantExpressionOpcode::Splat:
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "assembly cannot lower this generic constant expression");
+    }
+  }
+  case GenericConstantKind::Invalid:
+  case GenericConstantKind::Floating:
+  case GenericConstantKind::Aggregate:
+  case GenericConstantKind::ByteString:
+  case GenericConstantKind::PointerAuth:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "generic constant cannot be represented as an MC expression");
+  }
+  return makeUnexpected(ErrorCode::InternalError, "generic constant kind is invalid");
+}
+
+[[nodiscard]] Expected<void> emitRepeatedByte(std::uint8_t Byte, std::uint64_t Size,
+                                              mc::MCStreamer &Streamer) {
+  if (Size == 0)
+    return {};
+  if (Byte == 0)
+    return Streamer.emitZeroFill(Size);
+  constexpr std::uint64_t ChunkSize = 4096;
+  const std::size_t InitialSize = static_cast<std::size_t>(std::min(Size, ChunkSize));
+  const std::vector<std::uint8_t> Chunk(InitialSize, Byte);
+  while (Size != 0) {
+    const std::size_t EmittedSize = static_cast<std::size_t>(std::min(Size, ChunkSize));
+    auto Emitted = Streamer.emitBytes(std::span<const std::uint8_t>(Chunk).first(EmittedSize));
+    if (!Emitted)
+      return std::unexpected(Emitted.error());
+    Size -= static_cast<std::uint64_t>(EmittedSize);
+  }
+  return {};
+}
+
 } // namespace
+
+Expected<void> AsmPrinter::emitStartOfAsmFile() {
+  return {};
+}
+
+Expected<void> AsmPrinter::emitEndOfAsmFile() {
+  return {};
+}
+
+Expected<void> AsmPrinter::emitTargetConstant(const TargetConstant &) {
+  return makeUnexpected(ErrorCode::Unsupported,
+                        "target does not support assembly emission for this target constant");
+}
+
+Expected<void> AsmPrinter::emitTargetJumpTable(const MachineFunction &,
+                                               const MachineJumpTableEntry &) {
+  return makeUnexpected(ErrorCode::Unsupported, "target does not support this jump-table encoding");
+}
+
+Expected<void> AsmPrinter::emitGenericConstant(const GenericConstantData &Constant,
+                                               std::uint64_t AllocationSize, std::size_t Depth) {
+  if (Depth > 1024) {
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "generic constant exceeds its emission nesting limit");
+  }
+  if (Depth == 0) {
+    auto Verification = Constant.verify();
+    if (!Verification)
+      return std::unexpected(Verification.error());
+    auto ExpectedSize = Layout.getTypeAllocSize(Constant.Type);
+    if (!ExpectedSize)
+      return std::unexpected(ExpectedSize.error());
+    if (*ExpectedSize != AllocationSize) {
+      return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                            "generic constant size does not match the target data layout");
+    }
+  }
+
+  switch (Constant.Kind) {
+  case GenericConstantKind::Integer: {
+    if (!Constant.IntegerValue)
+      return makeUnexpected(ErrorCode::InternalError, "integer constant has no value");
+    return Streamer->emitBytes(bytesFromWords(Constant.IntegerValue->words(), AllocationSize));
+  }
+  case GenericConstantKind::Floating: {
+    if (!Constant.FloatingValue)
+      return makeUnexpected(ErrorCode::InternalError, "floating constant has no value");
+    return Streamer->emitBytes(bytesFromWords(Constant.FloatingValue->words(), AllocationSize));
+  }
+  case GenericConstantKind::ByteString: {
+    if (Constant.ByteValue.size() != AllocationSize) {
+      return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                            "byte-string constant size does not match its target layout");
+    }
+    std::vector<std::uint8_t> Bytes;
+    Bytes.reserve(Constant.ByteValue.size());
+    for (const std::byte Byte : Constant.ByteValue)
+      Bytes.push_back(std::to_integer<std::uint8_t>(Byte));
+    return Streamer->emitBytes(Bytes);
+  }
+  case GenericConstantKind::NullPointer:
+  case GenericConstantKind::ZeroInitializer:
+  case GenericConstantKind::Undef:
+  case GenericConstantKind::Poison:
+    return Streamer->emitZeroFill(AllocationSize);
+  case GenericConstantKind::Aggregate: {
+    const GenericConstantType &Type = Constant.Type.resolved();
+    std::uint64_t Offset = 0;
+    for (const GenericConstantData &Element : Constant.Elements) {
+      auto ElementSize = Layout.getTypeAllocSize(Element.Type);
+      auto ElementAlignment = Layout.getABITypeAlign(Element.Type);
+      if (!ElementSize)
+        return std::unexpected(ElementSize.error());
+      if (!ElementAlignment)
+        return std::unexpected(ElementAlignment.error());
+      const std::uint64_t Alignment =
+          Type.Kind == GenericConstantTypeKind::Struct && Type.Packed ? 1 : *ElementAlignment;
+      const std::uint64_t AlignmentMask = Alignment - 1U;
+      if (Offset > std::numeric_limits<std::uint64_t>::max() - AlignmentMask) {
+        return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                              "aggregate constant exceeds its target layout");
+      }
+      const std::uint64_t ElementOffset = (Offset + AlignmentMask) & ~AlignmentMask;
+      if (ElementOffset > AllocationSize || *ElementSize > AllocationSize - ElementOffset) {
+        return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                              "aggregate constant exceeds its target layout");
+      }
+      auto Padding = Streamer->emitZeroFill(ElementOffset - Offset);
+      if (!Padding)
+        return std::unexpected(Padding.error());
+      auto Emitted = emitGenericConstant(Element, *ElementSize, Depth + 1);
+      if (!Emitted)
+        return std::unexpected(Emitted.error());
+      Offset = ElementOffset + *ElementSize;
+    }
+    if (Offset > AllocationSize) {
+      return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                            "aggregate constant exceeds its target layout");
+    }
+    return Streamer->emitZeroFill(AllocationSize - Offset);
+  }
+  case GenericConstantKind::GlobalAddress:
+  case GenericConstantKind::BlockAddress:
+  case GenericConstantKind::DSOLocalEquivalent:
+  case GenericConstantKind::NoCFI:
+  case GenericConstantKind::Expression: {
+    if (!validValueSize(AllocationSize)) {
+      return makeUnexpected(ErrorCode::Unsupported,
+                            "symbolic constant has an unsupported storage size");
+    }
+    auto Expression = lowerConstantExpression(Constant, *Context);
+    if (!Expression)
+      return std::unexpected(Expression.error());
+    return Streamer->emitValue(std::move(*Expression), static_cast<std::uint8_t>(AllocationSize));
+  }
+  case GenericConstantKind::PointerAuth:
+    return makeUnexpected(ErrorCode::Unsupported,
+                          "assembly does not support pointer-auth constants");
+  case GenericConstantKind::Invalid:
+    return makeUnexpected(ErrorCode::InternalError, "generic constant kind is invalid");
+  }
+  return makeUnexpected(ErrorCode::InternalError, "generic constant kind is invalid");
+}
+
+Expected<void> AsmPrinter::emitGlobalInitializer(const GlobalInitializer &Initializer,
+                                                 std::size_t Depth) {
+  if (Depth > 1024) {
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "global initializer exceeds its emission nesting limit");
+  }
+  if (Depth == 0) {
+    auto Verification = Initializer.verify();
+    if (!Verification)
+      return std::unexpected(Verification.error());
+  }
+
+  switch (Initializer.kind()) {
+  case GlobalInitializer::Kind::Integer: {
+    const auto *Value = Initializer.getIf<APInt>();
+    if (Value == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "integer initializer has no value");
+    const std::uint64_t Size = (static_cast<std::uint64_t>(Value->bitWidth()) + 7U) / 8U;
+    return Streamer->emitBytes(bytesFromWords(Value->words(), Size));
+  }
+  case GlobalInitializer::Kind::Floating: {
+    const auto *Value = Initializer.getIf<APFloat>();
+    if (Value == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "floating initializer has no value");
+    const std::uint64_t Size = (static_cast<std::uint64_t>(Value->bitWidth()) + 7U) / 8U;
+    return Streamer->emitBytes(bytesFromWords(Value->words(), Size));
+  }
+  case GlobalInitializer::Kind::Bytes: {
+    const auto *Value = Initializer.getIf<std::vector<std::byte>>();
+    if (Value == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "byte initializer has no value");
+    std::vector<std::uint8_t> Bytes;
+    Bytes.reserve(Value->size());
+    for (const std::byte Byte : *Value)
+      Bytes.push_back(std::to_integer<std::uint8_t>(Byte));
+    return Streamer->emitBytes(Bytes);
+  }
+  case GlobalInitializer::Kind::ZeroFill: {
+    const auto *Value = Initializer.getIf<GlobalZeroFill>();
+    return Value == nullptr
+               ? makeUnexpected(ErrorCode::InternalError, "zero-fill initializer has no value")
+               : Streamer->emitZeroFill(Value->Size);
+  }
+  case GlobalInitializer::Kind::Repeated: {
+    const auto *Value = Initializer.getIf<GlobalRepeatedInitializer>();
+    if (Value == nullptr || !Value->Value)
+      return makeUnexpected(ErrorCode::InternalError, "repeated initializer has no value");
+    for (std::uint64_t Index = 0; Index < Value->Count; ++Index) {
+      auto Emitted = emitGlobalInitializer(*Value->Value, Depth + 1);
+      if (!Emitted)
+        return std::unexpected(Emitted.error());
+    }
+    return {};
+  }
+  case GlobalInitializer::Kind::Aggregate: {
+    const auto *Value = Initializer.getIf<GlobalAggregateInitializer>();
+    if (Value == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "aggregate initializer has no value");
+    for (const GlobalInitializerRef &Element : Value->Elements) {
+      if (!Element)
+        return makeUnexpected(ErrorCode::InternalError, "aggregate initializer is null");
+      auto Emitted = emitGlobalInitializer(*Element, Depth + 1);
+      if (!Emitted)
+        return std::unexpected(Emitted.error());
+    }
+    return {};
+  }
+  case GlobalInitializer::Kind::SymbolAddress: {
+    const auto *Value = Initializer.getIf<GlobalSymbolAddress>();
+    if (Value == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "symbol initializer has no value");
+    auto Symbol = Context->symbol(Value->Symbol, mc::MCSymbolKind::Object);
+    if (!Symbol)
+      return std::unexpected(Symbol.error());
+    auto Expression = symbolExpression(std::move(*Symbol));
+    if (!Expression)
+      return std::unexpected(Expression.error());
+    auto WithAddend = addConstant(std::move(*Expression), Value->Addend);
+    if (!WithAddend)
+      return std::unexpected(WithAddend.error());
+    auto Lowered = Lowering->lowerSymbolExpression(std::move(*WithAddend), Value->TargetFlags);
+    if (!Lowered)
+      return std::unexpected(Lowered.error());
+    return Streamer->emitValue(std::move(*Lowered), Value->Size);
+  }
+  case GlobalInitializer::Kind::SymbolDifference: {
+    const auto *Value = Initializer.getIf<GlobalSymbolDifference>();
+    if (Value == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "symbol difference has no value");
+    auto Minuend = Context->symbol(Value->Minuend);
+    if (!Minuend)
+      return std::unexpected(Minuend.error());
+    auto Subtrahend = Context->symbol(Value->Subtrahend);
+    if (!Subtrahend)
+      return std::unexpected(Subtrahend.error());
+    auto Difference = symbolDifference(std::move(*Minuend), std::move(*Subtrahend), Value->Addend);
+    if (!Difference)
+      return std::unexpected(Difference.error());
+    return Streamer->emitValue(std::move(*Difference), Value->Size);
+  }
+  case GlobalInitializer::Kind::Target: {
+    const auto *Value = Initializer.getIf<TargetConstant>();
+    if (Value == nullptr)
+      return makeUnexpected(ErrorCode::InternalError, "target initializer has no value");
+    return emitTargetConstant(*Value);
+  }
+  case GlobalInitializer::Kind::AlignmentPadding: {
+    const auto *Value = Initializer.getIf<GlobalAlignmentPadding>();
+    return Value == nullptr
+               ? makeUnexpected(ErrorCode::InternalError, "padding initializer has no value")
+               : emitRepeatedByte(Value->Fill, Value->Size, *Streamer);
+  }
+  case GlobalInitializer::Kind::UndefinedStorage: {
+    const auto *Value = Initializer.getIf<GlobalUndefinedStorage>();
+    return Value == nullptr
+               ? makeUnexpected(ErrorCode::InternalError, "undefined initializer has no value")
+               : Streamer->emitZeroFill(Value->Size);
+  }
+  case GlobalInitializer::Kind::Invalid:
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed, "global initializer is invalid");
+  }
+  return makeUnexpected(ErrorCode::InternalError, "global initializer kind is invalid");
+}
 
 Expected<void> AsmPrinter::verifyFunction(const MachineFunction &Function) const {
   const MachineFunctionProperties Required = {
@@ -275,16 +656,16 @@ Expected<void> AsmPrinter::verifyFunction(const MachineFunction &Function) const
 }
 
 Expected<void> AsmPrinter::emitCompilationUnit(const CompilationUnit &Unit) {
-  if (UnitEmissionStarted) {
+  if (EmissionStarted) {
     return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
-                          "a compilation unit can only be emitted once by an AsmPrinter");
+                          "an AsmPrinter can only emit one compilation unit or function");
   }
-  UnitEmissionStarted = true;
+  EmissionStarted = true;
 
   auto Initialized = Context->initialize(Unit);
   if (!Initialized)
     return std::unexpected(Initialized.error());
-  auto Header = Lowering->emitFileHeader(*Context, *Streamer);
+  auto Header = emitStartOfAsmFile();
   if (!Header)
     return std::unexpected(Header.error());
 
@@ -298,18 +679,18 @@ Expected<void> AsmPrinter::emitCompilationUnit(const CompilationUnit &Unit) {
       return makeUnexpected(ErrorCode::InternalError,
                             "compilation unit contains a null function during assembly emission");
     }
-    auto Emitted = emitFunction(*Function);
+    auto Emitted = emitFunctionImpl(*Function);
     if (!Emitted)
       return std::unexpected(Emitted.error());
   }
 
-  auto Trailer = Lowering->emitFileTrailer(*Context, *Streamer);
+  auto Trailer = emitEndOfAsmFile();
   if (!Trailer)
     return std::unexpected(Trailer.error());
   auto Finished = Streamer->finish();
   if (!Finished)
     return std::unexpected(Finished.error());
-  UnitEmissionFinished = true;
+  EmissionFinished = true;
   return {};
 }
 
@@ -337,7 +718,7 @@ Expected<void> AsmPrinter::emitGlobalObjects(const CompilationUnit &Unit) {
       continue;
     }
 
-    auto Description = Lowering->globalSection(*Object, *Context);
+    auto Description = ObjectFile->globalSection(*Object, *Context);
     if (!Description)
       return std::unexpected(Description.error());
     auto Section = Context->context().getOrCreateSection(std::move(*Description));
@@ -356,7 +737,7 @@ Expected<void> AsmPrinter::emitGlobalObjects(const CompilationUnit &Unit) {
       return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                             "defined global object has no initializer");
     }
-    auto Initializer = Lowering->emitGlobalInitializer(*Object->Initializer, *Context, *Streamer);
+    auto Initializer = emitGlobalInitializer(*Object->Initializer);
     if (!Initializer)
       return std::unexpected(Initializer.error());
     auto Size = Streamer->emitSymbolSize(
@@ -368,7 +749,29 @@ Expected<void> AsmPrinter::emitGlobalObjects(const CompilationUnit &Unit) {
 }
 
 Expected<void> AsmPrinter::emitFunction(const MachineFunction &Function) {
-  if (UnitEmissionFinished) {
+  if (EmissionStarted) {
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "an AsmPrinter can only emit one compilation unit or function");
+  }
+  EmissionStarted = true;
+  auto Header = emitStartOfAsmFile();
+  if (!Header)
+    return std::unexpected(Header.error());
+  auto Emitted = emitFunctionImpl(Function);
+  if (!Emitted)
+    return std::unexpected(Emitted.error());
+  auto Trailer = emitEndOfAsmFile();
+  if (!Trailer)
+    return std::unexpected(Trailer.error());
+  auto Finished = Streamer->finish();
+  if (!Finished)
+    return std::unexpected(Finished.error());
+  EmissionFinished = true;
+  return {};
+}
+
+Expected<void> AsmPrinter::emitFunctionImpl(const MachineFunction &Function) {
+  if (EmissionFinished) {
     return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                           "cannot emit a function after the assembly stream is finalized");
   }
@@ -379,7 +782,7 @@ Expected<void> AsmPrinter::emitFunction(const MachineFunction &Function) {
   if (!Initialized)
     return std::unexpected(Initialized.error());
 
-  auto SectionDescription = Lowering->textSection(Function);
+  auto SectionDescription = ObjectFile->textSection(Function);
   if (!SectionDescription)
     return std::unexpected(SectionDescription.error());
   auto Section = Context->context().getOrCreateSection(std::move(*SectionDescription));
@@ -549,7 +952,7 @@ Expected<void> AsmPrinter::emitConstantPool(const MachineFunction &Function) {
     const MachineConstantPoolEntryDesc *Description = Entry.description();
     if (Description == nullptr)
       continue;
-    auto SectionDescription = Lowering->constantPoolSection(Function, Entry);
+    auto SectionDescription = ObjectFile->constantPoolSection(Function, Entry);
     if (!SectionDescription)
       return std::unexpected(SectionDescription.error());
     auto Section = Context->context().getOrCreateSection(std::move(*SectionDescription));
@@ -571,9 +974,9 @@ Expected<void> AsmPrinter::emitConstantPool(const MachineFunction &Function) {
 
     Expected<void> Emitted;
     if (const auto *Generic = std::get_if<GenericConstantData>(&Description->Value)) {
-      Emitted = Lowering->emitGenericConstant(*Generic, Description->Size, *Context, *Streamer);
+      Emitted = emitGenericConstant(*Generic, Description->Size);
     } else if (const auto *TargetValue = std::get_if<TargetConstant>(&Description->Value)) {
-      Emitted = Lowering->emitTargetConstant(*TargetValue, *Context, *Streamer);
+      Emitted = emitTargetConstant(*TargetValue);
     } else if (const auto *Difference =
                    std::get_if<SymbolDifferenceConstant>(&Description->Value)) {
       if (!validValueSize(Description->Size)) {
@@ -609,7 +1012,7 @@ Expected<void> AsmPrinter::emitConstantPool(const MachineFunction &Function) {
           Streamer->emitValue(std::move(*Expression), static_cast<std::uint8_t>(Description->Size));
     } else if (const auto *TargetExpression =
                    std::get_if<TargetExpressionConstant>(&Description->Value)) {
-      Emitted = Lowering->emitTargetConstant(TargetExpression->Expression, *Context, *Streamer);
+      Emitted = emitTargetConstant(TargetExpression->Expression);
     } else {
       return makeUnexpected(ErrorCode::InternalError, "constant-pool value has an invalid kind");
     }
@@ -624,7 +1027,7 @@ Expected<void> AsmPrinter::emitJumpTables(const MachineFunction &Function) {
     const MachineJumpTableDesc *Description = Entry.description();
     if (Description == nullptr)
       continue;
-    auto SectionDescription = Lowering->jumpTableSection(Function, Entry);
+    auto SectionDescription = ObjectFile->jumpTableSection(Function, Entry);
     if (!SectionDescription)
       return std::unexpected(SectionDescription.error());
     auto Section = Context->context().getOrCreateSection(std::move(*SectionDescription));
@@ -647,7 +1050,7 @@ Expected<void> AsmPrinter::emitJumpTables(const MachineFunction &Function) {
     if (Description->Encoding != JumpTableEntryEncoding::BlockAddress &&
         Description->Encoding != JumpTableEntryEncoding::LabelDifference32 &&
         Description->Encoding != JumpTableEntryEncoding::LabelDifference64) {
-      auto TargetTable = Lowering->emitTargetJumpTable(Function, Entry, *Context, *Streamer);
+      auto TargetTable = emitTargetJumpTable(Function, Entry);
       if (!TargetTable)
         return std::unexpected(TargetTable.error());
       continue;

@@ -19,38 +19,11 @@ public:
 
   [[nodiscard]] Expected<mc::MCInst> lowerInstruction(const MachineInstr &Instruction,
                                                       MachineMCContext &Context) const override;
+  [[nodiscard]] Expected<mc::MCExprRef>
+  lowerSymbolExpression(mc::MCExprRef Expression, std::uint32_t TargetFlags) const override;
   [[nodiscard]] Expected<void> emitTerminalInstruction(const MachineInstr &Instruction,
                                                        MachineMCContext &Context,
                                                        mc::MCStreamer &Streamer) const override;
-
-  [[nodiscard]] Expected<mc::MCSectionDesc>
-  textSection(const MachineFunction &Function) const override;
-  [[nodiscard]] Expected<mc::MCSectionDesc> globalSection(const GlobalObjectDesc &Object,
-                                                          MachineMCContext &Context) const override;
-  [[nodiscard]] Expected<mc::MCSectionDesc>
-  constantPoolSection(const MachineFunction &Function,
-                      const MachineConstantPoolEntry &Entry) const override;
-  [[nodiscard]] Expected<mc::MCSectionDesc>
-  jumpTableSection(const MachineFunction &Function,
-                   const MachineJumpTableEntry &Entry) const override;
-
-  [[nodiscard]] Expected<void> emitFileHeader(MachineMCContext &Context,
-                                              mc::MCStreamer &Streamer) const override;
-  [[nodiscard]] Expected<void> emitFileTrailer(MachineMCContext &Context,
-                                               mc::MCStreamer &Streamer) const override;
-  [[nodiscard]] Expected<void> emitGenericConstant(const GenericConstantData &Constant,
-                                                   std::uint64_t Size, MachineMCContext &Context,
-                                                   mc::MCStreamer &Streamer) const override;
-  [[nodiscard]] Expected<void> emitGlobalInitializer(const GlobalInitializer &Initializer,
-                                                     MachineMCContext &Context,
-                                                     mc::MCStreamer &Streamer) const override;
-  [[nodiscard]] Expected<void> emitTargetConstant(const TargetConstant &Constant,
-                                                  MachineMCContext &Context,
-                                                  mc::MCStreamer &Streamer) const override;
-  [[nodiscard]] Expected<void> emitTargetJumpTable(const MachineFunction &Function,
-                                                   const MachineJumpTableEntry &Entry,
-                                                   MachineMCContext &Context,
-                                                   mc::MCStreamer &Streamer) const override;
 
 private:
   const TargetDescription *Target;

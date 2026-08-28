@@ -10,6 +10,7 @@ set(
   RCCBackendAsmPrinterHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/AsmPrinter.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/MachineMCContext.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetLoweringObjectFile.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/CodeGen/TargetMCInstLowering.h"
 )
 

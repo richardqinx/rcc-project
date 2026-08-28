@@ -2,16 +2,20 @@
 
 #include "rcc/Target/RISCV/RISCVObjectFile.h"
 
+#include "RISCVAsmPrinter.h"
+#include "RISCVTargetObjectFile.h"
 #include "rcc/CodeGen/AsmPrinter.h"
 #include "rcc/CodeGen/CompilationUnit.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineMCContext.h"
+#include "rcc/IR/DataLayout.h"
 #include "rcc/MC/ELFObjectWriter.h"
 #include "rcc/MC/MCContext.h"
 #include "rcc/MC/MCObjectStreamer.h"
 #include "rcc/Target/RISCV/RISCVAsmBackend.h"
 #include "rcc/Target/RISCV/RISCVMCCodeEmitter.h"
 #include "rcc/Target/RISCV/RISCVMCTargetLowering.h"
+#include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <cstdint>
 #include <utility>
@@ -99,6 +103,7 @@ struct ObjectEmissionContext final {
   mc::MCContext Context;
   MachineMCContext MachineContext;
   RISCVMCTargetLowering Lowering;
+  RISCVELFTargetObjectFile ObjectFile;
   RISCVMCCodeEmitter Emitter;
   RISCVAsmBackend Backend;
   mc::ELF64LEObjectWriter Writer;
@@ -114,8 +119,11 @@ Expected<std::vector<std::uint8_t>> emitObject(const CompilationUnit &Unit,
   ObjectEmissionContext Context(Target);
   if (!Context.Initialization)
     return std::unexpected(Context.Initialization.error());
-  AsmPrinter Printer(Target, Context.Lowering, Context.MachineContext, Context.Streamer,
-                     printerOptions(Options));
+  auto Layout = DataLayout::parse(TargetDataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
+  RISCVAsmPrinter Printer(Target, Context.Lowering, Context.ObjectFile, std::move(*Layout),
+                          Context.MachineContext, Context.Streamer, printerOptions(Options));
   auto Emitted = Printer.emitCompilationUnit(Unit);
   if (!Emitted)
     return std::unexpected(Emitted.error());
@@ -128,20 +136,14 @@ Expected<std::vector<std::uint8_t>> emitObject(const MachineFunction &Function,
   ObjectEmissionContext Context(Target);
   if (!Context.Initialization)
     return std::unexpected(Context.Initialization.error());
-  AsmPrinter Printer(Target, Context.Lowering, Context.MachineContext, Context.Streamer,
-                     printerOptions(Options));
-  auto Header = Context.Lowering.emitFileHeader(Context.MachineContext, Context.Streamer);
-  if (!Header)
-    return std::unexpected(Header.error());
+  auto Layout = DataLayout::parse(TargetDataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
+  RISCVAsmPrinter Printer(Target, Context.Lowering, Context.ObjectFile, std::move(*Layout),
+                          Context.MachineContext, Context.Streamer, printerOptions(Options));
   auto Emitted = Printer.emitFunction(Function);
   if (!Emitted)
     return std::unexpected(Emitted.error());
-  auto Trailer = Context.Lowering.emitFileTrailer(Context.MachineContext, Context.Streamer);
-  if (!Trailer)
-    return std::unexpected(Trailer.error());
-  auto Finished = Context.Streamer.finish();
-  if (!Finished)
-    return std::unexpected(Finished.error());
   return Context.Streamer.takeOutput();
 }
 

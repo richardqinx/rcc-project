@@ -2,15 +2,20 @@
 
 #include "rcc/Target/RISCV/RISCVAssemblyPrinter.h"
 
+#include "RISCVAsmPrinter.h"
+#include "RISCVTargetObjectFile.h"
 #include "rcc/CodeGen/AsmPrinter.h"
 #include "rcc/CodeGen/CompilationUnit.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineMCContext.h"
+#include "rcc/IR/DataLayout.h"
 #include "rcc/MC/MCContext.h"
 #include "rcc/MC/MCStreamer.h"
 #include "rcc/Target/RISCV/RISCVMCTargetLowering.h"
+#include "rcc/Target/RISCV/RISCVTarget.h"
 
 #include <string>
+#include <utility>
 
 namespace rcc::riscv {
 namespace {
@@ -32,8 +37,13 @@ Expected<std::string> emitAssembly(const CompilationUnit &Unit, const TargetDesc
   mc::MCContext MCContext;
   MachineMCContext MachineContext(MCContext);
   RISCVMCTargetLowering Lowering(Target);
+  RISCVELFTargetObjectFile ObjectFile;
+  auto Layout = DataLayout::parse(TargetDataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
   mc::AsmTextStreamer Streamer(Lowering.instructionPrinter());
-  AsmPrinter Printer(Target, Lowering, MachineContext, Streamer, printerOptions(Options));
+  RISCVAsmPrinter Printer(Target, Lowering, ObjectFile, std::move(*Layout), MachineContext,
+                          Streamer, printerOptions(Options));
   auto Emitted = Printer.emitCompilationUnit(Unit);
   if (!Emitted)
     return std::unexpected(Emitted.error());
@@ -45,21 +55,16 @@ Expected<std::string> emitAssembly(const MachineFunction &Function, const Target
   mc::MCContext MCContext;
   MachineMCContext MachineContext(MCContext);
   RISCVMCTargetLowering Lowering(Target);
+  RISCVELFTargetObjectFile ObjectFile;
+  auto Layout = DataLayout::parse(TargetDataLayout);
+  if (!Layout)
+    return std::unexpected(Layout.error());
   mc::AsmTextStreamer Streamer(Lowering.instructionPrinter());
-  AsmPrinter Printer(Target, Lowering, MachineContext, Streamer, printerOptions(Options));
-
-  auto Header = Lowering.emitFileHeader(MachineContext, Streamer);
-  if (!Header)
-    return std::unexpected(Header.error());
+  RISCVAsmPrinter Printer(Target, Lowering, ObjectFile, std::move(*Layout), MachineContext,
+                          Streamer, printerOptions(Options));
   auto Emitted = Printer.emitFunction(Function);
   if (!Emitted)
     return std::unexpected(Emitted.error());
-  auto Trailer = Lowering.emitFileTrailer(MachineContext, Streamer);
-  if (!Trailer)
-    return std::unexpected(Trailer.error());
-  auto Finished = Streamer.finish();
-  if (!Finished)
-    return std::unexpected(Finished.error());
   return Streamer.takeOutput();
 }
 
