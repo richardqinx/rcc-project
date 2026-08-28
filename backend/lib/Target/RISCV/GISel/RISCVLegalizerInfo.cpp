@@ -756,7 +756,7 @@ Expected<void> RISCVLegalizerInfo::legalizeBRJT(MachineInstr &Instruction,
   }
 
   auto EntryType = LowLevelType::makeCategoryNeutralScalar(
-      static_cast<std::uint32_t>(Table->EntrySize) * std::uint32_t{8});
+      static_cast<std::uint64_t>(Table->EntrySize) * std::uint64_t{8});
   if (!EntryType)
     return std::unexpected(EntryType.error());
   auto EntryMemorySize = MemorySize::fixed(Table->EntrySize);
