@@ -586,9 +586,7 @@ public:
     case GenericOpcode::G_CONSTANT_FOLD_BARRIER:
     case GenericOpcode::G_PTRTOINT:
     case GenericOpcode::G_INTTOPTR:
-      return Instruction.setOpcode(opcode(GenericOpcode::COPY));
     case GenericOpcode::G_ANYEXT:
-      return Instruction.setOpcode(opcode(GenericOpcode::COPY));
     case GenericOpcode::G_TRUNC:
       return Instruction.setOpcode(opcode(GenericOpcode::COPY));
     case GenericOpcode::G_FCMP:
