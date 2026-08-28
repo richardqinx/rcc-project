@@ -139,7 +139,8 @@ struct MappingMutation final {
   auto OriginalInfo = Function.registerInfo().virtualRegisterInfo(OriginalReg);
   if (!OriginalInfo)
     return std::unexpected(OriginalInfo.error());
-  if (!OriginalInfo->get().Type) {
+  const std::optional<LowLevelType> &OriginalType = OriginalInfo->get().Type;
+  if (!OriginalType) {
     return makeUnexpected(ErrorCode::VerificationError,
                           "register-bank repair requires a virtual-register type");
   }
@@ -148,7 +149,7 @@ struct MappingMutation final {
                           "register-bank repair does not support subregister operands");
   }
 
-  auto Fresh = Function.registerInfo().createVirtualRegister(*OriginalInfo->get().Type);
+  auto Fresh = Function.registerInfo().createVirtualRegister(*OriginalType);
   if (!Fresh)
     return std::unexpected(Fresh.error());
   auto SetBank = Function.registerInfo().setRegisterBank(*Fresh, RequiredBank);
@@ -218,9 +219,10 @@ applyInstructionMappings(MachineFunction &Function, const TargetDescription &Tar
                             "target register-bank mapping has the wrong operand count");
     }
     for (std::size_t Index = 0; Index < Mapping->size(); ++Index) {
-      if (!(*Mapping)[Index])
+      const std::optional<RegisterBankID> &MappedBank = (*Mapping)[Index];
+      if (!MappedBank)
         continue;
-      const RegisterBankID RequiredBank = *Mapping->at(Index);
+      const RegisterBankID RequiredBank = *MappedBank;
       if (Target.registers().registerBank(RequiredBank) == nullptr) {
         return makeUnexpected(ErrorCode::InternalError,
                               "target instruction mapping names an unknown register bank");
@@ -234,7 +236,8 @@ applyInstructionMappings(MachineFunction &Function, const TargetDescription &Tar
       auto RegisterInfo = RegInfo.virtualRegisterInfo(*Reg);
       if (!RegisterInfo)
         return std::unexpected(RegisterInfo.error());
-      if (!RegisterInfo->get().Bank) {
+      const std::optional<RegisterBankID> &CurrentBank = RegisterInfo->get().Bank;
+      if (!CurrentBank) {
         auto SetBank = RegInfo.setRegisterBank(*Reg, RequiredBank);
         if (!SetBank)
           return std::unexpected(SetBank.error());
@@ -243,7 +246,7 @@ applyInstructionMappings(MachineFunction &Function, const TargetDescription &Tar
         Result.Changes.add(MachinePassChange::Registers);
         continue;
       }
-      if (*RegisterInfo->get().Bank == RequiredBank) {
+      if (*CurrentBank == RequiredBank) {
         ConstrainedRegisters.insert(*Reg);
         continue;
       }
