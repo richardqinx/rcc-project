@@ -38,6 +38,13 @@ public:
   void unite(const LiveRegUnits &Other);
   void subtract(const LiveRegUnits &Other);
 
+  [[nodiscard]] Expected<bool> available(PhysicalRegister Reg,
+                                         const TargetDescription &Target) const;
+  [[nodiscard]] static Expected<void> accumulateUsedDefed(const MachineInstr &Instruction,
+                                                          LiveRegUnits &Modified,
+                                                          LiveRegUnits &Used,
+                                                          const TargetDescription &Target);
+
   [[nodiscard]] const std::unordered_map<RegisterUnitID, LaneMask> &entries() const noexcept {
     return Values;
   }

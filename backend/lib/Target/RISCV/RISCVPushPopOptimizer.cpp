@@ -9,7 +9,6 @@
 #include "rcc/CodeGen/MachineIRBuilder.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
-#include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/Target/RISCV/RISCVRegisters.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
@@ -47,49 +46,6 @@ struct PushPopOpcodes final {
   return Contract;
 }
 
-[[nodiscard]] bool intersects(const LiveRegUnits &Left, const LiveRegUnits &Right) noexcept {
-  for (const auto &[Unit, Lanes] : Left.entries())
-    if (Right.intersects(Unit, Lanes))
-      return true;
-  return false;
-}
-
-[[nodiscard]] Expected<void> accumulateRegisterEffects(const MachineInstr &Instruction,
-                                                       const TargetDescription &Target,
-                                                       LiveRegUnits &Modified, LiveRegUnits &Used) {
-  for (const MachineOperand &Operand : Instruction.operands()) {
-    if (Operand.isDebugUse())
-      continue;
-    if (Operand.isRegister()) {
-      const std::optional<Register> Reg = Operand.registerValue();
-      if (!Reg || !Reg->isPhysical() || Reg->isNoRegister())
-        continue;
-      auto Units = physicalOperandUnits(Operand, Target);
-      if (!Units)
-        return std::unexpected(Units.error());
-      for (const PhysicalUnitAccess &Access : *Units) {
-        if (Operand.isDef())
-          Modified.add(Access.Unit, Access.Lanes);
-        if (Operand.isUse())
-          Used.add(Access.Unit, Access.Lanes);
-      }
-      continue;
-    }
-    if (const auto *Mask = Operand.getIf<RegisterMaskOperand>();
-        Mask != nullptr && Mask->Mask != nullptr) {
-      if (auto Added = addRegisterMaskDefs(Modified, *Mask->Mask, Target); !Added)
-        return std::unexpected(Added.error());
-      continue;
-    }
-    if (const auto *Mask = Operand.getIf<LiveOutRegisterMaskOperand>();
-        Mask != nullptr && Mask->Mask != nullptr) {
-      if (auto Added = addRegisterMaskUses(Used, *Mask->Mask, Target); !Added)
-        return std::unexpected(Added.error());
-    }
-  }
-  return {};
-}
-
 [[nodiscard]] MachineInstr *previousNonDebug(MachineInstr &Instruction) noexcept {
   MachineInstr *Previous = Instruction.previous();
   while (Previous != nullptr && Previous->isDebugInstr())
@@ -112,12 +68,6 @@ struct PushPopOpcodes final {
                                                         const TargetDescription &Target,
                                                         PhysicalRegister ReturnRegister,
                                                         PhysicalRegister ZeroRegister) {
-  const PhysicalRegisterDesc *ReturnDescription =
-      Target.registers().physicalRegister(ReturnRegister);
-  if (ReturnDescription == nullptr)
-    return makeUnexpected(ErrorCode::VerificationError,
-                          "RISC-V return register has no register-unit description");
-  const LiveRegUnits ReturnUnits = physicalRegisterCoverage(*ReturnDescription);
   LiveRegUnits Modified;
   LiveRegUnits Used;
   for (MachineInstr *Instruction = previousNonDebug(Pop); Instruction != nullptr;
@@ -132,11 +82,17 @@ struct PushPopOpcodes final {
         return true;
       }
     }
-    if (auto Accumulated = accumulateRegisterEffects(*Instruction, Target, Modified, Used);
+    if (auto Accumulated = LiveRegUnits::accumulateUsedDefed(*Instruction, Modified, Used, Target);
         !Accumulated) {
       return std::unexpected(Accumulated.error());
     }
-    if (intersects(Modified, ReturnUnits) || intersects(Used, ReturnUnits))
+    auto ModifiedAvailable = Modified.available(ReturnRegister, Target);
+    if (!ModifiedAvailable)
+      return std::unexpected(ModifiedAvailable.error());
+    auto UsedAvailable = Used.available(ReturnRegister, Target);
+    if (!UsedAvailable)
+      return std::unexpected(UsedAvailable.error());
+    if (!*ModifiedAvailable || !*UsedAvailable)
       return false;
   }
   return false;

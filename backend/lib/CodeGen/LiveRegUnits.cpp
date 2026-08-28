@@ -3,6 +3,7 @@
 #include "rcc/CodeGen/LiveRegUnits.h"
 
 #include "rcc/CodeGen/MachineFunction.h"
+#include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/CodeGen/TargetDescription.h"
@@ -275,6 +276,56 @@ void LiveRegUnits::unite(const LiveRegUnits &Other) {
 
 void LiveRegUnits::subtract(const LiveRegUnits &Other) {
   subtractLaneSets(Values, Other.Values);
+}
+
+[[nodiscard]] Expected<bool> LiveRegUnits::available(PhysicalRegister Reg,
+                                                     const TargetDescription &Target) const {
+  const PhysicalRegisterDesc *Description = Target.registers().physicalRegister(Reg);
+  if (Description == nullptr || Description->Units.empty()) {
+    return makeUnexpected(ErrorCode::VerificationError,
+                          "register availability query requires a physical register with units");
+  }
+  const LiveRegUnits Coverage = physicalRegisterCoverage(*Description);
+  return std::ranges::none_of(Coverage.entries(), [this](const auto &Entry) {
+    return intersects(Entry.first, Entry.second);
+  });
+}
+
+[[nodiscard]] Expected<void> LiveRegUnits::accumulateUsedDefed(const MachineInstr &Instruction,
+                                                               LiveRegUnits &Modified,
+                                                               LiveRegUnits &Used,
+                                                               const TargetDescription &Target) {
+  for (const MachineOperand &Operand : Instruction.operands()) {
+    if (Operand.isDebugUse())
+      continue;
+    if (Operand.isRegister()) {
+      const std::optional<Register> Reg = Operand.registerValue();
+      if (!Reg || !Reg->isPhysical() || Reg->isNoRegister())
+        continue;
+      auto Units = physicalOperandUnits(Operand, Target);
+      if (!Units)
+        return std::unexpected(Units.error());
+      for (const PhysicalUnitAccess &Access : *Units) {
+        if (Operand.isDef())
+          Modified.add(Access.Unit, Access.Lanes);
+        if (Operand.isUse())
+          Used.add(Access.Unit, Access.Lanes);
+      }
+      continue;
+    }
+    if (const auto *Mask = Operand.getIf<RegisterMaskOperand>();
+        Mask != nullptr && Mask->Mask != nullptr) {
+      if (auto Added = addRegisterMaskDefs(Modified, *Mask->Mask, Target); !Added)
+        return std::unexpected(Added.error());
+      continue;
+    }
+    if (const auto *Mask = Operand.getIf<LiveOutRegisterMaskOperand>();
+        Mask != nullptr && Mask->Mask != nullptr) {
+      if (auto Added = addRegisterMaskUses(Used, *Mask->Mask, Target); !Added)
+        return std::unexpected(Added.error());
+    }
+  }
+  return {};
 }
 
 } // namespace rcc

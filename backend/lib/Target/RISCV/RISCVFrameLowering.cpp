@@ -15,6 +15,7 @@
 #include "rcc/CodeGen/RegisterMask.h"
 #include "rcc/CodeGen/RegisterScavenger.h"
 #include "rcc/CodeGen/TargetDescription.h"
+#include "rcc/Target/RISCV/RISCVFunctionInfo.h"
 #include "rcc/Target/RISCV/RISCVInstructions.h"
 #include "rcc/Target/RISCV/RISCVRegisters.h"
 #include "rcc/Target/RISCV/RISCVTarget.h"
@@ -303,6 +304,12 @@ constexpr std::array SaveRestoreOrder{
     PhysicalRegisterID::X27,
 };
 
+struct ZcmpPushPopInfo final {
+  std::size_t RegisterCount = 0;
+  std::int64_t RegisterListEncoding = 0;
+  std::uint64_t FrameSize = 0;
+};
+
 [[nodiscard]] std::span<const PhysicalRegisterID> saveOrder(RISCVABI ABI) noexcept {
   return ABI == RISCVABI::LP64D ? std::span<const PhysicalRegisterID>(LP64DSaveOrder)
                                 : std::span<const PhysicalRegisterID>(LP64SaveOrder);
@@ -315,6 +322,64 @@ constexpr std::array SaveRestoreOrder{
       return Index;
   }
   return std::nullopt;
+}
+
+[[nodiscard]] bool zcmpPushPopAllowed(const MachineFunction &Function,
+                                      const RISCVSubtargetFeatures &Features) noexcept {
+  if (!Features.has(RISCVExtension::Zcmp) || requiresFramePointer(Function))
+    return false;
+  const auto *Info = Function.getTargetInfo<RISCVFunctionInfo>();
+  return Info == nullptr || Info->varArgsSaveSize() == 0;
+}
+
+[[nodiscard]] std::optional<ZcmpPushPopInfo>
+zcmpPushPopInfo(const MachineFunction &Function, std::span<const PhysicalRegister> SavedRegisters,
+                const RISCVSubtargetFeatures &Features) noexcept {
+  if (!zcmpPushPopAllowed(Function, Features))
+    return std::nullopt;
+  std::size_t RegisterCount = 0;
+  for (const PhysicalRegister Reg : SavedRegisters) {
+    const auto Index = saveRestoreRegisterIndex(Reg);
+    if (Index)
+      RegisterCount = std::max(RegisterCount, *Index + 1U);
+  }
+  if (RegisterCount == 0)
+    return std::nullopt;
+  if (RegisterCount == 12)
+    RegisterCount = 13;
+  const std::uint64_t Bytes = static_cast<std::uint64_t>(RegisterCount) * 8U;
+  return ZcmpPushPopInfo{
+      .RegisterCount = RegisterCount,
+      .RegisterListEncoding =
+          RegisterCount == 13 ? 15 : static_cast<std::int64_t>(RegisterCount + 3U),
+      .FrameSize = (Bytes + StackAlignmentBytes - 1U) & ~(StackAlignmentBytes - 1U),
+  };
+}
+
+[[nodiscard]] bool zcmpManagesRegister(const ZcmpPushPopInfo &Info, PhysicalRegister Reg) noexcept {
+  const auto Index = saveRestoreRegisterIndex(Reg);
+  return Index && *Index < Info.RegisterCount;
+}
+
+[[nodiscard]] Expected<void>
+completeZcmpRegisterList(const MachineFunction &Function, const RISCVSubtargetFeatures &Features,
+                         std::vector<PhysicalRegister> &SavedRegisters) {
+  if (!zcmpPushPopAllowed(Function, Features))
+    return {};
+  auto X26 = physicalRegister(PhysicalRegisterID::X26);
+  auto X27 = physicalRegister(PhysicalRegisterID::X27);
+  if (!X26 || !X27)
+    return std::unexpected(!X26 ? X26.error() : X27.error());
+  if (std::ranges::find(SavedRegisters, *X26) == SavedRegisters.end() ||
+      std::ranges::find(SavedRegisters, *X27) != SavedRegisters.end()) {
+    return {};
+  }
+  const auto Position = std::ranges::find_if(SavedRegisters, [](PhysicalRegister Reg) {
+    const auto Index = saveRestoreRegisterIndex(Reg);
+    return !Index;
+  });
+  SavedRegisters.insert(Position, *X27);
+  return {};
 }
 
 [[nodiscard]] std::optional<std::size_t>
@@ -1007,7 +1072,8 @@ emitAddImmediateAdjustment(MachineIRBuilder &Builder, PhysicalRegister Destinati
 
 [[nodiscard]] std::uint64_t firstSPAdjustAmount(const MachineFunction &Function,
                                                 const RISCVSubtargetFeatures &Features) noexcept {
-  if (saveRestoreFrameSize(Function.records().calleeSavedRegisters(), Features) != 0)
+  if (saveRestoreFrameSize(Function.records().calleeSavedRegisters(), Features) != 0 ||
+      zcmpPushPopInfo(Function, Function.records().calleeSavedRegisters(), Features))
     return 0;
   const std::uint64_t StackSize = Function.frameInfo().state().StackSize;
   if (StackSize <= static_cast<std::uint64_t>(MaxSigned12) ||
@@ -1170,7 +1236,8 @@ emitAddImmediateAdjustment(MachineIRBuilder &Builder, PhysicalRegister Destinati
 [[nodiscard]] Expected<void>
 validateCalleeSaveObjects(const MachineFunction &Function,
                           std::span<const PhysicalRegister> SavedRegisters, RISCVABI ABI,
-                          const RISCVSubtargetFeatures &Features) {
+                          const RISCVSubtargetFeatures &Features,
+                          const std::optional<ZcmpPushPopInfo> &ZcmpInfo = std::nullopt) {
   std::unordered_set<PhysicalRegister> Slots;
   for (const StackObject &Object : Function.frameInfo().objects()) {
     if (Object.isTombstone() || Object.description()->IsDead ||
@@ -1184,17 +1251,21 @@ validateCalleeSaveObjects(const MachineFunction &Function,
                             "RISC-V callee-save object names a caller-saved register");
     }
     const auto SaveRestoreIndex = saveRestoreRegisterIndex(Reg);
-    const bool ManagedByLibCall =
-        Features.has(RISCVSubtargetOption::SaveRestore) && SaveRestoreIndex.has_value();
-    const StackObjectKind ExpectedKind =
-        ManagedByLibCall ? StackObjectKind::FixedSpillSlot : StackObjectKind::CalleeSaved;
-    const std::optional<std::int64_t> ExpectedOffset =
-        ManagedByLibCall
-            ? std::optional<std::int64_t>{-static_cast<std::int64_t>(*SaveRestoreIndex + 1U) * 8}
-            : std::nullopt;
+    const bool ManagedByZcmp = ZcmpInfo && zcmpManagesRegister(*ZcmpInfo, Reg);
+    const bool ManagedByLibCall = !ZcmpInfo && Features.has(RISCVSubtargetOption::SaveRestore) &&
+                                  SaveRestoreIndex.has_value();
+    const StackObjectKind ExpectedKind = ManagedByZcmp || ManagedByLibCall
+                                             ? StackObjectKind::FixedSpillSlot
+                                             : StackObjectKind::CalleeSaved;
+    std::optional<std::int64_t> ExpectedOffset;
+    if (ManagedByZcmp) {
+      ExpectedOffset = -static_cast<std::int64_t>(ZcmpInfo->RegisterCount - *SaveRestoreIndex) * 8;
+    } else if (ManagedByLibCall) {
+      ExpectedOffset = -static_cast<std::int64_t>(*SaveRestoreIndex + 1U) * 8;
+    }
     if (Description.Kind != ExpectedKind || Description.Size != std::optional<std::uint64_t>{8} ||
         Description.Align.bytes() < 8 || Description.Stack != StackID::defaultStack() ||
-        (ManagedByLibCall && Description.Offset != ExpectedOffset)) {
+        ((ManagedByZcmp || ManagedByLibCall) && Description.Offset != ExpectedOffset)) {
       return makeUnexpected(ErrorCode::VerificationError,
                             "RISC-V callee-save object has an invalid kind, size, or alignment");
     }
@@ -1347,11 +1418,16 @@ public:
     auto SavedRegisters = modifiedCalleeSavedRegisters(Function, Target, Subtarget.targetABI());
     if (!SavedRegisters)
       return std::unexpected(SavedRegisters.error());
+    auto CompletedZcmpList =
+        completeZcmpRegisterList(Function, Subtarget.features(), *SavedRegisters);
+    if (!CompletedZcmpList)
+      return std::unexpected(CompletedZcmpList.error());
+    const auto ZcmpInfo = zcmpPushPopInfo(Function, *SavedRegisters, Subtarget.features());
     auto Records = Function.records().setCalleeSavedRegisters(*SavedRegisters);
     if (!Records)
       return std::unexpected(Records.error());
     auto ExistingSlots = validateCalleeSaveObjects(Function, *SavedRegisters, Subtarget.targetABI(),
-                                                   Subtarget.features());
+                                                   Subtarget.features(), ZcmpInfo);
     if (!ExistingSlots)
       return std::unexpected(ExistingSlots.error());
     auto Align8 = Alignment::create(8);
@@ -1363,52 +1439,59 @@ public:
         continue;
       StackObjectDesc Description;
       const auto SaveRestoreIndex = saveRestoreRegisterIndex(Reg);
-      const bool ManagedByLibCall =
-          Subtarget.features().has(RISCVSubtargetOption::SaveRestore) && SaveRestoreIndex;
-      Description.Kind =
-          ManagedByLibCall ? StackObjectKind::FixedSpillSlot : StackObjectKind::CalleeSaved;
+      const bool ManagedByZcmp = ZcmpInfo && zcmpManagesRegister(*ZcmpInfo, Reg);
+      const bool ManagedByLibCall = !ZcmpInfo &&
+                                    Subtarget.features().has(RISCVSubtargetOption::SaveRestore) &&
+                                    SaveRestoreIndex;
+      Description.Kind = ManagedByZcmp || ManagedByLibCall ? StackObjectKind::FixedSpillSlot
+                                                           : StackObjectKind::CalleeSaved;
       Description.Size = 8;
       Description.Align =
           ManagedByLibCall && (*SaveRestoreIndex + 1U) % 2U == 0 ? *Align16 : *Align8;
-      if (ManagedByLibCall)
+      if (ManagedByZcmp) {
+        Description.Offset =
+            -static_cast<std::int64_t>(ZcmpInfo->RegisterCount - *SaveRestoreIndex) * 8;
+      } else if (ManagedByLibCall) {
         Description.Offset = -static_cast<std::int64_t>(*SaveRestoreIndex + 1U) * 8;
+      }
       Description.CalleeSavedRegister = Reg;
       auto Created = Frame.createObject(std::move(Description));
       if (!Created)
         return std::unexpected(Created.error());
     }
-    const std::uint64_t LibCallFrameSize =
-        saveRestoreFrameSize(*SavedRegisters, Subtarget.features());
-    if (LibCallFrameSize != 0) {
+    const std::uint64_t ReservedFrameSize =
+        ZcmpInfo ? ZcmpInfo->FrameSize
+                 : saveRestoreFrameSize(*SavedRegisters, Subtarget.features());
+    if (ReservedFrameSize != 0) {
       const bool HasCoveringObject =
           std::ranges::any_of(Frame.objects(), [&](const StackObject &O) {
             const StackObjectDesc *Description = O.description();
             return Description != nullptr && !Description->IsDead &&
                    Description->Kind == StackObjectKind::FixedSpillSlot &&
                    !Description->CalleeSavedRegister &&
-                   Description->Size == std::optional<std::uint64_t>{LibCallFrameSize} &&
+                   Description->Size == std::optional<std::uint64_t>{ReservedFrameSize} &&
                    Description->Offset ==
-                       std::optional<std::int64_t>{-static_cast<std::int64_t>(LibCallFrameSize)};
+                       std::optional<std::int64_t>{-static_cast<std::int64_t>(ReservedFrameSize)};
           });
       if (!HasCoveringObject) {
         StackObjectDesc Description;
         Description.Kind = StackObjectKind::FixedSpillSlot;
-        Description.Size = LibCallFrameSize;
+        Description.Size = ReservedFrameSize;
         Description.Align = *Align16;
-        Description.Offset = -static_cast<std::int64_t>(LibCallFrameSize);
+        Description.Offset = -static_cast<std::int64_t>(ReservedFrameSize);
         auto Created = Frame.createObject(std::move(Description));
         if (!Created)
           return std::unexpected(Created.error());
       }
     }
     auto CompleteSlots = validateCalleeSaveObjects(Function, *SavedRegisters, Subtarget.targetABI(),
-                                                   Subtarget.features());
+                                                   Subtarget.features(), ZcmpInfo);
     if (!CompleteSlots)
       return std::unexpected(CompleteSlots.error());
 
     const bool ReserveCallFrame = hasReservedCallFrame(Function);
     auto StackSize =
-        layoutFrame(Function, ReserveCallFrame, LibCallFrameSize, Options.EmitDebugOutput);
+        layoutFrame(Function, ReserveCallFrame, ReservedFrameSize, Options.EmitDebugOutput);
     if (!StackSize)
       return std::unexpected(StackSize.error());
 
@@ -1460,18 +1543,18 @@ public:
       if (!Emergency)
         return std::unexpected(Emergency.error());
       StackSize =
-          layoutFrame(Function, ReserveCallFrame, LibCallFrameSize, Options.EmitDebugOutput);
+          layoutFrame(Function, ReserveCallFrame, ReservedFrameSize, Options.EmitDebugOutput);
       if (!StackSize)
         return std::unexpected(StackSize.error());
     }
 
     State = Frame.state();
     State.StackSize = *StackSize;
-    if (*StackSize < LibCallFrameSize) {
+    if (*StackSize < ReservedFrameSize) {
       return makeUnexpected(ErrorCode::InternalError,
-                            "RISC-V save/restore frame exceeds the complete frame");
+                            "RISC-V managed callee-save frame exceeds the complete frame");
     }
-    State.AdjustsStack = State.AdjustsStack || *StackSize != LibCallFrameSize;
+    State.AdjustsStack = State.AdjustsStack || *StackSize != 0;
     State.IsCalleeSavedInfoValid = true;
     State.SavePoints.clear();
     State.RestorePoints.clear();
@@ -1559,8 +1642,30 @@ public:
                          : SaveBuilder.setInsertPoint(*SaveBlock);
     if (!SavePoint)
       return std::unexpected(SavePoint.error());
-    const auto LibCallID = saveRestoreLibCallID(Saved, Subtarget.features());
-    if (LibCallID) {
+    const auto ZcmpInfo = zcmpPushPopInfo(Function, Saved, Subtarget.features());
+    const auto LibCallID =
+        ZcmpInfo ? std::nullopt : saveRestoreLibCallID(Saved, Subtarget.features());
+    if (ZcmpInfo) {
+      auto Pending = SaveBuilder.buildInstr(instructionOpcode(InstructionOpcode::CM_PUSH));
+      if (!Pending)
+        return std::unexpected(Pending.error());
+      if (auto Result = Pending->addImmediate(ZcmpInfo->RegisterListEncoding); !Result)
+        return std::unexpected(Result.error());
+      if (auto Result = Pending->addImmediate(0); !Result)
+        return std::unexpected(Result.error());
+      for (std::size_t Index = 0; Index < ZcmpInfo->RegisterCount; ++Index) {
+        auto Reg = physicalRegister(SaveRestoreOrder[Index]);
+        if (!Reg)
+          return std::unexpected(Reg.error());
+        if (auto Result = Pending->addImplicitUse(Register::fromPhysical(*Reg)); !Result)
+          return std::unexpected(Result.error());
+      }
+      if (auto Result = setFrameFlag(*Pending, MachineInstrFlag::FrameSetup); !Result)
+        return std::unexpected(Result.error());
+      auto Built = Pending->build();
+      if (!Built)
+        return std::unexpected(Built.error());
+    } else if (LibCallID) {
       auto Link = physicalRegister(PhysicalRegisterID::X5);
       auto SP = physicalRegister(PhysicalRegisterID::X2);
       if (!Link || !SP)
@@ -1591,6 +1696,8 @@ public:
         return std::unexpected(Built.error());
     }
     for (const PhysicalRegister Reg : Saved) {
+      if (ZcmpInfo && zcmpManagesRegister(*ZcmpInfo, Reg))
+        continue;
       if (LibCallID && saveRestoreRegisterIndex(Reg))
         continue;
       const auto Slot = calleeSaveSlot(Function, Reg);
@@ -1621,6 +1728,8 @@ public:
         const auto EmitRestore = [&](PhysicalRegister Reg) -> Expected<void> {
           if (!calleeSaveIsRestored(Function, Reg))
             return {};
+          if (ZcmpInfo && zcmpManagesRegister(*ZcmpInfo, Reg))
+            return {};
           if (LibCallID && saveRestoreRegisterIndex(Reg))
             return {};
           const auto Slot = calleeSaveSlot(Function, Reg);
@@ -1650,6 +1759,27 @@ public:
           if (!Loaded)
             return std::unexpected(Loaded.error());
         }
+        if (ZcmpInfo) {
+          auto Pending = RestoreBuilder.buildInstr(instructionOpcode(InstructionOpcode::CM_POP));
+          if (!Pending)
+            return std::unexpected(Pending.error());
+          if (auto Result = Pending->addImmediate(ZcmpInfo->RegisterListEncoding); !Result)
+            return std::unexpected(Result.error());
+          if (auto Result = Pending->addImmediate(0); !Result)
+            return std::unexpected(Result.error());
+          for (std::size_t Index = 0; Index < ZcmpInfo->RegisterCount; ++Index) {
+            auto Reg = physicalRegister(SaveRestoreOrder[Index]);
+            if (!Reg)
+              return std::unexpected(Reg.error());
+            if (auto Result = Pending->addImplicitDef(Register::fromPhysical(*Reg)); !Result)
+              return std::unexpected(Result.error());
+          }
+          if (auto Result = setFrameFlag(*Pending, MachineInstrFlag::FrameDestroy); !Result)
+            return std::unexpected(Result.error());
+          auto Built = Pending->build();
+          if (!Built)
+            return std::unexpected(Built.error());
+        }
       }
     }
     return {};
@@ -1668,9 +1798,13 @@ public:
                                                         : Object.description()->Offset);
     }
     const std::uint64_t PreliminarySize = Frame.state().StackSize;
-    const std::uint64_t LibCallFrameSize =
-        saveRestoreFrameSize(Function.records().calleeSavedRegisters(), Subtarget.features());
-    auto StackSize = layoutFrame(Function, hasReservedCallFrame(Function), LibCallFrameSize);
+    const auto ZcmpInfo =
+        zcmpPushPopInfo(Function, Function.records().calleeSavedRegisters(), Subtarget.features());
+    const std::uint64_t ReservedFrameSize =
+        ZcmpInfo
+            ? ZcmpInfo->FrameSize
+            : saveRestoreFrameSize(Function.records().calleeSavedRegisters(), Subtarget.features());
+    auto StackSize = layoutFrame(Function, hasReservedCallFrame(Function), ReservedFrameSize);
     if (!StackSize)
       return std::unexpected(StackSize.error());
     if (*StackSize != PreliminarySize || Frame.objects().size() != PreliminaryOffsets.size()) {
@@ -1730,17 +1864,36 @@ public:
         calleeSaveOperations(*SaveBlock, Function, false);
     const std::span<const PhysicalRegister> SavedRegisters =
         Function.records().calleeSavedRegisters();
-    const auto LibCallID = saveRestoreLibCallID(SavedRegisters, Subtarget.features());
+    const auto ZcmpInfo = zcmpPushPopInfo(Function, SavedRegisters, Subtarget.features());
+    const auto LibCallID =
+        ZcmpInfo ? std::nullopt : saveRestoreLibCallID(SavedRegisters, Subtarget.features());
     const std::size_t ManualSaveCount =
         static_cast<std::size_t>(std::ranges::count_if(SavedRegisters, [&](PhysicalRegister Reg) {
-          return !LibCallID || !saveRestoreRegisterIndex(Reg);
+          return (!ZcmpInfo || !zcmpManagesRegister(*ZcmpInfo, Reg)) &&
+                 (!LibCallID || !saveRestoreRegisterIndex(Reg));
         }));
     if (Saves.size() != ManualSaveCount) {
       return makeUnexpected(ErrorCode::InternalError,
                             "RISC-V prologue has an incomplete callee-save sequence");
     }
+    MachineInstr *Push = nullptr;
     MachineInstr *SpillLibCall = nullptr;
-    if (LibCallID) {
+    if (ZcmpInfo) {
+      for (MachineInstr *Instruction = SaveBlock->firstInstruction(); Instruction != nullptr;
+           Instruction = Instruction->next()) {
+        if (Instruction->opcode() == instructionOpcode(InstructionOpcode::CM_PUSH) &&
+            Instruction->flags().has(MachineInstrFlag::FrameSetup)) {
+          if (Push != nullptr) {
+            return makeUnexpected(ErrorCode::InternalError,
+                                  "RISC-V prologue has duplicate Zcmp pushes");
+          }
+          Push = Instruction;
+        }
+      }
+      if (Push == nullptr) {
+        return makeUnexpected(ErrorCode::InternalError, "RISC-V prologue is missing its Zcmp push");
+      }
+    } else if (LibCallID) {
       for (MachineInstr *Instruction = SaveBlock->firstInstruction(); Instruction != nullptr;
            Instruction = Instruction->next()) {
         if (Instruction->opcode() == instructionOpcode(InstructionOpcode::PseudoCALLReg) &&
@@ -1759,10 +1912,11 @@ public:
     }
     MachineInstr *Anchor = SaveBlock->firstInstruction();
     MachineIRBuilder Builder(Function, Target);
-    auto Point = SpillLibCall != nullptr
-                     ? Builder.setInsertPointAfter(*SpillLibCall)
-                     : (Anchor != nullptr ? Builder.setInsertPointBefore(*Anchor)
-                                          : Builder.setInsertPoint(*SaveBlock));
+    auto Point = Push != nullptr ? Builder.setInsertPointAfter(*Push)
+                                 : (SpillLibCall != nullptr
+                                        ? Builder.setInsertPointAfter(*SpillLibCall)
+                                        : (Anchor != nullptr ? Builder.setInsertPointBefore(*Anchor)
+                                                             : Builder.setInsertPoint(*SaveBlock)));
     if (!Point)
       return std::unexpected(Point.error());
 
@@ -1779,18 +1933,32 @@ public:
     }
     PhysicalRegister Temporary = *DefaultTemporary;
     std::optional<ScavengedRegister> Scratch;
-    const std::uint64_t LibCallFrameSize =
-        saveRestoreFrameSize(SavedRegisters, Subtarget.features());
-    if (StackSize < LibCallFrameSize) {
+    const std::uint64_t BaseReservedFrameSize =
+        ZcmpInfo ? ZcmpInfo->FrameSize : saveRestoreFrameSize(SavedRegisters, Subtarget.features());
+    if (StackSize < BaseReservedFrameSize) {
       return makeUnexpected(ErrorCode::InternalError,
-                            "RISC-V save/restore frame exceeds the complete frame");
+                            "RISC-V managed callee-save frame exceeds the complete frame");
     }
-    const std::uint64_t ManagedStackSize = StackSize - LibCallFrameSize;
+    std::uint64_t ZcmpExtraAdjustment = 0;
+    if (Push != nullptr) {
+      ZcmpExtraAdjustment =
+          std::min((StackSize - BaseReservedFrameSize) & ~std::uint64_t{15}, std::uint64_t{48});
+      MachineOperand *Adjustment = Push->operandAt(1);
+      if (Adjustment == nullptr) {
+        return makeUnexpected(ErrorCode::InternalError,
+                              "RISC-V Zcmp push lacks its stack adjustment");
+      }
+      auto SetAdjustment = Adjustment->setImmediate(static_cast<std::int64_t>(ZcmpExtraAdjustment));
+      if (!SetAdjustment)
+        return std::unexpected(SetAdjustment.error());
+    }
+    const std::uint64_t ReservedFrameSize = BaseReservedFrameSize + ZcmpExtraAdjustment;
+    const std::uint64_t ManagedStackSize = StackSize - ReservedFrameSize;
     const std::uint64_t FirstAdjustment = firstSPAdjustAmount(Function, Subtarget.features());
     const std::uint64_t InitialAllocation =
         FirstAdjustment == 0 ? ManagedStackSize : FirstAdjustment;
     const std::uint64_t SecondAdjustment = ManagedStackSize - InitialAllocation;
-    const std::uint64_t FramePointerAdjustment = LibCallFrameSize + InitialAllocation;
+    const std::uint64_t FramePointerAdjustment = ReservedFrameSize + InitialAllocation;
     const std::int64_t InitialAmount = -static_cast<std::int64_t>(InitialAllocation);
     const std::int64_t SecondAmount = -static_cast<std::int64_t>(SecondAdjustment);
     const std::int64_t AlignmentMask = std::bit_cast<std::int64_t>(~(StackAlignment - 1U));
@@ -1816,8 +1984,26 @@ public:
       }
     }
 
-    if (LibCallFrameSize != 0) {
-      auto CFA = emitDefCFAOffset(Builder, static_cast<std::int64_t>(LibCallFrameSize),
+    if (ZcmpInfo) {
+      auto CFA = emitDefCFAOffset(Builder, static_cast<std::int64_t>(ReservedFrameSize),
+                                  MachineInstrFlag::FrameSetup);
+      if (!CFA)
+        return std::unexpected(CFA.error());
+      for (const PhysicalRegister Reg : SavedRegisters) {
+        if (!zcmpManagesRegister(*ZcmpInfo, Reg))
+          continue;
+        const auto Slot = calleeSaveSlot(Function, Reg);
+        const StackObject *Object = Slot ? Function.frameInfo().object(*Slot) : nullptr;
+        if (Object == nullptr || !Object->description()->Offset) {
+          return makeUnexpected(ErrorCode::InternalError, "RISC-V Zcmp stack slot is incomplete");
+        }
+        auto Saved = emitSavedRegisterCFI(Builder, Target, Reg, *Object->description()->Offset,
+                                          MachineInstrFlag::FrameSetup);
+        if (!Saved)
+          return std::unexpected(Saved.error());
+      }
+    } else if (BaseReservedFrameSize != 0) {
+      auto CFA = emitDefCFAOffset(Builder, static_cast<std::int64_t>(BaseReservedFrameSize),
                                   MachineInstrFlag::FrameSetup);
       if (!CFA)
         return std::unexpected(CFA.error());
@@ -1864,7 +2050,7 @@ public:
       }
       if (!Realign) {
         auto CFA =
-            emitDefCFAOffset(Builder, static_cast<std::int64_t>(LibCallFrameSize + AllocationSize),
+            emitDefCFAOffset(Builder, static_cast<std::int64_t>(ReservedFrameSize + AllocationSize),
                              MachineInstrFlag::FrameSetup);
         if (!CFA)
           return std::unexpected(CFA.error());
@@ -2089,21 +2275,54 @@ public:
     const bool Realign = requiresStackRealignment(Function);
     const std::span<const PhysicalRegister> SavedRegisters =
         Function.records().calleeSavedRegisters();
-    const auto LibCallID = saveRestoreLibCallID(SavedRegisters, Subtarget.features());
-    const std::uint64_t LibCallFrameSize =
-        saveRestoreFrameSize(SavedRegisters, Subtarget.features());
-    const std::uint64_t TotalStackSize = Function.frameInfo().state().StackSize;
-    if (TotalStackSize < LibCallFrameSize) {
-      return makeUnexpected(ErrorCode::InternalError,
-                            "RISC-V save/restore frame exceeds the complete frame");
+    const auto ZcmpInfo = zcmpPushPopInfo(Function, SavedRegisters, Subtarget.features());
+    const auto LibCallID =
+        ZcmpInfo ? std::nullopt : saveRestoreLibCallID(SavedRegisters, Subtarget.features());
+    MachineInstr *Pop = nullptr;
+    if (ZcmpInfo) {
+      for (MachineInstr *Instruction = Block.firstInstruction(); Instruction != nullptr;
+           Instruction = Instruction->next()) {
+        if (Instruction->opcode() == instructionOpcode(InstructionOpcode::CM_POP) &&
+            Instruction->flags().has(MachineInstrFlag::FrameDestroy)) {
+          if (Pop != nullptr) {
+            return makeUnexpected(ErrorCode::InternalError,
+                                  "RISC-V epilogue has duplicate Zcmp pops");
+          }
+          Pop = Instruction;
+        }
+      }
+      if (Pop == nullptr) {
+        return makeUnexpected(ErrorCode::InternalError, "RISC-V epilogue is missing its Zcmp pop");
+      }
     }
-    const std::uint64_t StackSize = TotalStackSize - LibCallFrameSize;
+    const std::uint64_t BaseReservedFrameSize =
+        ZcmpInfo ? ZcmpInfo->FrameSize : saveRestoreFrameSize(SavedRegisters, Subtarget.features());
+    const std::uint64_t TotalStackSize = Function.frameInfo().state().StackSize;
+    if (TotalStackSize < BaseReservedFrameSize) {
+      return makeUnexpected(ErrorCode::InternalError,
+                            "RISC-V managed callee-save frame exceeds the complete frame");
+    }
+    std::uint64_t ZcmpExtraAdjustment = 0;
+    if (Pop != nullptr) {
+      ZcmpExtraAdjustment = std::min((TotalStackSize - BaseReservedFrameSize) & ~std::uint64_t{15},
+                                     std::uint64_t{48});
+      MachineOperand *Adjustment = Pop->operandAt(1);
+      if (Adjustment == nullptr) {
+        return makeUnexpected(ErrorCode::InternalError,
+                              "RISC-V Zcmp pop lacks its stack adjustment");
+      }
+      auto SetAdjustment = Adjustment->setImmediate(static_cast<std::int64_t>(ZcmpExtraAdjustment));
+      if (!SetAdjustment)
+        return std::unexpected(SetAdjustment.error());
+    }
+    const std::uint64_t ReservedFrameSize = BaseReservedFrameSize + ZcmpExtraAdjustment;
+    const std::uint64_t StackSize = TotalStackSize - ReservedFrameSize;
 
     const std::vector<CalleeSaveOperation> BlockRestores =
         calleeSaveOperations(Block, Function, true);
     std::vector<CalleeSaveOperation> Restores;
-    for (MachineInstr *Cursor = Terminator.previous(); Cursor != nullptr;
-         Cursor = Cursor->previous()) {
+    for (MachineInstr *Cursor = Pop != nullptr ? Pop->previous() : Terminator.previous();
+         Cursor != nullptr; Cursor = Cursor->previous()) {
       const auto Position =
           std::ranges::find(BlockRestores, Cursor, &CalleeSaveOperation::Instruction);
       if (Position == BlockRestores.end())
@@ -2114,6 +2333,7 @@ public:
     const std::size_t ExpectedRestores =
         static_cast<std::size_t>(std::ranges::count_if(SavedRegisters, [&](PhysicalRegister Reg) {
           return calleeSaveIsRestored(Function, Reg) &&
+                 (!ZcmpInfo || !zcmpManagesRegister(*ZcmpInfo, Reg)) &&
                  (!LibCallID || !saveRestoreRegisterIndex(Reg));
         }));
     if (Restores.size() != ExpectedRestores) {
@@ -2222,7 +2442,8 @@ public:
         return makeUnexpected(ErrorCode::FrameLayoutFailed,
                               "RISC-V stack adjustment exceeds int64");
       MachineIRBuilder Teardown(Function, Target);
-      auto Point = Teardown.setInsertPointBefore(Terminator);
+      MachineInstr &DeallocationAnchor = Pop != nullptr ? *Pop : Terminator;
+      auto Point = Teardown.setInsertPointBefore(DeallocationAnchor);
       if (!Point)
         return std::unexpected(Point.error());
       const std::int64_t Amount = static_cast<std::int64_t>(StackSize);
@@ -2236,7 +2457,7 @@ public:
         auto Zero = physicalRegister(PhysicalRegisterID::X0);
         if (!Candidates || !Zero)
           return std::unexpected(!Candidates ? Candidates.error() : Zero.error());
-        auto Scratch = Scavenger.scavenge(Terminator, *Candidates);
+        auto Scratch = Scavenger.scavenge(DeallocationAnchor, *Candidates);
         if (!Scratch)
           return std::unexpected(Scratch.error());
         if (Scratch->RequiresSpill) {
@@ -2252,7 +2473,8 @@ public:
         if (!Adjust)
           return std::unexpected(Adjust.error());
       }
-      auto CFA = emitDefCFAOffset(Teardown, 0, MachineInstrFlag::FrameDestroy);
+      auto CFA = emitDefCFAOffset(Teardown, static_cast<std::int64_t>(ReservedFrameSize),
+                                  MachineInstrFlag::FrameDestroy);
       if (!CFA)
         return std::unexpected(CFA.error());
     }

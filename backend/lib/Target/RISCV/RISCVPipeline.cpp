@@ -102,6 +102,15 @@ template <typename PassT, typename... ArgumentT>
   return addPass<VirtualRegisterRewritePass>(Pipeline);
 }
 
+[[nodiscard]] MachineFunctionPassManager::PassList
+postRAPseudoExpansionPasses(const RISCVSubtarget &Subtarget) {
+  MachineFunctionPassManager::PassList Passes;
+  Passes.push_back(createMakeCompressiblePass(Subtarget));
+  Passes.push_back(createMoveMergePass(Subtarget));
+  Passes.push_back(createPushPopOptimizationPass(Subtarget));
+  return Passes;
+}
+
 [[nodiscard]] Expected<void> addCompleteRegistry(MachineFunctionPassManager &Pipeline,
                                                  const RISCVSubtarget &Subtarget,
                                                  TargetPipelineOptions Options) {
@@ -123,13 +132,7 @@ template <typename PassT, typename... ArgumentT>
                                Options.DebugPrologueEpilogue),
       MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
                                              Options.UseTargetCopyInstructions},
-      createPushPopOptimizationPass(Subtarget));
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = Pipeline.addPass(createMakeCompressiblePass(Subtarget));
-  if (!Added)
-    return std::unexpected(Added.error());
-  Added = Pipeline.addPass(createMoveMergePass(Subtarget));
+      postRAPseudoExpansionPasses(Subtarget));
   if (!Added)
     return std::unexpected(Added.error());
   return addPass<CFIInstrInserterPass>(Pipeline, Subtarget.frameLowering());
@@ -198,15 +201,10 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
                                  Options.DebugPrologueEpilogue),
         MachineOptimizationPipelineOptions{.UseTargetCopyInstructions =
                                                Options.UseTargetCopyInstructions},
-        createPushPopOptimizationPass(Subtarget));
+        postRAPseudoExpansionPasses(Subtarget));
     if (!Added)
       return std::unexpected(Added.error());
   }
-  auto Added = Pipeline.addPass(createMakeCompressiblePass(Subtarget));
-  if (!Added)
-    return std::unexpected(Added.error());
-  if (Subtarget.features().has(RISCVExtension::Zcmp))
-    return Pipeline.addPass(createMoveMergePass(Subtarget));
   return {};
 }
 

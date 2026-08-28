@@ -46,7 +46,7 @@ addSelectedSSAOptimizationPipeline(MachineFunctionPassManager &Pipeline,
 [[nodiscard]] Expected<void> addPostRegisterAllocationPipeline(
     MachineFunctionPassManager &Pipeline, const MachineOptimizationPipelineTargetInfo &TargetInfo,
     MachineOptimizationPipelineOptions Options = {},
-    std::unique_ptr<MachineFunctionPass> PostRAPseudoExpansionTargetPass = nullptr);
+    MachineFunctionPassManager::PassList PostRAPseudoExpansionTargetPasses = {});
 
 } // namespace rcc
 

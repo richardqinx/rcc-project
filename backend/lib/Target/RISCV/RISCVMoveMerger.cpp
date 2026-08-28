@@ -2,6 +2,7 @@
 
 #include "RISCV.h"
 #include "RISCVInstrInfo.h"
+#include "rcc/CodeGen/LiveRegUnits.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
 #include "rcc/CodeGen/MachineIRBuilder.h"
@@ -79,86 +80,68 @@ struct CopyOperands final {
          isSavedRegister(Copy.DestinationPhysical, Target);
 }
 
-[[nodiscard]] bool operandOverlaps(const MachineOperand &Operand, PhysicalRegister RegisterValue,
-                                   const TargetDescription &Target) noexcept {
-  auto OperandRegister = Operand.registerValue();
-  if (!OperandRegister)
-    return false;
-  auto OperandPhysical = OperandRegister->physicalRegister();
-  return OperandPhysical && Target.registers().regsOverlap(*OperandPhysical, RegisterValue);
-}
-
-[[nodiscard]] bool instructionDefines(const MachineInstr &Instruction,
-                                      PhysicalRegister RegisterValue,
-                                      const TargetDescription &Target) noexcept {
-  for (const MachineOperand &Operand : Instruction.operands()) {
-    if (Operand.isDef() && operandOverlaps(Operand, RegisterValue, Target))
-      return true;
-  }
-  return false;
-}
-
-[[nodiscard]] bool instructionUses(const MachineInstr &Instruction, PhysicalRegister RegisterValue,
-                                   const TargetDescription &Target) noexcept {
-  for (const MachineOperand &Operand : Instruction.operands()) {
-    if (Operand.isUse() && !Operand.isDebugUse() && operandOverlaps(Operand, RegisterValue, Target))
-      return true;
-  }
-  return false;
-}
-
-[[nodiscard]] bool hasHazard(MachineInstr &First, MachineInstr &Second,
-                             const CopyOperands &SecondCopy,
-                             const TargetDescription &Target) noexcept {
+[[nodiscard]] Expected<bool> isReadBetween(MachineInstr &First, MachineInstr &Second,
+                                           PhysicalRegister RegisterValue,
+                                           const TargetDescription &Target) {
+  LiveRegUnits Modified;
+  LiveRegUnits Used;
   for (MachineInstr *Instruction = First.next(); Instruction != &Second;
        Instruction = Instruction->next()) {
     if (Instruction == nullptr)
-      return true;
+      return makeUnexpected(ErrorCode::InternalError,
+                            "RISC-V move pair is not in one machine basic block");
     if (Instruction->isDebugInstr())
       continue;
-    if (instructionDefines(*Instruction, SecondCopy.DestinationPhysical, Target) ||
-        instructionUses(*Instruction, SecondCopy.DestinationPhysical, Target) ||
-        instructionDefines(*Instruction, SecondCopy.SourcePhysical, Target)) {
-      return true;
+    if (auto Accumulated = LiveRegUnits::accumulateUsedDefed(*Instruction, Modified, Used, Target);
+        !Accumulated) {
+      return std::unexpected(Accumulated.error());
     }
   }
-  return false;
+  auto Available = Used.available(RegisterValue, Target);
+  if (!Available)
+    return std::unexpected(Available.error());
+  return !*Available;
 }
 
-[[nodiscard]] bool isReadBetween(MachineInstr &First, MachineInstr &Second,
-                                 PhysicalRegister RegisterValue,
-                                 const TargetDescription &Target) noexcept {
-  for (MachineInstr *Instruction = First.next(); Instruction != &Second;
-       Instruction = Instruction->next()) {
-    if (Instruction == nullptr)
-      return true;
-    if (!Instruction->isDebugInstr() && instructionUses(*Instruction, RegisterValue, Target))
-      return true;
-  }
-  return false;
-}
-
-[[nodiscard]] MachineInstr *findMatchingCopy(MachineInstr &First, const CopyOperands &FirstCopy,
-                                             bool MoveFromSavedToArgument,
-                                             const TargetDescription &Target) noexcept {
+[[nodiscard]] Expected<MachineInstr *> findMatchingCopy(MachineInstr &First,
+                                                        const CopyOperands &FirstCopy,
+                                                        bool MoveFromSavedToArgument,
+                                                        const TargetDescription &Target) {
+  LiveRegUnits Modified;
+  LiveRegUnits Used;
   for (MachineInstr *Instruction = First.next(); Instruction != nullptr;
        Instruction = Instruction->next()) {
     if (Instruction->isDebugInstr())
       continue;
     auto SecondCopy = copyOperands(*Instruction);
-    if (!SecondCopy)
-      continue;
-    const bool Candidate = MoveFromSavedToArgument ? isMoveFromSavedToArgument(*SecondCopy, Target)
-                                                   : isMoveFromArgumentToSaved(*SecondCopy, Target);
-    if (!Candidate)
-      continue;
-    if (FirstCopy.DestinationPhysical == SecondCopy->DestinationPhysical)
-      return nullptr;
-    if (!MoveFromSavedToArgument && FirstCopy.SourcePhysical == SecondCopy->SourcePhysical)
-      return nullptr;
-    if (hasHazard(First, *Instruction, *SecondCopy, Target))
-      return nullptr;
-    return Instruction;
+    if (SecondCopy) {
+      const bool Candidate = MoveFromSavedToArgument
+                                 ? isMoveFromSavedToArgument(*SecondCopy, Target)
+                                 : isMoveFromArgumentToSaved(*SecondCopy, Target);
+      if (Candidate) {
+        if (FirstCopy.DestinationPhysical == SecondCopy->DestinationPhysical)
+          return nullptr;
+        if (!MoveFromSavedToArgument && FirstCopy.SourcePhysical == SecondCopy->SourcePhysical) {
+          return nullptr;
+        }
+        auto DestinationNotModified = Modified.available(SecondCopy->DestinationPhysical, Target);
+        if (!DestinationNotModified)
+          return std::unexpected(DestinationNotModified.error());
+        auto DestinationNotUsed = Used.available(SecondCopy->DestinationPhysical, Target);
+        if (!DestinationNotUsed)
+          return std::unexpected(DestinationNotUsed.error());
+        auto SourceNotModified = Modified.available(SecondCopy->SourcePhysical, Target);
+        if (!SourceNotModified)
+          return std::unexpected(SourceNotModified.error());
+        if (!*DestinationNotModified || !*DestinationNotUsed || !*SourceNotModified)
+          return nullptr;
+        return Instruction;
+      }
+    }
+    if (auto Accumulated = LiveRegUnits::accumulateUsedDefed(*Instruction, Modified, Used, Target);
+        !Accumulated) {
+      return std::unexpected(Accumulated.error());
+    }
   }
   return nullptr;
 }
@@ -178,17 +161,23 @@ struct CopyOperands final {
       MoveFromSavedToArgument ? FirstCopy->Source : FirstCopy->Destination;
   MachineOperand *SecondOperand =
       MoveFromSavedToArgument ? SecondCopy->Source : SecondCopy->Destination;
+  RegisterOperandFlags PairedSourceFlags = SecondCopy->Source->registerFlags();
+  if (MoveFromSavedToArgument && PairedSourceFlags.has(RegisterOperandFlag::Kill)) {
+    auto ReadBetween = isReadBetween(First, Second, SecondCopy->SourcePhysical, Target);
+    if (!ReadBetween)
+      return std::unexpected(ReadBetween.error());
+    if (*ReadBetween)
+      PairedSourceFlags.clear(RegisterOperandFlag::Kill);
+  }
   if (MoveFromSavedToArgument ? !isRegister(FirstCopy->DestinationPhysical, PhysicalRegisterID::X10)
                               : !isRegister(FirstCopy->SourcePhysical, PhysicalRegisterID::X10)) {
     std::swap(FirstOperand, SecondOperand);
   }
 
-  RegisterOperandFlags FirstFlags = FirstOperand->registerFlags();
-  RegisterOperandFlags SecondFlags = SecondOperand->registerFlags();
-  if (MoveFromSavedToArgument && SecondFlags.has(RegisterOperandFlag::Kill) &&
-      isReadBetween(First, Second, *SecondOperand->registerValue()->physicalRegister(), Target)) {
-    SecondFlags.clear(RegisterOperandFlag::Kill);
-  }
+  const RegisterOperandFlags FirstFlags =
+      FirstOperand == SecondCopy->Source ? PairedSourceFlags : FirstOperand->registerFlags();
+  const RegisterOperandFlags SecondFlags =
+      SecondOperand == SecondCopy->Source ? PairedSourceFlags : SecondOperand->registerFlags();
 
   MachineIRBuilder Builder(Function, Target);
   auto InsertPoint = Builder.setInsertPointBefore(First);
@@ -199,6 +188,10 @@ struct CopyOperands final {
   auto Pending = Builder.buildInstr(instructionOpcode(Opcode));
   if (!Pending)
     return std::unexpected(Pending.error());
+  if (First.debugLocation()) {
+    if (auto Location = Pending->setDebugLocation(*First.debugLocation()); !Location)
+      return std::unexpected(Location.error());
+  }
   Expected<void> Added = MoveFromSavedToArgument
                              ? Pending->addUse(*FirstOperand->registerValue(), FirstFlags)
                              : Pending->addDef(*FirstOperand->registerValue(), FirstFlags);
@@ -231,24 +224,26 @@ struct CopyOperands final {
       Instruction = Next;
       continue;
     }
-    MachineInstr *Paired =
-        findMatchingCopy(*Instruction, *FirstCopy, MoveFromSavedToArgument, Target);
-    if (Paired == nullptr) {
+    auto Paired = findMatchingCopy(*Instruction, *FirstCopy, MoveFromSavedToArgument, Target);
+    if (!Paired)
+      return std::unexpected(Paired.error());
+    if (*Paired == nullptr) {
       Instruction = Next;
       continue;
     }
-    MachineInstr *AfterPair = Paired->next();
-    auto Merged = mergeCopies(Function, *Instruction, *Paired, MoveFromSavedToArgument, Target);
+    const bool Adjacent = Next == *Paired;
+    MachineInstr *AfterPair = (*Paired)->next();
+    auto Merged = mergeCopies(Function, *Instruction, **Paired, MoveFromSavedToArgument, Target);
     if (!Merged)
       return std::unexpected(Merged.error());
     auto RemovedFirst = Instruction->eraseFromParent();
     if (!RemovedFirst)
       return std::unexpected(RemovedFirst.error());
-    auto RemovedPaired = Paired->eraseFromParent();
+    auto RemovedPaired = (*Paired)->eraseFromParent();
     if (!RemovedPaired)
       return std::unexpected(RemovedPaired.error());
     Changed = true;
-    Instruction = Next == Paired ? AfterPair : Next;
+    Instruction = Adjacent ? AfterPair : Next;
   }
   return Changed;
 }
