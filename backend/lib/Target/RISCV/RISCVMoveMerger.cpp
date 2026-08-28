@@ -161,6 +161,10 @@ struct CopyOperands final {
       MoveFromSavedToArgument ? FirstCopy->Source : FirstCopy->Destination;
   MachineOperand *SecondOperand =
       MoveFromSavedToArgument ? SecondCopy->Source : SecondCopy->Destination;
+  Register FirstRegister =
+      MoveFromSavedToArgument ? FirstCopy->SourceRegister : FirstCopy->DestinationRegister;
+  Register SecondRegister =
+      MoveFromSavedToArgument ? SecondCopy->SourceRegister : SecondCopy->DestinationRegister;
   RegisterOperandFlags PairedSourceFlags = SecondCopy->Source->registerFlags();
   if (MoveFromSavedToArgument && PairedSourceFlags.has(RegisterOperandFlag::Kill)) {
     auto ReadBetween = isReadBetween(First, Second, SecondCopy->SourcePhysical, Target);
@@ -172,6 +176,7 @@ struct CopyOperands final {
   if (MoveFromSavedToArgument ? !isRegister(FirstCopy->DestinationPhysical, PhysicalRegisterID::X10)
                               : !isRegister(FirstCopy->SourcePhysical, PhysicalRegisterID::X10)) {
     std::swap(FirstOperand, SecondOperand);
+    std::swap(FirstRegister, SecondRegister);
   }
 
   const RegisterOperandFlags FirstFlags =
@@ -192,13 +197,12 @@ struct CopyOperands final {
     if (auto Location = Pending->setDebugLocation(*First.debugLocation()); !Location)
       return std::unexpected(Location.error());
   }
-  Expected<void> Added = MoveFromSavedToArgument
-                             ? Pending->addUse(*FirstOperand->registerValue(), FirstFlags)
-                             : Pending->addDef(*FirstOperand->registerValue(), FirstFlags);
+  Expected<void> Added = MoveFromSavedToArgument ? Pending->addUse(FirstRegister, FirstFlags)
+                                                 : Pending->addDef(FirstRegister, FirstFlags);
   if (!Added)
     return std::unexpected(Added.error());
-  Added = MoveFromSavedToArgument ? Pending->addUse(*SecondOperand->registerValue(), SecondFlags)
-                                  : Pending->addDef(*SecondOperand->registerValue(), SecondFlags);
+  Added = MoveFromSavedToArgument ? Pending->addUse(SecondRegister, SecondFlags)
+                                  : Pending->addDef(SecondRegister, SecondFlags);
   if (!Added)
     return std::unexpected(Added.error());
   return Pending->build();
