@@ -1251,16 +1251,17 @@ validateCalleeSaveObjects(const MachineFunction &Function,
                             "RISC-V callee-save object names a caller-saved register");
     }
     const auto SaveRestoreIndex = saveRestoreRegisterIndex(Reg);
-    const bool ManagedByZcmp = ZcmpInfo && zcmpManagesRegister(*ZcmpInfo, Reg);
+    std::optional<std::int64_t> ExpectedOffset;
+    if (ZcmpInfo && SaveRestoreIndex && *SaveRestoreIndex < ZcmpInfo->RegisterCount) {
+      ExpectedOffset = -static_cast<std::int64_t>(ZcmpInfo->RegisterCount - *SaveRestoreIndex) * 8;
+    }
+    const bool ManagedByZcmp = ExpectedOffset.has_value();
     const bool ManagedByLibCall = !ZcmpInfo && Features.has(RISCVSubtargetOption::SaveRestore) &&
                                   SaveRestoreIndex.has_value();
     const StackObjectKind ExpectedKind = ManagedByZcmp || ManagedByLibCall
                                              ? StackObjectKind::FixedSpillSlot
                                              : StackObjectKind::CalleeSaved;
-    std::optional<std::int64_t> ExpectedOffset;
-    if (ManagedByZcmp) {
-      ExpectedOffset = -static_cast<std::int64_t>(ZcmpInfo->RegisterCount - *SaveRestoreIndex) * 8;
-    } else if (ManagedByLibCall) {
+    if (ManagedByLibCall) {
       ExpectedOffset = -static_cast<std::int64_t>(*SaveRestoreIndex + 1U) * 8;
     }
     if (Description.Kind != ExpectedKind || Description.Size != std::optional<std::uint64_t>{8} ||
@@ -1439,7 +1440,11 @@ public:
         continue;
       StackObjectDesc Description;
       const auto SaveRestoreIndex = saveRestoreRegisterIndex(Reg);
-      const bool ManagedByZcmp = ZcmpInfo && zcmpManagesRegister(*ZcmpInfo, Reg);
+      std::optional<std::int64_t> ZcmpOffset;
+      if (ZcmpInfo && SaveRestoreIndex && *SaveRestoreIndex < ZcmpInfo->RegisterCount) {
+        ZcmpOffset = -static_cast<std::int64_t>(ZcmpInfo->RegisterCount - *SaveRestoreIndex) * 8;
+      }
+      const bool ManagedByZcmp = ZcmpOffset.has_value();
       const bool ManagedByLibCall = !ZcmpInfo &&
                                     Subtarget.features().has(RISCVSubtargetOption::SaveRestore) &&
                                     SaveRestoreIndex;
@@ -1449,8 +1454,7 @@ public:
       Description.Align =
           ManagedByLibCall && (*SaveRestoreIndex + 1U) % 2U == 0 ? *Align16 : *Align8;
       if (ManagedByZcmp) {
-        Description.Offset =
-            -static_cast<std::int64_t>(ZcmpInfo->RegisterCount - *SaveRestoreIndex) * 8;
+        Description.Offset = ZcmpOffset;
       } else if (ManagedByLibCall) {
         Description.Offset = -static_cast<std::int64_t>(*SaveRestoreIndex + 1U) * 8;
       }
