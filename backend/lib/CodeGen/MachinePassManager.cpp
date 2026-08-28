@@ -5,7 +5,6 @@
 #include "rcc/CodeGen/CompilationUnit.h"
 #include "rcc/CodeGen/MachineBasicBlock.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/CodeGen/MachineFunctionCloner.h"
 #include "rcc/CodeGen/MachineInstr.h"
 #include "rcc/CodeGen/MachineOperand.h"
 #include "rcc/CodeGen/MachineVerifier.h"
@@ -29,9 +28,6 @@
 #include <vector>
 
 namespace rcc {
-
-thread_local MachinePassInstrumentation::BufferedEvents *MachinePassInstrumentation::ActiveBuffer =
-    nullptr;
 
 namespace {
 
@@ -322,51 +318,8 @@ InstrumentationStatistic &MachinePassInstrumentation::statistic(std::string_view
   return Position->second;
 }
 
-bool MachinePassInstrumentation::bufferFunctionEvent(
-    const MachineFunction &Function, std::function<void(const MachineFunction &)> Replay) const {
-  if (ActiveBuffer == nullptr)
-    return false;
-
-  std::shared_ptr<const MachineFunction> Snapshot;
-  auto Cloned = cloneMachineFunction(
-      Function, *ActiveBuffer->Target,
-      MachineFunctionCloneOptions{.NewStableID = Function.stableID(), .NewName = std::nullopt});
-  if (Cloned) {
-    Snapshot = std::shared_ptr<const MachineFunction>(std::move(Cloned->ClonedFunction));
-  } else {
-    Snapshot =
-        std::shared_ptr<const MachineFunction>(&Function, [](const MachineFunction *) noexcept {});
-  }
-  ActiveBuffer->Events.emplace_back(
-      [Snapshot = std::move(Snapshot), Replay = std::move(Replay)]() { Replay(*Snapshot); });
-  return true;
-}
-
-void MachinePassInstrumentation::beginBuffering(BufferedEvents &Buffer,
-                                                const TargetDescription &Target) const noexcept {
-  Buffer.Target = &Target;
-  Buffer.Events.clear();
-  ActiveBuffer = &Buffer;
-}
-
-void MachinePassInstrumentation::endBuffering() const noexcept {
-  ActiveBuffer = nullptr;
-}
-
-void MachinePassInstrumentation::replayBufferedEvents(BufferedEvents &Buffer) const {
-  for (const std::function<void()> &Event : Buffer.Events)
-    Event();
-  Buffer.Events.clear();
-  Buffer.Target = nullptr;
-}
-
 void MachinePassInstrumentation::before(std::string_view Name,
                                         const MachineFunction &Function) const {
-  if (bufferFunctionEvent(Function, [this, Name = std::string(Name)](const MachineFunction &Input) {
-        before(Name, Input);
-      })) {
-    return;
-  }
   std::vector<BeforeCallback> Callbacks;
   std::vector<IRPrintCallback> Printers;
   {
@@ -383,12 +336,6 @@ void MachinePassInstrumentation::before(std::string_view Name,
 void MachinePassInstrumentation::after(std::string_view Name, const MachineFunction &Function,
                                        const MachinePassResult &Result,
                                        std::uint64_t Nanoseconds) const {
-  if (bufferFunctionEvent(Function, [this, Name = std::string(Name), Result,
-                                     Nanoseconds](const MachineFunction &Input) {
-        after(Name, Input, Result, Nanoseconds);
-      })) {
-    return;
-  }
   std::vector<AfterCallback> Callbacks;
   std::vector<IRPrintCallback> Printers;
   {
@@ -408,12 +355,6 @@ void MachinePassInstrumentation::after(std::string_view Name, const MachineFunct
 
 void MachinePassInstrumentation::failure(std::string_view Name, const MachineFunction &Function,
                                          const Error &ErrorValue, std::uint64_t Nanoseconds) const {
-  if (bufferFunctionEvent(Function, [this, Name = std::string(Name), ErrorValue,
-                                     Nanoseconds](const MachineFunction &Input) {
-        failure(Name, Input, ErrorValue, Nanoseconds);
-      })) {
-    return;
-  }
   std::vector<FailureCallback> Callbacks;
   {
     std::scoped_lock Lock(Mutex);
@@ -429,11 +370,6 @@ void MachinePassInstrumentation::failure(std::string_view Name, const MachineFun
 
 void MachinePassInstrumentation::beforeAnalysis(std::string_view Name,
                                                 const MachineFunction &Function) const {
-  if (bufferFunctionEvent(Function, [this, Name = std::string(Name)](const MachineFunction &Input) {
-        beforeAnalysis(Name, Input);
-      })) {
-    return;
-  }
   std::vector<BeforeAnalysisCallback> Callbacks;
   {
     std::scoped_lock Lock(Mutex);
@@ -446,12 +382,6 @@ void MachinePassInstrumentation::beforeAnalysis(std::string_view Name,
 void MachinePassInstrumentation::afterAnalysis(std::string_view Name,
                                                const MachineFunction &Function, bool CacheHit,
                                                std::uint64_t Nanoseconds) const {
-  if (bufferFunctionEvent(Function, [this, Name = std::string(Name), CacheHit,
-                                     Nanoseconds](const MachineFunction &Input) {
-        afterAnalysis(Name, Input, CacheHit, Nanoseconds);
-      })) {
-    return;
-  }
   std::vector<AfterAnalysisCallback> Callbacks;
   {
     std::scoped_lock Lock(Mutex);
@@ -469,12 +399,6 @@ void MachinePassInstrumentation::analysisFailure(std::string_view Name,
                                                  const MachineFunction &Function,
                                                  const Error &ErrorValue,
                                                  std::uint64_t Nanoseconds) const {
-  if (bufferFunctionEvent(Function, [this, Name = std::string(Name), ErrorValue,
-                                     Nanoseconds](const MachineFunction &Input) {
-        analysisFailure(Name, Input, ErrorValue, Nanoseconds);
-      })) {
-    return;
-  }
   std::vector<AnalysisFailureCallback> Callbacks;
   {
     std::scoped_lock Lock(Mutex);
@@ -490,12 +414,6 @@ void MachinePassInstrumentation::analysisFailure(std::string_view Name,
 
 void MachinePassInstrumentation::change(std::string_view Name, const MachineFunction &Function,
                                         MachinePassChanges Changes, bool FingerprintChanged) const {
-  if (bufferFunctionEvent(Function, [this, Name = std::string(Name), Changes,
-                                     FingerprintChanged](const MachineFunction &Input) {
-        change(Name, Input, Changes, FingerprintChanged);
-      })) {
-    return;
-  }
   std::vector<ChangeCallback> Callbacks;
   {
     std::scoped_lock Lock(Mutex);
@@ -680,6 +598,12 @@ std::vector<MachineActionEvent> MachinePassInstrumentation::actionEvents() const
   return Result;
 }
 
+bool MachinePassInstrumentation::requiresSerialFunctionExecution() const {
+  std::scoped_lock Lock(Mutex);
+  return !Before.empty() || !After.empty() || !Failure.empty() || !BeforeAnalysis.empty() ||
+         !AfterAnalysis.empty() || !AnalysisFailure.empty() || !IRPrint.empty() || !Change.empty();
+}
+
 Expected<void>
 PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOptions>::validate(
     const MachineFunctionPass &Pass) {
@@ -848,7 +772,10 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
   const std::size_t FunctionCount = Unit.functionCount();
   if (FunctionCount == 0)
     return {};
-  const std::size_t WorkerCount = std::min(ThreadCount, FunctionCount);
+  const bool RequiresSerialInstrumentation =
+      Instrumentation != nullptr && Instrumentation->requiresSerialFunctionExecution();
+  const std::size_t WorkerCount =
+      RequiresSerialInstrumentation ? 1 : std::min(ThreadCount, FunctionCount);
   if (WorkerCount > 1) {
     for (const std::unique_ptr<MachineFunctionPass> &Pass : Passes) {
       if (Pass->contract().ThreadSafety != PassThreadSafety::ThreadSafe) {
@@ -871,7 +798,6 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
   }
 
   std::vector<std::optional<Error>> Failures(FunctionCount);
-  std::vector<MachinePassInstrumentation::BufferedEvents> EventBuffers(FunctionCount);
   std::atomic<std::size_t> NextFunction = 0;
   const auto Worker = [&]() {
     while (true) {
@@ -884,12 +810,8 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
                                 "compilation unit contains a null function during parallel run");
         continue;
       }
-      if (Instrumentation != nullptr)
-        Instrumentation->beginBuffering(EventBuffers[Index], Target);
       auto Result = PassManagerCallbacks::run(Passes, Options, *Function, Target, *Managers[Index],
                                               Instrumentation);
-      if (Instrumentation != nullptr)
-        Instrumentation->endBuffering();
       if (!Result)
         Failures[Index] = Result.error();
     }
@@ -903,8 +825,6 @@ PassManagerCallbacks<MachineFunction, MachineFunctionPass, MachinePassManagerOpt
     WorkerThread.join();
 
   for (std::size_t Index = 0; Index < FunctionCount; ++Index) {
-    if (Instrumentation != nullptr)
-      Instrumentation->replayBufferedEvents(EventBuffers[Index]);
     const auto &Failure = Failures[Index];
     if (Failure) {
       return std::unexpected(withErrorContext(

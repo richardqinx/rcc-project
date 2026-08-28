@@ -18,7 +18,6 @@ namespace rcc {
 
 class CompilationUnit;
 class MachineFunction;
-class TargetDescription;
 struct MachinePassResult;
 struct CompilationUnitPassResult;
 
@@ -105,6 +104,7 @@ public:
 
   [[nodiscard]] std::vector<InstrumentationStatistic> statistics() const;
   [[nodiscard]] std::vector<MachineActionEvent> actionEvents() const;
+  [[nodiscard]] bool requiresSerialFunctionExecution() const;
 
   [[nodiscard]] Expected<bool> requestAction(std::string_view Pass, std::string_view Rule,
                                              const MachineFunction &Function,
@@ -114,17 +114,6 @@ public:
                                              std::uint64_t Cost);
 
 private:
-  struct BufferedEvents final {
-    const TargetDescription *Target = nullptr;
-    std::vector<std::function<void()>> Events;
-  };
-
-  [[nodiscard]] bool bufferFunctionEvent(const MachineFunction &Function,
-                                         std::function<void(const MachineFunction &)> Replay) const;
-  void beginBuffering(BufferedEvents &Buffer, const TargetDescription &Target) const noexcept;
-  void endBuffering() const noexcept;
-  void replayBufferedEvents(BufferedEvents &Buffer) const;
-
   void before(std::string_view Name, const MachineFunction &Function) const;
   void after(std::string_view Name, const MachineFunction &Function,
              const MachinePassResult &Result, std::uint64_t Nanoseconds) const;
@@ -173,8 +162,6 @@ private:
   std::vector<AfterUnitAnalysisCallback> AfterUnitAnalysis;
   std::vector<UnitAnalysisFailureCallback> UnitAnalysisFailure;
   mutable std::unordered_map<std::string, InstrumentationStatistic> Statistics;
-
-  static thread_local BufferedEvents *ActiveBuffer;
 
   template <typename, typename> friend struct AnalysisManagerInstrumentation;
   template <typename, typename, typename> friend struct PassManagerCallbacks;
