@@ -13,6 +13,8 @@ named_operands:
   - { id: 12, symbol: FRS2, name: frs2 }
   - { id: 13, symbol: FRS3, name: frs3 }
   - { id: 14, symbol: RM, name: rm }
+  - { id: 15, symbol: RLIST, name: rlist }
+  - { id: 16, symbol: STACKADJ, name: stackadj }
 
 immediate_predicates:
   - { id: 1, symbol: SIMM12, name: simm12, kind: signed, bits: 12 }
@@ -32,6 +34,8 @@ immediate_predicates:
   - { id: 15, symbol: C_SIMM9_A2, name: c-simm9-a2, kind: signed, bits: 9, alignment: 2 }
   - { id: 16, symbol: C_SIMM12_A2, name: c-simm12-a2, kind: signed, bits: 12, alignment: 2 }
   - { id: 17, symbol: C_SIMM10_A16_NZ, name: c-simm10-a16-nz, kind: signed, bits: 10, alignment: 16, nonzero: true }
+  - { id: 18, symbol: ZCMP_RLIST, name: zcmp-rlist, kind: unsigned, bits: 4, allowed_values: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] }
+  - { id: 19, symbol: ZCMP_STACKADJ, name: zcmp-stackadj, kind: unsigned, bits: 6, alignment: 16 }
 
 scheduling_classes:
   - { id: 1, symbol: ALU, name: alu, micro_ops: 1, latency: 1 }
@@ -61,6 +65,8 @@ encoding_categories:
   - { id: 8, symbol: AMO, name: amo, size_bytes: 4 }
   - { id: 9, symbol: R4, name: r4, size_bytes: 4 }
   - { id: 10, symbol: C, name: c, size_bytes: 2 }
+  - { id: 11, symbol: ZCMP_MOVE, name: zcmp-move, size_bytes: 2 }
+  - { id: 12, symbol: ZCMP_STACK, name: zcmp-stack, size_bytes: 2 }
 
 assembly_formats:
   - { id: 1, symbol: RD_IMM, name: rd-imm }
@@ -98,3 +104,4 @@ assembly_formats:
   - { id: 33, symbol: FRD_OFFSET_SP, name: frd-offset-sp }
   - { id: 34, symbol: FRS2_OFFSET_SP, name: frs2-offset-sp }
   - { id: 35, symbol: RD_RS1, name: rd-rs1 }
+  - { id: 36, symbol: RLIST_STACKADJ, name: rlist-stackadj }

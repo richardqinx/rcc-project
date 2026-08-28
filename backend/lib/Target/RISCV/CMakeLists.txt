@@ -12,6 +12,7 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoF.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoD.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoC.rccdesc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoZcmp.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoZb.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVInstrInfoPseudo.rccdesc"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVGISelInteger.rccdesc"

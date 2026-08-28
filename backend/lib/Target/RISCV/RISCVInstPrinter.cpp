@@ -165,6 +165,46 @@ constexpr std::array LinearFormats{
   return Result;
 }
 
+[[nodiscard]] Expected<std::string> formatZcmpRegisterList(const mc::MCOperand &Operand) {
+  const std::int64_t *Encoding = Operand.immediateValue();
+  if (Encoding == nullptr || *Encoding < 4 || *Encoding > 15) {
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "Zcmp register list encoding is out of range");
+  }
+  std::string Result = "{ra";
+  if (*Encoding > 4) {
+    Result += ", s0";
+    if (*Encoding == 15)
+      Result += "-s11";
+    else if (*Encoding > 5)
+      Result += "-s" + std::to_string(*Encoding - 5);
+  }
+  Result += "}";
+  return Result;
+}
+
+[[nodiscard]] Expected<std::string> formatZcmpStackAdjustment(const mc::MCInst &Instruction,
+                                                              bool Negate) {
+  if (Instruction.operands().size() != 2) {
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "Zcmp stack instruction requires two operands");
+  }
+  const std::int64_t *RegisterList = Instruction.operands()[0].immediateValue();
+  const std::int64_t *ExtraAdjustment = Instruction.operands()[1].immediateValue();
+  if (RegisterList == nullptr || ExtraAdjustment == nullptr || *RegisterList < 4 ||
+      *RegisterList > 15 || *ExtraAdjustment < 0 || *ExtraAdjustment > 48 ||
+      *ExtraAdjustment % 16 != 0) {
+    return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
+                          "Zcmp stack instruction has invalid encoded operands");
+  }
+  std::int64_t RegisterCount = *RegisterList - 3;
+  if (*RegisterList == 15)
+    ++RegisterCount;
+  const std::int64_t BaseAdjustment = ((RegisterCount * 8 + 15) / 16) * 16;
+  const std::int64_t Adjustment = BaseAdjustment + *ExtraAdjustment;
+  return std::to_string(Negate ? -Adjustment : Adjustment);
+}
+
 } // namespace
 
 Expected<std::string> RISCVInstPrinter::printInstruction(const mc::MCInst &Instruction) const {
@@ -254,6 +294,17 @@ Expected<std::string> RISCVInstPrinter::printInstruction(const mc::MCInst &Instr
     if (!Offset)
       return std::unexpected(Offset.error());
     Operands = *First + ", " + *Offset + "(sp)";
+  } else if (Format->Name == "rlist-stackadj") {
+    auto Count = requireOperandCount(Instruction, 2);
+    if (!Count)
+      return std::unexpected(Count.error());
+    auto RegisterList = formatZcmpRegisterList(Instruction.operands()[0]);
+    if (!RegisterList)
+      return std::unexpected(RegisterList.error());
+    auto StackAdjustment = formatZcmpStackAdjustment(Instruction, Assembly->Mnemonic == "cm.push");
+    if (!StackAdjustment)
+      return std::unexpected(StackAdjustment.error());
+    Operands = *RegisterList + ", " + *StackAdjustment;
   } else {
     return makeUnexpected(ErrorCode::AssemblyLoweringFailed,
                           "RISC-V assembly printer does not support generated format '" +

@@ -102,6 +102,23 @@ namespace {
                         "Zcmp move requires an s0-s7 register");
 }
 
+[[nodiscard]] Expected<std::uint16_t> encodeZcmpMove(const mc::MCInst &Instruction,
+                                                     const TargetDescription &Target,
+                                                     const AssemblyInstructionInfo &Assembly) {
+  auto Count = requireOperandCount(Instruction, 2);
+  if (!Count)
+    return std::unexpected(Count.error());
+  auto First = savedRegisterEncoding(Instruction, 0, Target);
+  auto Second = savedRegisterEncoding(Instruction, 1, Target);
+  if (!First)
+    return std::unexpected(First.error());
+  if (!Second)
+    return std::unexpected(Second.error());
+  const auto Encoding = static_cast<std::uint16_t>(Assembly.Encoding);
+  return static_cast<std::uint16_t>((Encoding & ~std::uint16_t{0x039c}) | *First << 7U |
+                                    *Second << 2U);
+}
+
 [[nodiscard]] bool fitsSigned(std::int64_t Value, unsigned Bits) noexcept {
   const std::int64_t Minimum = -(std::int64_t{1} << (Bits - 1U));
   const std::int64_t Maximum = (std::int64_t{1} << (Bits - 1U)) - 1;
@@ -188,6 +205,32 @@ namespace {
                                       .PCRelative = PCRelative,
                                       .LinkerRelaxable = false});
   return 0;
+}
+
+[[nodiscard]] Expected<std::uint16_t> encodeZcmpStack(const mc::MCInst &Instruction,
+                                                      const AssemblyInstructionInfo &Assembly,
+                                                      mc::MCEncodedInstruction &Result) {
+  auto Count = requireOperandCount(Instruction, 2);
+  if (!Count)
+    return std::unexpected(Count.error());
+  auto RegisterList = immediateOrFixup(Instruction, 0, mc::fixup_kind::None, false, Result);
+  auto StackAdjustment = immediateOrFixup(Instruction, 1, mc::fixup_kind::None, false, Result);
+  if (!RegisterList)
+    return std::unexpected(RegisterList.error());
+  if (!StackAdjustment)
+    return std::unexpected(StackAdjustment.error());
+  if (*RegisterList < 4 || *RegisterList > 15) {
+    return makeUnexpected(ErrorCode::InstructionEncodingFailed,
+                          "Zcmp register list encoding is out of range");
+  }
+  if (*StackAdjustment < 0 || *StackAdjustment > 48 || *StackAdjustment % 16 != 0) {
+    return makeUnexpected(ErrorCode::InstructionEncodingFailed,
+                          "Zcmp stack adjustment must be 0, 16, 32, or 48");
+  }
+  const auto Encoding = static_cast<std::uint16_t>(Assembly.Encoding);
+  return static_cast<std::uint16_t>((Encoding & ~std::uint16_t{0x00fc}) |
+                                    static_cast<std::uint16_t>(*RegisterList) << 4U |
+                                    static_cast<std::uint16_t>(*StackAdjustment >> 4U) << 2U);
 }
 
 [[nodiscard]] Expected<mc::MCFixupKind> uFixupKind(const mc::MCOperand &Operand) {
@@ -663,20 +706,6 @@ namespace {
     return immediateOrFixup(Instruction, Index, Kind, PCRelative, Result);
   };
 
-  if (Opcode == InstructionOpcode::CM_MVA01S || Opcode == InstructionOpcode::CM_MVSA01) {
-    auto Count = requireOperandCount(Instruction, 2);
-    if (!Count)
-      return std::unexpected(Count.error());
-    auto First = savedRegisterEncoding(Instruction, 0, Target);
-    auto Second = savedRegisterEncoding(Instruction, 1, Target);
-    if (!First)
-      return std::unexpected(First.error());
-    if (!Second)
-      return std::unexpected(Second.error());
-    return static_cast<std::uint16_t>((Encoding & ~std::uint16_t{0x039c}) | *First << 7U |
-                                      *Second << 2U);
-  }
-
   if (Opcode == InstructionOpcode::C_ADDI4SPN) {
     auto Count = requireOperandCount(Instruction, 2);
     if (!Count)
@@ -1018,6 +1047,20 @@ RISCVMCCodeEmitter::encodeInstruction(const mc::MCInst &Instruction) const {
     if (!Compressed)
       return std::unexpected(Compressed.error());
     appendLittleEndian(Result, *Compressed, 2);
+    return Result;
+  }
+  case EncodingCategory::ZCMP_MOVE: {
+    auto ZcmpMove = encodeZcmpMove(Instruction, *Target, *Assembly);
+    if (!ZcmpMove)
+      return std::unexpected(ZcmpMove.error());
+    appendLittleEndian(Result, *ZcmpMove, 2);
+    return Result;
+  }
+  case EncodingCategory::ZCMP_STACK: {
+    auto ZcmpStack = encodeZcmpStack(Instruction, *Assembly, Result);
+    if (!ZcmpStack)
+      return std::unexpected(ZcmpStack.error());
+    appendLittleEndian(Result, *ZcmpStack, 2);
     return Result;
   }
   case EncodingCategory::None:
