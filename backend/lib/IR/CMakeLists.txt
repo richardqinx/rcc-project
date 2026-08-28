@@ -5,6 +5,7 @@ set(
   RCCBackendIRHeaders
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/IR/Constants.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/IR/DataLayout.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/IR/PassInstrumentation.h"
 )
 
 add_library(RCCBackendIR ${RCCBackendIRSources})

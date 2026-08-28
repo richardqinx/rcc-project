@@ -6,7 +6,7 @@
 #include "rcc/CodeGen/InstructionDescriptor.h"
 #include "rcc/CodeGen/MachineFunctionAnalysisManager.h"
 #include "rcc/CodeGen/MachineFunctionProperties.h"
-#include "rcc/IR/PassInstrumentation.h"
+#include "rcc/CodeGen/MachinePassInstrumentation.h"
 
 #include <cstddef>
 #include <memory>
