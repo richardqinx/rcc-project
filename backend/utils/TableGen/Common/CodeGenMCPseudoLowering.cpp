@@ -3,6 +3,7 @@
 #include "CodeGenTarget.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <ranges>
 #include <string_view>
@@ -106,6 +107,7 @@ bool CodeGenTarget::normalizeMCPseudoExpansions(NormalizedTargetModel &Result) {
         fail(Operand.Range, "MC pseudo fixed immediate must target an immediate operand");
         return false;
       }
+      assert(Operand.Immediate && "validated MC pseudo operand must contain an immediate");
       Normalized.Operands.push_back({
           .Kind = NormalizedMCPseudoOperandKind::Immediate,
           .Value = 0,
