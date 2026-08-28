@@ -3,6 +3,7 @@
 #include "rcc/MC/MCAssembler.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -11,10 +12,6 @@
 
 namespace rcc::mc {
 namespace {
-
-[[nodiscard]] bool isPowerOfTwo(std::uint64_t Value) noexcept {
-  return Value != 0 && (Value & (Value - 1U)) == 0;
-}
 
 [[nodiscard]] Expected<std::uint64_t> checkedAdd(std::uint64_t Left, std::uint64_t Right,
                                                  std::string_view Message) {
@@ -48,7 +45,7 @@ namespace {
 
 [[nodiscard]] Expected<std::uint64_t> alignmentPadding(std::uint64_t Offset,
                                                        std::uint64_t Alignment) {
-  if (!isPowerOfTwo(Alignment))
+  if (!std::has_single_bit(Alignment))
     return makeUnexpected(ErrorCode::InvalidArgument, "MC alignment is not a power of two");
   const std::uint64_t Mask = Alignment - 1U;
   auto Adjusted = checkedAdd(Offset, Mask, "MC section alignment overflows");
@@ -230,7 +227,7 @@ Expected<void> MCAssembler::emitAlignment(std::uint64_t Alignment, std::uint8_t 
   auto SectionIndex = currentSectionIndex();
   if (!SectionIndex)
     return std::unexpected(SectionIndex.error());
-  if (!isPowerOfTwo(Alignment))
+  if (!std::has_single_bit(Alignment))
     return makeUnexpected(ErrorCode::InvalidArgument, "MC alignment is not a power of two");
   Sections[*SectionIndex].Fragments.push_back(Fragment{
       .Payload =
@@ -296,7 +293,7 @@ Expected<void> MCAssembler::emitCommonSymbol(MCSymbolRef Symbol, std::uint64_t S
                                              std::uint64_t Alignment) {
   if (WasAssembled)
     return makeUnexpected(ErrorCode::ObjectWritingFailed, "MC assembler is already finalized");
-  if (!Symbol || Size == 0 || !isPowerOfTwo(Alignment)) {
+  if (!Symbol || Size == 0 || !std::has_single_bit(Alignment)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "common symbol requires a size and power-of-two alignment");
   }

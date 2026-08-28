@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -21,10 +22,6 @@ namespace {
 [[nodiscard]] bool containsInvalidLineCharacter(std::string_view Text) noexcept {
   return Text.find('\0') != std::string_view::npos || Text.find('\n') != std::string_view::npos ||
          Text.find('\r') != std::string_view::npos;
-}
-
-[[nodiscard]] bool isPowerOfTwo(std::uint64_t Value) noexcept {
-  return Value != 0 && (Value & (Value - 1U)) == 0;
 }
 
 [[nodiscard]] unsigned log2Exact(std::uint64_t Value) noexcept {
@@ -282,7 +279,7 @@ Expected<void> AsmTextStreamer::emitAlignment(std::uint64_t Alignment, std::uint
   auto Active = requireActiveSection();
   if (!Active)
     return std::unexpected(Active.error());
-  if (!isPowerOfTwo(Alignment)) {
+  if (!std::has_single_bit(Alignment)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "assembly alignment must be a nonzero power of two");
   }

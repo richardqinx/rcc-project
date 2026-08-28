@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <limits>
 #include <ranges>
@@ -218,7 +219,7 @@ pipelineStageEnumerator(std::string_view Value) noexcept {
     const bool IsUnsigned = Predicate.Kind == "unsigned";
     if (Predicate.ID == 0 || !isIdentifier(Predicate.Symbol) || Predicate.Name.empty() ||
         (!IsSigned && !IsUnsigned) || Predicate.Bits == 0 || Predicate.Bits > 63 ||
-        !isPowerOfTwo(Predicate.Alignment) || !IDs.insert(Predicate.ID).second ||
+        !std::has_single_bit(Predicate.Alignment) || !IDs.insert(Predicate.ID).second ||
         !Symbols.insert(Predicate.Symbol).second || !Names.insert(Predicate.Name).second) {
       fail(Predicate.Range,
            "immediate predicates require nonzero unique IDs, symbols, names, a signed or "

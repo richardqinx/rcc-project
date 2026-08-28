@@ -6,6 +6,7 @@
 #include "rcc/TableGen/Parser.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <ranges>
 #include <string>
@@ -14,10 +15,6 @@
 #include <utility>
 
 namespace rcc::targetgen {
-
-[[nodiscard]] bool isPowerOfTwo(std::uint64_t Value) noexcept {
-  return Value != 0 && (Value & (Value - 1U)) == 0;
-}
 
 CodeGenTarget::CodeGenTarget(const DescriptionAST &Input, std::string SourceName)
     : Input(Input), SourceName(std::move(SourceName)) {}
@@ -105,8 +102,8 @@ void CodeGenTarget::fail(TextRange Range, std::string Message) {
         IntegerClass == ClassBySymbol.end() || FloatingClass == ClassBySymbol.end() ||
         PreservedMask == Result.RegisterMasks.end() || Convention.StackAlignmentBytes == 0 ||
         Convention.StackArgumentAlignmentBytes == 0 ||
-        !isPowerOfTwo(Convention.StackAlignmentBytes) ||
-        !isPowerOfTwo(Convention.StackArgumentAlignmentBytes) ||
+        !std::has_single_bit(Convention.StackAlignmentBytes) ||
+        !std::has_single_bit(Convention.StackArgumentAlignmentBytes) ||
         Convention.StackAlignmentBytes % Convention.StackArgumentAlignmentBytes != 0 ||
         Convention.ShadowSpaceBytes % Convention.StackArgumentAlignmentBytes != 0 ||
         !IDs.insert(Convention.ID).second || !Symbols.insert(Convention.Symbol).second ||

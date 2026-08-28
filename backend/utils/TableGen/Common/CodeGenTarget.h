@@ -426,7 +426,6 @@ instructionFlagEnumerator(std::string_view Value) noexcept;
 pseudoOwnerEnumerator(std::string_view Value) noexcept;
 [[nodiscard]] std::optional<std::string_view>
 pipelineStageEnumerator(std::string_view Value) noexcept;
-[[nodiscard]] bool isPowerOfTwo(std::uint64_t Value) noexcept;
 
 class CodeGenTarget final {
 public:

@@ -3,6 +3,7 @@
 #include "rcc/MC/ELFObjectWriter.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -98,10 +99,6 @@ struct OutputSection final {
   MCSymbolRef GroupSignature;
 };
 
-[[nodiscard]] bool isPowerOfTwo(std::uint64_t Value) noexcept {
-  return Value != 0 && (Value & (Value - 1U)) == 0;
-}
-
 [[nodiscard]] bool isWriterManagedSectionType(std::uint32_t Type) noexcept {
   switch (Type) {
   case SHTNull:
@@ -127,7 +124,7 @@ struct OutputSection final {
 }
 
 [[nodiscard]] Expected<std::uint64_t> alignTo(std::uint64_t Value, std::uint64_t Alignment) {
-  if (!isPowerOfTwo(Alignment))
+  if (!std::has_single_bit(Alignment))
     return makeUnexpected(ErrorCode::ObjectWritingFailed, "ELF alignment is not a power of two");
   auto Adjusted = checkedAdd(Value, Alignment - 1U, "ELF file offset overflows");
   if (!Adjusted)
@@ -290,7 +287,7 @@ ELF64LEObjectWriter::writeObject(const MCAssembledObject &Object) const {
       return std::unexpected(DescriptionVerification.error());
     const bool NoBits =
         Description.Kind == MCSectionKind::BSS || Description.Kind == MCSectionKind::TLSBSS;
-    if (!isPowerOfTwo(Input.Alignment) || Input.Alignment < Description.Alignment) {
+    if (!std::has_single_bit(Input.Alignment) || Input.Alignment < Description.Alignment) {
       return makeUnexpected(ErrorCode::ObjectWritingFailed,
                             "ELF input section has an invalid effective alignment");
     }
@@ -324,7 +321,7 @@ ELF64LEObjectWriter::writeObject(const MCAssembledObject &Object) const {
 
   for (const ELFExtraSection &Extra : Target.ExtraSections) {
     if (Extra.Name.empty() || isWriterManagedSectionType(Extra.Type) ||
-        !isPowerOfTwo(Extra.Alignment) || (Extra.Flags & (SHFInfoLink | SHFGroup)) != 0 ||
+        !std::has_single_bit(Extra.Alignment) || (Extra.Flags & (SHFInfoLink | SHFGroup)) != 0 ||
         (Extra.EntrySize != 0 && Extra.Contents.size() % Extra.EntrySize != 0)) {
       return makeUnexpected(ErrorCode::ObjectWritingFailed,
                             "ELF extra section has an invalid description");
@@ -365,7 +362,7 @@ ELF64LEObjectWriter::writeObject(const MCAssembledObject &Object) const {
     std::uint16_t Section = SHNUndefined;
     std::uint64_t Value = Input.Value;
     if (Input.CommonAlignment != 0) {
-      if (!isPowerOfTwo(Input.CommonAlignment) || Input.Size == 0 || Input.SectionIndex ||
+      if (!std::has_single_bit(Input.CommonAlignment) || Input.Size == 0 || Input.SectionIndex ||
           Input.Binding == MCObjectSymbolBinding::Local || Input.Value != Input.CommonAlignment) {
         return makeUnexpected(ErrorCode::ObjectWritingFailed,
                               "ELF common symbol has an invalid definition");

@@ -2,6 +2,7 @@
 
 #include "rcc/MC/MCSection.h"
 
+#include <bit>
 #include <cstdint>
 #include <string_view>
 
@@ -19,16 +20,12 @@ namespace {
   return true;
 }
 
-[[nodiscard]] bool isPowerOfTwo(std::uint64_t Value) noexcept {
-  return Value != 0 && (Value & (Value - 1U)) == 0;
-}
-
 } // namespace
 
 Expected<void> MCSectionDesc::verify() const {
   if (!isValidAssemblyName(Name))
     return makeUnexpected(ErrorCode::InvalidArgument, "MC section has an invalid name");
-  if (!isPowerOfTwo(Alignment)) {
+  if (!std::has_single_bit(Alignment)) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "MC section alignment must be a nonzero power of two");
   }

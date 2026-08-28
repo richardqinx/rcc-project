@@ -22,10 +22,6 @@ namespace {
                         "target register description: " + std::move(Message));
 }
 
-[[nodiscard]] bool isPowerOfTwo(std::uint32_t Value) noexcept {
-  return Value != 0 && std::has_single_bit(Value);
-}
-
 [[nodiscard]] std::string lowerASCII(std::string_view Name) {
   std::string Result(Name);
   for (char &Character : Result) {
@@ -274,8 +270,8 @@ Expected<TargetRegisterInfo> TargetRegisterInfo::create(TargetRegisterInfoDesc D
 
   for (const RegisterClassDesc &Class : Result.Description.RegisterClasses) {
     if (Class.Registers.empty() || Class.SizeInBits == 0 ||
-        Class.SpillSizeInBits < Class.SizeInBits || !isPowerOfTwo(Class.SpillAlignmentInBits) ||
-        Class.Lanes.empty()) {
+        Class.SpillSizeInBits < Class.SizeInBits ||
+        !std::has_single_bit(Class.SpillAlignmentInBits) || Class.Lanes.empty()) {
       return invalidDescription(
           "register class requires members, sizes, power-of-two spill alignment, and lanes");
     }
