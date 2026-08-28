@@ -497,7 +497,7 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
                "selection temporary type source must be a matched register operand");
           return false;
         }
-        NormalizedTemporary.TypeFromOperand = *Temporary.TypeFromOperand;
+        NormalizedTemporary.TypeFromOperand = Temporary.TypeFromOperand;
       } else {
         auto Type = NormalizeType(*Temporary.Type);
         if (!Type || Type->Kind != NormalizedSelectionTypeKind::Scalar) {
@@ -506,7 +506,7 @@ bool CodeGenTarget::normalizeSelectionRules(NormalizedTargetModel &Result) {
         }
         NormalizedTemporary.Type = *Type;
       }
-      Normalized.Temporaries.push_back(std::move(NormalizedTemporary));
+      Normalized.Temporaries.push_back(NormalizedTemporary);
     }
 
     bool HasRootAction = false;
@@ -763,7 +763,8 @@ bool CodeGenTarget::normalizeCombinerRules(NormalizedTargetModel &Result) {
         {"nsw", MachineInstrFlag::NoSignedWrap},
         {"nuw", MachineInstrFlag::NoUnsignedWrap},
     }};
-    const auto Position = std::ranges::find(Flags, Name, &decltype(Flags)::value_type::first);
+    const auto *const Position =
+        std::ranges::find(Flags, Name, &decltype(Flags)::value_type::first);
     if (Position == Flags.end())
       return std::nullopt;
     return std::uint32_t{1} << static_cast<std::uint8_t>(Position->second);
@@ -777,7 +778,7 @@ bool CodeGenTarget::normalizeCombinerRules(NormalizedTargetModel &Result) {
         return std::nullopt;
       Mask |= *Value;
     }
-    if (Names.size() != 0 && Mask == 0)
+    if (!Names.empty() && Mask == 0)
       return std::nullopt;
     (void)Range;
     return Mask;

@@ -1517,12 +1517,12 @@ private:
                                              "selection operand renderer captured immediate");
         if (!Index)
           return false;
-        Renderer.CapturedImmediateOperand = *Index;
+        Renderer.CapturedImmediateOperand = Index;
       } else {
         const auto Value = signedInteger(*ImmediateNode, "selection operand renderer immediate");
         if (!Value)
           return false;
-        Renderer.Immediate = *Value;
+        Renderer.Immediate = Value;
       }
       if (const yaml::Node *TransformNode = optionalNode(*Element, "transform")) {
         const auto Transform = scalar(*TransformNode, "selection operand renderer transform");
@@ -2057,7 +2057,7 @@ private:
       const auto Value = unsignedInteger32(*Commutable, "macro fusion commutable second use");
       if (!Value)
         return false;
-      Result.CommutableSecondUseOperand = *Value;
+      Result.CommutableSecondUseOperand = Value;
     }
     return true;
   }
@@ -2134,7 +2134,7 @@ private:
         const auto Source = unsignedInteger32(*SourceNode, "MC pseudo source operand");
         if (!Source)
           return false;
-        Operand.SourceOperandIndex = *Source;
+        Operand.SourceOperandIndex = Source;
       }
       if (const yaml::Node *RegisterNode = optionalNode(*Element, "register")) {
         const auto Register = scalar(*RegisterNode, "MC pseudo fixed register");
@@ -2146,7 +2146,7 @@ private:
         const auto Immediate = signedInteger(*ImmediateNode, "MC pseudo fixed immediate");
         if (!Immediate)
           return false;
-        Operand.Immediate = *Immediate;
+        Operand.Immediate = Immediate;
       }
       Result.push_back(std::move(Operand));
     }
