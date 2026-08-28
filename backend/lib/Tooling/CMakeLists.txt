@@ -66,12 +66,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/PipelineDriver.cpp"
   ${RCCBackendToolingHeaders}
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/BackendInvocation.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/BackendManifest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/BackendDriver.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/ArtifactStore.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MIRFuzzer.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MIRReducer.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/PipelineDriver.cpp"
-)

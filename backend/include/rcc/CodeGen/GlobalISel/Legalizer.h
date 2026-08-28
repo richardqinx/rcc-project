@@ -34,10 +34,9 @@ public:
                                                 MachineFunctionAnalysisManager &Analyses) override;
 
 private:
-  [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
-                                                              const TargetDescription &Target,
-                                                              MachineFunctionAnalysisManager
-                                                                  &Analyses);
+  [[nodiscard]] Expected<MachinePassResult>
+  runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                    MachineFunctionAnalysisManager &Analyses);
 
   std::unique_ptr<LegalizerInfo> OwnedInfo;
   const LegalizerInfo *Info = nullptr;

@@ -101,9 +101,10 @@ MachineBlockPlacementPass::run(MachineFunction &Function, const TargetDescriptio
   return runImplementation(Function, Target, Analyses);
 }
 
-Expected<MachinePassResult> MachineBlockPlacementPass::runImplementation(
-    MachineFunction &Function, const TargetDescription &Target,
-    MachineFunctionAnalysisManager &Analyses) const {
+Expected<MachinePassResult>
+MachineBlockPlacementPass::runImplementation(MachineFunction &Function,
+                                             const TargetDescription &Target,
+                                             MachineFunctionAnalysisManager &Analyses) const {
   auto Probabilities = Analyses.getResult<MachineBranchProbabilityAnalysis>(Function, Target);
   if (!Probabilities)
     return std::unexpected(Probabilities.error());

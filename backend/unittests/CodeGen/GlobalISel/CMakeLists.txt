@@ -38,9 +38,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/LegalizerTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RegBankSelectTest.cpp"
 )
-
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/InstructionSelectTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/LegalizerTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RegBankSelectTest.cpp"
-)

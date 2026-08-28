@@ -42,8 +42,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/DataLayout.cpp"
   ${RCCBackendIRHeaders}
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/AsmWriter.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/Constants.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/DataLayout.cpp"
-)

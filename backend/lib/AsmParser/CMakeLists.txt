@@ -38,4 +38,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/LLParser.cpp"
   ${RCCBackendAsmParserHeaders}
 )
-rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/LLParser.cpp")

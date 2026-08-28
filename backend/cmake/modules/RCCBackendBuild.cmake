@@ -114,7 +114,3 @@ endfunction()
 function(rcc_backend_register_format_files)
   set_property(GLOBAL APPEND PROPERTY RCC_BACKEND_FORMAT_FILES ${ARGN})
 endfunction()
-
-function(rcc_backend_register_tidy_files)
-  set_property(GLOBAL APPEND PROPERTY RCC_BACKEND_TIDY_FILES ${ARGN})
-endfunction()

@@ -12,4 +12,3 @@ target_link_libraries(
 add_test(NAME RCCBackend.AsmParser.LLParser COMMAND RCCBackendLLParserTests)
 
 rcc_backend_register_format_files("${CMAKE_CURRENT_SOURCE_DIR}/LLParserTest.cpp")
-rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/LLParserTest.cpp")

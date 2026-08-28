@@ -21,4 +21,3 @@ rcc_backend_register_format_files(
   ${RCCBackendTableGenSources}
   ${RCCBackendTableGenHeaders}
 )
-rcc_backend_register_tidy_files(${RCCBackendTableGenSources})

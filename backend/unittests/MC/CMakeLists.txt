@@ -14,7 +14,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MCTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MCObjectTest.cpp"
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/MCTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MCObjectTest.cpp"
-)

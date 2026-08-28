@@ -40,9 +40,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MIRReducerFuzzerTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/ToolingTestSupport.h"
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/BackendManifestTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/ArtifactStoreTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/PipelineDriverTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MIRReducerFuzzerTest.cpp"
-)

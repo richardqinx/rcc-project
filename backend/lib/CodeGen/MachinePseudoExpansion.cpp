@@ -239,8 +239,7 @@ prepareImplementation(MachineFunction &Function, const TargetDescription &Target
 [[nodiscard]] Expected<MachinePassResult>
 expandImplementation(MachineFunction &Function, const TargetDescription &Target,
                      const TargetPseudoExpansionInfo &Info, MachinePseudoExpansionPhase Phase,
-                     const TargetInstrInfo *BranchInfo,
-                     MachineFunctionAnalysisManager &Analyses) {
+                     const TargetInstrInfo *BranchInfo, MachineFunctionAnalysisManager &Analyses) {
   const ResourceSnapshot Before = snapshotResources(Function);
   std::optional<BlockSizeSnapshot> SizesBefore;
   if (Phase == MachinePseudoExpansionPhase::TargetLate) {
@@ -376,8 +375,8 @@ const MachinePassContract &ExpandPostRAPseudosPass::contract() const noexcept {
 Expected<MachinePassResult> ExpandPostRAPseudosPass::run(MachineFunction &Function,
                                                          const TargetDescription &Target,
                                                          MachineFunctionAnalysisManager &Analyses) {
-  return expandImplementation(Function, Target, *Info, MachinePseudoExpansionPhase::PostRA,
-                              nullptr, Analyses);
+  return expandImplementation(Function, Target, *Info, MachinePseudoExpansionPhase::PostRA, nullptr,
+                              Analyses);
 }
 
 const MachinePassContract &TargetLatePseudoExpansionPass::contract() const noexcept {

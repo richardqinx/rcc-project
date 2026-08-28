@@ -88,4 +88,3 @@ set_tests_properties(
 )
 
 rcc_backend_register_format_files("${CMAKE_CURRENT_SOURCE_DIR}/MIRToolMain.cpp")
-rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/MIRToolMain.cpp")

@@ -28,10 +28,9 @@ public:
                                                 MachineFunctionAnalysisManager &Analyses) override;
 
 private:
-  [[nodiscard]] Expected<MachinePassResult> runImplementation(MachineFunction &Function,
-                                                              const TargetDescription &Target,
-                                                              MachineFunctionAnalysisManager
-                                                                  &Analyses) const;
+  [[nodiscard]] Expected<MachinePassResult>
+  runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                    MachineFunctionAnalysisManager &Analyses) const;
 
   const TargetInstrInfo *Info;
   MachineCopyPropagationOptions Options;

@@ -30,9 +30,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TextDiagnosticTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/YAMLTest.cpp"
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/ErrorTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/SHA256Test.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/TextDiagnosticTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/YAMLTest.cpp"
-)

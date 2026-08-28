@@ -177,8 +177,7 @@ private:
         const auto CopyPosition = CopyPairs.find({LeftKey, RightKey});
         bool CopyRelated = Options.EnableCopyCoalescing && CopyPosition != CopyPairs.end();
         if (CopyRelated) {
-          auto Accepted =
-              Analyses.requestAction("coalesce-copy", Function, CopyPosition->second);
+          auto Accepted = Analyses.requestAction("coalesce-copy", Function, CopyPosition->second);
           if (!Accepted)
             return std::unexpected(Accepted.error());
           CopyRelated = *Accepted;

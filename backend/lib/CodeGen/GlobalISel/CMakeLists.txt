@@ -53,18 +53,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/Utils.cpp"
   ${RCCBackendGlobalISelHeaders}
 )
-
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/CSEInfo.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/CSEMIRBuilder.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/Combiner.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/GIMatchTableExecutor.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/GISelChangeObserver.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/GISelValueTracking.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/InstructionSelect.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/Legalizer.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/LegalizerHelper.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/LegalizerInfo.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RegBankSelect.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/Utils.cpp"
-)

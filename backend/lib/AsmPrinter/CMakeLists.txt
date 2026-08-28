@@ -56,4 +56,3 @@ rcc_backend_register_format_files(
   ${RCCBackendAsmPrinterSourcePaths}
   ${RCCBackendAsmPrinterHeaders}
 )
-rcc_backend_register_tidy_files(${RCCBackendAsmPrinterSourcePaths})

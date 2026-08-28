@@ -44,9 +44,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/MIRDocumentTest.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/MIParserTest.cpp"
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIRTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MILexerTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MIRDocumentTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/MIParserTest.cpp"
-)

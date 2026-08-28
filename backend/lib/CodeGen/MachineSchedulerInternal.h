@@ -29,8 +29,7 @@ runMachineScheduler(MachineFunction &Function, const TargetDescription &Target,
                     const TargetSchedulingModel &Model, ScheduleDAGMode Mode,
                     const LiveVariablesAnalysis::Result &Liveness,
                     const MachineBlockFrequencyAnalysis::Result &Frequencies,
-                    MachineSchedulerOptions Options,
-                    MachineFunctionAnalysisManager &Analyses);
+                    MachineSchedulerOptions Options, MachineFunctionAnalysisManager &Analyses);
 
 } // namespace rcc
 

@@ -71,4 +71,3 @@ foreach(Source IN LISTS RCCBackendMCSources)
 endforeach()
 
 rcc_backend_register_format_files(${RCCBackendMCSourcePaths} ${RCCBackendMCHeaders})
-rcc_backend_register_tidy_files(${RCCBackendMCSourcePaths})

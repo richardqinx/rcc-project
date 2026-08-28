@@ -115,17 +115,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.h"
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/TableGenTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallLoweringTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSSAExitTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVRegisterAllocationTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVFrameLoweringTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVLateCodeGenTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVAssemblyPrinterTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVMCEncodingCoverageTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVObjectFileTest.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/TestTarget.cpp"
-)

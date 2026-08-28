@@ -135,8 +135,7 @@ MachineBranchRelaxationPass::runImplementation(MachineFunction &Function,
           return std::unexpected(Offset.error());
         if (Info->isBranchOffsetInRange(*Instruction, *Offset))
           continue;
-        auto Accepted =
-            Analyses.requestAction("relax-branch", Function, Instruction->stableID());
+        auto Accepted = Analyses.requestAction("relax-branch", Function, Instruction->stableID());
         if (!Accepted)
           return std::unexpected(Accepted.error());
         if (!*Accepted) {

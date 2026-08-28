@@ -28,8 +28,7 @@ public:
 protected:
   RegAllocBase(MachineFunction &Function, const TargetDescription &Target,
                const TargetRegisterAllocationInfo &TargetInfo,
-               MachineFunctionAnalysisManager &Analyses,
-               RegisterAllocationOptions Options) noexcept
+               MachineFunctionAnalysisManager &Analyses, RegisterAllocationOptions Options) noexcept
       : Function(Function), Target(Target), TargetInfo(TargetInfo), Analyses(Analyses),
         Options(Options) {}
 

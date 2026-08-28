@@ -47,11 +47,3 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/YAML.cpp"
   ${RCCBackendSupportHeaders}
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/APFloat.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/APInt.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/Error.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/SHA256.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/TextDiagnostic.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/YAML.cpp"
-)

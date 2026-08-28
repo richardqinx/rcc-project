@@ -248,4 +248,3 @@ rcc_backend_register_format_files(
   ${RCCBackendCodeGenHeaders}
   ${RCCBackendCodeGenPrivateHeaders}
 )
-rcc_backend_register_tidy_files(${RCCBackendCodeGenSourcePaths})

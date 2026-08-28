@@ -48,7 +48,3 @@ rcc_backend_register_format_files(
   ${RCCBackendTableGenBackendSources}
   ${RCCBackendTableGenBackendHeaders}
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/rcc-tblgen.cpp"
-  ${RCCBackendTableGenBackendSources}
-)

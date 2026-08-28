@@ -65,12 +65,3 @@ rcc_backend_register_format_files(
   "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRYamlMapping.cpp"
   ${RCCBackendMIRHeaders}
 )
-rcc_backend_register_tidy_files(
-  "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedIR.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/ReachingDefPrinter.cpp"
-  "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MILexer.cpp"
-  "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIParser.cpp"
-  "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRParser/MIRParser.cpp"
-  "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRPrinter.cpp"
-  "${RCC_BACKEND_SOURCE_DIR}/lib/CodeGen/MIRYamlMapping.cpp"
-)

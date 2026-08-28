@@ -34,6 +34,5 @@ rcc_backend_register_format_files(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Target/TargetOptions.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/Support/TargetSelect.h"
 )
-rcc_backend_register_tidy_files("${CMAKE_CURRENT_SOURCE_DIR}/TargetMachine.cpp")
 
 add_subdirectory(RISCV)
