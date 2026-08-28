@@ -5,8 +5,10 @@
 
 #include "rcc/CodeGen/CommandFlags.h"
 #include "rcc/Support/Error.h"
+#include "rcc/Target/TargetOptions.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -16,6 +18,8 @@
 namespace rcc {
 
 class TargetDescription;
+class Target;
+class TargetMachine;
 
 namespace tooling {
 
@@ -23,7 +27,6 @@ inline constexpr std::uint32_t BackendInvocationSchemaVersion = 1;
 inline constexpr std::string_view LLVMReferenceRevision =
     "2b40c303e79f64c5c7642032554eda026594d604";
 inline constexpr std::string_view GenericOpcodeReferenceVersion = "rcc-generic-opcode-v1";
-inline constexpr std::string_view RV64GCTargetABILoweringVersion = "rcc-rv64gc-lp64d-v1";
 inline constexpr std::string_view CompilerBuildFingerprint = "rcc-backend-0.1.0-stage17";
 
 enum class LayoutOwnership : std::uint8_t {
@@ -32,12 +35,7 @@ enum class LayoutOwnership : std::uint8_t {
   ExternalRelaxation,
 };
 
-struct BackendOption final {
-  std::string Name;
-  std::string Value;
-
-  friend bool operator==(const BackendOption &, const BackendOption &) = default;
-};
+using BackendOption = TargetOption;
 
 struct DeterminismOptions final {
   std::uint64_t RandomSeed = 0;
@@ -69,7 +67,7 @@ struct BackendInvocation final {
   std::vector<std::string> EnabledActions;
   std::string MIRReferenceRevision{LLVMReferenceRevision};
   std::string GenericOpcodeVersion{GenericOpcodeReferenceVersion};
-  std::string TargetABILoweringVersion{RV64GCTargetABILoweringVersion};
+  std::string TargetABILoweringVersion;
   std::string BuildFingerprint{CompilerBuildFingerprint};
 
   [[nodiscard]] Expected<void> canonicalizeAndVerify();
@@ -78,7 +76,9 @@ struct BackendInvocation final {
   friend bool operator==(const BackendInvocation &, const BackendInvocation &) = default;
 };
 
-[[nodiscard]] BackendInvocation defaultRV64GCInvocation();
+[[nodiscard]] Expected<BackendInvocation> defaultBackendInvocation(const Target &Target);
+[[nodiscard]] Expected<std::unique_ptr<TargetMachine>>
+createTargetMachine(const BackendInvocation &Invocation);
 [[nodiscard]] Expected<std::string>
 computeTargetDescriptionFingerprint(const TargetDescription &Target);
 [[nodiscard]] Expected<std::string> computeCacheKey(std::string_view CanonicalMIR,

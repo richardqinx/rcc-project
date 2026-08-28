@@ -139,6 +139,7 @@ add_library(
   RISCVScheduling.cpp
   RISCVSubtarget.cpp
   RISCVTarget.cpp
+  RISCVTargetMachine.cpp
   RISCVTargetConstant.cpp
   RISCVTargetObjectFile.cpp
   "${RCCBackendRISCVGeneratedRegisterHeader}"
@@ -170,6 +171,7 @@ target_link_libraries(
     RCCBackend::AsmPrinter
     RCCBackend::CodeGen
     RCCBackend::MC
+    RCCBackend::Target
 )
 
 set_target_properties(
@@ -232,6 +234,7 @@ rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVScheduling.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVSubtarget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTarget.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetMachine.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetConstant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetObjectFile.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RISCVTargetObjectFile.h"

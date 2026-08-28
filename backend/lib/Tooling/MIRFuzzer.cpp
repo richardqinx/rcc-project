@@ -14,7 +14,7 @@
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/CodeGen/TargetDescription.h"
-#include "rcc/Target/RISCV/RISCVPipeline.h"
+#include "rcc/Target/TargetMachine.h"
 #include "rcc/Tooling/ArtifactStore.h"
 #include "rcc/Tooling/BackendDriver.h"
 
@@ -262,7 +262,7 @@ private:
   if (Function == nullptr || isEarlierStage(Stage, stageForFunction(*Function))) {
     return false;
   }
-  auto Run = runBackend(std::move(*Parsed), Target, Invocation, outputForStage(Stage));
+  auto Run = runBackend(std::move(*Parsed), Invocation, outputForStage(Stage));
   if (!Run)
     return std::unexpected(Run.error());
   auto RoundTrip = verifyCanonicalRoundTrip(std::string(Run->text()), Target, Invocation);
@@ -295,14 +295,10 @@ private:
   const MachineFunction *Function = Parsed->Document.unit().functionAt(0);
   if (Function == nullptr)
     return std::unexpected(Error(ErrorCode::InternalError, "pipeline fuzz input has no function"));
-  auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
-  if (!Features)
-    return std::unexpected(Features.error());
-  auto ABI = riscv::parseRISCVABI(Invocation.ABI);
-  if (!ABI)
-    return std::unexpected(ABI.error());
-  const riscv::RISCVSubtarget Subtarget(*Features, Invocation.Relocation, Invocation.Code, *ABI);
-  auto Names = riscv::canonicalPipelinePassNames(*Function, Subtarget);
+  auto TargetMachine = createTargetMachine(Invocation);
+  if (!TargetMachine)
+    return std::unexpected(TargetMachine.error());
+  auto Names = (*TargetMachine)->codeGenPassNames(*Function);
   if (!Names)
     return std::unexpected(Names.error());
   PipelineControls Controls;
@@ -312,7 +308,7 @@ private:
   Controls.DetectUnreportedChanges = true;
   Invocation.Determinism.ThreadCount = std::array<std::uint32_t, 3>{1, 2, 4}[Random.index(3U)];
   const std::string Stop = Controls.StopAfter ? *Controls.StopAfter : "end";
-  auto Run = runBackend(std::move(*Parsed), Target, Invocation, ArtifactKind::FinalMIR, Controls);
+  auto Run = runBackend(std::move(*Parsed), Invocation, ArtifactKind::FinalMIR, Controls);
   if (!Run)
     return std::unexpected(Run.error());
   auto RoundTrip = verifyCanonicalRoundTrip(std::string(Run->text()), Target, Invocation);
@@ -486,7 +482,7 @@ using RegisterValues = std::unordered_map<std::uint64_t, std::uint64_t>;
       parseAndCanonicalizeMIR("semantic-pipeline.mir", std::string(Canonical), Target, Invocation);
   if (!CompiledInput)
     return std::unexpected(CompiledInput.error());
-  auto Compiled = runBackend(std::move(*CompiledInput), Target, Invocation, ArtifactKind::FinalMIR);
+  auto Compiled = runBackend(std::move(*CompiledInput), Invocation, ArtifactKind::FinalMIR);
   if (!Compiled)
     return std::unexpected(Compiled.error());
   auto Final = parseAndCanonicalizeMIR("semantic-final.mir", std::string(Compiled->text()), Target,

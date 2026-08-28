@@ -12,6 +12,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdlib>
+#include <memory>
 #include <string_view>
 #include <utility>
 
@@ -199,6 +200,10 @@ RISCVSubtarget::RISCVSubtarget(RISCVSubtargetFeatures Features, RelocationModel 
     : Features(Features), Relocation(Relocation), Code(Code), ABI(ABI),
       SchedulingHooks(createSchedulingHooks(Features)) {
   FrameLoweringInfo = createFrameLowering(*this);
+  CallLoweringInfo = std::make_unique<RISCVCallLowering>();
+  RegBankInfo = std::make_unique<RISCVRegisterBankInfo>();
+  InstSelector.reset(createRISCVInstructionSelector(*this, *RegBankInfo));
+  Legalizer = std::make_unique<RISCVLegalizerInfo>(*this);
   auto Model = createSchedulingModel(*SchedulingHooks);
   if (!Model)
     std::abort();
@@ -208,26 +213,18 @@ RISCVSubtarget::RISCVSubtarget(RISCVSubtargetFeatures Features, RelocationModel 
 RISCVSubtarget::~RISCVSubtarget() = default;
 
 const TargetCallLowering *RISCVSubtarget::getCallLowering() const {
-  if (!CallLoweringInfo)
-    CallLoweringInfo = std::make_unique<RISCVCallLowering>();
   return CallLoweringInfo.get();
 }
 
 InstructionSelector *RISCVSubtarget::getInstructionSelector() const {
-  if (!InstSelector)
-    InstSelector.reset(createRISCVInstructionSelector(*this, *getRegBankInfo()));
   return InstSelector.get();
 }
 
 const LegalizerInfo *RISCVSubtarget::getLegalizerInfo() const {
-  if (!Legalizer)
-    Legalizer = std::make_unique<RISCVLegalizerInfo>(*this);
   return Legalizer.get();
 }
 
 const RISCVRegisterBankInfo *RISCVSubtarget::getRegBankInfo() const {
-  if (!RegBankInfo)
-    RegBankInfo = std::make_unique<RISCVRegisterBankInfo>();
   return RegBankInfo.get();
 }
 

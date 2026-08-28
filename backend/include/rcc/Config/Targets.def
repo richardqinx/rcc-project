@@ -1,0 +1,7 @@
+#ifndef RCC_TARGET
+#define RCC_TARGET(TargetName)
+#endif
+
+RCC_TARGET(RISCV)
+
+#undef RCC_TARGET

@@ -7,7 +7,9 @@
 #include "rcc/CodeGen/TargetDescription.h"
 #include "rcc/CodeGen/TargetMIRTextInfo.h"
 #include "rcc/CodeGen/TargetRegisterInfo.h"
+#include "rcc/MC/TargetRegistry.h"
 #include "rcc/Support/SHA256.h"
+#include "rcc/Target/TargetMachine.h"
 
 #include <algorithm>
 #include <cctype>
@@ -374,25 +376,63 @@ std::string BackendInvocation::canonicalText() const {
   return Output;
 }
 
-BackendInvocation defaultRV64GCInvocation() {
+Expected<BackendInvocation> defaultBackendInvocation(const Target &Target) {
+  TargetMachineOptions Defaults = Target.defaultMachineOptions();
   BackendInvocation Result;
-  Result.Triple = "riscv64-unknown-linux-gnu";
-  Result.CPU = "generic-rv64gc";
-  Result.TuneCPU = "generic-rv64gc";
-  Result.Features = {"+i", "+m", "+a", "+f", "+d", "+c", "+zicsr", "+zifencei"};
-  Result.ABI = "lp64d";
-  Result.DataLayout = "e-m:e-p:64:64-i64:64-i128:128-n32:64-S128";
-  Result.TargetOptions = {
-      {"function-sections", "false"},
-      {"omit-frame-pointer", "true"},
-      {"stack-realignment", "false"},
-  };
-  Result.AssemblerFlavor = "rcc-integrated-gnu";
-  Result.AssemblerVersion = "rcc-mc-v1";
-  Result.AssemblerOptions = {{"relax", "true"}};
+  Result.Triple = std::move(Defaults.Triple);
+  Result.CPU = std::move(Defaults.CPU);
+  Result.TuneCPU = std::move(Defaults.TuneCPU);
+  Result.Features = std::move(Defaults.Features);
+  Result.ABI = std::move(Defaults.ABI);
+  Result.DataLayout = std::move(Defaults.DataLayout);
+  Result.Relocation = Defaults.Relocation;
+  Result.Code = Defaults.Code;
+  Result.Optimization = Defaults.Optimization;
+  Result.TargetOptions = std::move(Defaults.Options);
+  Result.TargetABILoweringVersion = std::move(Defaults.ABILoweringVersion);
+  Result.AssemblerFlavor = std::move(Defaults.AssemblerFlavor);
+  Result.AssemblerVersion = std::move(Defaults.AssemblerVersion);
+  Result.AssemblerOptions = std::move(Defaults.AssemblerOptions);
   auto Verified = Result.canonicalizeAndVerify();
-  (void)Verified;
+  if (!Verified)
+    return std::unexpected(Verified.error());
   return Result;
+}
+
+Expected<std::unique_ptr<TargetMachine>> createTargetMachine(const BackendInvocation &Invocation) {
+  BackendInvocation Canonical = Invocation;
+  auto Verified = Canonical.canonicalizeAndVerify();
+  if (!Verified)
+    return std::unexpected(Verified.error());
+  if (Canonical != Invocation) {
+    return makeUnexpected(ErrorCode::InvalidInvocation,
+                          "backend invocation must be canonicalized before execution");
+  }
+  if (Invocation.MIRReferenceRevision != LLVMReferenceRevision ||
+      Invocation.GenericOpcodeVersion != GenericOpcodeReferenceVersion) {
+    return makeUnexpected(ErrorCode::InvalidInvocation,
+                          "backend invocation reference versions do not match this build");
+  }
+  auto RegisteredTarget = TargetRegistry::lookupTarget(Invocation.Triple);
+  if (!RegisteredTarget)
+    return std::unexpected(RegisteredTarget.error());
+  TargetMachineOptions Options{
+      .Triple = Invocation.Triple,
+      .CPU = Invocation.CPU,
+      .TuneCPU = Invocation.TuneCPU,
+      .Features = Invocation.Features,
+      .ABI = Invocation.ABI,
+      .DataLayout = Invocation.DataLayout,
+      .Relocation = Invocation.Relocation,
+      .Code = Invocation.Code,
+      .Optimization = Invocation.Optimization,
+      .Options = Invocation.TargetOptions,
+      .ABILoweringVersion = Invocation.TargetABILoweringVersion,
+      .AssemblerFlavor = Invocation.AssemblerFlavor,
+      .AssemblerVersion = Invocation.AssemblerVersion,
+      .AssemblerOptions = Invocation.AssemblerOptions,
+  };
+  return (*RegisteredTarget)->createTargetMachine(std::move(Options));
 }
 
 Expected<std::string> computeTargetDescriptionFingerprint(const TargetDescription &Target) {

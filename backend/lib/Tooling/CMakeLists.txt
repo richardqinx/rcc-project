@@ -36,8 +36,9 @@ target_link_libraries(
   RCCBackendTooling
   PUBLIC
     RCCBackend::MIR
-    RCCBackend::RISCV
+    RCCBackend::MC
     RCCBackend::Support
+    RCCBackend::Target
 )
 
 set_target_properties(

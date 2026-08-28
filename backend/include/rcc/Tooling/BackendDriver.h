@@ -13,11 +13,7 @@
 #include <string_view>
 #include <vector>
 
-namespace rcc {
-
-class TargetDescription;
-
-namespace tooling {
+namespace rcc::tooling {
 
 struct BackendRunResult final {
   ArtifactKind Kind = ArtifactKind::FinalMIR;
@@ -29,11 +25,9 @@ struct BackendRunResult final {
 };
 
 [[nodiscard]] Expected<BackendRunResult>
-runBackend(CanonicalMIR Input, const TargetDescription &Target, const BackendInvocation &Invocation,
-           ArtifactKind Output, PipelineControls Controls = {},
-           MachinePassInstrumentation *Instrumentation = nullptr);
+runBackend(CanonicalMIR Input, const BackendInvocation &Invocation, ArtifactKind Output,
+           PipelineControls Controls = {}, MachinePassInstrumentation *Instrumentation = nullptr);
 
-} // namespace tooling
-} // namespace rcc
+} // namespace rcc::tooling
 
 #endif // RCC_TOOLING_BACKENDDRIVER_H

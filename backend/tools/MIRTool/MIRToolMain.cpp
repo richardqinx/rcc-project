@@ -2,9 +2,10 @@
 
 #include "rcc/CodeGen/CommandFlags.h"
 #include "rcc/CodeGen/MachineFunction.h"
+#include "rcc/MC/TargetRegistry.h"
 #include "rcc/Support/Error.h"
-#include "rcc/Target/RISCV/RISCVPipeline.h"
-#include "rcc/Target/RISCV/RISCVTarget.h"
+#include "rcc/Support/TargetSelect.h"
+#include "rcc/Target/TargetMachine.h"
 #include "rcc/Tooling/ArtifactStore.h"
 #include "rcc/Tooling/BackendDriver.h"
 #include "rcc/Tooling/BackendInvocation.h"
@@ -64,7 +65,7 @@ struct CommandLine final {
   std::filesystem::path ReproducerPath;
   std::filesystem::path CachePath;
   ArtifactKind Output = ArtifactKind::FinalMIR;
-  BackendInvocation Invocation = rcc::tooling::defaultRV64GCInvocation();
+  BackendInvocation Invocation;
   rcc::tooling::PipelineControls Controls;
   rcc::tooling::MIRFuzzOptions FuzzOptions;
   bool OutputWasSpecified = false;
@@ -214,12 +215,6 @@ void applyFeatureOverrides(std::vector<std::string> Overrides, std::vector<std::
   }
 }
 
-[[nodiscard]] std::string normalizeRV64Triple(std::string_view Triple) {
-  if (Triple == "riscv64" || Triple == "riscv64-linux-gnu")
-    return "riscv64-unknown-linux-gnu";
-  return std::string(Triple);
-}
-
 [[nodiscard]] Expected<rcc::tooling::BackendOption> parseBackendOption(std::string_view Text,
                                                                        std::string_view Category) {
   const std::size_t Equal = Text.find('=');
@@ -282,8 +277,10 @@ void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::st
   return {};
 }
 
-[[nodiscard]] Expected<CommandLine> parseCommandLine(int ArgumentCount, char *Arguments[]) {
+[[nodiscard]] Expected<CommandLine> parseCommandLine(int ArgumentCount, char *Arguments[],
+                                                     BackendInvocation DefaultInvocation) {
   CommandLine Command;
+  Command.Invocation = std::move(DefaultInvocation);
   bool ExplicitPipeline = false;
   bool UsedRunPass = false;
   bool UsedPasses = false;
@@ -699,8 +696,13 @@ void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::st
   if (Command.ShowHelp)
     return Command;
   if (CodeGenFlags.Triple) {
-    Command.Invocation.Triple = normalizeRV64Triple(*CodeGenFlags.Triple);
-    Command.Invocation.Features = {"+i"};
+    auto SelectedTarget = rcc::TargetRegistry::lookupTarget(*CodeGenFlags.Triple);
+    if (!SelectedTarget)
+      return std::unexpected(SelectedTarget.error());
+    Command.Invocation.Triple = (*SelectedTarget)->normalizeTriple(*CodeGenFlags.Triple);
+    Command.Invocation.Features.clear();
+    for (std::string_view Feature : (*SelectedTarget)->baselineFeatures())
+      Command.Invocation.Features.emplace_back(Feature);
   }
   if (CodeGenFlags.CPU)
     Command.Invocation.CPU = *CodeGenFlags.CPU;
@@ -710,9 +712,10 @@ void setBackendOption(std::vector<rcc::tooling::BackendOption> &Options, std::st
   if (CodeGenFlags.ABI) {
     Command.Invocation.ABI = *CodeGenFlags.ABI;
   } else {
-    const bool HasDoubleFloat =
-        std::ranges::find(Command.Invocation.Features, "+d") != Command.Invocation.Features.end();
-    Command.Invocation.ABI = HasDoubleFloat ? "lp64d" : "lp64";
+    auto SelectedTarget = rcc::TargetRegistry::lookupTarget(Command.Invocation.Triple);
+    if (!SelectedTarget)
+      return std::unexpected(SelectedTarget.error());
+    Command.Invocation.ABI = (*SelectedTarget)->defaultABI(Command.Invocation.Features);
   }
   if (CodeGenFlags.Relocation)
     Command.Invocation.Relocation = *CodeGenFlags.Relocation;
@@ -845,7 +848,7 @@ void printActions(const BackendRunResult &Result) {
 runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDescription &Target,
              rcc::MachinePassInstrumentation *Instrumentation = nullptr) {
   if (Command.Cache == CachePolicy::Off) {
-    return rcc::tooling::runBackend(std::move(Input), Target, Command.Invocation, Command.Output,
+    return rcc::tooling::runBackend(std::move(Input), Command.Invocation, Command.Output,
                                     Command.Controls, Instrumentation);
   }
   if (!rcc::tooling::isCacheableArtifact(Command.Output)) {
@@ -869,7 +872,7 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
   }
 
   const std::string CanonicalInput = Input.Text;
-  auto Run = rcc::tooling::runBackend(std::move(Input), Target, Command.Invocation, Command.Output,
+  auto Run = rcc::tooling::runBackend(std::move(Input), Command.Invocation, Command.Output,
                                       Command.Controls, Instrumentation);
   if (!Run)
     return std::unexpected(Run.error());
@@ -888,19 +891,24 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
 }
 
 [[nodiscard]] Expected<void> runCommand(const CommandLine &OriginalCommand) {
-  auto Target = rcc::riscv::createTargetDescription();
-  if (!Target)
-    return std::unexpected(Target.error());
   CommandLine Command = OriginalCommand;
+  auto Machine = rcc::tooling::createTargetMachine(Command.Invocation);
+  if (!Machine)
+    return std::unexpected(Machine.error());
+  const rcc::TargetDescription &Target = (*Machine)->targetDescription();
 
   if (Command.Action == Operation::Reproduce) {
-    auto Package = rcc::tooling::loadReproducer(Command.ReproducerPath, *Target);
+    auto Package = rcc::tooling::loadReproducer(Command.ReproducerPath, Target);
     if (!Package)
       return std::unexpected(Package.error());
     Command.Output = Package->Manifest.Artifact;
     Command.Invocation = Package->Manifest.Invocation;
     Command.ReproducerPath.clear();
-    auto Run = runWithCache(Command, std::move(Package->Input), *Target);
+    auto ReplayMachine = rcc::tooling::createTargetMachine(Command.Invocation);
+    if (!ReplayMachine)
+      return std::unexpected(ReplayMachine.error());
+    auto Run =
+        runWithCache(Command, std::move(Package->Input), (*ReplayMachine)->targetDescription());
     if (!Run)
       return std::unexpected(Run.error());
     printSnapshots(*Run);
@@ -913,7 +921,7 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
   if (!Source)
     return std::unexpected(Source.error());
   const std::string SourceName = Command.InputPath == "-" ? "<stdin>" : Command.InputPath;
-  auto Input = rcc::tooling::parseAndCanonicalizeMIR(SourceName, std::move(*Source), *Target,
+  auto Input = rcc::tooling::parseAndCanonicalizeMIR(SourceName, std::move(*Source), Target,
                                                      Command.Invocation);
   if (!Input)
     return std::unexpected(Input.error());
@@ -924,21 +932,12 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
     return {};
   }
   if (Command.Action == Operation::ListPasses) {
-    auto Features =
-        rcc::riscv::RISCVSubtargetFeatures::fromFeatureList(Command.Invocation.Features);
-    if (!Features)
-      return std::unexpected(Features.error());
-    auto ABI = rcc::riscv::parseRISCVABI(Command.Invocation.ABI);
-    if (!ABI)
-      return std::unexpected(ABI.error());
-    const rcc::riscv::RISCVSubtarget Subtarget(*Features, Command.Invocation.Relocation,
-                                               Command.Invocation.Code, *ABI);
     std::vector<std::string> Names;
     for (std::size_t Index = 0; Index < Input->Document.unit().functionCount(); ++Index) {
       const rcc::MachineFunction *Function = Input->Document.unit().functionAt(Index);
       if (Function == nullptr)
         return rcc::makeUnexpected(ErrorCode::InternalError, "MIR input contains a null function");
-      auto FunctionNames = rcc::riscv::canonicalPipelinePassNames(*Function, Subtarget);
+      auto FunctionNames = (*Machine)->codeGenPassNames(*Function);
       if (!FunctionNames)
         return std::unexpected(FunctionNames.error());
       for (std::string &Name : *FunctionNames) {
@@ -954,7 +953,7 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
     return writeText(Command.OutputPath, Output);
   }
   if (Command.Action == Operation::Fuzz) {
-    auto Result = rcc::tooling::fuzzMIR(Command.InputPath, Input->Text, Command.Invocation, *Target,
+    auto Result = rcc::tooling::fuzzMIR(Command.InputPath, Input->Text, Command.Invocation, Target,
                                         Command.FuzzOptions);
     if (!Result)
       return std::unexpected(Result.error());
@@ -978,18 +977,18 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
     rcc::tooling::MIRReducerOptions Options;
     Options.Mode = rcc::tooling::ReductionMode::PreserveValidity;
     auto Reduced = rcc::tooling::reduceMIR(Command.InputPath, Input->Text, Command.Invocation,
-                                           *Target, {}, std::move(Options));
+                                           Target, {}, std::move(Options));
     if (!Reduced)
       return std::unexpected(Reduced.error());
     return writeText(Command.OutputPath, Reduced->MIR);
   }
   if (Command.Action == Operation::ReduceFailure) {
     auto InitialForRun = rcc::tooling::parseAndCanonicalizeMIR("reducer-initial.mir", Input->Text,
-                                                               *Target, Command.Invocation);
+                                                               Target, Command.Invocation);
     if (!InitialForRun)
       return std::unexpected(InitialForRun.error());
-    auto InitialRun = rcc::tooling::runBackend(
-        std::move(*InitialForRun), *Target, Command.Invocation, Command.Output, Command.Controls);
+    auto InitialRun = rcc::tooling::runBackend(std::move(*InitialForRun), Command.Invocation,
+                                               Command.Output, Command.Controls);
     if (InitialRun) {
       return rcc::makeUnexpected(ErrorCode::ReductionFailed,
                                  "failure-preserving reduction requires an initially failing run");
@@ -998,23 +997,23 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
     const auto Interesting = [&](std::string_view MIR,
                                  const BackendInvocation &Invocation) -> Expected<bool> {
       auto Candidate = rcc::tooling::parseAndCanonicalizeMIR("reducer-interesting.mir",
-                                                             std::string(MIR), *Target, Invocation);
+                                                             std::string(MIR), Target, Invocation);
       if (!Candidate)
         return std::unexpected(Candidate.error());
-      auto Run = rcc::tooling::runBackend(std::move(*Candidate), *Target, Invocation,
-                                          Command.Output, Command.Controls);
+      auto Run = rcc::tooling::runBackend(std::move(*Candidate), Invocation, Command.Output,
+                                          Command.Controls);
       return !Run && Run.error().code() == FailureCode;
     };
     rcc::tooling::MIRReducerOptions Options;
     Options.Mode = rcc::tooling::ReductionMode::PreserveFailure;
     auto Reduced = rcc::tooling::reduceMIR(Command.InputPath, Input->Text, Command.Invocation,
-                                           *Target, Interesting, std::move(Options));
+                                           Target, Interesting, std::move(Options));
     if (!Reduced)
       return std::unexpected(Reduced.error());
     return writeText(Command.OutputPath, Reduced->MIR);
   }
 
-  auto Reproducer = writePreExecutionReproducer(Command, *Input, *Target);
+  auto Reproducer = writePreExecutionReproducer(Command, *Input, Target);
   if (!Reproducer)
     return std::unexpected(Reproducer.error());
 
@@ -1066,7 +1065,7 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
         FailureDiagnostics.push_back(std::move(Diagnostic));
       });
 
-  auto Run = runWithCache(Command, std::move(*Input), *Target,
+  auto Run = runWithCache(Command, std::move(*Input), Target,
                           Command.ReproducerPath.empty() ? nullptr : &Instrumentation);
   if (!Run) {
     if (!Command.ReproducerPath.empty()) {
@@ -1113,7 +1112,18 @@ runWithCache(const CommandLine &Command, CanonicalMIR Input, const rcc::TargetDe
 } // namespace
 
 int main(int ArgumentCount, char *Arguments[]) {
-  auto Command = parseCommandLine(ArgumentCount, Arguments);
+  rcc::initializeAllTargets();
+  auto DefaultTarget = rcc::TargetRegistry::defaultTarget();
+  if (!DefaultTarget) {
+    std::cerr << "rcc-backend-mir: " << DefaultTarget.error().message() << '\n';
+    return 1;
+  }
+  auto DefaultInvocation = rcc::tooling::defaultBackendInvocation(**DefaultTarget);
+  if (!DefaultInvocation) {
+    std::cerr << "rcc-backend-mir: " << DefaultInvocation.error().message() << '\n';
+    return 1;
+  }
+  auto Command = parseCommandLine(ArgumentCount, Arguments, std::move(*DefaultInvocation));
   if (!Command) {
     std::cerr << "rcc-backend-mir: " << Command.error().message() << '\n';
     printUsage(std::cerr);

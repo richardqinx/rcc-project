@@ -142,10 +142,10 @@ private:
   CodeModel Code;
   RISCVABI ABI;
   std::unique_ptr<TargetFrameLowering> FrameLoweringInfo;
-  mutable std::unique_ptr<TargetCallLowering> CallLoweringInfo;
-  mutable std::unique_ptr<InstructionSelector> InstSelector;
-  mutable std::unique_ptr<LegalizerInfo> Legalizer;
-  mutable std::unique_ptr<RISCVRegisterBankInfo> RegBankInfo;
+  std::unique_ptr<TargetCallLowering> CallLoweringInfo;
+  std::unique_ptr<InstructionSelector> InstSelector;
+  std::unique_ptr<LegalizerInfo> Legalizer;
+  std::unique_ptr<RISCVRegisterBankInfo> RegBankInfo;
   std::unique_ptr<TargetSchedulingHooks> SchedulingHooks;
   std::unique_ptr<TargetSchedulingModel> SchedulingModel;
 };

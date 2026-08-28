@@ -47,7 +47,7 @@ template <typename PassT, typename... ArgumentT>
 
 [[nodiscard]] Expected<void> addInitialPipeline(MachineFunctionPassManager &Pipeline,
                                                 const RISCVSubtarget &Subtarget,
-                                                RISCVPipelineOptions Options) {
+                                                TargetPipelineOptions Options) {
   auto Added = addPass<GlobalISelCombinerPass>(
       Pipeline, giselCombinerTable(), giselCombinerExecutor(), "riscv-prelegalizer-combiner");
   if (!Added)
@@ -67,7 +67,7 @@ template <typename PassT, typename... ArgumentT>
 
 [[nodiscard]] Expected<void> addSSAExitPipeline(MachineFunctionPassManager &Pipeline,
                                                 const RISCVSubtarget &Subtarget,
-                                                RISCVPipelineOptions Options) {
+                                                TargetPipelineOptions Options) {
   auto Added = addSelectedSSAOptimizationPipeline(
       Pipeline, optimizationPipelineInfo(Subtarget, Options.DebugMachineScheduler,
                                          Options.DebugPrologueEpilogue));
@@ -84,7 +84,7 @@ template <typename PassT, typename... ArgumentT>
 
 [[nodiscard]] Expected<void> addRegisterAllocationPipeline(MachineFunctionPassManager &Pipeline,
                                                            const RISCVSubtarget &Subtarget,
-                                                           RISCVPipelineOptions Options) {
+                                                           TargetPipelineOptions Options) {
   auto Added = addPass<PreRATargetPseudoExpansionPass>(Pipeline, pseudoExpansionInfo());
   if (!Added)
     return std::unexpected(Added.error());
@@ -104,7 +104,7 @@ template <typename PassT, typename... ArgumentT>
 
 [[nodiscard]] Expected<void> addCompleteRegistry(MachineFunctionPassManager &Pipeline,
                                                  const RISCVSubtarget &Subtarget,
-                                                 RISCVPipelineOptions Options) {
+                                                 TargetPipelineOptions Options) {
   auto Added = addInitialPipeline(Pipeline, Subtarget, Options);
   if (!Added)
     return std::unexpected(Added.error());
@@ -139,7 +139,8 @@ template <typename PassT, typename... ArgumentT>
 
 Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
                                     const MachineFunction &Function,
-                                    const RISCVSubtarget &Subtarget, RISCVPipelineOptions Options) {
+                                    const RISCVSubtarget &Subtarget,
+                                    TargetPipelineOptions Options) {
   if (!Function.properties().has(MachineFunctionProperty::Legalized)) {
     auto Added = addPass<GlobalISelCombinerPass>(
         Pipeline, giselCombinerTable(), giselCombinerExecutor(), "riscv-prelegalizer-combiner");
@@ -211,7 +212,7 @@ Expected<void> addCanonicalPipeline(MachineFunctionPassManager &Pipeline,
 
 Expected<std::unique_ptr<MachineFunctionPass>>
 createCanonicalPipelinePass(std::string_view Name, const RISCVSubtarget &Subtarget,
-                            RISCVPipelineOptions Options) {
+                            TargetPipelineOptions Options) {
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidArgument, "pipeline pass name cannot be empty");
   MachineFunctionPassManager Registry;

@@ -10,7 +10,7 @@
 #include "rcc/CodeGen/MachineStripDebug.h"
 #include "rcc/CodeGen/MachineVerifier.h"
 #include "rcc/MIR/ReachingDefPrinter.h"
-#include "rcc/Target/RISCV/RISCVPipeline.h"
+#include "rcc/Target/TargetMachine.h"
 
 #include <algorithm>
 #include <atomic>
@@ -100,12 +100,6 @@ struct FunctionRunResult final {
   return false;
 }
 
-[[nodiscard]] bool booleanTargetOption(const BackendInvocation &Invocation,
-                                       std::string_view Name) noexcept {
-  const auto Option = std::ranges::find(Invocation.TargetOptions, Name, &BackendOption::Name);
-  return Option != Invocation.TargetOptions.end() && Option->Value == "true";
-}
-
 [[nodiscard]] std::optional<BackendStage> stageAfterPass(std::string_view Pass) noexcept {
   if (Pass == "legalizer")
     return BackendStage::LegalizedMIR;
@@ -123,16 +117,16 @@ struct FunctionRunResult final {
 }
 
 [[nodiscard]] Expected<std::unique_ptr<MachineFunctionPass>>
-createNamedMachinePass(std::string_view Name, const riscv::RISCVSubtarget &Subtarget,
-                       riscv::RISCVPipelineOptions Options = {}) {
+createNamedMachinePass(std::string_view Name, const TargetMachine &TargetMachine,
+                       TargetPipelineOptions Options = {}) {
   if (Name == mir::ReachingDefPrinterPass::name())
     return std::make_unique<mir::ReachingDefPrinterPass>();
-  return riscv::createCanonicalPipelinePass(Name, Subtarget, Options);
+  return TargetMachine.createMachinePass(Name, Options);
 }
 
 [[nodiscard]] Expected<MachineFunctionPassManager::PassList>
 createPasses(const MachineFunction &Function, const BackendInvocation &Invocation,
-             const riscv::RISCVSubtarget &Subtarget, MachinePassManagerOptions Options) {
+             const TargetMachine &TargetMachine, MachinePassManagerOptions Options) {
   const auto GlobalISelAbortOption = std::ranges::find(
       Invocation.TargetOptions, std::string_view{"global-isel-abort"}, &BackendOption::Name);
   GlobalISelAbortMode GlobalISelAbort = GlobalISelAbortMode::Enable;
@@ -146,13 +140,13 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
   const bool DebugMachineScheduler = hasDebugType(Invocation, "machine-scheduler");
   const bool DebugPrologueEpilogue = hasDebugType(Invocation, "prologepilog");
   if (Invocation.PassPipeline.size() == 1 && Invocation.PassPipeline.front() == "default") {
-    auto Added = riscv::addCanonicalPipeline(
-        Pipeline, Function, Subtarget,
-        riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
-                                    .UseTargetCopyInstructions = true,
-                                    .GlobalISelAbort = GlobalISelAbort,
-                                    .DebugMachineScheduler = DebugMachineScheduler,
-                                    .DebugPrologueEpilogue = DebugPrologueEpilogue});
+    auto Added = TargetMachine.addCodeGenPasses(
+        Pipeline, Function,
+        TargetPipelineOptions{.Optimization = Invocation.Optimization,
+                              .UseTargetCopyInstructions = true,
+                              .GlobalISelAbort = GlobalISelAbort,
+                              .DebugMachineScheduler = DebugMachineScheduler,
+                              .DebugPrologueEpilogue = DebugPrologueEpilogue});
     if (!Added)
       return std::unexpected(Added.error());
   } else {
@@ -166,12 +160,12 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
         TargetCopyOption != Invocation.TargetOptions.end() && TargetCopyOption->Value == "true";
     for (const std::string &Name : Invocation.PassPipeline) {
       auto Pass = createNamedMachinePass(
-          Name, Subtarget,
-          riscv::RISCVPipelineOptions{.Optimization = Invocation.Optimization,
-                                      .UseTargetCopyInstructions = UseTargetCopyInstructions,
-                                      .GlobalISelAbort = GlobalISelAbort,
-                                      .DebugMachineScheduler = DebugMachineScheduler,
-                                      .DebugPrologueEpilogue = DebugPrologueEpilogue});
+          Name, TargetMachine,
+          TargetPipelineOptions{.Optimization = Invocation.Optimization,
+                                .UseTargetCopyInstructions = UseTargetCopyInstructions,
+                                .GlobalISelAbort = GlobalISelAbort,
+                                .DebugMachineScheduler = DebugMachineScheduler,
+                                .DebugPrologueEpilogue = DebugPrologueEpilogue});
       if (!Pass)
         return std::unexpected(Pass.error());
       auto Added = Pipeline.addPass(std::move(*Pass));
@@ -183,7 +177,7 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
 }
 
 [[nodiscard]] Expected<void> validateSelector(std::string_view Selector, bool AllowAll,
-                                              const riscv::RISCVSubtarget &Subtarget) {
+                                              const TargetMachine &TargetMachine) {
   if (Selector == "all" && AllowAll)
     return {};
   const std::size_t Comma = Selector.find(',');
@@ -192,7 +186,7 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
   if (Name.empty())
     return makeUnexpected(ErrorCode::InvalidInvocation, "empty pipeline pass selector");
   if (Name != "machine-outliner") {
-    auto Pass = createNamedMachinePass(Name, Subtarget);
+    auto Pass = createNamedMachinePass(Name, TargetMachine);
     if (!Pass)
       return std::unexpected(Pass.error());
   }
@@ -211,8 +205,7 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
 }
 
 [[nodiscard]] Expected<void> validateControls(const PipelineControls &Controls,
-                                              riscv::RISCVSubtargetFeatures Features) {
-  const riscv::RISCVSubtarget Subtarget(Features);
+                                              const TargetMachine &TargetMachine) {
   if (Controls.StartBefore && Controls.StartAfter) {
     return makeUnexpected(ErrorCode::InvalidInvocation,
                           "-start-before and -start-after cannot be combined");
@@ -222,32 +215,32 @@ createPasses(const MachineFunction &Function, const BackendInvocation &Invocatio
                           "-stop-before and -stop-after cannot be combined");
   }
   if (Controls.StartBefore) {
-    auto Result = validateSelector(*Controls.StartBefore, false, Subtarget);
+    auto Result = validateSelector(*Controls.StartBefore, false, TargetMachine);
     if (!Result)
       return Result;
   }
   if (Controls.StartAfter) {
-    auto Result = validateSelector(*Controls.StartAfter, false, Subtarget);
+    auto Result = validateSelector(*Controls.StartAfter, false, TargetMachine);
     if (!Result)
       return Result;
   }
   if (Controls.StopBefore) {
-    auto Result = validateSelector(*Controls.StopBefore, false, Subtarget);
+    auto Result = validateSelector(*Controls.StopBefore, false, TargetMachine);
     if (!Result)
       return Result;
   }
   if (Controls.StopAfter) {
-    auto Result = validateSelector(*Controls.StopAfter, false, Subtarget);
+    auto Result = validateSelector(*Controls.StopAfter, false, TargetMachine);
     if (!Result)
       return Result;
   }
   for (const std::string &Selector : Controls.PrintBefore) {
-    auto Result = validateSelector(Selector, true, Subtarget);
+    auto Result = validateSelector(Selector, true, TargetMachine);
     if (!Result)
       return Result;
   }
   for (const std::string &Selector : Controls.PrintAfter) {
-    auto Result = validateSelector(Selector, true, Subtarget);
+    auto Result = validateSelector(Selector, true, TargetMachine);
     if (!Result)
       return Result;
   }
@@ -278,21 +271,18 @@ captureSnapshot(FunctionRunResult &Result, const mir::MIRDocument &Document,
 }
 
 [[nodiscard]] Expected<FunctionRunResult>
-runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetDescription &Target,
-            const BackendInvocation &Invocation, const PipelineControls &Controls,
-            riscv::RISCVSubtargetFeatures Features, bool AllowSnapshots,
+runFunction(MachineFunction &Function, mir::MIRDocument &Document,
+            const TargetMachine &TargetMachine, const BackendInvocation &Invocation,
+            const PipelineControls &Controls, bool AllowSnapshots,
             MachinePassInstrumentation *Instrumentation) {
   FunctionRunResult Result;
-  auto ABI = riscv::parseRISCVABI(Invocation.ABI);
-  if (!ABI)
-    return std::unexpected(ABI.error());
-  const riscv::RISCVSubtarget Subtarget(Features, Invocation.Relocation, Invocation.Code, *ABI);
+  const TargetDescription &Target = TargetMachine.targetDescription();
   MachinePassManagerOptions ManagerOptions{
       .VerifyBefore = true,
       .VerifyEach = Controls.VerifyEach,
       .DetectUnreportedChanges = Controls.DetectUnreportedChanges,
   };
-  auto Passes = createPasses(Function, Invocation, Subtarget, ManagerOptions);
+  auto Passes = createPasses(Function, Invocation, TargetMachine, ManagerOptions);
   if (!Passes)
     return std::unexpected(Passes.error());
   MachineFunctionAnalysisManager Analyses;
@@ -402,12 +392,9 @@ runFunction(MachineFunction &Function, mir::MIRDocument &Document, const TargetD
 }
 
 [[nodiscard]] Expected<PipelineRunResult>
-runMachineOutliner(mir::MIRDocument &Document, const TargetDescription &Target,
-                   const BackendInvocation &Invocation, const PipelineControls &Controls,
-                   MachinePassInstrumentation *Instrumentation) {
-  auto TargetInfo =
-      riscv::createMachineOutlinerInfo(booleanTargetOption(Invocation, "function-sections"),
-                                       booleanTargetOption(Invocation, "riscv-outliner-regsave"));
+runMachineOutliner(mir::MIRDocument &Document, const TargetMachine &TargetMachine,
+                   const PipelineControls &Controls, MachinePassInstrumentation *Instrumentation) {
+  auto TargetInfo = TargetMachine.createOutlinerInfo();
   if (!TargetInfo)
     return std::unexpected(TargetInfo.error());
 
@@ -434,7 +421,8 @@ runMachineOutliner(mir::MIRDocument &Document, const TargetDescription &Target,
   auto Registered = registerMachineOptimizationAnalyses(FunctionAnalyses);
   if (!Registered)
     return std::unexpected(Registered.error());
-  auto Run = Pipeline.run(Document.unit(), Target, UnitAnalyses, FunctionAnalyses, Instrumentation);
+  auto Run = Pipeline.run(Document.unit(), TargetMachine.targetDescription(), UnitAnalyses,
+                          FunctionAnalyses, Instrumentation);
   if (!Run)
     return std::unexpected(Run.error());
   PipelineRunResult Result;
@@ -507,51 +495,12 @@ Expected<BackendStage> parseBackendStage(std::string_view Value) {
   return makeUnexpected(ErrorCode::InvalidInvocation, "unknown backend stage");
 }
 
-Expected<void> verifyRV64GCInvocation(const BackendInvocation &Invocation) {
-  BackendInvocation Canonical = Invocation;
-  auto Verified = Canonical.canonicalizeAndVerify();
-  if (!Verified)
-    return std::unexpected(Verified.error());
-  if (Canonical != Invocation) {
-    return makeUnexpected(ErrorCode::InvalidInvocation,
-                          "RV64GC backend invocation must be canonicalized before execution");
-  }
-  const BackendInvocation Expected = defaultRV64GCInvocation();
-  auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
-  if (!Features)
-    return std::unexpected(Features.error());
-  auto ABI = riscv::parseRISCVABI(Invocation.ABI);
-  if (!ABI)
-    return std::unexpected(ABI.error());
-  if (*ABI == riscv::RISCVABI::LP64D && !Features->has(riscv::RISCVExtension::D)) {
-    return makeUnexpected(ErrorCode::InvalidInvocation, "RISC-V LP64D requires the D extension");
-  }
-  if (Invocation.Triple != Expected.Triple || Invocation.CPU != Expected.CPU ||
-      Invocation.TuneCPU != Expected.TuneCPU || Invocation.DataLayout != Expected.DataLayout) {
-    return makeUnexpected(ErrorCode::InvalidInvocation,
-                          "backend invocation does not select a supported RV64 target");
-  }
-  if (Invocation.MIRReferenceRevision != LLVMReferenceRevision ||
-      Invocation.GenericOpcodeVersion != GenericOpcodeReferenceVersion ||
-      Invocation.TargetABILoweringVersion != RV64GCTargetABILoweringVersion) {
-    return makeUnexpected(ErrorCode::InvalidInvocation,
-                          "backend invocation reference versions do not match this build");
-  }
-  return {};
-}
-
-Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
-                                              const TargetDescription &Target,
+Expected<PipelineRunResult> runTargetPipeline(mir::MIRDocument &Document,
+                                              const TargetMachine &TargetMachine,
                                               const BackendInvocation &Invocation,
                                               PipelineControls Controls,
                                               MachinePassInstrumentation *Instrumentation) {
-  auto InvocationVerification = verifyRV64GCInvocation(Invocation);
-  if (!InvocationVerification)
-    return std::unexpected(InvocationVerification.error());
-  auto Features = riscv::RISCVSubtargetFeatures::fromFeatureList(Invocation.Features);
-  if (!Features)
-    return std::unexpected(Features.error());
-  auto ControlVerification = validateControls(Controls, *Features);
+  auto ControlVerification = validateControls(Controls, TargetMachine);
   if (!ControlVerification)
     return std::unexpected(ControlVerification.error());
   auto UnitVerification = Document.unit().verify();
@@ -583,7 +532,7 @@ Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
       return makeUnexpected(ErrorCode::InvalidInvocation,
                             "machine-outliner cannot be mixed with per-function passes");
     }
-    return runMachineOutliner(Document, Target, Invocation, Controls, ActiveInstrumentation);
+    return runMachineOutliner(Document, TargetMachine, Controls, ActiveInstrumentation);
   }
 
   const std::size_t FunctionCount = Document.unit().functionCount();
@@ -596,7 +545,7 @@ Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
       if (Function == nullptr)
         return makeUnexpected(ErrorCode::InternalError,
                               "compilation unit contains a null function");
-      auto Run = runFunction(*Function, Document, Target, Invocation, Controls, *Features, true,
+      auto Run = runFunction(*Function, Document, TargetMachine, Invocation, Controls, true,
                              ActiveInstrumentation);
       if (!Run)
         return std::unexpected(Run.error());
@@ -617,7 +566,7 @@ Expected<PipelineRunResult> runRV64GCPipeline(mir::MIRDocument &Document,
               Error(ErrorCode::InternalError, "compilation unit contains a null function");
           continue;
         }
-        auto Run = runFunction(*Function, Document, Target, Invocation, Controls, *Features, false,
+        auto Run = runFunction(*Function, Document, TargetMachine, Invocation, Controls, false,
                                ActiveInstrumentation);
         if (!Run) {
           FunctionResults[Index].Failure = Run.error();

@@ -5,6 +5,7 @@
 
 #include "rcc/CodeGen/MIRParser/MIRParser.h"
 #include "rcc/CodeGen/MachinePassManager.h"
+#include "rcc/Target/TargetMachine.h"
 #include "rcc/Tooling/BackendInvocation.h"
 
 #include <cstdint>
@@ -14,8 +15,6 @@
 #include <vector>
 
 namespace rcc {
-
-class TargetDescription;
 
 namespace tooling {
 
@@ -72,9 +71,8 @@ struct PipelineRunResult final {
   std::vector<PipelineSnapshot> Snapshots;
 };
 
-[[nodiscard]] Expected<void> verifyRV64GCInvocation(const BackendInvocation &Invocation);
 [[nodiscard]] Expected<PipelineRunResult>
-runRV64GCPipeline(mir::MIRDocument &Document, const TargetDescription &Target,
+runTargetPipeline(mir::MIRDocument &Document, const TargetMachine &TargetMachine,
                   const BackendInvocation &Invocation, PipelineControls Controls = {},
                   MachinePassInstrumentation *Instrumentation = nullptr);
 [[nodiscard]] BackendStage stageForFunction(const MachineFunction &Function) noexcept;

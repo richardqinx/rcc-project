@@ -4,8 +4,7 @@
 
 #include "rcc/CodeGen/MIRPrinter.h"
 #include "rcc/CodeGen/MachineFunction.h"
-#include "rcc/Target/RISCV/RISCVAssemblyPrinter.h"
-#include "rcc/Target/RISCV/RISCVObjectFile.h"
+#include "rcc/Target/TargetMachine.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -61,13 +60,13 @@ std::string_view BackendRunResult::text() const noexcept {
   return {reinterpret_cast<const char *>(Output.data()), Output.size()};
 }
 
-Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescription &Target,
-                                      const BackendInvocation &Invocation, ArtifactKind Output,
-                                      PipelineControls Controls,
+Expected<BackendRunResult> runBackend(CanonicalMIR Input, const BackendInvocation &Invocation,
+                                      ArtifactKind Output, PipelineControls Controls,
                                       MachinePassInstrumentation *Instrumentation) {
-  auto InvocationVerification = verifyRV64GCInvocation(Invocation);
-  if (!InvocationVerification)
-    return std::unexpected(InvocationVerification.error());
+  auto TargetMachine = createTargetMachine(Invocation);
+  if (!TargetMachine)
+    return std::unexpected(TargetMachine.error());
+  const TargetDescription &Target = (*TargetMachine)->targetDescription();
   if (Input.Document.unit().functionCount() == 0) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "backend input must contain at least one machine function");
@@ -101,8 +100,8 @@ Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescriptio
   MachinePassInstrumentation LocalInstrumentation;
   MachinePassInstrumentation *ActiveInstrumentation =
       Instrumentation == nullptr ? &LocalInstrumentation : Instrumentation;
-  auto Pipeline = runRV64GCPipeline(Input.Document, Target, Invocation, std::move(Controls),
-                                    ActiveInstrumentation);
+  auto Pipeline = runTargetPipeline(Input.Document, **TargetMachine, Invocation,
+                                    std::move(Controls), ActiveInstrumentation);
   if (!Pipeline)
     return std::unexpected(Pipeline.error());
 
@@ -113,12 +112,12 @@ Expected<BackendRunResult> runBackend(CanonicalMIR Input, const TargetDescriptio
       return std::unexpected(Printed.error());
     Bytes = std::move(*Printed);
   } else if (Output == ArtifactKind::Assembly) {
-    auto Assembly = riscv::emitAssembly(Input.Document.unit(), Target);
+    auto Assembly = (*TargetMachine)->emitAssembly(Input.Document.unit());
     if (!Assembly)
       return std::unexpected(Assembly.error());
     Bytes.assign(Assembly->begin(), Assembly->end());
   } else {
-    auto Object = riscv::emitObject(Input.Document.unit(), Target);
+    auto Object = (*TargetMachine)->emitObject(Input.Document.unit());
     if (!Object)
       return std::unexpected(Object.error());
     Bytes = std::move(*Object);

@@ -14,6 +14,7 @@ set(
   MCObjectStreamer.cpp
   MCSection.cpp
   MCStreamer.cpp
+  TargetRegistry.cpp
 )
 set(
   RCCBackendMCHeaders
@@ -33,6 +34,7 @@ set(
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCSection.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCStreamer.h"
   "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/MCSymbol.h"
+  "${RCC_BACKEND_SOURCE_DIR}/include/rcc/MC/TargetRegistry.h"
 )
 
 add_library(RCCBackendMC ${RCCBackendMCSources})
@@ -46,7 +48,7 @@ target_include_directories(
     "$<BUILD_INTERFACE:${RCC_BACKEND_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
-target_link_libraries(RCCBackendMC PUBLIC RCCBackend::Support)
+target_link_libraries(RCCBackendMC PUBLIC RCCBackend::Support RCCBackend::Target)
 
 set_target_properties(
   RCCBackendMC
