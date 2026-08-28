@@ -119,6 +119,7 @@ add_library(
   RISCVImmediateMaterialization.cpp
   RISCVInstPrinter.cpp
   RISCVAsmBackend.cpp
+  RISCVCallingConv.cpp
   RISCVMCCodeEmitter.cpp
   RISCVObjectFile.cpp
   RISCVMCTargetLowering.cpp
@@ -193,6 +194,8 @@ install(
 rcc_backend_register_format_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallingConv.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallingConv.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVInstructionSelector.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVGISelCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVLegalizerInfo.cpp"
@@ -243,6 +246,7 @@ rcc_backend_register_format_files(
 )
 rcc_backend_register_tidy_files(
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVCallLowering.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RISCVCallingConv.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVInstructionSelector.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVGISelCombiner.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/GISel/RISCVLegalizerInfo.cpp"

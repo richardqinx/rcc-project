@@ -3,6 +3,7 @@
 #ifndef RCC_LIB_TARGET_RISCV_GISEL_RISCVCALLLOWERING_H
 #define RCC_LIB_TARGET_RISCV_GISEL_RISCVCALLLOWERING_H
 
+#include "../RISCVCallingConv.h"
 #include "rcc/CodeGen/TargetCallLowering.h"
 #include "rcc/Target/RISCV/RISCVInstructions.h"
 
@@ -30,11 +31,6 @@ enum class CallValueTransform : std::uint8_t {
   Truncate,
   Bitcast,
 };
-
-[[nodiscard]] constexpr CallingConventionID
-callingConventionID(CallingConvention Convention) noexcept {
-  return CallingConventionID::fromValue(static_cast<std::uint32_t>(Convention));
-}
 
 class RISCVCallLowering final : public TargetCallLowering {
 public:

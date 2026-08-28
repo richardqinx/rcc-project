@@ -5,6 +5,7 @@
 #include "GISel/RISCVCallLowering.h"
 #include "GISel/RISCVRegisterBankInfo.h"
 #include "RISCV.h"
+#include "RISCVCallingConv.h"
 #include "RISCVInstrInfo.h"
 #include "rcc/CodeGen/CFIInstrInserter.h"
 #include "rcc/CodeGen/FinalizeISel.h"
