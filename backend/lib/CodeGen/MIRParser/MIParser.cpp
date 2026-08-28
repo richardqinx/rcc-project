@@ -562,11 +562,7 @@ bool MIParser::Impl::parseScalarLowLevelType(const MIToken &TypeToken, LowLevelT
   std::string_view Digits;
   if (Spelling.starts_with("bf")) {
     Digits = Spelling.substr(2);
-  } else if (Spelling.starts_with('s')) {
-    Digits = Spelling.substr(1);
-  } else if (Spelling.starts_with('i')) {
-    Digits = Spelling.substr(1);
-  } else if (Spelling.starts_with('f')) {
+  } else if (Spelling.starts_with('s') || Spelling.starts_with('i') || Spelling.starts_with('f')) {
     Digits = Spelling.substr(1);
   } else if (Spelling.starts_with('p')) {
     Kind = ScalarKind::Pointer;
