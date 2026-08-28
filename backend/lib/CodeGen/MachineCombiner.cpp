@@ -175,18 +175,11 @@ namespace {
   if (!Fused)
     return std::unexpected(Fused.error());
 
-  MachineBasicBlock *Block = Root.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "machine combiner root is detached");
-  auto Removed = Block->removeInstruction(Root);
+  auto Removed = Root.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   if (EraseProducer) {
-    MachineBasicBlock *ProducerBlock = Producer.parent();
-    if (ProducerBlock == nullptr) {
-      return makeUnexpected(ErrorCode::InternalError, "machine combiner producer is detached");
-    }
-    Removed = ProducerBlock->removeInstruction(Producer);
+    Removed = Producer.eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
   }

@@ -169,7 +169,7 @@ struct MappingMutation final {
   auto Replaced = Operand.setRegister(*Fresh);
   if (!Replaced) {
     if ((*Copy)->parent() != nullptr) {
-      auto Removed = (*Copy)->parent()->removeInstruction(**Copy);
+      auto Removed = (*Copy)->eraseFromParent();
       (void)Removed;
     }
     auto Erased = Function.registerInfo().eraseVirtualRegister(*Fresh);
@@ -188,7 +188,7 @@ struct MappingMutation final {
     if (!Restored)
       return std::unexpected(Restored.error());
     if (Iterator->Copy != nullptr && Iterator->Copy->parent() != nullptr) {
-      auto Removed = Iterator->Copy->parent()->removeInstruction(*Iterator->Copy);
+      auto Removed = Iterator->Copy->eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
     }

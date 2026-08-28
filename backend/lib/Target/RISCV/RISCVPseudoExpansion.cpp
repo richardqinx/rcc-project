@@ -121,13 +121,6 @@ registerBank(Register Reg, const MachineFunction &Function, const TargetDescript
   return {};
 }
 
-[[nodiscard]] Expected<void> removeOldInstruction(MachineInstr &Instruction) {
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InvalidArgument, "pseudo instruction is not linked");
-  return Block->removeInstruction(Instruction);
-}
-
 [[nodiscard]] Expected<std::pair<Register, Register>>
 copyRegisters(const MachineInstr &Instruction) {
   const MachineOperand *DestinationOperand = Instruction.operandAt(0);
@@ -190,7 +183,7 @@ copyRegisters(const MachineInstr &Instruction) {
                           "RISC-V post-RA COPY retains a virtual register");
   }
   if (Destination == Source) {
-    auto Removed = removeOldInstruction(Instruction);
+    auto Removed = Instruction.eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
     return true;
@@ -270,7 +263,7 @@ copyRegisters(const MachineInstr &Instruction) {
   auto Decoration = copyCommonDecoration(Instruction, **Replacement, true, true, true);
   if (!Decoration)
     return std::unexpected(Decoration.error());
-  auto Removed = removeOldInstruction(Instruction);
+  auto Removed = Instruction.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;
@@ -418,7 +411,7 @@ copyRegisters(const MachineInstr &Instruction) {
       Function.records().replaceInstructionReference(Instruction.stableID(), (*Low)->stableID());
   if (!Records)
     return std::unexpected(Records.error());
-  auto Removed = removeOldInstruction(Instruction);
+  auto Removed = Instruction.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;
@@ -560,7 +553,7 @@ copyRegisters(const MachineInstr &Instruction) {
       Function.records().replaceInstructionReference(Instruction.stableID(), (*Low)->stableID());
   if (!Records)
     return std::unexpected(Records.error());
-  auto Removed = removeOldInstruction(Instruction);
+  auto Removed = Instruction.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;

@@ -218,15 +218,6 @@ constexpr std::uint32_t PCRelativeLowFlag = 4;
   return Operand->setBasicBlock(TargetBlock);
 }
 
-[[nodiscard]] Expected<void> removeInstruction(MachineInstr &Instruction) {
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr) {
-    return makeUnexpected(ErrorCode::InvalidArgument,
-                          "RISC-V branch instruction is not linked to a block");
-  }
-  return Block->removeInstruction(Instruction);
-}
-
 [[nodiscard]] Expected<MachineInstr *>
 buildJAL(MachineFunction &Function, const TargetDescription &Target, MachineBasicBlock &Block,
          MachineInstr *Before, PhysicalRegister Destination, MachineBasicBlock &TargetBlock) {
@@ -380,7 +371,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
     auto Annotations = copySingleInstructionAnnotations(Instruction, **Replacement);
     if (!Annotations)
       return std::unexpected(Annotations.error());
-    auto Removed = removeInstruction(Instruction);
+    auto Removed = Instruction.eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
     return true;
@@ -415,7 +406,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   auto Annotations = copySingleInstructionAnnotations(Instruction, **Replacement);
   if (!Annotations)
     return std::unexpected(Annotations.error());
-  auto Removed = removeInstruction(Instruction);
+  auto Removed = Instruction.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;
@@ -436,7 +427,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
     if (!FalseTarget)
       return std::unexpected(FalseTarget.error());
     if (*FalseTarget == *TrueTarget) {
-      auto Removed = removeInstruction(Instruction);
+      auto Removed = Instruction.eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
       return true;
@@ -589,7 +580,7 @@ selectLongBranchScratch(const MachineInstr &Instruction, const MachineBasicBlock
   LowFlags.clear(MachineInstrFlag::BundledWithPred);
   LowFlags.set(MachineInstrFlag::BundledWithPred);
   (*Low)->setFlags(LowFlags);
-  auto Removed = removeInstruction(Instruction);
+  auto Removed = Instruction.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;
@@ -798,7 +789,7 @@ public:
     if (&Branch.function() != &Function)
       return makeUnexpected(ErrorCode::InvalidArgument,
                             "RISC-V branch removal references another function");
-    return removeInstruction(Branch);
+    return Branch.eraseFromParent();
   }
 
   [[nodiscard]] Expected<bool> rewriteBranchTarget(MachineBasicBlock &Block,

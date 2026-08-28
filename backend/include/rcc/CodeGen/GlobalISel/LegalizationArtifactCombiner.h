@@ -351,7 +351,7 @@ private:
     for (MachineInstr *Dead : DeadInstructions) {
       if (Dead == nullptr || Dead->parent() == nullptr)
         continue;
-      auto Removed = Dead->parent()->removeInstruction(*Dead);
+      auto Removed = Dead->eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
     }

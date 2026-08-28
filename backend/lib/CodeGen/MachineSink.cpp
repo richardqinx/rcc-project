@@ -327,7 +327,7 @@ findPostRADestination(MachineInstr &Instruction, const MachineFunction &Function
   MachineBasicBlock *Source = Instruction.parent();
   if (Source == nullptr || Destination.Block == nullptr || Destination.FirstUse == nullptr)
     return makeUnexpected(ErrorCode::InternalError, "machine sink has an invalid move plan");
-  auto Removed = Source->removeInstruction(Instruction);
+  auto Removed = Instruction.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return Destination.Block->insertInstructionBefore(*Destination.FirstUse, Instruction);

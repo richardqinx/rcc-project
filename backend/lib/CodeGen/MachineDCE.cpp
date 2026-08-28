@@ -140,7 +140,7 @@ Expected<MachinePassResult> MachineDCEPass::runImplementation(MachineFunction &F
           if (!Cleared)
             return std::unexpected(Cleared.error());
         }
-        auto Removed = Block->removeInstruction(*Instruction);
+        auto Removed = Instruction->eraseFromParent();
         if (!Removed)
           return std::unexpected(Removed.error());
         for (const Register Reg : DefinitionList) {

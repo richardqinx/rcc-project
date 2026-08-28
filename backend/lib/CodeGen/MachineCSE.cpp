@@ -258,15 +258,12 @@ replacementPairs(const MachineInstr &Available, const MachineInstr &Redundant,
 replaceAndErase(MachineInstr &Redundant,
                 const std::vector<std::pair<Register, Register>> &Replacements,
                 MachineRegisterInfo &Registers) {
-  MachineBasicBlock *Block = Redundant.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "machine CSE candidate is detached");
   for (const auto &[OldReg, NewReg] : Replacements) {
     auto Replaced = Registers.replaceRegWith(OldReg, NewReg);
     if (!Replaced)
       return std::unexpected(Replaced.error());
   }
-  auto Removed = Block->removeInstruction(Redundant);
+  auto Removed = Redundant.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   for (const auto &[OldReg, NewReg] : Replacements) {

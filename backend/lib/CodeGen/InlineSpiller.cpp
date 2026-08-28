@@ -80,8 +80,8 @@ Expected<std::optional<std::vector<Register>>> Spiller::tryRematerialize(Registe
 
   if (ActionAnalyses != nullptr) {
     for (const UseSite &Site : Sites) {
-      auto Accepted = ActionAnalyses->requestAction("rematerialize", *Function,
-                                                    Site.Instruction->stableID());
+      auto Accepted =
+          ActionAnalyses->requestAction("rematerialize", *Function, Site.Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted)
@@ -123,8 +123,7 @@ Expected<std::optional<std::vector<Register>>> Spiller::tryRematerialize(Registe
     }
   }
   if (!HasNonDebugUse) {
-    MachineBasicBlock *Block = const_cast<MachineBasicBlock *>(DefiningInstruction->parent());
-    auto Removed = Block->removeInstruction(*const_cast<MachineInstr *>(DefiningInstruction));
+    auto Removed = const_cast<MachineInstr *>(DefiningInstruction)->eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
   }
@@ -288,9 +287,9 @@ Expected<std::vector<Register>> Spiller::spill(Register VirtualReg) {
   if (ActionAnalyses != nullptr) {
     const MachineOperand *Definition = Function->registerInfo().getUniqueVRegDef(VirtualReg);
     const MachineInstr *Instruction = Definition == nullptr ? nullptr : Definition->parent();
-    auto Accepted = ActionAnalyses->requestAction(
-        "spill", *Function,
-        Instruction == nullptr ? MachineInstrStableID{} : Instruction->stableID());
+    auto Accepted = ActionAnalyses->requestAction("spill", *Function,
+                                                  Instruction == nullptr ? MachineInstrStableID{}
+                                                                         : Instruction->stableID());
     if (!Accepted)
       return std::unexpected(Accepted.error());
     if (!*Accepted) {

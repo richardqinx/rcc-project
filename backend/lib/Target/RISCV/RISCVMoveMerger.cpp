@@ -241,10 +241,10 @@ struct CopyOperands final {
     auto Merged = mergeCopies(Function, *Instruction, *Paired, MoveFromSavedToArgument, Target);
     if (!Merged)
       return std::unexpected(Merged.error());
-    auto RemovedFirst = Block.removeInstruction(*Instruction);
+    auto RemovedFirst = Instruction->eraseFromParent();
     if (!RemovedFirst)
       return std::unexpected(RemovedFirst.error());
-    auto RemovedPaired = Block.removeInstruction(*Paired);
+    auto RemovedPaired = Paired->eraseFromParent();
     if (!RemovedPaired)
       return std::unexpected(RemovedPaired.error());
     Changed = true;

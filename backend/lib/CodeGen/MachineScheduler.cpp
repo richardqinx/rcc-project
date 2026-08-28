@@ -302,7 +302,7 @@ scheduleRegion(MachineBasicBlock &Block, std::span<MachineInstr *const> Instruct
 
   MachineInstr *Anchor = Instructions.back()->next();
   for (MachineInstr *Instruction : Instructions) {
-    auto Removed = Block.removeInstruction(*Instruction);
+    auto Removed = Instruction->eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
   }
@@ -323,8 +323,7 @@ runMachineScheduler(MachineFunction &Function, const TargetDescription &Target,
                     const TargetSchedulingModel &Model, ScheduleDAGMode Mode,
                     const LiveVariablesAnalysis::Result &Liveness,
                     const MachineBlockFrequencyAnalysis::Result &Frequencies,
-                    MachineSchedulerOptions Options,
-                    MachineFunctionAnalysisManager &Analyses) {
+                    MachineSchedulerOptions Options, MachineFunctionAnalysisManager &Analyses) {
   if (Options.MaximumRegionSize == 0) {
     return makeUnexpected(ErrorCode::InvalidArgument,
                           "machine scheduler region budget must be nonzero");

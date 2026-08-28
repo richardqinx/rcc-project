@@ -1714,7 +1714,7 @@ public:
       if (!Adjusted)
         return std::unexpected(Adjusted.error());
     }
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   [[nodiscard]] Expected<void> emitPrologue(MachineFunction &Function,
@@ -2291,7 +2291,7 @@ public:
       auto Built = Pending->build();
       if (!Built)
         return std::unexpected(Built.error());
-      auto Removed = Block.removeInstruction(Terminator);
+      auto Removed = Terminator.eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
     }

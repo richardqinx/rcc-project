@@ -650,11 +650,7 @@ Expected<void> LegalizerHelper::widenScalarMergeValues(MachineInstr &Instruction
         return std::unexpected(Built.error());
     }
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_MERGE_VALUES became detached during widening");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   auto GCDType = LowLevelType::makeCategoryNeutralScalar(std::gcd(SourceSize, WideSize));
@@ -721,11 +717,7 @@ Expected<void> LegalizerHelper::widenScalarMergeValues(MachineInstr &Instruction
       return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "G_MERGE_VALUES became detached during widening");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::widenScalarUnmergeValues(MachineInstr &Instruction,
@@ -804,11 +796,7 @@ Expected<void> LegalizerHelper::widenScalarUnmergeValues(MachineInstr &Instructi
         return std::unexpected(Built.error());
     }
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_UNMERGE_VALUES became detached during widening");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   auto LCMType = getLCMType(*SourceType, WideType);
@@ -890,11 +878,7 @@ Expected<void> LegalizerHelper::widenScalarUnmergeValues(MachineInstr &Instructi
     }
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "G_UNMERGE_VALUES became detached during widening");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::insertParts(Register Destination, LowLevelType ResultType,
@@ -1471,11 +1455,7 @@ Expected<void> LegalizerHelper::widenScalarAddSubOverflow(MachineInstr &Instruct
   if (auto Built = MIRBuilder.buildTrunc(*Destination, *WideResult); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "add/sub overflow instruction became detached during widening");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::widenScalarMulo(MachineInstr &Instruction, std::size_t TypeIndex,
@@ -1588,11 +1568,7 @@ Expected<void> LegalizerHelper::widenScalarMulo(MachineInstr &Instruction, std::
     return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "multiply-overflow instruction became detached during widening");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size_t TypeIndex,
@@ -1815,11 +1791,7 @@ Expected<void> LegalizerHelper::widenScalar(MachineInstr &Instruction, std::size
 
     if (auto Built = MIRBuilder.buildZExtOrTrunc(*Destination, *Result); !Built)
       return std::unexpected(Built.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "bit-count instruction became detached during widening");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   case GenericOpcode::G_BSWAP: {
@@ -2426,11 +2398,7 @@ Expected<void> LegalizerHelper::narrowScalarAddSub(MachineInstr &Instruction, st
                               LeftoverType, LeftoverDestinations);
   if (!Inserted)
     return std::unexpected(Inserted.error());
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "add/sub instruction became detached during narrowing");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalarMul(MachineInstr &Instruction, std::size_t TypeIndex,
@@ -2492,11 +2460,7 @@ Expected<void> LegalizerHelper::narrowScalarMul(MachineInstr &Instruction, std::
                                     TemporaryDestinations.end());
   if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, ResultParts); !Built)
     return std::unexpected(Built.error());
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "multiply instruction became detached during narrowing");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalarExt(MachineInstr &Instruction, std::size_t TypeIndex,
@@ -2528,11 +2492,7 @@ Expected<void> LegalizerHelper::narrowScalarExt(MachineInstr &Instruction, std::
   if (!Remerged)
     return std::unexpected(Remerged.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "extension instruction became detached during narrowing");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalarBasic(MachineInstr &Instruction, std::size_t TypeIndex,
@@ -2602,11 +2562,7 @@ Expected<void> LegalizerHelper::narrowScalarBasic(MachineInstr &Instruction, std
       !Inserted) {
     return std::unexpected(Inserted.error());
   }
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "basic scalar instruction became detached during narrowing");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalarSelect(MachineInstr &Instruction, std::size_t TypeIndex,
@@ -2683,10 +2639,7 @@ Expected<void> LegalizerHelper::narrowScalarSelect(MachineInstr &Instruction, st
       !Inserted) {
     return std::unexpected(Inserted.error());
   }
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "G_SELECT became detached during narrowing");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalarShiftByConstant(MachineInstr &Instruction,
@@ -2711,11 +2664,7 @@ Expected<void> LegalizerHelper::narrowScalarShiftByConstant(MachineInstr &Instru
   if (Amount.isZero()) {
     if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, {*LowPart, *HighPart}); !Built)
       return std::unexpected(Built.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "constant shift became detached during narrowing");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   const std::uint64_t HalfBits = HalfType.minimumBitWidth();
@@ -2880,11 +2829,7 @@ Expected<void> LegalizerHelper::narrowScalarShiftByConstant(MachineInstr &Instru
 
   if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, {LowResult, HighResult}); !Built)
     return std::unexpected(Built.error());
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "constant shift became detached during narrowing");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalarShift(MachineInstr &Instruction, std::size_t TypeIndex,
@@ -3057,10 +3002,7 @@ Expected<void> LegalizerHelper::narrowScalarShift(MachineInstr &Instruction, std
 
   if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, {LowResult, HighResult}); !Built)
     return std::unexpected(Built.error());
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "shift became detached during narrowing");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<Register> LegalizerHelper::buildConstantShiftPart(GenericOpcode Generic,
@@ -3225,10 +3167,7 @@ Expected<void> LegalizerHelper::narrowScalarShiftByConstantMultiway(MachineInstr
   if (Amount.isZero()) {
     if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, SourceParts); !Built)
       return std::unexpected(Built.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "constant multiway shift became detached");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   const std::uint64_t AmountValue = Amount.word(0);
@@ -3279,10 +3218,7 @@ Expected<void> LegalizerHelper::narrowScalarShiftByConstantMultiway(MachineInstr
   }
   if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, DestinationParts); !Built)
     return std::unexpected(Built.error());
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "constant multiway shift became detached");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalarShiftMultiway(MachineInstr &Instruction,
@@ -3419,10 +3355,7 @@ Expected<void> LegalizerHelper::narrowScalarShiftMultiway(MachineInstr &Instruct
 
   if (auto Built = MIRBuilder.buildMergeLikeInstr(*Destination, DestinationParts); !Built)
     return std::unexpected(Built.error());
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "multiway shift became detached");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalarLoadStore(MachineInstr &Instruction,
@@ -3508,12 +3441,7 @@ Expected<void> LegalizerHelper::narrowScalarLoadStore(MachineInstr &Instruction,
         return std::unexpected(Built.error());
     }
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr) {
-      return makeUnexpected(ErrorCode::InternalError,
-                            "memory instruction became detached during scalar narrowing");
-    }
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   return reduceLoadStoreWidth(Instruction, TypeIndex, NarrowType);
@@ -3667,12 +3595,7 @@ Expected<void> LegalizerHelper::reduceLoadStoreWidth(MachineInstr &Instruction,
       return std::unexpected(Inserted.error());
     }
   }
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr) {
-    return makeUnexpected(ErrorCode::InternalError,
-                          "memory instruction became detached during width reduction");
-  }
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::size_t TypeIndex,
@@ -3730,11 +3653,7 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
         return std::unexpected(Merged.error());
     }
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_IMPLICIT_DEF became detached during narrowing");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_CONSTANT: {
     const Register *Destination = Instruction.operandAt(0)->getIf<Register>();
@@ -3803,11 +3722,7 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
         !Inserted) {
       return std::unexpected(Inserted.error());
     }
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_CONSTANT became detached during narrowing");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_ADD:
   case GenericOpcode::G_SUB:
@@ -3935,7 +3850,7 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
     if (auto Merged = MIRBuilder.buildMergeLikeInstr(*Destination, Destinations); !Merged)
       return std::unexpected(Merged.error());
     Observer.changedInstr(Instruction);
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_FCMP:
     if (TypeIndex != 0)
@@ -4055,11 +3970,7 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
 
     if (auto Merged = MIRBuilder.buildMergeLikeInstr(*Destination, DestinationParts); !Merged)
       return std::unexpected(Merged.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_SEXT_INREG became detached during narrowing");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_AND:
   case GenericOpcode::G_OR:
@@ -4232,10 +4143,7 @@ Expected<void> LegalizerHelper::narrowScalar(MachineInstr &Instruction, std::siz
       }
     }
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "G_ICMP became detached during narrowing");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   default:
     return makeUnexpected(ErrorCode::Unsupported,
@@ -4356,12 +4264,7 @@ Expected<void> LegalizerHelper::fewerElements(MachineInstr &Instruction, std::si
     }
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr) {
-    return makeUnexpected(ErrorCode::InternalError,
-                          "vector instruction became detached during legalization");
-  }
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerVAArg(MachineInstr &Instruction) {
@@ -4496,10 +4399,7 @@ Expected<void> LegalizerHelper::lowerVAArg(MachineInstr &Instruction) {
       return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::VerificationError, "G_VAARG is detached during legalization");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerLoad(MachineInstr &Instruction) {
@@ -4629,10 +4529,7 @@ Expected<void> LegalizerHelper::lowerLoad(MachineInstr &Instruction) {
       if (auto Truncated = MIRBuilder.buildTrunc(*Destination, LoadDestination); !Truncated)
         return std::unexpected(Truncated.error());
     }
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "load became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   std::uint64_t LargeSplitBits = 0;
@@ -4718,10 +4615,7 @@ Expected<void> LegalizerHelper::lowerLoad(MachineInstr &Instruction) {
     }
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "load became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerStore(MachineInstr &Instruction) {
@@ -4821,10 +4715,7 @@ Expected<void> LegalizerHelper::lowerStore(MachineInstr &Instruction) {
       return std::unexpected(WideMemory.error());
     if (auto Built = BuildStore(*ZeroExtended, *Address, **WideMemory); !Built)
       return std::unexpected(Built.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "store became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   std::uint64_t LargeSplitBits = 0;
@@ -4900,10 +4791,7 @@ Expected<void> LegalizerHelper::lowerStore(MachineInstr &Instruction) {
   if (auto Built = BuildStore(*SmallValue, *SmallAddress, **SmallMemory); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "store became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
@@ -5045,12 +4933,7 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     if (auto Built = MIRBuilder.buildAShr(Destination, *Temporary, *ShiftAmount); !Built)
       return std::unexpected(Built.error());
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr) {
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_SEXT_INREG became detached during lowering");
-    }
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_VAARG:
     return lowerVAArg(Instruction);
@@ -5088,12 +4971,7 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     if (auto Built = MIRBuilder.buildCopy(OldValue, *NewOldValue); !Built)
       return std::unexpected(Built.error());
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr) {
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_ATOMIC_CMPXCHG_WITH_SUCCESS became detached during lowering");
-    }
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_ATOMICRMW_SUB: {
     const Register Result = *Instruction.operandAt(0)->getIf<Register>();
@@ -5127,11 +5005,7 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
     if (auto Built = AtomicAdd->build(); !Built)
       return std::unexpected(Built.error());
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_ATOMICRMW_SUB became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_UADDO: {
     const Register Result = *Instruction.operandAt(0)->getIf<Register>();
@@ -5151,10 +5025,7 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
       return std::unexpected(Built.error());
     if (auto Built = MIRBuilder.buildCopy(Result, *NewResult); !Built)
       return std::unexpected(Built.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "G_UADDO became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_UADDE: {
     const Register Result = *Instruction.operandAt(0)->getIf<Register>();
@@ -5211,10 +5082,7 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
       return std::unexpected(Built.error());
     if (auto Built = MIRBuilder.buildCopy(Result, *NewResult); !Built)
       return std::unexpected(Built.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "G_UADDE became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_USUBO: {
     const Register Result = *Instruction.operandAt(0)->getIf<Register>();
@@ -5229,10 +5097,7 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
             MIRBuilder.buildICmp(IntegerPredicate::UnsignedLessThan, BorrowOut, Left, Right);
         !Built)
       return std::unexpected(Built.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "G_USUBO became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   case GenericOpcode::G_USUBE: {
     const Register Result = *Instruction.operandAt(0)->getIf<Register>();
@@ -5284,10 +5149,7 @@ Expected<void> LegalizerHelper::lower(MachineInstr &Instruction,
       return std::unexpected(Built.error());
     if (auto Built = MIRBuilder.buildOr(BorrowOut, *Borrow, *SecondBorrow); !Built)
       return std::unexpected(Built.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "G_USUBE became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   default: {
     const InstructionDescriptor *Descriptor =
@@ -5396,11 +5258,7 @@ Expected<void> LegalizerHelper::lowerDynStackAlloc(MachineInstr &Instruction) {
   if (auto Built = MIRBuilder.buildCopy(*Destination, *TargetPointer); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "G_DYN_STACKALLOC became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerStackSave(MachineInstr &Instruction) {
@@ -5420,10 +5278,7 @@ Expected<void> LegalizerHelper::lowerStackSave(MachineInstr &Instruction) {
       !Built) {
     return std::unexpected(Built.error());
   }
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "G_STACKSAVE became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerStackRestore(MachineInstr &Instruction) {
@@ -5440,12 +5295,7 @@ Expected<void> LegalizerHelper::lowerStackRestore(MachineInstr &Instruction) {
     return std::unexpected(Point.error());
   if (auto Built = MIRBuilder.buildCopy(Register::fromPhysical(StackPointer), *Source); !Built)
     return std::unexpected(Built.error());
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr) {
-    return makeUnexpected(ErrorCode::InternalError,
-                          "G_STACKRESTORE became detached during lowering");
-  }
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerMemcpyInline(MachineInstr &Instruction) {
@@ -5485,11 +5335,7 @@ Expected<void> LegalizerHelper::lowerMemcpyInline(MachineInstr &Instruction) {
   }
   const std::uint64_t KnownLength = ConstantLength->Value.words().front();
   if (KnownLength == 0) {
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "G_MEMCPY_INLINE became detached during legalization");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   auto ByteType = LowLevelType::makeCategoryNeutralScalar(8);
@@ -5540,11 +5386,7 @@ Expected<void> LegalizerHelper::lowerMemcpyInline(MachineInstr &Instruction) {
       return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "G_MEMCPY_INLINE became detached during legalization");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerAbsToAddXor(MachineInstr &Instruction) {
@@ -5574,10 +5416,7 @@ Expected<void> LegalizerHelper::lowerAbsToAddXor(MachineInstr &Instruction) {
   if (auto Built = MIRBuilder.buildXor(Destination, *Add, *Shift); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "G_ABS became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerAbsDiffToSelect(MachineInstr &Instruction) {
@@ -5618,11 +5457,7 @@ Expected<void> LegalizerHelper::lowerAbsDiffToSelect(MachineInstr &Instruction) 
     return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "G_ABDS/G_ABDU became detached during select lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerAbsDiffToMinMax(MachineInstr &Instruction) {
@@ -5652,11 +5487,7 @@ Expected<void> LegalizerHelper::lowerAbsDiffToMinMax(MachineInstr &Instruction) 
   if (auto Built = MIRBuilder.buildSub(Destination, *Maximum, *Minimum); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "G_ABDS/G_ABDU became detached during min/max lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerMinMax(MachineInstr &Instruction) {
@@ -5686,11 +5517,7 @@ Expected<void> LegalizerHelper::lowerMinMax(MachineInstr &Instruction) {
     return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "integer min/max became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerThreewayCompare(MachineInstr &Instruction) {
@@ -5770,11 +5597,7 @@ Expected<void> LegalizerHelper::lowerThreewayCompare(MachineInstr &Instruction) 
       return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "three-way comparison became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerDivRem(MachineInstr &Instruction) {
@@ -5797,10 +5620,7 @@ Expected<void> LegalizerHelper::lowerDivRem(MachineInstr &Instruction) {
     return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "DIVREM became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerHighMultiply(MachineInstr &Instruction) {
@@ -5867,11 +5687,7 @@ Expected<void> LegalizerHelper::lowerHighMultiply(MachineInstr &Instruction) {
   if (auto Built = MIRBuilder.buildTrunc(*Destination, *Shifted); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "high multiply instruction became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerMulo(MachineInstr &Instruction) {
@@ -5974,11 +5790,7 @@ Expected<void> LegalizerHelper::lowerBitCount(MachineInstr &Instruction) {
            Decision->Action == LegalizationAction::Custom;
   };
   const auto EraseOriginal = [&Instruction]() -> Expected<void> {
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "bit-count instruction became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   };
 
   switch (Generic) {
@@ -6397,10 +6209,7 @@ Expected<void> LegalizerHelper::lowerBswap(MachineInstr &Instruction) {
     }
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "G_BSWAP became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerFunnelShift(MachineInstr &Instruction) {
@@ -6514,11 +6323,7 @@ Expected<void> LegalizerHelper::lowerFunnelShift(MachineInstr &Instruction) {
   if (auto Built = Result->build(); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr) {
-    return makeUnexpected(ErrorCode::InternalError, "funnel shift became detached during lowering");
-  }
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerRotate(MachineInstr &Instruction) {
@@ -6618,10 +6423,7 @@ Expected<void> LegalizerHelper::lowerRotate(MachineInstr &Instruction) {
   if (auto Built = Result->build(); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "rotate became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
@@ -6810,10 +6612,7 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
       return std::unexpected(Merged.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "libcall became detached during legalization");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerSignedAddSubOverflow(MachineInstr &Instruction) {
@@ -6909,11 +6708,7 @@ Expected<void> LegalizerHelper::lowerSignedAddSubOverflow(MachineInstr &Instruct
       return std::unexpected(Built.error());
     }
 
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "signed extended add/sub instruction became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   const bool IsAdd = Instruction.opcode() == opcode(GenericOpcode::G_SADDO);
@@ -6978,11 +6773,7 @@ Expected<void> LegalizerHelper::lowerSignedAddSubOverflow(MachineInstr &Instruct
   if (auto Built = MIRBuilder.buildCopy(Destination, *Result); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "signed add/sub overflow instruction became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerSaturatingAddSubToMinMax(MachineInstr &Instruction) {
@@ -7118,11 +6909,7 @@ Expected<void> LegalizerHelper::lowerSaturatingAddSubToMinMax(MachineInstr &Inst
     }
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "saturating add/sub became detached during min/max lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerSaturatingAddSubToOverflow(MachineInstr &Instruction) {
@@ -7213,11 +7000,7 @@ Expected<void> LegalizerHelper::lowerSaturatingAddSubToOverflow(MachineInstr &In
       !Built) {
     return std::unexpected(Built.error());
   }
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "saturating add/sub became detached during overflow lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::lowerSaturatingShiftLeft(MachineInstr &Instruction) {
@@ -7305,11 +7088,7 @@ Expected<void> LegalizerHelper::lowerSaturatingShiftLeft(MachineInstr &Instructi
     return std::unexpected(Built.error());
   }
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "saturating shift-left became detached during lowering");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> LegalizerHelper::legalize(MachineInstr &Instruction,

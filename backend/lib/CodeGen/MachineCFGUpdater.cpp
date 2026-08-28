@@ -489,7 +489,7 @@ Expected<MachineBasicBlock *> MachineCFGUpdater::splitBlock(MachineBasicBlock &B
   MachineInstr *Instruction = &SplitBefore;
   while (Instruction != nullptr) {
     MachineInstr *Next = Instruction->next();
-    auto Removed = Block.removeInstruction(*Instruction);
+    auto Removed = Instruction->eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
     auto Appended = NewBlock->appendInstruction(*Instruction);

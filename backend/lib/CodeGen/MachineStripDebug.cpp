@@ -14,7 +14,7 @@ Expected<bool> stripDebugMachineFunction(MachineFunction &Function) {
     for (MachineInstr *Instruction = Block->firstInstruction(); Instruction != nullptr;) {
       MachineInstr *Next = Instruction->next();
       if (Instruction->isDebugInstr() && Instruction->operandCount() > 1) {
-        auto Removed = Block->removeInstruction(*Instruction);
+        auto Removed = Instruction->eraseFromParent();
         if (!Removed)
           return std::unexpected(Removed.error());
         Changed = true;

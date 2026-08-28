@@ -175,13 +175,6 @@ buildImplicitDef(MachineFunction &Function, const TargetDescription &Target,
   return *Composed;
 }
 
-[[nodiscard]] Expected<void> removeInstruction(MachineInstr &Instruction) {
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "rewritten instruction is not linked");
-  return Block->removeInstruction(Instruction);
-}
-
 [[nodiscard]] Expected<void> expandRegSequence(MachineInstr &Instruction, MachineFunction &Function,
                                                const TargetDescription &Target,
                                                const TargetInstrInfo &TargetInfo) {
@@ -240,7 +233,7 @@ buildImplicitDef(MachineFunction &Function, const TargetDescription &Target,
     if (!Copy)
       return std::unexpected(Copy.error());
   }
-  return removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 [[nodiscard]] Expected<void> expandInsertSubreg(MachineInstr &Instruction,
@@ -309,7 +302,7 @@ buildImplicitDef(MachineFunction &Function, const TargetDescription &Target,
     if (!Copy)
       return std::unexpected(Copy.error());
   }
-  return removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 [[nodiscard]] Expected<void> swapRegisterUses(MachineOperand &Left, MachineOperand &Right) {
@@ -450,9 +443,10 @@ TwoAddressInstructionPass::run(MachineFunction &Function, const TargetDescriptio
   return runImplementation(Function, Target, Analyses);
 }
 
-Expected<MachinePassResult> TwoAddressInstructionPass::runImplementation(
-    MachineFunction &Function, const TargetDescription &Target,
-    MachineFunctionAnalysisManager &Analyses) {
+Expected<MachinePassResult>
+TwoAddressInstructionPass::runImplementation(MachineFunction &Function,
+                                             const TargetDescription &Target,
+                                             MachineFunctionAnalysisManager &Analyses) {
   MachinePassResult Result;
   const std::vector<MachineInstr *> Instructions(Function.allInstructions().begin(),
                                                  Function.allInstructions().end());

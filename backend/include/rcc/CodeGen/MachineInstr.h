@@ -79,6 +79,8 @@ public:
     return ParentBlock != nullptr;
   }
 
+  [[nodiscard]] Expected<void> eraseFromParent();
+
   [[nodiscard]] bool isDebugInstr() const noexcept;
 
   [[nodiscard]] std::size_t operandCount() const noexcept {

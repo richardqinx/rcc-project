@@ -254,10 +254,7 @@ buildPhi(MachineFunction &Function, const TargetDescription &Target, MachineBasi
 
 [[nodiscard]] Expected<void> moveInstructionToEnd(MachineInstr &Instruction,
                                                   MachineBasicBlock &Destination) {
-  MachineBasicBlock *Source = Instruction.parent();
-  if (Source == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "moved instruction is detached");
-  if (auto Removed = Source->removeInstruction(Instruction); !Removed)
+  if (auto Removed = Instruction.eraseFromParent(); !Removed)
     return std::unexpected(Removed.error());
   return Destination.appendInstruction(Instruction);
 }
@@ -326,11 +323,7 @@ buildPhi(MachineFunction &Function, const TargetDescription &Target, MachineBasi
       return std::unexpected(Phi.error());
   }
   for (MachineInstr *Select : Sequence->Selects) {
-    MachineBasicBlock *Parent = Select->parent();
-    if (Parent == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "RISC-V custom select became detached during expansion");
-    if (auto Removed = Parent->removeInstruction(*Select); !Removed)
+    if (auto Removed = Select->eraseFromParent(); !Removed)
       return std::unexpected(Removed.error());
   }
   Function.properties().clear(MachineFunctionProperty::NoPHIs);
@@ -468,12 +461,9 @@ emitCascadedSelect(MachineInstr &First, MachineInstr &Second, MachineBasicBlock 
   if (!Phi)
     return std::unexpected(Phi.error());
 
-  if (auto Removed = Head.removeInstruction(First); !Removed)
+  if (auto Removed = First.eraseFromParent(); !Removed)
     return std::unexpected(Removed.error());
-  MachineBasicBlock *SecondParent = Second.parent();
-  if (SecondParent == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "cascaded select became detached");
-  if (auto Removed = SecondParent->removeInstruction(Second); !Removed)
+  if (auto Removed = Second.eraseFromParent(); !Removed)
     return std::unexpected(Removed.error());
   Function.properties().clear(MachineFunctionProperty::NoPHIs);
   return Sink;

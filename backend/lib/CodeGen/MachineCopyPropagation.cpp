@@ -232,7 +232,7 @@ struct CopyOperands final {
   if (*Destination == *Source) {
     if (!IsGenericCopy)
       return false;
-    auto Removed = Block->removeInstruction(Copy);
+    auto Removed = Copy.eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
     return true;
@@ -285,7 +285,7 @@ struct CopyOperands final {
   if (IsGenericCopy &&
       Operands.DestinationOperand->registerFlags().has(RegisterOperandFlag::Renamable) &&
       !valueUsedAfter(Copy, *Destination, Target)) {
-    auto Removed = Block->removeInstruction(Copy);
+    auto Removed = Copy.eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
     Changed = true;
@@ -326,8 +326,7 @@ MachineCopyPropagationPass::runImplementation(MachineFunction &Function,
         Instruction = Next;
         continue;
       }
-      auto Accepted =
-          Analyses.requestAction("propagate-copy", Function, Instruction->stableID());
+      auto Accepted = Analyses.requestAction("propagate-copy", Function, Instruction->stableID());
       if (!Accepted)
         return std::unexpected(Accepted.error());
       if (!*Accepted) {

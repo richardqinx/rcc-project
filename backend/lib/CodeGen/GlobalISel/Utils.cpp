@@ -65,10 +65,7 @@ namespace {
     if (Definition != nullptr && Definition != &Instruction)
       DeadChain.push_back(Definition);
   }
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return {};
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 [[nodiscard]] Expected<LowLevelType> makeVectorType(std::uint64_t ElementCount, bool IsScalable,
@@ -248,8 +245,9 @@ Expected<void> eraseInstrs(std::span<MachineInstr *const> Instructions, MachineR
                            const TargetDescription &Target) {
   std::vector<MachineInstr *> DeadChain;
   for (MachineInstr *Instruction : Instructions) {
-    if (Instruction == nullptr || Instruction->parent() == nullptr)
-      continue;
+    if (Instruction == nullptr)
+      return makeUnexpected(ErrorCode::InvalidArgument,
+                            "instruction erasure list contains a null instruction");
     auto Removed = saveUsesAndErase(*Instruction, MRI, DeadChain);
     if (!Removed)
       return std::unexpected(Removed.error());
@@ -258,8 +256,7 @@ Expected<void> eraseInstrs(std::span<MachineInstr *const> Instructions, MachineR
   while (!DeadChain.empty()) {
     MachineInstr *Instruction = DeadChain.back();
     DeadChain.pop_back();
-    if (Instruction == nullptr || Instruction->parent() == nullptr ||
-        !isTriviallyDead(*Instruction, MRI, Target))
+    if (Instruction->parent() == nullptr || !isTriviallyDead(*Instruction, MRI, Target))
       continue;
     auto Removed = saveUsesAndErase(*Instruction, MRI, DeadChain);
     if (!Removed)

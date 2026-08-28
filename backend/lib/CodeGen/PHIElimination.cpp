@@ -479,10 +479,9 @@ Expected<MachinePassResult> PHIEliminationPass::run(MachineFunction &Function,
   return runImplementation(Function, Target, Analyses);
 }
 
-Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunction &Function,
-                                                                  const TargetDescription &Target,
-                                                                  MachineFunctionAnalysisManager
-                                                                      &Analyses) {
+Expected<MachinePassResult>
+PHIEliminationPass::runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                                      MachineFunctionAnalysisManager &Analyses) {
   MachinePassResult Result;
   std::unordered_map<EdgeKey, MachineBasicBlock *, EdgeKeyHash> SplitEdges;
   const std::vector<MachineBasicBlock *> Blocks(Function.allBlocks().begin(),
@@ -552,7 +551,7 @@ Expected<MachinePassResult> PHIEliminationPass::runImplementation(MachineFunctio
     }
 
     for (PhiPlan &Plan : *Plans) {
-      auto Removed = Block->removeInstruction(*Plan.Instruction);
+      auto Removed = Plan.Instruction->eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
     }

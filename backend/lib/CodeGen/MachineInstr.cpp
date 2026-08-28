@@ -43,6 +43,12 @@ Expected<void> MachineInstr::setOpcode(Opcode NewOpcode) {
   return {};
 }
 
+Expected<void> MachineInstr::eraseFromParent() {
+  if (ParentBlock == nullptr)
+    return makeUnexpected(ErrorCode::InternalError, "cannot erase a detached machine instruction");
+  return ParentBlock->removeInstruction(*this);
+}
+
 Expected<void> MachineInstr::setDebugInstrNumber(std::uint64_t Number) {
   if (Number == 0 || Number > std::numeric_limits<std::uint32_t>::max()) {
     return makeUnexpected(ErrorCode::InvalidArgument,

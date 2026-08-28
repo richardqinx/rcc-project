@@ -154,11 +154,7 @@ foldConstantExtension(MachineInstr &Instruction, MachineFunction &Function, Gene
     auto Added = Def->addOperand(MachineOperand::integerImmediate(std::move(*Extended)));
     if (!Added)
       return std::unexpected(Added.error());
-    MachineBasicBlock *Parent = Instruction.parent();
-    if (Parent == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V constant extension is detached during folding");
-    return Parent->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   auto SetOpcode = Instruction.setOpcode(opcode(GenericOpcode::G_CONSTANT));
@@ -175,11 +171,7 @@ foldConstantExtension(MachineInstr &Instruction, MachineFunction &Function, Gene
 
   if (Function.registerInfo().useEmpty(SourceRegister)) {
     MachineInstr *Def = const_cast<MachineInstr *>(SourceDef);
-    MachineBasicBlock *Parent = Def->parent();
-    if (Parent == nullptr)
-      return makeUnexpected(ErrorCode::VerificationError,
-                            "RISC-V constant extension source definition is detached");
-    auto Removed = Parent->removeInstruction(*Def);
+    auto Removed = Def->eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
     // Keep the source register record as a tombstone-free historical vreg until
@@ -903,11 +895,7 @@ Expected<void> RISCVLegalizerInfo::legalizeBRJT(MachineInstr &Instruction,
   if (auto Built = BranchBuilder->build(); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "RISC-V G_BRJT became detached during legalization");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> RISCVLegalizerInfo::legalizeVAStart(MachineInstr &Instruction,
@@ -984,11 +972,7 @@ Expected<void> RISCVLegalizerInfo::legalizeVAStart(MachineInstr &Instruction,
   if (auto Built = StoreBuilder->build(); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "RISC-V G_VASTART became detached during legalization");
-  return Block->removeInstruction(Instruction);
+  return Instruction.eraseFromParent();
 }
 
 Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
@@ -1243,11 +1227,7 @@ Expected<void> RISCVLegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
         !Built) {
       return std::unexpected(Built.error());
     }
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "RISC-V G_IS_FPCLASS became detached during lowering");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
   if (Instruction.opcode() == opcode(GenericOpcode::G_ANYEXT) ||
       Instruction.opcode() == opcode(GenericOpcode::G_SEXT) ||
@@ -1388,11 +1368,7 @@ Expected<bool> RISCVLegalizerInfo::legalizeIntrinsic(LegalizerHelper &Helper,
   if (auto Built = StoreBuilder->build(); !Built)
     return std::unexpected(Built.error());
 
-  MachineBasicBlock *Block = Instruction.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError,
-                          "llvm.va_copy intrinsic became detached during lowering");
-  if (auto Removed = Block->removeInstruction(Instruction); !Removed)
+  if (auto Removed = Instruction.eraseFromParent(); !Removed)
     return std::unexpected(Removed.error());
   return true;
 }

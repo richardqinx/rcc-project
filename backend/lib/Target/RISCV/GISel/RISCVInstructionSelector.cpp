@@ -707,11 +707,7 @@ private:
       auto Constraint = constrainSelectedInstruction(**Result, Function, Target);
       if (!Constraint)
         return std::unexpected(Constraint.error());
-      MachineBasicBlock *Block = Instruction.parent();
-      if (Block == nullptr)
-        return makeUnexpected(ErrorCode::InternalError,
-                              "RISC-V global address is detached from its block");
-      return Block->removeInstruction(Instruction);
+      return Instruction.eraseFromParent();
     };
 
     if (UseGOT) {
@@ -781,11 +777,7 @@ private:
     auto LowConstraint = constrainSelectedInstruction(**Low, Function, Target);
     if (!LowConstraint)
       return std::unexpected(LowConstraint.error());
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "RISC-V global address is detached from its block");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   [[nodiscard]] Expected<void> selectCopy(MachineInstr &Instruction, MachineFunction &Function,
@@ -1107,11 +1099,7 @@ private:
       if (!Inverted)
         return std::unexpected(Inverted.error());
     }
-    MachineBasicBlock *Block = Instruction.parent();
-    if (Block == nullptr)
-      return makeUnexpected(ErrorCode::InternalError,
-                            "RISC-V floating comparison is detached from its block");
-    return Block->removeInstruction(Instruction);
+    return Instruction.eraseFromParent();
   }
 
   [[nodiscard]] Expected<void> selectFence(MachineInstr &Instruction) const {

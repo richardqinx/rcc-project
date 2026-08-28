@@ -473,7 +473,7 @@ buildSequenceGroups(std::vector<InstructionSegment> &Segments,
     if (!Inserted)
       return std::unexpected(Inserted.error());
     for (MachineInstr *Instruction : Candidate.Instructions) {
-      auto Removed = Candidate.Block->removeInstruction(*Instruction);
+      auto Removed = Instruction->eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
     }

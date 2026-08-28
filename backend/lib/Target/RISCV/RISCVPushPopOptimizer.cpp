@@ -127,11 +127,7 @@ struct PushPopOpcodes final {
       const std::optional<Register> Source = Copy->Source->registerValue();
       if (Destination && Source && Destination->physicalRegister() == ReturnRegister &&
           Source->physicalRegister() == ZeroRegister) {
-        MachineBasicBlock *Parent = Instruction->parent();
-        if (Parent == nullptr)
-          return makeUnexpected(ErrorCode::InternalError,
-                                "RISC-V return-value assignment became detached");
-        if (auto Removed = Parent->removeInstruction(*Instruction); !Removed)
+        if (auto Removed = Instruction->eraseFromParent(); !Removed)
           return std::unexpected(Removed.error());
         return true;
       }
@@ -244,9 +240,9 @@ public:
           buildPopReturn(*PopInstruction, *Return, *ReturnZero, Opcodes, Function, Target);
       if (!NewReturn)
         return std::unexpected(NewReturn.error());
-      if (auto Removed = Block->removeInstruction(*PopInstruction); !Removed)
+      if (auto Removed = PopInstruction->eraseFromParent(); !Removed)
         return std::unexpected(Removed.error());
-      if (auto Removed = Block->removeInstruction(*Return); !Removed)
+      if (auto Removed = Return->eraseFromParent(); !Removed)
         return std::unexpected(Removed.error());
       Result.Changes.add(MachinePassChange::Instructions);
       Result.Changes.add(MachinePassChange::Operands);

@@ -475,7 +475,7 @@ void clearWordInvalidFlags(MachineInstr &Instruction) {
       auto Cleared = clearKillFlags(Function, *Source);
       if (!Cleared)
         return std::unexpected(Cleared.error());
-      auto Removed = Block->removeInstruction(*Instruction);
+      auto Removed = Instruction->eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
       Changed = true;

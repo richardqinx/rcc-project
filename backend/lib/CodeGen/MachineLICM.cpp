@@ -303,7 +303,7 @@ operandsAreInvariant(const MachineInstr &Instruction, const MachineLoop &Loop,
   auto Anchor = firstTerminator(Preheader, Target);
   if (!Anchor)
     return std::unexpected(Anchor.error());
-  auto Removed = Source->removeInstruction(Instruction);
+  auto Removed = Instruction.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   if (*Anchor != nullptr)

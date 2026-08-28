@@ -215,10 +215,9 @@ Expected<MachinePassResult> InstructionSelect::run(MachineFunction &Function,
   return runImplementation(Function, Target, Analyses);
 }
 
-Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction &Function,
-                                                                 const TargetDescription &Target,
-                                                                 MachineFunctionAnalysisManager
-                                                                     &Analyses) {
+Expected<MachinePassResult>
+InstructionSelect::runImplementation(MachineFunction &Function, const TargetDescription &Target,
+                                     MachineFunctionAnalysisManager &Analyses) {
 
   MachinePassResult Result;
   std::vector<MachineInstr *> Worklist;
@@ -378,7 +377,7 @@ Expected<MachinePassResult> InstructionSelect::runImplementation(MachineFunction
       auto Replaced = Function.registerInfo().replaceRegWith(*Destination, *Source);
       if (!Replaced)
         return std::unexpected(Replaced.error());
-      auto Removed = Block->removeInstruction(*Instruction);
+      auto Removed = Instruction->eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
       Result.Changed = true;

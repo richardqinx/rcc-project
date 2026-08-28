@@ -176,10 +176,7 @@ struct AddressPair final {
   auto ReplacedRegisters = Registers.replaceRegWith(*TailRegister, *LowRegister);
   if (!ReplacedRegisters)
     return std::unexpected(ReplacedRegisters.error());
-  MachineBasicBlock *Block = Tail.parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "RISC-V offset tail is not linked");
-  auto Removed = Block->removeInstruction(Tail);
+  auto Removed = Tail.eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;
@@ -215,10 +212,7 @@ struct AddressPair final {
       auto Folded = foldOffset(Pair, Tail, *Low, Registers);
       if (!Folded || !*Folded)
         return Folded;
-      MachineBasicBlock *Block = OffsetTail->parent();
-      if (Block == nullptr)
-        return makeUnexpected(ErrorCode::InternalError, "RISC-V offset instruction is not linked");
-      auto Removed = Block->removeInstruction(*OffsetTail);
+      auto Removed = OffsetTail->eraseFromParent();
       if (!Removed)
         return std::unexpected(Removed.error());
       return true;
@@ -239,14 +233,10 @@ struct AddressPair final {
     auto Folded = foldOffset(Pair, Tail, Offset, Registers);
     if (!Folded || !*Folded)
       return Folded;
-    MachineBasicBlock *Block = OffsetTail->parent();
-    MachineBasicBlock *HighBlock = OffsetHigh->parent();
-    if (Block == nullptr || HighBlock == nullptr)
-      return makeUnexpected(ErrorCode::InternalError, "RISC-V offset instructions are not linked");
-    auto Removed = Block->removeInstruction(*OffsetTail);
+    auto Removed = OffsetTail->eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
-    Removed = HighBlock->removeInstruction(*OffsetHigh);
+    Removed = OffsetHigh->eraseFromParent();
     if (!Removed)
       return std::unexpected(Removed.error());
     return true;
@@ -263,10 +253,7 @@ struct AddressPair final {
   auto Folded = foldOffset(Pair, Tail, Offset, Registers);
   if (!Folded || !*Folded)
     return Folded;
-  MachineBasicBlock *Block = OffsetTail->parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "RISC-V offset instruction is not linked");
-  auto Removed = Block->removeInstruction(*OffsetTail);
+  auto Removed = OffsetTail->eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;
@@ -306,10 +293,7 @@ struct AddressPair final {
   auto Folded = foldOffset(Pair, Tail, Offset, Registers);
   if (!Folded || !*Folded)
     return Folded;
-  MachineBasicBlock *Block = OffsetTail->parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "RISC-V offset instruction is not linked");
-  auto Removed = Block->removeInstruction(*OffsetTail);
+  auto Removed = OffsetTail->eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;
@@ -343,11 +327,7 @@ struct AddressPair final {
         auto Folded = foldOffset(Pair, *SecondTail, *Immediate + *SecondImmediate, Registers);
         if (!Folded || !*Folded)
           return Folded;
-        MachineBasicBlock *Block = Tail->parent();
-        if (Block == nullptr)
-          return makeUnexpected(ErrorCode::InternalError,
-                                "RISC-V offset instruction is not linked");
-        auto Removed = Block->removeInstruction(*Tail);
+        auto Removed = Tail->eraseFromParent();
         if (!Removed)
           return std::unexpected(Removed.error());
         return true;
@@ -444,10 +424,7 @@ struct AddressPair final {
     if (!ReplacedOffset)
       return std::unexpected(ReplacedOffset.error());
   }
-  MachineBasicBlock *Block = Pair.Low->parent();
-  if (Block == nullptr)
-    return makeUnexpected(ErrorCode::InternalError, "RISC-V low address instruction is not linked");
-  auto Removed = Block->removeInstruction(*Pair.Low);
+  auto Removed = Pair.Low->eraseFromParent();
   if (!Removed)
     return std::unexpected(Removed.error());
   return true;
