@@ -7,7 +7,7 @@
 
 namespace rcc {
 class MachineIRBuilder;
-}
+} // namespace rcc
 
 namespace rcc::riscv {
 

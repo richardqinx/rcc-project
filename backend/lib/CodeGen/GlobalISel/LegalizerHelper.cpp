@@ -6428,7 +6428,7 @@ Expected<void> LegalizerHelper::libcall(MachineInstr &Instruction) {
   }
 
   const GenericOpcode Generic = static_cast<GenericOpcode>(Instruction.opcode().value());
-  auto DestinationOperand = Instruction.operandAt(0);
+  auto *DestinationOperand = Instruction.operandAt(0);
   const Register *Destination =
       DestinationOperand == nullptr ? nullptr : DestinationOperand->getIf<Register>();
   if (Destination == nullptr || !DestinationOperand->isDef()) {

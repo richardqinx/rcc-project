@@ -14,7 +14,7 @@ class TargetDescription;
 
 class InstructionSelector : public GIMatchTableExecutor {
 public:
-  virtual ~InstructionSelector() = default;
+  ~InstructionSelector() override = default;
 
   [[nodiscard]] virtual Expected<void> select(MachineInstr &Instruction, MachineFunction &Function,
                                               const TargetDescription &Target) const = 0;
