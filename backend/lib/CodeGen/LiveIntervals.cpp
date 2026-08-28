@@ -23,10 +23,6 @@
 namespace rcc {
 
 namespace {
-[[nodiscard]] LaneMask subtractLanes(LaneMask Left, LaneMask Right) noexcept {
-  return LaneMask::fromRaw(Left.rawValue() & ~Right.rawValue());
-}
-
 [[nodiscard]] bool maskIntersects(LaneMask Access, std::optional<LaneMask> Filter) noexcept {
   return !Filter || Access.intersects(*Filter);
 }
@@ -242,7 +238,7 @@ partitionVirtualRegisterLanes(Register Reg, MachineFunction &Function,
     std::vector<LaneMask> Refined;
     for (const LaneMask Group : Groups) {
       const LaneMask Intersection = Group & Access;
-      const LaneMask Difference = subtractLanes(Group, Access);
+      const LaneMask Difference = Group & ~Access;
       if (!Intersection.empty())
         Refined.push_back(Intersection);
       if (!Difference.empty())

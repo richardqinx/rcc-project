@@ -21,10 +21,6 @@
 namespace rcc {
 
 namespace {
-[[nodiscard]] LaneMask subtractLanes(LaneMask Left, LaneMask Right) noexcept {
-  return LaneMask::fromRaw(Left.rawValue() & ~Right.rawValue());
-}
-
 template <typename KeyT>
 void addLanes(std::unordered_map<KeyT, LaneMask> &Values, KeyT Key, LaneMask Lanes) {
   if (Lanes.empty())
@@ -34,7 +30,7 @@ void addLanes(std::unordered_map<KeyT, LaneMask> &Values, KeyT Key, LaneMask Lan
     Values.emplace(Key, Lanes);
     return;
   }
-  Position->second = Position->second | Lanes;
+  Position->second |= Lanes;
 }
 
 template <typename KeyT>
@@ -42,7 +38,7 @@ void removeLanes(std::unordered_map<KeyT, LaneMask> &Values, KeyT Key, LaneMask 
   const auto Position = Values.find(Key);
   if (Position == Values.end() || Lanes.empty())
     return;
-  Position->second = subtractLanes(Position->second, Lanes);
+  Position->second &= ~Lanes;
   if (Position->second.empty())
     Values.erase(Position);
 }

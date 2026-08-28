@@ -173,6 +173,20 @@ public:
     return RawValue;
   }
 
+  [[nodiscard]] constexpr LaneMask operator~() const noexcept {
+    return LaneMask(~RawValue);
+  }
+
+  constexpr LaneMask &operator|=(LaneMask Other) noexcept {
+    RawValue |= Other.RawValue;
+    return *this;
+  }
+
+  constexpr LaneMask &operator&=(LaneMask Other) noexcept {
+    RawValue &= Other.RawValue;
+    return *this;
+  }
+
   friend constexpr bool operator==(LaneMask Left, LaneMask Right) noexcept = default;
 
   friend constexpr LaneMask operator|(LaneMask Left, LaneMask Right) noexcept {
