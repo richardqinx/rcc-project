@@ -11,6 +11,7 @@
 #include "rcc/CodeGen/MachineRegisterInfo.h"
 #include "rcc/CodeGen/TargetDescription.h"
 
+#include <cassert>
 #include <cstdint>
 #include <numeric>
 #include <optional>
@@ -89,7 +90,9 @@ namespace {
         "vector part extraction requires a fixed vector and a nonzero element count");
   }
 
-  const LowLevelType ElementType = *RegisterType->scalarElementType();
+  const std::optional<LowLevelType> ElementTypeValue = RegisterType->scalarElementType();
+  assert(ElementTypeValue && "validated vector type must have an element type");
+  const LowLevelType ElementType = *ElementTypeValue;
   auto NarrowType = makeVectorType(ElementCount, false, ElementType);
   if (!NarrowType)
     return std::unexpected(NarrowType.error());
@@ -325,8 +328,9 @@ Expected<bool> extractParts(Register Reg, LowLevelType RegisterType, LowLevelTyp
     if (LeftoverElementCount > 1 && MainElementCount % LeftoverElementCount == 0 &&
         RegisterElementCount % LeftoverElementCount == 0 &&
         RegisterType.scalarBitWidth() == MainType.scalarBitWidth()) {
-      auto Candidate =
-          LowLevelType::makeFixedVector(LeftoverElementCount, *RegisterType.scalarElementType());
+      const std::optional<LowLevelType> ElementType = RegisterType.scalarElementType();
+      assert(ElementType && "validated vector type must have an element type");
+      auto Candidate = LowLevelType::makeFixedVector(LeftoverElementCount, *ElementType);
       if (!Candidate)
         return std::unexpected(Candidate.error());
       LeftoverType = *Candidate;
