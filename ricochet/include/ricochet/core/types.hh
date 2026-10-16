@@ -31,10 +31,6 @@ struct PageData
   std::vector<std::string> links;
   std::vector<render::InputField> inputs;
   std::string title;
-  std::vector<std::string> original_lines {};
-  std::string last_search {};
-  std::size_t current_match_idx { 0 };
-  std::vector<std::size_t> match_lines {};
 };
 
 struct HttpRequest

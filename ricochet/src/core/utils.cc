@@ -82,37 +82,4 @@ std::string strip_ddg_tracker( std::string target )
   return target;
 }
 
-std::vector<std::string> wrap_lines( const std::vector<std::string>& original_lines, std::size_t wrap_width )
-{
-  std::vector<std::string> wrapped_lines;
-  for ( const auto& line : original_lines ) {
-    std::string current_line;
-    std::size_t vis_count = 0;
-    bool in_ansi = false;
-    for ( const char c : line ) {
-      if ( c == '\x1b' ) {
-        in_ansi = true;
-      }
-      if ( in_ansi ) {
-        current_line += c;
-        if ( c == 'm' ) {
-          in_ansi = false;
-        }
-      } else {
-        if ( vis_count >= wrap_width ) {
-          wrapped_lines.push_back( current_line + "\033[0m" );
-          current_line.clear();
-          vis_count = 0;
-        }
-        current_line += c;
-        vis_count++;
-      }
-    }
-    if ( !current_line.empty() || line.empty() ) {
-      wrapped_lines.push_back( current_line + "\033[0m" );
-    }
-  }
-  return wrapped_lines;
-}
-
 } // namespace ricochet::core

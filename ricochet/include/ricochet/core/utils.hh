@@ -18,7 +18,6 @@
 
 #pragma once
 
-#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -27,6 +26,5 @@ namespace ricochet::core {
 std::vector<std::string> split_into_lines( const std::string& text );
 std::string normalize_url( const std::string& target, const std::string& current_url );
 std::string strip_ddg_tracker( std::string target );
-std::vector<std::string> wrap_lines( const std::vector<std::string>& original_lines, std::size_t wrap_width );
 
 } // namespace ricochet::core

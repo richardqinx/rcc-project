@@ -12,7 +12,6 @@
 
 #include "ricochet/core/types.hh"
 #include "ricochet/render/renderer.hh"
-#include "ricochet/tui/terminal.hh"
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -24,15 +23,5 @@ InputAction submit_form( const render::InputField& target_input,
                          const std::string& current_url,
                          std::vector<HttpRequest>& history,
                          std::size_t& history_idx );
-
-void update_input_value( PageData& page_data, std::size_t index, const std::string& query );
-void update_single_line_ui( std::string& line, const std::string& marker, const render::InputField& in );
-void update_toggle_ui( PageData& page_data );
-
-InputAction handle_form_input( const tui::Terminal& terminal,
-                               PageData& page_data,
-                               const std::string& current_url,
-                               std::vector<HttpRequest>& history,
-                               std::size_t& history_idx );
 
 } // namespace ricochet::core

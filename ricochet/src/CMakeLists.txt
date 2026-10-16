@@ -17,4 +17,3 @@ target_link_libraries(ricochet_core
 
 add_executable(ricochet ${MAIN_SRC})
 target_link_libraries(ricochet PRIVATE ricochet_core)
-# target_link_libraries(ricochet PRIVATE ricochet_core curl ncurses)

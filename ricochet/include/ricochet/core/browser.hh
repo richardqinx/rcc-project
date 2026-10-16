@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include <string_view>
+#include <string>
 
 namespace ricochet::core {
 
@@ -35,7 +35,6 @@ public:
 
   static std::string format_url( std::string input );
   static std::string get_configured_homepage();
-  static int run( std::string_view initial_url );
 };
 
 } // namespace ricochet::core
