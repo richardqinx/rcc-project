@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "ricochet/tui/document.hh"
+#include "paint.hh"
 #include "ricochet/tui/session.hh"
 
 #include <chrono>
@@ -26,26 +26,9 @@
 #include <cstdio>
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
 namespace ricochet::tui::detail {
-
-// Layout supplies one printable spacing character and its combining marks per
-// glyph, with a measured width. Raw document text never goes directly to curses.
-struct PaintGlyph
-{
-  CellPoint position {};
-  int width { 1 };
-  std::wstring text {};
-  TextStyle style {};
-};
-
-struct Frame
-{
-  std::vector<PaintGlyph> glyphs {};
-  std::optional<CellPoint> cursor {};
-};
 
 struct InputBatch
 {
@@ -62,6 +45,7 @@ public:
   Screen& operator=( const Screen& ) = delete;
 
   ScreenSize size() const;
+  static std::size_t glyph_capacity();
   TerminalCapabilities capabilities() const;
   InputBatch read_events( std::size_t limit );
   // Wait only polls descriptors; wgetch remains the sole terminal reader.

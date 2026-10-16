@@ -574,6 +574,9 @@ Screen::Screen( std::FILE& input, std::FILE& output, TerminalOptions options )
 
 Screen::~Screen() = default;
 
+std::size_t Screen::glyph_capacity()
+{ return CCHARW_MAX - 1; }
+
 ScreenSize Screen::size() const
 { return impl_->size(); }
 

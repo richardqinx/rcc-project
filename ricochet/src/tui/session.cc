@@ -18,6 +18,7 @@
 
 #include "ricochet/tui/session.hh"
 
+#include "layout.hh"
 #include "mailbox.hh"
 #include "screen.hh"
 
@@ -36,12 +37,13 @@ struct TabState
   TabInfo info {};
   std::optional<RequestId> navigation {};
   std::optional<Document> document {};
+  std::optional<detail::DocumentLayout> layout {};
   std::optional<ViewSnapshot> view {};
   std::optional<ActionFailed> failure {};
 };
 
 // Only fixed ASCII chrome uses this helper. Document text goes through the
-// forthcoming Unicode layout service, not a second ad-hoc text renderer.
+// Unicode text service and document layout.
 void append_chrome( detail::Frame& frame, CellPoint start, std::wstring_view text, TextStyle style = {} )
 {
   int column = start.column;
@@ -147,6 +149,7 @@ public:
     tab.info.display_url = update.document.data().metadata.display_url;
     tab.info.loading_task.reset();
     tab.document = std::move( update.document );
+    tab.layout.reset();
     tab.failure.reset();
     dirty_ = true;
   }
@@ -252,6 +255,26 @@ public:
     return batch.consumed || !batch.events.empty();
   }
 
+  void draw_document( TabState& tab, detail::Frame& frame, ScreenSize dimensions )
+  {
+    // The cached layout belongs to the committed snapshot and terminal width.
+    // CommitDocument drops it; resizing rebuilds it from logical view anchors.
+    if ( !tab.layout || tab.layout->columns() != dimensions.columns ) {
+      tab.layout.emplace( *tab.document, text_, dimensions.columns, tab.view->horizontal_scroll );
+    }
+    const auto& layout = *tab.layout;
+    const auto anchor = layout.locate( tab.view->viewport_anchor ).value_or( detail::LayoutPoint {} );
+    const auto body_rows = dimensions.rows - 2;
+    const auto first_row = std::min( anchor.row, layout.rows() - 1 );
+    layout.append_frame( frame, first_row, { 1, 0 }, { body_rows, dimensions.columns } );
+    const auto cursor = layout.locate( tab.view->cursor );
+    if ( cursor && cursor->row >= first_row && cursor->row - first_row < static_cast<std::size_t>( body_rows )
+         && cursor->column >= 0 && cursor->column < dimensions.columns ) {
+      frame.cursor
+        = CellPoint { 1 + static_cast<int>( cursor->row - first_row ), static_cast<int>( cursor->column ) };
+    }
+  }
+
   void draw()
   {
     detail::Frame frame;
@@ -271,6 +294,9 @@ public:
       if ( active_ ) {
         const auto found = tabs_.find( *active_ );
         if ( found != tabs_.end() ) {
+          if ( found->second.document ) {
+            draw_document( found->second, frame, dimensions );
+          }
           if ( found->second.info.loading_task ) {
             status = L"Loading | q quit";
           }
@@ -327,6 +353,7 @@ public:
   std::shared_ptr<detail::Mailbox> mailbox_;
   std::unique_ptr<detail::Screen> screen_;
   TerminalCapabilities capabilities_;
+  detail::TextService text_ { detail::Screen::glyph_capacity() };
   std::map<TabId, TabState> tabs_ {};
   std::vector<TabId> tab_order_ {};
   std::optional<TabId> active_ {};

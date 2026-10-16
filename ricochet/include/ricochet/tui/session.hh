@@ -71,7 +71,7 @@ private:
 struct StepResult
 {
   bool running { true };
-  // Content editing/layout handlers are subsequent milestones. Until they exist,
+  // Incremental document updates and editing are subsequent milestones. Until then,
   // unsupported updates are returned intact rather than silently acknowledged.
   std::vector<HostUpdate> unhandled_updates {};
   std::optional<TerminalClosed> terminal_closed {};
