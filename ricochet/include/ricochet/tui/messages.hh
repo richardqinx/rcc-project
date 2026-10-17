@@ -139,12 +139,30 @@ struct ExitDecision
   std::optional<std::string> explanation {};
 };
 
+enum class CopyStatus : std::uint8_t
+{
+  Confirmed,
+  Dispatched,
+  Unavailable,
+  Failed
+};
+
+// The host's injected clipboard provider completes a CopySelection request once.
+// Dispatched must not be used as confirmation that a terminal accepted the text.
+struct CopyResult
+{
+  RequestId request {};
+  CopyStatus status { CopyStatus::Unavailable };
+  std::string summary {};
+};
+
 using HostUpdate = std::variant<SyncTabs,
                                 NavigationStarted,
                                 CommitDocument,
                                 UpdateDocument,
                                 LocateView,
                                 FormFeedback,
+                                CopyResult,
                                 ActionFailed,
                                 ExitDecision>;
 
@@ -220,6 +238,16 @@ struct ExportSelection
   std::string text {};
 };
 
+struct CopySelection
+{
+  RequestId request {};
+  DocumentScope source {};
+  DraftRevision draft_revision {};
+  // Frozen before dispatch; later cursor/selection changes cannot change this copy.
+  // Password content is already masked. Clipboard providers never receive drafts.
+  std::string text {};
+};
+
 struct RequestExit
 {
   RequestId request {};
@@ -227,7 +255,14 @@ struct RequestExit
   std::vector<ViewSnapshot> views {};
 };
 
-using UserAction
-  = std::variant<OpenLocation, OpenLink, Navigate, CreateTab, CloseTab, FormAction, ExportSelection, RequestExit>;
+using UserAction = std::variant<OpenLocation,
+                                OpenLink,
+                                Navigate,
+                                CreateTab,
+                                CloseTab,
+                                FormAction,
+                                ExportSelection,
+                                CopySelection,
+                                RequestExit>;
 
 } // namespace ricochet::tui

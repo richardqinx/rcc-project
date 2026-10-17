@@ -39,6 +39,9 @@ struct SelectionSnapshot
   // The normalized half-open range also covers any controls between its endpoints.
   DocumentRange range {};
   SelectionDirection direction { SelectionDirection::Forward };
+  // Inclusive endpoint units retain the anchor through reversal and history restore.
+  DocumentRange anchor {};
+  DocumentRange active {};
 };
 
 struct HorizontalScroll

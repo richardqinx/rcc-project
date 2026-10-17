@@ -17,6 +17,7 @@
  */
 
 #include "layout.hh"
+#include "document_text.hh"
 
 #include <algorithm>
 #include <limits>
@@ -161,38 +162,6 @@ private:
     }
   }
 
-  std::string control_text( const Control& control ) const
-  {
-    return std::visit(
-      [this, &control]( const auto& value ) -> std::string {
-        using Value = std::decay_t<decltype( value )>;
-        if constexpr ( std::is_same_v<Value, TextControl> ) {
-          if ( value.kind == TextControlKind::Password ) {
-            return std::string( text_.analyze( value.value, true, false ).graphemes.size(), '*' );
-          }
-          return value.value;
-        } else if constexpr ( std::is_same_v<Value, Checkbox> || std::is_same_v<Value, RadioButton> ) {
-          return control.label;
-        } else if constexpr ( std::is_same_v<Value, SelectControl> ) {
-          std::string result;
-          for ( const auto& option : value.options ) {
-            if ( std::ranges::find( value.selected, option.id ) != value.selected.end() ) {
-              if ( !result.empty() ) {
-                result += ", ";
-              }
-              result += option.label;
-            }
-          }
-          return result;
-        } else if constexpr ( std::is_same_v<Value, Button> ) {
-          return control.label;
-        } else {
-          return value.description;
-        }
-      },
-      control.content );
-  }
-
   void control_atoms( std::vector<Atom>& atoms, ControlId id, TextStyle base ) const
   {
     // A missing ID is a malformed document reference; map::at reports it directly.
@@ -217,7 +186,7 @@ private:
                          .style = style,
                          .target = id } );
     }
-    const auto display = control_text( control );
+    const auto display = control_display_text( control, text_ );
     const auto analysis = text_.analyze( display, multiline, false );
     for ( const auto& glyph : analysis.graphemes ) {
       atoms.push_back( { .glyph = glyph,
