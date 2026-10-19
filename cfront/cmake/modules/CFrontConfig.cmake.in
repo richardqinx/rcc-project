@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(RCC @RCC_VERSION@ EXACT CONFIG HINTS "@CFRONT_PACKAGE_RCC_CMAKE_DIR@")
+set(CFRONT_CMAKE_DIR "@CFRONT_PACKAGE_MODULE_DIR@")
+include("${CMAKE_CURRENT_LIST_DIR}/CFrontTargets.cmake")
