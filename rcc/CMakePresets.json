@@ -1,0 +1,70 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "ninja",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../build/${presetName}",
+      "cacheVariables": { "CMAKE_EXPORT_COMPILE_COMMANDS": true }
+    },
+    {
+      "name": "debug",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "RCC_ENABLE_ASSERTIONS": true
+      }
+    },
+    {
+      "name": "release",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RCC_ENABLE_ASSERTIONS": false
+      }
+    },
+    {
+      "name": "assertions",
+      "hidden": true,
+      "cacheVariables": { "RCC_ENABLE_ASSERTIONS": true }
+    },
+    {
+      "name": "asan-ubsan",
+      "hidden": true,
+      "cacheVariables": { "RCC_USE_SANITIZER": "Address;Undefined" }
+    },
+    {
+      "name": "with-cfront",
+      "hidden": true,
+      "cacheVariables": { "RCC_ENABLE_PROJECTS": "cfront" }
+    },
+    {
+      "name": "dev",
+      "displayName": "RCC debug build",
+      "inherits": ["ninja", "debug"]
+    },
+    {
+      "name": "dev-cfront",
+      "displayName": "RCC and CFront debug build",
+      "inherits": ["with-cfront", "dev"]
+    },
+    {
+      "name": "release-assertions",
+      "displayName": "RCC release build with assertions",
+      "inherits": ["ninja", "assertions", "release"]
+    },
+    {
+      "name": "sanitize",
+      "displayName": "RCC debug build with ASan and UBSan",
+      "inherits": ["asan-ubsan", "dev"]
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "dev-cfront", "configurePreset": "dev-cfront" },
+    { "name": "release-assertions", "configurePreset": "release-assertions" },
+    { "name": "sanitize", "configurePreset": "sanitize" }
+  ]
+}

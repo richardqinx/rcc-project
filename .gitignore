@@ -88,3 +88,9 @@ pythonenv*
 /clang/utils/analyzer/projects/*/RefScanBuildResults
 # automodapi puts generated documentation files here.
 /lldb/docs/python_api/
+
+# Local RCC and CFront development configuration.
+/CMakeUserPresets.json
+/rcc/build/
+/cfront/build/
+**/__pycache__/

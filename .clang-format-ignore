@@ -8,4 +8,6 @@
 
 # Generated files are formatted by their generator, if applicable.
 **/generated/**
-rcc-legacy/
+
+rcc-legacy/**
+backend/**
