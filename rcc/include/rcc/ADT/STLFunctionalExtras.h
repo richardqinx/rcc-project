@@ -1,0 +1,112 @@
+/*
+ R *CC-Project
+
+ Copyright (C) 2026 Richard Qin
+
+ This file is part of RCC-Project.
+
+ RCC-Project is free software; you can redistribute it and/or modify it under
+ the terms of the GNU General Public License as published by the Free
+ Software Foundation; either version 3 of the License, or (at your option) any
+ later version.
+
+ RCC-Project is distributed in the hope that it will be useful, but WITHOUT ANY
+ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+ A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License along with
+ RCC-Project; see the file COPYING.  If not see
+ <http://www.gnu.org/licenses/>.
+ */
+
+//===- llvm/ADT/STLFunctionalExtras.h - Extras for <functional> -*- C++ -*-===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file contains some extension to <functional>.
+//
+// No library is required when using these functions.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef RCC_ADT_STLFUNCTIONALEXTRAS_H
+#define RCC_ADT_STLFUNCTIONALEXTRAS_H
+
+#include "rcc/Support/Compiler.h"
+
+#include <cstddef
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+
+namespace rcc
+{
+
+//===----------------------------------------------------------------------===//
+//     Extra additions to <functional>
+//===----------------------------------------------------------------------===//
+
+/// An efficient, type-erasing, non-owning reference to a callable. This is
+/// intended for use as the type of a function parameter that is not used
+/// after the function in question returns.
+///
+/// This class does not own the callable, so it is not in general safe to store
+/// a function_ref.
+template <typename Fn> class function_ref;
+
+template <typename Ret, typename... Params>
+class RCC_GSL_POINTER function_ref<Ret (Params...)>
+{
+  Ret (*callback) (intptr_t callable, Params... params) = nullptr;
+  intptr_t callable = 0;
+
+  template <typename Callable>
+  static Ret
+  callback_fn (intptr_t callable, Params... params)
+  {
+    return (*reinterpret_cast<Callable *> (callable)) (
+        std::forward<Params> (params)...);
+  }
+
+public:
+  function_ref () = default;
+  function_ref (std::nullptr_t)
+  {
+  }
+
+  template <typename Callable>
+  function_ref (
+      Callable &&callable RCC_LIFETIME_BOUND,
+      // This is not the copy-constructor.
+      std::enable_if_t<!std::is_same<std::remove_cvref_t<Callable>,
+                                     function_ref>::value> * = nullptr,
+      // Functor must be callable and return a suitable type.
+      std::enable_if_t<std::is_void<Ret>::value ||
+                       std::is_convertible<decltype (std::declval<Callable> () (
+                                               std::declval<Params> ()...)),
+                                           Ret>::value> * = nullptr)
+      : callback (callback_fn<std::remove_reference_t<Callable>>),
+        callable (reinterpret_cast<intptr_t> (&callable))
+  {
+  }
+
+  Ret
+  operator() (Params... params) const
+  {
+    return callback (callable, std::forward<Params> (params)...);
+  }
+
+  explicit
+  operator bool () const
+  {
+    return callback;
+  }
+};
+
+} // end namespace rcc
+
+#endif // RCC_ADT_STLFUNCTIONALEXTRAS_H
