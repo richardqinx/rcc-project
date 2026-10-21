@@ -29,8 +29,10 @@
 #include <cerrno>
 #include <string>
 
-namespace rcc {
-namespace sys {
+namespace rcc
+{
+namespace sys
+{
 
 /// Returns a string representation of the errno value, using whatever
 /// thread-safe variant of strerror() is available. Be sure to call this
@@ -44,16 +46,15 @@ RCC_ABI std::string
 StrError (int errnum);
 
 template <typename FailT, typename Fun, typename... Args>
-inline decltype(auto)
+inline decltype (auto)
 RetryAfterSignal (const FailT &Fail, const Fun &F, const Args &...As)
 {
-  decltype(F (As...)) Res;
+  decltype (F (As...)) Res;
   do
   {
     errno = 0;
     Res = F (As...);
-  }
-  while (Res == Fail && errno == EINTR);
+  } while (Res == Fail && errno == EINTR);
   return Res;
 }
 

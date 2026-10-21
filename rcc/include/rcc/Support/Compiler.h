@@ -45,32 +45,32 @@
 #endif
 
 #ifndef __has_feature
-# define __has_feature(x) 0
+#define __has_feature(x) 0
 #endif
 
 #ifndef __has_extension
-# define __has_extension(x) 0
+#define __has_extension(x) 0
 #endif
 
 #ifndef __has_attribute
-# define __has_attribute(x) 0
+#define __has_attribute(x) 0
 #endif
 
 #ifndef __has_builtin
-# define __has_builtin(x) 0
+#define __has_builtin(x) 0
 #endif
 
 #ifndef __has_warning
-# define __has_warning(x) 0
+#define __has_warning(x) 0
 #endif
 
 // Only use __has_cpp_attribute in C++ mode. GCC defines __has_cpp_attribute in
 // C mode, but the :: in __has_cpp_attribute(scoped::attribute) is invalid.
 #ifndef RCC_HAS_CPP_ATTRIBUTE
 #if defined(__cplusplus) && defined(__has_cpp_attribute)
-# define RCC_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute(x)
+#define RCC_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute (x)
 #else
-# define RCC_HAS_CPP_ATTRIBUTE(x) 0
+#define RCC_HAS_CPP_ATTRIBUTE(x) 0
 #endif
 #endif
 
@@ -78,16 +78,16 @@
 /// Extend the default __GNUC_PREREQ even if glibc's features.h isn't
 /// available.
 #ifndef RCC_GNUC_PREREQ
-# if defined(__GNUC__) && defined(__GNUC_MINOR__) && defined(__GNUC_PATCHLEVEL__)
-#  define RCC_GNUC_PREREQ(maj, min, patch) \
-    ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) + __GNUC_PATCHLEVEL__ >= \
-     ((maj) << 20) + ((min) << 10) + (patch))
-# elif defined(__GNUC__) && defined(__GNUC_MINOR__)
-#  define RCC_GNUC_PREREQ(maj, min, patch) \
-    ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) >= ((maj) << 20) + ((min) << 10))
-# else
-#  define RCC_GNUC_PREREQ(maj, min, patch) 0
-# endif
+#if defined(__GNUC__) && defined(__GNUC_MINOR__) && defined(__GNUC_PATCHLEVEL__)
+#define RCC_GNUC_PREREQ(maj, min, patch)                                       \
+  ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) + __GNUC_PATCHLEVEL__ >=          \
+   ((maj) << 20) + ((min) << 10) + (patch))
+#elif defined(__GNUC__) && defined(__GNUC_MINOR__)
+#define RCC_GNUC_PREREQ(maj, min, patch)                                       \
+  ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) >= ((maj) << 20) + ((min) << 10))
+#else
+#define RCC_GNUC_PREREQ(maj, min, patch) 0
+#endif
 #endif
 
 /// \macro RCC_MSC_PREREQ
@@ -135,13 +135,14 @@
 /// this attribute will be made public and visible outside of any shared library
 /// they are linked in to.
 
-#if RCC_HAS_CPP_ATTRIBUTE(gnu::visibility) && defined(__GNUC__) &&            \
+#if RCC_HAS_CPP_ATTRIBUTE(gnu::visibility) && defined(__GNUC__) &&             \
     !defined(__clang__)
-#define RCC_ATTRIBUTE_VISIBILITY_HIDDEN [[gnu::visibility("hidden")]]
-#define RCC_ATTRIBUTE_VISIBILITY_DEFAULT [[gnu::visibility("default")]]
+#define RCC_ATTRIBUTE_VISIBILITY_HIDDEN [[gnu::visibility ("hidden")]]
+#define RCC_ATTRIBUTE_VISIBILITY_DEFAULT [[gnu::visibility ("default")]]
 #elif __has_attribute(visibility)
-#define RCC_ATTRIBUTE_VISIBILITY_HIDDEN __attribute__((visibility("hidden")))
-#define RCC_ATTRIBUTE_VISIBILITY_DEFAULT __attribute__((visibility("default")))
+#define RCC_ATTRIBUTE_VISIBILITY_HIDDEN __attribute__ ((visibility ("hidden")))
+#define RCC_ATTRIBUTE_VISIBILITY_DEFAULT                                       \
+  __attribute__ ((visibility ("default")))
 #else
 #define RCC_ATTRIBUTE_VISIBILITY_HIDDEN
 #define RCC_ATTRIBUTE_VISIBILITY_DEFAULT
@@ -159,13 +160,13 @@
 // Clang compilers older then 15 do not support gnu style attributes on
 // namespaces.
 #if defined(__clang__) && __clang_major__ < 15
-#define RCC_LIBRARY_VISIBILITY_NAMESPACE [[gnu::visibility("hidden")]]
+#define RCC_LIBRARY_VISIBILITY_NAMESPACE [[gnu::visibility ("hidden")]]
 #else
 #define RCC_LIBRARY_VISIBILITY_NAMESPACE RCC_ATTRIBUTE_VISIBILITY_HIDDEN
 #endif
 #define RCC_ALWAYS_EXPORT RCC_ATTRIBUTE_VISIBILITY_DEFAULT
 #elif defined(_WIN32)
-#define RCC_ALWAYS_EXPORT __declspec(dllexport)
+#define RCC_ALWAYS_EXPORT __declspec (dllexport)
 #define RCC_LIBRARY_VISIBILITY
 #define RCC_LIBRARY_VISIBILITY_NAMESPACE
 #else
@@ -208,24 +209,24 @@
 #if defined(RCC_ENABLE_RCC_EXPORT_ANNOTATIONS) && !defined(RCC_BUILD_STATIC)
 #if defined(_WIN32) && !defined(__MINGW32__)
 #if defined(RCC_EXPORTS)
-#define RCC_ABI __declspec(dllexport)
+#define RCC_ABI __declspec (dllexport)
 #define RCC_TEMPLATE_ABI
-#define RCC_EXPORT_TEMPLATE __declspec(dllexport)
+#define RCC_EXPORT_TEMPLATE __declspec (dllexport)
 #else
-#define RCC_ABI __declspec(dllimport)
-#define RCC_TEMPLATE_ABI __declspec(dllimport)
+#define RCC_ABI __declspec (dllimport)
+#define RCC_TEMPLATE_ABI __declspec (dllimport)
 #define RCC_EXPORT_TEMPLATE
 #endif
-#define RCC_ABI_EXPORT __declspec(dllexport)
+#define RCC_ABI_EXPORT __declspec (dllexport)
 #elif __has_attribute(visibility)
 #if defined(__ELF__) || defined(__MINGW32__) || defined(_AIX) ||               \
     defined(__MVS__) || defined(__CYGWIN__)
-#define RCC_ABI __attribute__((visibility("default")))
+#define RCC_ABI __attribute__ ((visibility ("default")))
 #define RCC_TEMPLATE_ABI RCC_ABI
 #define RCC_EXPORT_TEMPLATE
 #define RCC_ABI_EXPORT RCC_ABI
 #elif defined(__MACH__) || defined(__wasm__) || defined(__EMSCRIPTEN__)
-#define RCC_ABI __attribute__((visibility("default")))
+#define RCC_ABI __attribute__ ((visibility ("default")))
 #define RCC_TEMPLATE_ABI
 #define RCC_EXPORT_TEMPLATE
 #define RCC_ABI_EXPORT RCC_ABI
@@ -242,25 +243,25 @@
 #endif
 
 #if defined(__GNUC__)
-#define RCC_PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
+#define RCC_PREFETCH(addr, rw, locality) __builtin_prefetch (addr, rw, locality)
 #else
 #define RCC_PREFETCH(addr, rw, locality)
 #endif
 
 #if __has_attribute(uninitialized)
-#define RCC_ATTRIBUTE_UNINITIALIZED __attribute__((uninitialized))
+#define RCC_ATTRIBUTE_UNINITIALIZED __attribute__ ((uninitialized))
 #else
 #define RCC_ATTRIBUTE_UNINITIALIZED
 #endif
 
 #if __has_attribute(used)
-#define RCC_ATTRIBUTE_USED __attribute__((__used__))
+#define RCC_ATTRIBUTE_USED __attribute__ ((__used__))
 #else
 #define RCC_ATTRIBUTE_USED
 #endif
 
 #if __has_attribute(warn_unused)
-#define RCC_ATTRIBUTE_WARN_UNUSED __attribute__((warn_unused))
+#define RCC_ATTRIBUTE_WARN_UNUSED __attribute__ ((warn_unused))
 #else
 #define RCC_ATTRIBUTE_WARN_UNUSED
 #endif
@@ -270,7 +271,7 @@
 // GCC may produce "warning: 'retain' attribute ignored" (despite
 // __has_attribute(retain) being 1).
 #if defined(__clang__) && __has_attribute(retain)
-#define RCC_ATTRIBUTE_RETAIN __attribute__((__retain__))
+#define RCC_ATTRIBUTE_RETAIN __attribute__ ((__retain__))
 #else
 #define RCC_ATTRIBUTE_RETAIN
 #endif
@@ -278,10 +279,10 @@
 // For deprecations that are not a simple rename, use [[deprecated(MSG)]]
 // instead.
 #if defined(__clang__)
-#define RCC_DEPRECATED_WITH_FIXIT(MSG, FIX)                                   \
-  __attribute__((deprecated(MSG, FIX)))
+#define RCC_DEPRECATED_WITH_FIXIT(MSG, FIX)                                    \
+  __attribute__ ((deprecated (MSG, FIX)))
 #else
-#define RCC_DEPRECATED_WITH_FIXIT(MSG, FIX) [[deprecated(MSG)]]
+#define RCC_DEPRECATED_WITH_FIXIT(MSG, FIX) [[deprecated (MSG)]]
 #endif
 
 // clang-format off
@@ -325,7 +326,7 @@
 //   (void)unused_var_name;
 // Prefer cast-to-void wherever it is sufficient.
 #if __has_attribute(unused)
-#define RCC_ATTRIBUTE_UNUSED __attribute__((__unused__))
+#define RCC_ATTRIBUTE_UNUSED __attribute__ ((__unused__))
 #else
 #define RCC_ATTRIBUTE_UNUSED
 #endif
@@ -338,7 +339,7 @@
 #define RCC_HAS_ATTRIBUTE_WEAK 0
 #endif
 #if RCC_HAS_ATTRIBUTE_WEAK
-#define RCC_ATTRIBUTE_WEAK __attribute__((__weak__))
+#define RCC_ATTRIBUTE_WEAK __attribute__ ((__weak__))
 #else
 #define RCC_ATTRIBUTE_WEAK
 #endif
@@ -347,27 +348,27 @@
 // __has_attribute(const), so assume it is supported.
 #if defined(__clang__) || defined(__GNUC__)
 // aka 'CONST' but following RCC Conventions.
-#define RCC_READNONE __attribute__((__const__))
+#define RCC_READNONE __attribute__ ((__const__))
 #else
 #define RCC_READNONE
 #endif
 
 #if __has_attribute(pure) || defined(__GNUC__)
 // aka 'PURE' but following RCC Conventions.
-#define RCC_READONLY __attribute__((__pure__))
+#define RCC_READONLY __attribute__ ((__pure__))
 #else
 #define RCC_READONLY
 #endif
 
 #if __has_attribute(minsize)
-#define RCC_ATTRIBUTE_MINSIZE __attribute__((minsize))
+#define RCC_ATTRIBUTE_MINSIZE __attribute__ ((minsize))
 #else
 #define RCC_ATTRIBUTE_MINSIZE
 #endif
 
 #if __has_builtin(__builtin_expect) || defined(__GNUC__)
-#define RCC_LIKELY(EXPR) __builtin_expect((bool)(EXPR), true)
-#define RCC_UNLIKELY(EXPR) __builtin_expect((bool)(EXPR), false)
+#define RCC_LIKELY(EXPR) __builtin_expect ((bool)(EXPR), true)
+#define RCC_UNLIKELY(EXPR) __builtin_expect ((bool)(EXPR), false)
 #else
 #define RCC_LIKELY(EXPR) (EXPR)
 #define RCC_UNLIKELY(EXPR) (EXPR)
@@ -376,9 +377,9 @@
 /// RCC_ATTRIBUTE_NOINLINE - On compilers where we have a directive to do so,
 /// mark a method "not for inlining".
 #if __has_attribute(noinline)
-#define RCC_ATTRIBUTE_NOINLINE __attribute__((noinline))
+#define RCC_ATTRIBUTE_NOINLINE __attribute__ ((noinline))
 #elif defined(_MSC_VER)
-#define RCC_ATTRIBUTE_NOINLINE __declspec(noinline)
+#define RCC_ATTRIBUTE_NOINLINE __declspec (noinline)
 #else
 #define RCC_ATTRIBUTE_NOINLINE
 #endif
@@ -386,7 +387,7 @@
 /// RCC_ATTRIBUTE_ALWAYS_INLINE - On compilers where we have a directive to do
 /// so, mark a method "always inline" because it is performance sensitive.
 #if __has_attribute(always_inline)
-#define RCC_ATTRIBUTE_ALWAYS_INLINE inline __attribute__((always_inline))
+#define RCC_ATTRIBUTE_ALWAYS_INLINE inline __attribute__ ((always_inline))
 #elif defined(_MSC_VER)
 #define RCC_ATTRIBUTE_ALWAYS_INLINE __forceinline
 #else
@@ -406,13 +407,13 @@
 /// so, mark a method "no debug" because debug info makes the debugger
 /// experience worse.
 #if __has_attribute(nodebug)
-#define RCC_ATTRIBUTE_NODEBUG __attribute__((nodebug))
+#define RCC_ATTRIBUTE_NODEBUG __attribute__ ((nodebug))
 #else
 #define RCC_ATTRIBUTE_NODEBUG
 #endif
 
 #if __has_attribute(returns_nonnull)
-#define RCC_ATTRIBUTE_RETURNS_NONNULL __attribute__((returns_nonnull))
+#define RCC_ATTRIBUTE_RETURNS_NONNULL __attribute__ ((returns_nonnull))
 #elif defined(_MSC_VER)
 #define RCC_ATTRIBUTE_RETURNS_NONNULL _Ret_notnull_
 #else
@@ -430,20 +431,21 @@
 /// \macro RCC_ATTRIBUTE_RETURNS_NOALIAS Used to mark a function as returning a
 /// pointer that does not alias any other valid pointer.
 #ifdef __GNUC__
-#define RCC_ATTRIBUTE_RETURNS_NOALIAS __attribute__((__malloc__))
+#define RCC_ATTRIBUTE_RETURNS_NOALIAS __attribute__ ((__malloc__))
 #elif defined(_MSC_VER)
-#define RCC_ATTRIBUTE_RETURNS_NOALIAS __declspec(restrict)
+#define RCC_ATTRIBUTE_RETURNS_NOALIAS __declspec (restrict)
 #else
 #define RCC_ATTRIBUTE_RETURNS_NOALIAS
 #endif
 
 /// RCC_FALLTHROUGH - Mark fallthrough cases in switch statements.
-#if defined(__cplusplus) && __cplusplus > 201402L && RCC_HAS_CPP_ATTRIBUTE(fallthrough)
+#if defined(__cplusplus) && __cplusplus > 201402L &&                           \
+    RCC_HAS_CPP_ATTRIBUTE(fallthrough)
 #define RCC_FALLTHROUGH [[fallthrough]]
 #elif RCC_HAS_CPP_ATTRIBUTE(gnu::fallthrough)
 #define RCC_FALLTHROUGH [[gnu::fallthrough]]
 #elif __has_attribute(fallthrough)
-#define RCC_FALLTHROUGH __attribute__((fallthrough))
+#define RCC_FALLTHROUGH __attribute__ ((fallthrough))
 #elif RCC_HAS_CPP_ATTRIBUTE(clang::fallthrough)
 #define RCC_FALLTHROUGH [[clang::fallthrough]]
 #else
@@ -453,7 +455,7 @@
 /// RCC_REQUIRE_CONSTANT_INITIALIZATION - Apply this to globals to ensure that
 /// they are constant initialized.
 #if RCC_HAS_CPP_ATTRIBUTE(clang::require_constant_initialization)
-#define RCC_REQUIRE_CONSTANT_INITIALIZATION                                   \
+#define RCC_REQUIRE_CONSTANT_INITIALIZATION                                    \
   [[clang::require_constant_initialization]]
 #else
 #define RCC_REQUIRE_CONSTANT_INITIALIZATION
@@ -495,16 +497,16 @@
 #define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH
 #define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP
 #else // MSVC < 19.43
-#define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                             \
-  __pragma(warning(push)) __pragma(warning(disable : 4848))
-#define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP __pragma(warning(pop))
+#define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                              \
+  __pragma (warning (push)) __pragma (warning (disable : 4848))
+#define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP __pragma (warning (pop))
 #endif
 
 #if RCC_HAS_CPP_ATTRIBUTE(no_unique_address)
 #define RCC_NO_UNIQUE_ADDRESS [[no_unique_address]]
 #elif RCC_HAS_CPP_ATTRIBUTE(msvc::no_unique_address)
-#define RCC_NO_UNIQUE_ADDRESS                                                 \
-  RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                                   \
+#define RCC_NO_UNIQUE_ADDRESS                                                  \
+  RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                                    \
   [[msvc::no_unique_address]] RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP
 #else
 #define RCC_NO_UNIQUE_ADDRESS
@@ -526,51 +528,51 @@
 /// RCC_ASSUME_ALIGNED and rcc_unreachable()) can detect whether
 /// RCC_BUILTIN_UNREACHABLE has a definition.
 #if __has_builtin(__builtin_unreachable) || defined(__GNUC__)
-# define RCC_BUILTIN_UNREACHABLE __builtin_unreachable()
+#define RCC_BUILTIN_UNREACHABLE __builtin_unreachable ()
 #elif defined(_MSC_VER)
-# define RCC_BUILTIN_UNREACHABLE __assume(false)
+#define RCC_BUILTIN_UNREACHABLE __assume (false)
 #endif
 
 /// RCC_BUILTIN_TRAP - On compilers which support it, expands to an expression
 /// which causes the program to exit abnormally.
 #if __has_builtin(__builtin_trap) || defined(__GNUC__)
-# define RCC_BUILTIN_TRAP __builtin_trap()
+#define RCC_BUILTIN_TRAP __builtin_trap ()
 #elif defined(_MSC_VER)
 // The __debugbreak intrinsic is supported by MSVC, does not require forward
 // declarations involving platform-specific typedefs (unlike RaiseException),
 // results in a call to vectored exception handlers, and encodes to a short
 // instruction that still causes the trapping behavior we want.
-# define RCC_BUILTIN_TRAP __debugbreak()
+#define RCC_BUILTIN_TRAP __debugbreak ()
 #else
-# define RCC_BUILTIN_TRAP *(volatile int*)0x11 = 0
+#define RCC_BUILTIN_TRAP *(volatile int *)0x11 = 0
 #endif
 
 /// RCC_BUILTIN_DEBUGTRAP - On compilers which support it, expands to
 /// an expression which causes the program to break while running
 /// under a debugger.
 #if __has_builtin(__builtin_debugtrap)
-# define RCC_BUILTIN_DEBUGTRAP __builtin_debugtrap()
+#define RCC_BUILTIN_DEBUGTRAP __builtin_debugtrap ()
 #elif defined(_MSC_VER)
 // The __debugbreak intrinsic is supported by MSVC and breaks while
 // running under the debugger, and also supports invoking a debugger
 // when the OS is configured appropriately.
-# define RCC_BUILTIN_DEBUGTRAP __debugbreak()
+#define RCC_BUILTIN_DEBUGTRAP __debugbreak ()
 #else
 // Just continue execution when built with compilers that have no
 // support. This is a debugging aid and not intended to force the
 // program to abort if encountered.
-# define RCC_BUILTIN_DEBUGTRAP
+#define RCC_BUILTIN_DEBUGTRAP
 #endif
 
 /// \macro RCC_ASSUME_ALIGNED
 /// Returns a pointer with an assumed alignment.
 #if __has_builtin(__builtin_assume_aligned) || defined(__GNUC__)
-# define RCC_ASSUME_ALIGNED(p, a) __builtin_assume_aligned(p, a)
+#define RCC_ASSUME_ALIGNED(p, a) __builtin_assume_aligned (p, a)
 #elif defined(RCC_BUILTIN_UNREACHABLE)
-# define RCC_ASSUME_ALIGNED(p, a) \
-           (((uintptr_t(p) % (a)) == 0) ? (p) : (RCC_BUILTIN_UNREACHABLE, (p)))
+#define RCC_ASSUME_ALIGNED(p, a)                                               \
+  (((uintptr_t (p) % (a)) == 0) ? (p) : (RCC_BUILTIN_UNREACHABLE, (p)))
 #else
-# define RCC_ASSUME_ALIGNED(p, a) (p)
+#define RCC_ASSUME_ALIGNED(p, a) (p)
 #endif
 
 /// \macro RCC_PACKED
@@ -592,50 +594,53 @@
 /// };
 /// RCC_PACKED_END
 #ifdef _MSC_VER
-# define RCC_PACKED(d) __pragma(pack(push, 1)) d __pragma(pack(pop))
-# define RCC_PACKED_START __pragma(pack(push, 1))
-# define RCC_PACKED_END   __pragma(pack(pop))
+#define RCC_PACKED(d) __pragma (pack (push, 1)) d __pragma (pack (pop))
+#define RCC_PACKED_START __pragma (pack (push, 1))
+#define RCC_PACKED_END __pragma (pack (pop))
 #else
-# define RCC_PACKED(d) d __attribute__((packed))
-# define RCC_PACKED_START _Pragma("pack(push, 1)")
-# define RCC_PACKED_END   _Pragma("pack(pop)")
+#define RCC_PACKED(d) d __attribute__ ((packed))
+#define RCC_PACKED_START _Pragma ("pack(push, 1)")
+#define RCC_PACKED_END _Pragma ("pack(pop)")
 #endif
 
 /// \macro RCC_MEMORY_SANITIZER_BUILD
 /// Whether RCC itself is built with MemorySanitizer instrumentation.
 #if __has_feature(memory_sanitizer)
-# define RCC_MEMORY_SANITIZER_BUILD 1
-# include <sanitizer/msan_interface.h>
-# define RCC_NO_SANITIZE_MEMORY_ATTRIBUTE __attribute__((no_sanitize_memory))
+#define RCC_MEMORY_SANITIZER_BUILD 1
+#include <sanitizer/msan_interface.h>
+#define RCC_NO_SANITIZE_MEMORY_ATTRIBUTE __attribute__ ((no_sanitize_memory))
 #else
-# define RCC_MEMORY_SANITIZER_BUILD 0
-# define __msan_allocated_memory(p, size)
-# define __msan_unpoison(p, size)
-# define RCC_NO_SANITIZE_MEMORY_ATTRIBUTE
+#define RCC_MEMORY_SANITIZER_BUILD 0
+#define __msan_allocated_memory(p, size)
+#define __msan_unpoison(p, size)
+#define RCC_NO_SANITIZE_MEMORY_ATTRIBUTE
 #endif
 
 /// \macro RCC_ADDRESS_SANITIZER_BUILD
 /// Whether RCC itself is built with AddressSanitizer instrumentation.
 #if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
-# define RCC_ADDRESS_SANITIZER_BUILD 1
+#define RCC_ADDRESS_SANITIZER_BUILD 1
 #if __has_include(<sanitizer/asan_interface.h>)
-# include <sanitizer/asan_interface.h>
+#include <sanitizer/asan_interface.h>
 #else
 // These declarations exist to support ASan with MSVC. If MSVC eventually ships
 // asan_interface.h in their headers, then we can remove this.
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
-void __asan_poison_memory_region(void const volatile *addr, size_t size);
-void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+  void
+  __asan_poison_memory_region (void const volatile *addr, size_t size);
+  void
+  __asan_unpoison_memory_region (void const volatile *addr, size_t size);
 #ifdef __cplusplus
 } // extern "C"
 #endif
 #endif
 #else
-# define RCC_ADDRESS_SANITIZER_BUILD 0
-# define __asan_poison_memory_region(p, size)
-# define __asan_unpoison_memory_region(p, size)
+#define RCC_ADDRESS_SANITIZER_BUILD 0
+#define __asan_poison_memory_region(p, size)
+#define __asan_unpoison_memory_region(p, size)
 #endif
 
 /// \macro RCC_HWADDRESS_SANITIZER_BUILD
@@ -649,9 +654,9 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 /// \macro RCC_THREAD_SANITIZER_BUILD
 /// Whether RCC itself is built with ThreadSanitizer instrumentation.
 #if __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
-# define RCC_THREAD_SANITIZER_BUILD 1
+#define RCC_THREAD_SANITIZER_BUILD 1
 #else
-# define RCC_THREAD_SANITIZER_BUILD 0
+#define RCC_THREAD_SANITIZER_BUILD 0
 #endif
 
 #if RCC_THREAD_SANITIZER_BUILD
@@ -659,12 +664,17 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 // See http://code.google.com/p/data-race-test/wiki/DynamicAnnotations .
 // tsan detects these exact functions by name.
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
-void AnnotateHappensAfter(const char *file, int line, const volatile void *cv);
-void AnnotateHappensBefore(const char *file, int line, const volatile void *cv);
-void AnnotateIgnoreWritesBegin(const char *file, int line);
-void AnnotateIgnoreWritesEnd(const char *file, int line);
+  void
+  AnnotateHappensAfter (const char *file, int line, const volatile void *cv);
+  void
+  AnnotateHappensBefore (const char *file, int line, const volatile void *cv);
+  void
+  AnnotateIgnoreWritesBegin (const char *file, int line);
+  void
+  AnnotateIgnoreWritesEnd (const char *file, int line);
 #ifdef __cplusplus
 }
 #endif
@@ -672,27 +682,27 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 // This marker is used to define a happens-before arc. The race detector will
 // infer an arc from the begin to the end when they share the same pointer
 // argument.
-# define TsanHappensBefore(cv) AnnotateHappensBefore(__FILE__, __LINE__, cv)
+#define TsanHappensBefore(cv) AnnotateHappensBefore (__FILE__, __LINE__, cv)
 
 // This marker defines the destination of a happens-before arc.
-# define TsanHappensAfter(cv) AnnotateHappensAfter(__FILE__, __LINE__, cv)
+#define TsanHappensAfter(cv) AnnotateHappensAfter (__FILE__, __LINE__, cv)
 
 // Ignore any races on writes between here and the next TsanIgnoreWritesEnd.
-# define TsanIgnoreWritesBegin() AnnotateIgnoreWritesBegin(__FILE__, __LINE__)
+#define TsanIgnoreWritesBegin() AnnotateIgnoreWritesBegin (__FILE__, __LINE__)
 
 // Resume checking for racy writes.
-# define TsanIgnoreWritesEnd() AnnotateIgnoreWritesEnd(__FILE__, __LINE__)
+#define TsanIgnoreWritesEnd() AnnotateIgnoreWritesEnd (__FILE__, __LINE__)
 #else
-# define TsanHappensBefore(cv)
-# define TsanHappensAfter(cv)
-# define TsanIgnoreWritesBegin()
-# define TsanIgnoreWritesEnd()
+#define TsanHappensBefore(cv)
+#define TsanHappensAfter(cv)
+#define TsanIgnoreWritesBegin()
+#define TsanIgnoreWritesEnd()
 #endif
 
 /// \macro RCC_NO_SANITIZE
 /// Disable a particular sanitizer for a function.
 #if __has_attribute(no_sanitize)
-#define RCC_NO_SANITIZE(KIND) __attribute__((no_sanitize(KIND)))
+#define RCC_NO_SANITIZE(KIND) __attribute__ ((no_sanitize (KIND)))
 #else
 #define RCC_NO_SANITIZE(KIND)
 #endif
@@ -704,7 +714,7 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// get stripped in release builds.
 // FIXME: Move this to a private config.h as it's not usable in public headers.
 #if !defined(NDEBUG) || defined(RCC_ENABLE_DUMP)
-#define RCC_DUMP_METHOD                                                       \
+#define RCC_DUMP_METHOD                                                        \
   RCC_ATTRIBUTE_NOINLINE RCC_ATTRIBUTE_USED RCC_ATTRIBUTE_RETAIN
 #else
 #define RCC_DUMP_METHOD RCC_ATTRIBUTE_NOINLINE
@@ -761,8 +771,8 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// \macro RCC_NO_PROFILE_INSTRUMENT_FUNCTION
 /// Disable the profile instrument for a function.
 #if __has_attribute(no_profile_instrument_function)
-#define RCC_NO_PROFILE_INSTRUMENT_FUNCTION                                    \
-  __attribute__((no_profile_instrument_function))
+#define RCC_NO_PROFILE_INSTRUMENT_FUNCTION                                     \
+  __attribute__ ((no_profile_instrument_function))
 #else
 #define RCC_NO_PROFILE_INSTRUMENT_FUNCTION
 #endif
@@ -770,16 +780,16 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// \macro RCC_PREFERRED_TYPE
 /// Adjust type of bit-field in debug info.
 #if __has_attribute(preferred_type)
-#define RCC_PREFERRED_TYPE(T) __attribute__((preferred_type(T)))
+#define RCC_PREFERRED_TYPE(T) __attribute__ ((preferred_type (T)))
 #else
 #define RCC_PREFERRED_TYPE(T)
 #endif
 
-#if RCC_HAS_CPP_ATTRIBUTE(clang::ptrauth_vtable_pointer) &&                   \
+#if RCC_HAS_CPP_ATTRIBUTE(clang::ptrauth_vtable_pointer) &&                    \
     (defined(__PTRAUTH__) || __has_feature(ptrauth_calls))
-#define RCC_MOVABLE_POLYMORPHIC_TYPE                                          \
-  [[clang::ptrauth_vtable_pointer(default_key, no_address_discrimination,      \
-                                  default_extra_discrimination)]]
+#define RCC_MOVABLE_POLYMORPHIC_TYPE                                           \
+  [[clang::ptrauth_vtable_pointer (default_key, no_address_discrimination,     \
+                                   default_extra_discrimination)]]
 #else
 #define RCC_MOVABLE_POLYMORPHIC_TYPE
 #endif
@@ -819,14 +829,14 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// \macro RCC_TARGET_SSE42
 /// Function attribute to compile a function with SSE4.2 enabled.
 #if defined(__has_attribute) && __has_attribute(target)
-#define RCC_TARGET_SSE42 __attribute__((target("sse4.2")))
+#define RCC_TARGET_SSE42 __attribute__ ((target ("sse4.2")))
 #else
 #define RCC_TARGET_SSE42
 #endif
 
 #if __has_builtin(__builtin_cpu_supports) &&                                   \
     (defined(__linux__) || defined(__APPLE__))
-#define RCC_CPU_SUPPORTS(feature) __builtin_cpu_supports(feature)
+#define RCC_CPU_SUPPORTS(feature) __builtin_cpu_supports (feature)
 #else
 #define RCC_CPU_SUPPORTS(feature) 0
 #endif
@@ -837,7 +847,7 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 #if defined(__SSE4_2__)
 #define RCC_CPU_SUPPORTS_SSE42 1
 #else
-#define RCC_CPU_SUPPORTS_SSE42 RCC_CPU_SUPPORTS("sse4.2")
+#define RCC_CPU_SUPPORTS_SSE42 RCC_CPU_SUPPORTS ("sse4.2")
 #endif
 
 #endif

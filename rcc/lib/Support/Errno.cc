@@ -27,8 +27,10 @@
 #include <cstring>
 #include <errno.h>
 
-namespace rcc {
-namespace sys {
+namespace rcc
+{
+namespace sys
+{
 
 std::string
 StrError ()
