@@ -1,0 +1,843 @@
+/*
+ RCC-Project
+
+ Copyright (C) 2026 Richard Qin
+
+ This file is part of RCC-Project.
+
+ RCC-Project is free software; you can redistribute it and/or modify it under
+ the terms of the GNU General Public License as published by the Free
+ Software Foundation; either version 3 of the License, or (at your option) any
+ later version.
+
+ RCC-Project is distributed in the hope that it will be useful, but WITHOUT ANY
+ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+ A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License along with
+ RCC-Project; see the file COPYING.  If not see
+ <http://www.gnu.org/licenses/>.
+*/
+
+//===-- llvm/Support/Compiler.h - Compiler abstraction support --*- C++ -*-===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file defines several macros, based on the current compiler.  This allows
+// use of compiler-specific features in a way that remains portable. This header
+// can be included from either C or C++.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef RCC_SUPPORT_COMPILER_H
+#define RCC_SUPPORT_COMPILER_H
+
+#include "rcc/Config/rcc-config.h"
+
+#include <stddef.h>
+
+#if defined(_MSC_VER)
+#include <sal.h>
+#endif
+
+#ifndef __has_feature
+# define __has_feature(x) 0
+#endif
+
+#ifndef __has_extension
+# define __has_extension(x) 0
+#endif
+
+#ifndef __has_attribute
+# define __has_attribute(x) 0
+#endif
+
+#ifndef __has_builtin
+# define __has_builtin(x) 0
+#endif
+
+#ifndef __has_warning
+# define __has_warning(x) 0
+#endif
+
+// Only use __has_cpp_attribute in C++ mode. GCC defines __has_cpp_attribute in
+// C mode, but the :: in __has_cpp_attribute(scoped::attribute) is invalid.
+#ifndef RCC_HAS_CPP_ATTRIBUTE
+#if defined(__cplusplus) && defined(__has_cpp_attribute)
+# define RCC_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute(x)
+#else
+# define RCC_HAS_CPP_ATTRIBUTE(x) 0
+#endif
+#endif
+
+/// \macro RCC_GNUC_PREREQ
+/// Extend the default __GNUC_PREREQ even if glibc's features.h isn't
+/// available.
+#ifndef RCC_GNUC_PREREQ
+# if defined(__GNUC__) && defined(__GNUC_MINOR__) && defined(__GNUC_PATCHLEVEL__)
+#  define RCC_GNUC_PREREQ(maj, min, patch) \
+    ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) + __GNUC_PATCHLEVEL__ >= \
+     ((maj) << 20) + ((min) << 10) + (patch))
+# elif defined(__GNUC__) && defined(__GNUC_MINOR__)
+#  define RCC_GNUC_PREREQ(maj, min, patch) \
+    ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) >= ((maj) << 20) + ((min) << 10))
+# else
+#  define RCC_GNUC_PREREQ(maj, min, patch) 0
+# endif
+#endif
+
+/// \macro RCC_MSC_PREREQ
+/// Is the compiler MSVC of at least the specified version?
+/// The common \param version values to check for are:
+/// * 1910: VS2017, version 15.1 & 15.2
+/// * 1911: VS2017, version 15.3 & 15.4
+/// * 1912: VS2017, version 15.5
+/// * 1913: VS2017, version 15.6
+/// * 1914: VS2017, version 15.7
+/// * 1915: VS2017, version 15.8
+/// * 1916: VS2017, version 15.9
+/// * 1920: VS2019, version 16.0
+/// * 1921: VS2019, version 16.1
+/// * 1922: VS2019, version 16.2
+/// * 1923: VS2019, version 16.3
+/// * 1924: VS2019, version 16.4
+/// * 1925: VS2019, version 16.5
+/// * 1926: VS2019, version 16.6
+/// * 1927: VS2019, version 16.7
+/// * 1928: VS2019, version 16.8 + 16.9
+/// * 1929: VS2019, version 16.10 + 16.11
+/// * 1930: VS2022, version 17.0
+#ifdef _MSC_VER
+#define RCC_MSC_PREREQ(version) (_MSC_VER >= (version))
+
+// We require at least VS 2019.
+#if !defined(RCC_FORCE_USE_OLD_TOOLCHAIN)
+#if !RCC_MSC_PREREQ(1920)
+#error RCC requires at least VS 2019.
+#endif
+#endif
+
+#else
+#define RCC_MSC_PREREQ(version) 0
+#endif
+
+/// RCC_LIBRARY_VISIBILITY - If a class marked with this attribute is linked
+/// into a shared library, then the class should be private to the library and
+/// not accessible from outside it.  Can also be used to mark variables and
+/// functions, making them private to any shared library they are linked into.
+/// On PE/COFF targets, library visibility is the default, so this isn't needed.
+///
+/// RCC_EXTERNAL_VISIBILITY - classes, functions, and variables marked with
+/// this attribute will be made public and visible outside of any shared library
+/// they are linked in to.
+
+#if RCC_HAS_CPP_ATTRIBUTE(gnu::visibility) && defined(__GNUC__) &&            \
+    !defined(__clang__)
+#define RCC_ATTRIBUTE_VISIBILITY_HIDDEN [[gnu::visibility("hidden")]]
+#define RCC_ATTRIBUTE_VISIBILITY_DEFAULT [[gnu::visibility("default")]]
+#elif __has_attribute(visibility)
+#define RCC_ATTRIBUTE_VISIBILITY_HIDDEN __attribute__((visibility("hidden")))
+#define RCC_ATTRIBUTE_VISIBILITY_DEFAULT __attribute__((visibility("default")))
+#else
+#define RCC_ATTRIBUTE_VISIBILITY_HIDDEN
+#define RCC_ATTRIBUTE_VISIBILITY_DEFAULT
+#endif
+
+#if defined(RCC_BUILD_RCC_DYLIB) || defined(RCC_BUILD_SHARED_LIBS)
+#define RCC_EXTERNAL_VISIBILITY RCC_ATTRIBUTE_VISIBILITY_DEFAULT
+#else
+#define RCC_EXTERNAL_VISIBILITY
+#endif
+
+#if (!(defined(_WIN32) || defined(__CYGWIN__)) ||                              \
+     ((defined(__MINGW32__) || defined(__CYGWIN__)) && defined(__clang__)))
+#define RCC_LIBRARY_VISIBILITY RCC_ATTRIBUTE_VISIBILITY_HIDDEN
+// Clang compilers older then 15 do not support gnu style attributes on
+// namespaces.
+#if defined(__clang__) && __clang_major__ < 15
+#define RCC_LIBRARY_VISIBILITY_NAMESPACE [[gnu::visibility("hidden")]]
+#else
+#define RCC_LIBRARY_VISIBILITY_NAMESPACE RCC_ATTRIBUTE_VISIBILITY_HIDDEN
+#endif
+#define RCC_ALWAYS_EXPORT RCC_ATTRIBUTE_VISIBILITY_DEFAULT
+#elif defined(_WIN32)
+#define RCC_ALWAYS_EXPORT __declspec(dllexport)
+#define RCC_LIBRARY_VISIBILITY
+#define RCC_LIBRARY_VISIBILITY_NAMESPACE
+#else
+#define RCC_LIBRARY_VISIBILITY
+#define RCC_ALWAYS_EXPORT
+#define RCC_LIBRARY_VISIBILITY_NAMESPACE
+#endif
+
+/// RCC_ABI is the main export/visibility macro to mark something as explicitly
+/// exported when rcc is built as a shared library with everything else that is
+/// unannotated will have internal visibility.
+///
+/// RCC_ABI_EXPORT is for the special case for things like plugin symbol
+/// declarations or definitions where we don't want the macro to be switching
+/// between dllexport and dllimport on windows based on what codebase is being
+/// built, it will only be dllexport. For non windows platforms this macro
+/// behaves the same as RCC_ABI.
+///
+/// RCC_EXPORT_TEMPLATE is used on explicit template instantiations in source
+/// files that were declared extern in a header. This macro is only set as a
+/// compiler export attribute on windows, on other platforms it does nothing.
+///
+/// RCC_TEMPLATE_ABI is for annotating extern template declarations in headers
+/// for both functions and classes. On windows its turned in to dllimport for
+/// library consumers, for other platforms its a default visibility attribute.
+///
+/// RCC_ABI_FOR_TEST is for annotating symbols that are exported from a
+/// library-internal header solely so that unit tests can link against them.
+/// Symbols in RCC's public headers are part of the RCC public interface and
+/// should use RCC_ABI. RCC_ABI_FOR_TEST is reserved for internal headers,
+/// whose symbols could be conditionally excluded when not building tests in the
+/// future.
+///
+#ifndef RCC_ABI_GENERATING_ANNOTATIONS
+// Marker to add to classes or functions in public headers that should not have
+// export macros added to them by the clang tool
+#define RCC_ABI_NOT_EXPORTED
+// TODO(https://github.com/rcc/rcc-project/issues/145406): eliminate need for
+// two preprocessor definitions to gate RCC_ABI macro definitions.
+#if defined(RCC_ENABLE_RCC_EXPORT_ANNOTATIONS) && !defined(RCC_BUILD_STATIC)
+#if defined(_WIN32) && !defined(__MINGW32__)
+#if defined(RCC_EXPORTS)
+#define RCC_ABI __declspec(dllexport)
+#define RCC_TEMPLATE_ABI
+#define RCC_EXPORT_TEMPLATE __declspec(dllexport)
+#else
+#define RCC_ABI __declspec(dllimport)
+#define RCC_TEMPLATE_ABI __declspec(dllimport)
+#define RCC_EXPORT_TEMPLATE
+#endif
+#define RCC_ABI_EXPORT __declspec(dllexport)
+#elif __has_attribute(visibility)
+#if defined(__ELF__) || defined(__MINGW32__) || defined(_AIX) ||               \
+    defined(__MVS__) || defined(__CYGWIN__)
+#define RCC_ABI __attribute__((visibility("default")))
+#define RCC_TEMPLATE_ABI RCC_ABI
+#define RCC_EXPORT_TEMPLATE
+#define RCC_ABI_EXPORT RCC_ABI
+#elif defined(__MACH__) || defined(__wasm__) || defined(__EMSCRIPTEN__)
+#define RCC_ABI __attribute__((visibility("default")))
+#define RCC_TEMPLATE_ABI
+#define RCC_EXPORT_TEMPLATE
+#define RCC_ABI_EXPORT RCC_ABI
+#endif
+#endif
+#endif
+#if !defined(RCC_ABI)
+#define RCC_ABI
+#define RCC_TEMPLATE_ABI
+#define RCC_EXPORT_TEMPLATE
+#define RCC_ABI_EXPORT
+#endif
+#define RCC_ABI_FOR_TEST RCC_ABI
+#endif
+
+#if defined(__GNUC__)
+#define RCC_PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
+#else
+#define RCC_PREFETCH(addr, rw, locality)
+#endif
+
+#if __has_attribute(uninitialized)
+#define RCC_ATTRIBUTE_UNINITIALIZED __attribute__((uninitialized))
+#else
+#define RCC_ATTRIBUTE_UNINITIALIZED
+#endif
+
+#if __has_attribute(used)
+#define RCC_ATTRIBUTE_USED __attribute__((__used__))
+#else
+#define RCC_ATTRIBUTE_USED
+#endif
+
+#if __has_attribute(warn_unused)
+#define RCC_ATTRIBUTE_WARN_UNUSED __attribute__((warn_unused))
+#else
+#define RCC_ATTRIBUTE_WARN_UNUSED
+#endif
+
+// Only enabled for clang:
+// See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=99587
+// GCC may produce "warning: 'retain' attribute ignored" (despite
+// __has_attribute(retain) being 1).
+#if defined(__clang__) && __has_attribute(retain)
+#define RCC_ATTRIBUTE_RETAIN __attribute__((__retain__))
+#else
+#define RCC_ATTRIBUTE_RETAIN
+#endif
+
+// For deprecations that are not a simple rename, use [[deprecated(MSG)]]
+// instead.
+#if defined(__clang__)
+#define RCC_DEPRECATED_WITH_FIXIT(MSG, FIX)                                   \
+  __attribute__((deprecated(MSG, FIX)))
+#else
+#define RCC_DEPRECATED_WITH_FIXIT(MSG, FIX) [[deprecated(MSG)]]
+#endif
+
+// clang-format off
+#if defined(__clang__) || defined(__GNUC__)
+#define RCC_SUPPRESS_DEPRECATED_DECLARATIONS_PUSH                             \
+  _Pragma("GCC diagnostic push")                                               \
+  _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
+#define RCC_SUPPRESS_DEPRECATED_DECLARATIONS_POP                              \
+  _Pragma("GCC diagnostic pop")
+#elif defined(_MSC_VER)
+#define RCC_SUPPRESS_DEPRECATED_DECLARATIONS_PUSH                             \
+  __pragma(warning(push))                                                     \
+  __pragma(warning(disable : 4996))
+#define RCC_SUPPRESS_DEPRECATED_DECLARATIONS_POP                              \
+  __pragma(warning(pop))
+#else
+#define RCC_SUPPRESS_DEPRECATED_DECLARATIONS_PUSH
+#define RCC_SUPPRESS_DEPRECATED_DECLARATIONS_POP
+#endif
+// clang-format on
+
+// Indicate that a non-static, non-const C++ member function reinitializes
+// the entire object to a known state, independent of the previous state of
+// the object.
+//
+// The clang-tidy check bugprone-use-after-move recognizes this attribute as a
+// marker that a moved-from object has left the indeterminate state and can be
+// reused.
+#if RCC_HAS_CPP_ATTRIBUTE(clang::reinitializes)
+#define RCC_ATTRIBUTE_REINITIALIZES [[clang::reinitializes]]
+#else
+#define RCC_ATTRIBUTE_REINITIALIZES
+#endif
+
+// Some compilers warn about unused functions. When a function is sometimes
+// used or not depending on build settings (e.g. a function only called from
+// within "assert"), this attribute can be used to suppress such warnings.
+//
+// However, it shouldn't be used for unused *variables*, as those have a much
+// more portable solution:
+//   (void)unused_var_name;
+// Prefer cast-to-void wherever it is sufficient.
+#if __has_attribute(unused)
+#define RCC_ATTRIBUTE_UNUSED __attribute__((__unused__))
+#else
+#define RCC_ATTRIBUTE_UNUSED
+#endif
+
+// FIXME: Provide this for PE/COFF targets.
+#if __has_attribute(weak) && !defined(__MINGW32__) && !defined(__CYGWIN__) &&  \
+    !defined(_WIN32)
+#define RCC_HAS_ATTRIBUTE_WEAK 1
+#else
+#define RCC_HAS_ATTRIBUTE_WEAK 0
+#endif
+#if RCC_HAS_ATTRIBUTE_WEAK
+#define RCC_ATTRIBUTE_WEAK __attribute__((__weak__))
+#else
+#define RCC_ATTRIBUTE_WEAK
+#endif
+
+// Prior to clang 3.2, clang did not accept any spelling of
+// __has_attribute(const), so assume it is supported.
+#if defined(__clang__) || defined(__GNUC__)
+// aka 'CONST' but following RCC Conventions.
+#define RCC_READNONE __attribute__((__const__))
+#else
+#define RCC_READNONE
+#endif
+
+#if __has_attribute(pure) || defined(__GNUC__)
+// aka 'PURE' but following RCC Conventions.
+#define RCC_READONLY __attribute__((__pure__))
+#else
+#define RCC_READONLY
+#endif
+
+#if __has_attribute(minsize)
+#define RCC_ATTRIBUTE_MINSIZE __attribute__((minsize))
+#else
+#define RCC_ATTRIBUTE_MINSIZE
+#endif
+
+#if __has_builtin(__builtin_expect) || defined(__GNUC__)
+#define RCC_LIKELY(EXPR) __builtin_expect((bool)(EXPR), true)
+#define RCC_UNLIKELY(EXPR) __builtin_expect((bool)(EXPR), false)
+#else
+#define RCC_LIKELY(EXPR) (EXPR)
+#define RCC_UNLIKELY(EXPR) (EXPR)
+#endif
+
+/// RCC_ATTRIBUTE_NOINLINE - On compilers where we have a directive to do so,
+/// mark a method "not for inlining".
+#if __has_attribute(noinline)
+#define RCC_ATTRIBUTE_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define RCC_ATTRIBUTE_NOINLINE __declspec(noinline)
+#else
+#define RCC_ATTRIBUTE_NOINLINE
+#endif
+
+/// RCC_ATTRIBUTE_ALWAYS_INLINE - On compilers where we have a directive to do
+/// so, mark a method "always inline" because it is performance sensitive.
+#if __has_attribute(always_inline)
+#define RCC_ATTRIBUTE_ALWAYS_INLINE inline __attribute__((always_inline))
+#elif defined(_MSC_VER)
+#define RCC_ATTRIBUTE_ALWAYS_INLINE __forceinline
+#else
+#define RCC_ATTRIBUTE_ALWAYS_INLINE inline
+#endif
+
+/// RCC_ATTRIBUTE_ALWAYS_INLINE_UNLESS_DEBUG - Like
+/// RCC_ATTRIBUTE_ALWAYS_INLINE but disabled in debug builds to avoid stack
+/// overflow with deep recursion.
+#if defined(NDEBUG)
+#define RCC_ATTRIBUTE_ALWAYS_INLINE_UNLESS_DEBUG RCC_ATTRIBUTE_ALWAYS_INLINE
+#else
+#define RCC_ATTRIBUTE_ALWAYS_INLINE_UNLESS_DEBUG inline
+#endif
+
+/// RCC_ATTRIBUTE_NO_DEBUG - On compilers where we have a directive to do
+/// so, mark a method "no debug" because debug info makes the debugger
+/// experience worse.
+#if __has_attribute(nodebug)
+#define RCC_ATTRIBUTE_NODEBUG __attribute__((nodebug))
+#else
+#define RCC_ATTRIBUTE_NODEBUG
+#endif
+
+#if __has_attribute(returns_nonnull)
+#define RCC_ATTRIBUTE_RETURNS_NONNULL __attribute__((returns_nonnull))
+#elif defined(_MSC_VER)
+#define RCC_ATTRIBUTE_RETURNS_NONNULL _Ret_notnull_
+#else
+#define RCC_ATTRIBUTE_RETURNS_NONNULL
+#endif
+
+/// RCC_ATTRIBUTE_RESTRICT - Annotates a pointer to tell the compiler that
+/// it is not aliased in the current scope.
+#if defined(__clang__) || defined(__GNUC__) || defined(_MSC_VER)
+#define RCC_ATTRIBUTE_RESTRICT __restrict
+#else
+#define RCC_ATTRIBUTE_RESTRICT
+#endif
+
+/// \macro RCC_ATTRIBUTE_RETURNS_NOALIAS Used to mark a function as returning a
+/// pointer that does not alias any other valid pointer.
+#ifdef __GNUC__
+#define RCC_ATTRIBUTE_RETURNS_NOALIAS __attribute__((__malloc__))
+#elif defined(_MSC_VER)
+#define RCC_ATTRIBUTE_RETURNS_NOALIAS __declspec(restrict)
+#else
+#define RCC_ATTRIBUTE_RETURNS_NOALIAS
+#endif
+
+/// RCC_FALLTHROUGH - Mark fallthrough cases in switch statements.
+#if defined(__cplusplus) && __cplusplus > 201402L && RCC_HAS_CPP_ATTRIBUTE(fallthrough)
+#define RCC_FALLTHROUGH [[fallthrough]]
+#elif RCC_HAS_CPP_ATTRIBUTE(gnu::fallthrough)
+#define RCC_FALLTHROUGH [[gnu::fallthrough]]
+#elif __has_attribute(fallthrough)
+#define RCC_FALLTHROUGH __attribute__((fallthrough))
+#elif RCC_HAS_CPP_ATTRIBUTE(clang::fallthrough)
+#define RCC_FALLTHROUGH [[clang::fallthrough]]
+#else
+#define RCC_FALLTHROUGH
+#endif
+
+/// RCC_REQUIRE_CONSTANT_INITIALIZATION - Apply this to globals to ensure that
+/// they are constant initialized.
+#if RCC_HAS_CPP_ATTRIBUTE(clang::require_constant_initialization)
+#define RCC_REQUIRE_CONSTANT_INITIALIZATION                                   \
+  [[clang::require_constant_initialization]]
+#else
+#define RCC_REQUIRE_CONSTANT_INITIALIZATION
+#endif
+
+/// RCC_GSL_OWNER - Apply this to owning classes like SmallVector to enable
+/// lifetime warnings.
+#if RCC_HAS_CPP_ATTRIBUTE(gsl::Owner)
+#define RCC_GSL_OWNER [[gsl::Owner]]
+#else
+#define RCC_GSL_OWNER
+#endif
+
+/// RCC_GSL_POINTER - Apply this to non-owning classes like
+/// StringRef to enable lifetime warnings.
+#if RCC_HAS_CPP_ATTRIBUTE(gsl::Pointer)
+#define RCC_GSL_POINTER [[gsl::Pointer]]
+#else
+#define RCC_GSL_POINTER
+#endif
+
+#if RCC_HAS_CPP_ATTRIBUTE(clang::lifetimebound)
+#define RCC_LIFETIME_BOUND [[clang::lifetimebound]]
+#else
+#define RCC_LIFETIME_BOUND
+#endif
+
+#if RCC_HAS_CPP_ATTRIBUTE(nodiscard) >= 201907L
+#define RCC_CTOR_NODISCARD [[nodiscard]]
+#else
+#define RCC_CTOR_NODISCARD
+#endif
+
+// Macro to suppress the MSVC warning C4848:
+// "support for attribute [[msvc::no_unique_address]] in C++17 and earlier
+// is a vendor extension".
+// This warning is removed in versions >= 19.43.
+#if !defined(_MSC_VER) || _MSC_VER >= 1943 || defined(__clang__)
+#define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH
+#define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP
+#else // MSVC < 19.43
+#define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                             \
+  __pragma(warning(push)) __pragma(warning(disable : 4848))
+#define RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP __pragma(warning(pop))
+#endif
+
+#if RCC_HAS_CPP_ATTRIBUTE(no_unique_address)
+#define RCC_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#elif RCC_HAS_CPP_ATTRIBUTE(msvc::no_unique_address)
+#define RCC_NO_UNIQUE_ADDRESS                                                 \
+  RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                                   \
+  [[msvc::no_unique_address]] RCC_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP
+#else
+#define RCC_NO_UNIQUE_ADDRESS
+#endif
+
+/// RCC_EXTENSION - Support compilers where we have a keyword to suppress
+/// pedantic diagnostics.
+#ifdef __GNUC__
+#define RCC_EXTENSION __extension__
+#else
+#define RCC_EXTENSION
+#endif
+
+/// RCC_BUILTIN_UNREACHABLE - On compilers which support it, expands
+/// to an expression which states that it is undefined behavior for the
+/// compiler to reach this point.  Otherwise is not defined.
+///
+/// '#else' is intentionally left out so that other macro logic (e.g.,
+/// RCC_ASSUME_ALIGNED and rcc_unreachable()) can detect whether
+/// RCC_BUILTIN_UNREACHABLE has a definition.
+#if __has_builtin(__builtin_unreachable) || defined(__GNUC__)
+# define RCC_BUILTIN_UNREACHABLE __builtin_unreachable()
+#elif defined(_MSC_VER)
+# define RCC_BUILTIN_UNREACHABLE __assume(false)
+#endif
+
+/// RCC_BUILTIN_TRAP - On compilers which support it, expands to an expression
+/// which causes the program to exit abnormally.
+#if __has_builtin(__builtin_trap) || defined(__GNUC__)
+# define RCC_BUILTIN_TRAP __builtin_trap()
+#elif defined(_MSC_VER)
+// The __debugbreak intrinsic is supported by MSVC, does not require forward
+// declarations involving platform-specific typedefs (unlike RaiseException),
+// results in a call to vectored exception handlers, and encodes to a short
+// instruction that still causes the trapping behavior we want.
+# define RCC_BUILTIN_TRAP __debugbreak()
+#else
+# define RCC_BUILTIN_TRAP *(volatile int*)0x11 = 0
+#endif
+
+/// RCC_BUILTIN_DEBUGTRAP - On compilers which support it, expands to
+/// an expression which causes the program to break while running
+/// under a debugger.
+#if __has_builtin(__builtin_debugtrap)
+# define RCC_BUILTIN_DEBUGTRAP __builtin_debugtrap()
+#elif defined(_MSC_VER)
+// The __debugbreak intrinsic is supported by MSVC and breaks while
+// running under the debugger, and also supports invoking a debugger
+// when the OS is configured appropriately.
+# define RCC_BUILTIN_DEBUGTRAP __debugbreak()
+#else
+// Just continue execution when built with compilers that have no
+// support. This is a debugging aid and not intended to force the
+// program to abort if encountered.
+# define RCC_BUILTIN_DEBUGTRAP
+#endif
+
+/// \macro RCC_ASSUME_ALIGNED
+/// Returns a pointer with an assumed alignment.
+#if __has_builtin(__builtin_assume_aligned) || defined(__GNUC__)
+# define RCC_ASSUME_ALIGNED(p, a) __builtin_assume_aligned(p, a)
+#elif defined(RCC_BUILTIN_UNREACHABLE)
+# define RCC_ASSUME_ALIGNED(p, a) \
+           (((uintptr_t(p) % (a)) == 0) ? (p) : (RCC_BUILTIN_UNREACHABLE, (p)))
+#else
+# define RCC_ASSUME_ALIGNED(p, a) (p)
+#endif
+
+/// \macro RCC_PACKED
+/// Used to specify a packed structure.
+/// RCC_PACKED(
+///    struct A {
+///      int i;
+///      int j;
+///      int k;
+///      long long l;
+///   });
+///
+/// RCC_PACKED_START
+/// struct B {
+///   int i;
+///   int j;
+///   int k;
+///   long long l;
+/// };
+/// RCC_PACKED_END
+#ifdef _MSC_VER
+# define RCC_PACKED(d) __pragma(pack(push, 1)) d __pragma(pack(pop))
+# define RCC_PACKED_START __pragma(pack(push, 1))
+# define RCC_PACKED_END   __pragma(pack(pop))
+#else
+# define RCC_PACKED(d) d __attribute__((packed))
+# define RCC_PACKED_START _Pragma("pack(push, 1)")
+# define RCC_PACKED_END   _Pragma("pack(pop)")
+#endif
+
+/// \macro RCC_MEMORY_SANITIZER_BUILD
+/// Whether RCC itself is built with MemorySanitizer instrumentation.
+#if __has_feature(memory_sanitizer)
+# define RCC_MEMORY_SANITIZER_BUILD 1
+# include <sanitizer/msan_interface.h>
+# define RCC_NO_SANITIZE_MEMORY_ATTRIBUTE __attribute__((no_sanitize_memory))
+#else
+# define RCC_MEMORY_SANITIZER_BUILD 0
+# define __msan_allocated_memory(p, size)
+# define __msan_unpoison(p, size)
+# define RCC_NO_SANITIZE_MEMORY_ATTRIBUTE
+#endif
+
+/// \macro RCC_ADDRESS_SANITIZER_BUILD
+/// Whether RCC itself is built with AddressSanitizer instrumentation.
+#if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
+# define RCC_ADDRESS_SANITIZER_BUILD 1
+#if __has_include(<sanitizer/asan_interface.h>)
+# include <sanitizer/asan_interface.h>
+#else
+// These declarations exist to support ASan with MSVC. If MSVC eventually ships
+// asan_interface.h in their headers, then we can remove this.
+#ifdef __cplusplus
+extern "C" {
+#endif
+void __asan_poison_memory_region(void const volatile *addr, size_t size);
+void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+#ifdef __cplusplus
+} // extern "C"
+#endif
+#endif
+#else
+# define RCC_ADDRESS_SANITIZER_BUILD 0
+# define __asan_poison_memory_region(p, size)
+# define __asan_unpoison_memory_region(p, size)
+#endif
+
+/// \macro RCC_HWADDRESS_SANITIZER_BUILD
+/// Whether RCC itself is built with HWAddressSanitizer instrumentation.
+#if __has_feature(hwaddress_sanitizer)
+#define RCC_HWADDRESS_SANITIZER_BUILD 1
+#else
+#define RCC_HWADDRESS_SANITIZER_BUILD 0
+#endif
+
+/// \macro RCC_THREAD_SANITIZER_BUILD
+/// Whether RCC itself is built with ThreadSanitizer instrumentation.
+#if __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
+# define RCC_THREAD_SANITIZER_BUILD 1
+#else
+# define RCC_THREAD_SANITIZER_BUILD 0
+#endif
+
+#if RCC_THREAD_SANITIZER_BUILD
+// Thread Sanitizer is a tool that finds races in code.
+// See http://code.google.com/p/data-race-test/wiki/DynamicAnnotations .
+// tsan detects these exact functions by name.
+#ifdef __cplusplus
+extern "C" {
+#endif
+void AnnotateHappensAfter(const char *file, int line, const volatile void *cv);
+void AnnotateHappensBefore(const char *file, int line, const volatile void *cv);
+void AnnotateIgnoreWritesBegin(const char *file, int line);
+void AnnotateIgnoreWritesEnd(const char *file, int line);
+#ifdef __cplusplus
+}
+#endif
+
+// This marker is used to define a happens-before arc. The race detector will
+// infer an arc from the begin to the end when they share the same pointer
+// argument.
+# define TsanHappensBefore(cv) AnnotateHappensBefore(__FILE__, __LINE__, cv)
+
+// This marker defines the destination of a happens-before arc.
+# define TsanHappensAfter(cv) AnnotateHappensAfter(__FILE__, __LINE__, cv)
+
+// Ignore any races on writes between here and the next TsanIgnoreWritesEnd.
+# define TsanIgnoreWritesBegin() AnnotateIgnoreWritesBegin(__FILE__, __LINE__)
+
+// Resume checking for racy writes.
+# define TsanIgnoreWritesEnd() AnnotateIgnoreWritesEnd(__FILE__, __LINE__)
+#else
+# define TsanHappensBefore(cv)
+# define TsanHappensAfter(cv)
+# define TsanIgnoreWritesBegin()
+# define TsanIgnoreWritesEnd()
+#endif
+
+/// \macro RCC_NO_SANITIZE
+/// Disable a particular sanitizer for a function.
+#if __has_attribute(no_sanitize)
+#define RCC_NO_SANITIZE(KIND) __attribute__((no_sanitize(KIND)))
+#else
+#define RCC_NO_SANITIZE(KIND)
+#endif
+
+/// Mark debug helper function definitions like dump() that should not be
+/// stripped from debug builds.
+/// Note that you should also surround dump() functions with
+/// `#if !defined(NDEBUG) || defined(RCC_ENABLE_DUMP)` so they do always
+/// get stripped in release builds.
+// FIXME: Move this to a private config.h as it's not usable in public headers.
+#if !defined(NDEBUG) || defined(RCC_ENABLE_DUMP)
+#define RCC_DUMP_METHOD                                                       \
+  RCC_ATTRIBUTE_NOINLINE RCC_ATTRIBUTE_USED RCC_ATTRIBUTE_RETAIN
+#else
+#define RCC_DUMP_METHOD RCC_ATTRIBUTE_NOINLINE
+#endif
+
+/// \macro RCC_PRETTY_FUNCTION
+/// Gets a user-friendly looking function signature for the current scope
+/// using the best available method on each platform.  The exact format of the
+/// resulting string is implementation specific and non-portable, so this should
+/// only be used, for example, for logging or diagnostics.
+#if defined(_MSC_VER)
+#define RCC_PRETTY_FUNCTION __FUNCSIG__
+#elif defined(__GNUC__) || defined(__clang__)
+#define RCC_PRETTY_FUNCTION __PRETTY_FUNCTION__
+#else
+#define RCC_PRETTY_FUNCTION __func__
+#endif
+
+/// \macro RCC_THREAD_LOCAL
+/// A thread-local storage specifier which can be used with globals,
+/// extern globals, and static globals.
+///
+/// This is essentially an extremely restricted analog to C++11's thread_local
+/// support. It uses thread_local if available, falling back on gcc __thread
+/// if not. __thread doesn't support many of the C++11 thread_local's
+/// features. You should only use this for PODs that you can statically
+/// initialize to some constant value. In almost all circumstances this is most
+/// appropriate for use with a pointer, integer, or small aggregation of
+/// pointers and integers.
+#if RCC_ENABLE_THREADS
+#if __has_feature(cxx_thread_local) || defined(_MSC_VER)
+#define RCC_THREAD_LOCAL thread_local
+#else
+// Clang, GCC, and other compatible compilers used __thread prior to C++11 and
+// we only need the restricted functionality that provides.
+#define RCC_THREAD_LOCAL __thread
+#endif
+#else // !RCC_ENABLE_THREADS
+// If threading is disabled entirely, this compiles to nothing and you get
+// a normal global variable.
+#define RCC_THREAD_LOCAL
+#endif
+
+/// \macro RCC_ENABLE_EXCEPTIONS
+/// Whether RCC is built with exception support.
+#if __has_feature(cxx_exceptions)
+#define RCC_ENABLE_EXCEPTIONS 1
+#elif defined(__GNUC__) && defined(__EXCEPTIONS)
+#define RCC_ENABLE_EXCEPTIONS 1
+#elif defined(_MSC_VER) && defined(_CPPUNWIND)
+#define RCC_ENABLE_EXCEPTIONS 1
+#endif
+
+/// \macro RCC_NO_PROFILE_INSTRUMENT_FUNCTION
+/// Disable the profile instrument for a function.
+#if __has_attribute(no_profile_instrument_function)
+#define RCC_NO_PROFILE_INSTRUMENT_FUNCTION                                    \
+  __attribute__((no_profile_instrument_function))
+#else
+#define RCC_NO_PROFILE_INSTRUMENT_FUNCTION
+#endif
+
+/// \macro RCC_PREFERRED_TYPE
+/// Adjust type of bit-field in debug info.
+#if __has_attribute(preferred_type)
+#define RCC_PREFERRED_TYPE(T) __attribute__((preferred_type(T)))
+#else
+#define RCC_PREFERRED_TYPE(T)
+#endif
+
+#if RCC_HAS_CPP_ATTRIBUTE(clang::ptrauth_vtable_pointer) &&                   \
+    (defined(__PTRAUTH__) || __has_feature(ptrauth_calls))
+#define RCC_MOVABLE_POLYMORPHIC_TYPE                                          \
+  [[clang::ptrauth_vtable_pointer(default_key, no_address_discrimination,      \
+                                  default_extra_discrimination)]]
+#else
+#define RCC_MOVABLE_POLYMORPHIC_TYPE
+#endif
+
+/// \macro RCC_VIRTUAL_ANCHOR_FUNCTION
+/// This macro is used to adhere to RCC's policy that each class with a vtable
+/// must have at least one out-of-line virtual function. This macro allows us
+/// to declare such a function in `final` classes without triggering a warning.
+// clang-format off
+// Autoformatting makes this look awful.
+#if defined(__clang__)
+  // Make sure this is only parsed if __clang__ is defined
+  #if __has_warning("-Wunnecessary-virtual-specifier")
+    #define RCC_DECLARE_VIRTUAL_ANCHOR_FUNCTION()                            \
+      _Pragma("clang diagnostic push")                                        \
+      _Pragma("clang diagnostic ignored \"-Wunnecessary-virtual-specifier\"") \
+      virtual void anchor()                                                   \
+      _Pragma("clang diagnostic pop")
+  #else // __has_warning
+    #define RCC_DECLARE_VIRTUAL_ANCHOR_FUNCTION()                            \
+      virtual void anchor()
+  #endif
+#else // defined(__clang__)
+  #define RCC_DECLARE_VIRTUAL_ANCHOR_FUNCTION()                              \
+    virtual void anchor()
+#endif
+// clang-format on
+
+/// \macro RCC_IS_X86
+/// Whether the target architecture is x86 / x86-64.
+#if defined(__x86_64__) || defined(__i386__)
+#define RCC_IS_X86 1
+#else
+#define RCC_IS_X86 0
+#endif
+
+/// \macro RCC_TARGET_SSE42
+/// Function attribute to compile a function with SSE4.2 enabled.
+#if defined(__has_attribute) && __has_attribute(target)
+#define RCC_TARGET_SSE42 __attribute__((target("sse4.2")))
+#else
+#define RCC_TARGET_SSE42
+#endif
+
+#if __has_builtin(__builtin_cpu_supports) &&                                   \
+    (defined(__linux__) || defined(__APPLE__))
+#define RCC_CPU_SUPPORTS(feature) __builtin_cpu_supports(feature)
+#else
+#define RCC_CPU_SUPPORTS(feature) 0
+#endif
+
+/// \macro RCC_CPU_SUPPORTS_SSE42
+/// Expands to true if the runtime cpu supports SSE4.2, or if compiled with
+/// SSE4.2 enabled.
+#if defined(__SSE4_2__)
+#define RCC_CPU_SUPPORTS_SSE42 1
+#else
+#define RCC_CPU_SUPPORTS_SSE42 RCC_CPU_SUPPORTS("sse4.2")
+#endif
+
+#endif
