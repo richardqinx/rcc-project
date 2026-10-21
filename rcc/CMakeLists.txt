@@ -68,8 +68,6 @@ install(DIRECTORY "${RCC_BINARY_DIR}/include/rcc" DESTINATION "${CMAKE_INSTALL_I
 
 add_subdirectory(lib)
 add_subdirectory(tools)
-add_subdirectory(utils)
-
 foreach(rccProject IN LISTS RCC_ENABLE_PROJECTS)
   if(NOT rccProject STREQUAL "cfront")
     message(FATAL_ERROR "Unknown RCC project: ${rccProject}. Available: cfront")
