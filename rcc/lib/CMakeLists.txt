@@ -3,4 +3,5 @@
 add_rcc_library(RCCSupport
   STATIC
   Support/Errno.cc
+  Support/MathExtras.cc
 )
