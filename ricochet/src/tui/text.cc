@@ -113,6 +113,7 @@ TextAnalysis TextService::analyze( std::string_view utf8, bool line_breaks, bool
                      .break_after = line_end == end };
     utext_setNativeIndex( text.get(), begin );
     const auto first = utext_next32( text.get() );
+    result.whitespace_only = result.whitespace_only && u_isUWhiteSpace( first );
     glyph.word = word_kind( first );
     const auto source = utf8.substr( glyph.bytes.start, glyph.bytes.end - glyph.bytes.start );
     if ( line_breaks && ( source == "\n" || source == "\r\n" ) ) {
@@ -128,6 +129,7 @@ TextAnalysis TextService::analyze( std::string_view utf8, bool line_breaks, bool
                            && !u_hasBinaryProperty( first, UCHAR_EMOJI_PRESENTATION );
       while ( utext_getNativeIndex( text.get() ) < end ) {
         const auto codepoint = utext_next32( text.get() );
+        result.whitespace_only = result.whitespace_only && u_isUWhiteSpace( codepoint );
         glyph.display.push_back( static_cast<wchar_t>( codepoint ) );
         // ncurses accepts one spacing character followed by nonspacing marks.
         // Joiners, selectors and extra spacing characters use one visible fallback.

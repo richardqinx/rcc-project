@@ -50,7 +50,7 @@ public:
   InputBatch read_events( std::size_t limit );
   // Wait only polls descriptors; wgetch remains the sole terminal reader.
   std::optional<TerminalClosed> wait( int wake_fd, std::chrono::milliseconds max_wait );
-  void draw( const Frame& frame );
+  void draw( const Frame& frame, bool redraw = false );
 
 private:
   class Impl;

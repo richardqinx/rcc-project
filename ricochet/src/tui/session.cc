@@ -19,6 +19,7 @@
 #include "ricochet/tui/session.hh"
 
 #include "document_view.hh"
+#include "editor.hh"
 #include "mailbox.hh"
 #include "screen.hh"
 
@@ -51,6 +52,35 @@ struct TabState
   std::string copy_feedback {};
 };
 
+enum class AddressEntry : std::uint8_t
+{
+  Empty,
+  Current,
+  Selected
+};
+
+int address_label_columns( ScreenSize dimensions )
+{ return std::min( 5, std::max( 0, dimensions.columns - 1 ) ); }
+
+struct AddressInput
+{
+  TabId tab;
+  std::optional<ViewSnapshot> restore;
+  detail::TextEditor editor;
+  bool dragging { false };
+  std::wstring notice {};
+
+  AddressInput( TabId source,
+                std::optional<ViewSnapshot> snapshot,
+                std::string value,
+                const detail::TextService& text,
+                ScreenSize dimensions )
+    : tab( source )
+    , restore( std::move( snapshot ) )
+    , editor( std::move( value ), {}, text, { 1, dimensions.columns - address_label_columns( dimensions ) } )
+  {}
+};
+
 // Only fixed ASCII chrome uses this helper. Document text goes through the
 // Unicode text service and document layout.
 void append_chrome( detail::Frame& frame, CellPoint start, std::wstring_view text, TextStyle style = {} )
@@ -78,6 +108,7 @@ public:
   void close() noexcept
   {
     mailbox_->close();
+    address_.reset();
     screen_.reset();
   }
 
@@ -103,6 +134,12 @@ public:
 
   void apply( SyncTabs update, StepResult& )
   {
+    // Cancel against the old tab map before a switch/removal destroys its view.
+    if ( address_
+         && ( update.active != address_->tab
+              || std::ranges::find( update.tabs, address_->tab, &TabInfo::id ) == update.tabs.end() ) ) {
+      finish_address();
+    }
     if ( active_ != update.active ) {
       stop_drag();
     }
@@ -170,6 +207,11 @@ public:
                       std::move( snapshot ),
                       text_,
                       ScreenSize { dimensions.rows - 2, dimensions.columns } );
+    if ( address_ && address_->tab == update.tab ) {
+      // Address editing survives a background commit, but cancellation must now
+      // return to the newly committed page, never restore the old view snapshot.
+      address_->restore.reset();
+    }
     if ( active_ == update.tab ) {
       prefix_.reset();
       notice_.clear();
@@ -405,6 +447,144 @@ public:
     dirty_ = true;
   }
 
+  void open_address( AddressEntry entry )
+  {
+    const auto found = active_ ? tabs_.find( *active_ ) : tabs_.end();
+    if ( found == tabs_.end() ) {
+      notice_ = L"No active tab";
+      dirty_ = true;
+      return;
+    }
+    auto& tab = found->second;
+    if ( tab.view && tab.view->snapshot().selection ) {
+      return; // Address shortcuts belong to Browse, not the document selection mode.
+    }
+    stop_drag();
+    const auto snapshot = tab.view ? std::optional( tab.view->snapshot() ) : std::nullopt;
+    address_.emplace(
+      tab.info.id, snapshot, entry == AddressEntry::Empty ? "" : tab.info.display_url, text_, screen_->size() );
+    if ( entry == AddressEntry::Selected ) {
+      address_->editor.execute( detail::EditorCommand::SelectAll );
+    }
+    prefix_.reset();
+    notice_.clear();
+    dirty_ = true;
+  }
+
+  void finish_address()
+  {
+    auto& tab = tabs_.at( address_->tab );
+    const auto& restore = address_->restore;
+    if ( restore && tab.view && tab.view->snapshot().scope == restore->scope
+         && tab.view->snapshot().draft_revision == restore->draft_revision ) {
+      // Copy the shared document before emplace destroys the current view.
+      auto document = tab.view->document();
+      const auto dimensions = screen_->size();
+      tab.view.emplace(
+        std::move( document ), *restore, text_, ScreenSize { dimensions.rows - 2, dimensions.columns } );
+    }
+    address_.reset();
+    notice_.clear();
+    dirty_ = true;
+  }
+
+  void submit_address()
+  {
+    const auto& value = address_->editor.value();
+    if ( text_.analyze( value, false, false ).whitespace_only ) {
+      address_->notice = L"Enter an address | Esc cancel";
+      dirty_ = true;
+      return;
+    }
+    const RequestId request { next_request_++ };
+    actions_.emplace_back( OpenLocation { request, address_->tab, value, OpenTarget::CurrentTab } );
+    auto& tab = tabs_.at( address_->tab );
+    // A host rejection may precede NavigationStarted, just as for OpenLink.
+    tab.navigation = request;
+    tab.failure.reset();
+    tab.copy_feedback.clear();
+    finish_address();
+  }
+
+  void address_mouse( const Mouse& mouse )
+  {
+    const auto dimensions = screen_->size();
+    const auto label = address_label_columns( dimensions );
+    const CellPoint point { 0, mouse.position.column - label };
+    if ( address_->dragging ) {
+      if ( mouse.released.left || mouse.motion || mouse.pressed.left ) {
+        address_->editor.place( point, true );
+        address_->dragging = !mouse.released.left;
+        dirty_ = true;
+      }
+      return;
+    }
+    if ( mouse.pressed.left && mouse.position.row == 0 && mouse.position.column >= label
+         && mouse.position.column < dimensions.columns
+         && ( mouse.modifiers == Modifiers {} || mouse.modifiers == Modifiers { .shift = true } ) ) {
+      address_->editor.place( point, mouse.modifiers.shift );
+      address_->dragging = true;
+      dirty_ = true;
+    }
+    // Clicks and wheel events outside the input never reach the document underneath.
+  }
+
+  void address_input( const InputEvent& event )
+  {
+    if ( const auto* mouse = std::get_if<Mouse>( &event ) ) {
+      address_mouse( *mouse );
+      return;
+    }
+    const auto prefix = address_->editor.prefix_deadline();
+    const auto intent = address_->editor.handle( event );
+    if ( std::holds_alternative<Tick>( event ) ) {
+      dirty_ = dirty_ || prefix != address_->editor.prefix_deadline();
+      return;
+    }
+    address_->dragging = false;
+    address_->notice.clear();
+    dirty_ = true;
+    switch ( intent ) {
+      case detail::EditorIntent::Enter:
+        submit_address();
+        break;
+      case detail::EditorIntent::Escape:
+      case detail::EditorIntent::Cancel:
+        finish_address();
+        break;
+      case detail::EditorIntent::Redraw:
+        redraw_ = true;
+        break;
+      case detail::EditorIntent::Menu:
+        address_->notice = L"Menu unavailable | Enter open | Esc cancel";
+        break;
+      default:
+        break; // Tab/history/unbound keys have no second recipient in this mode.
+    }
+  }
+
+  void draw_address( detail::Frame& frame, ScreenSize dimensions )
+  {
+    const auto label = address_label_columns( dimensions );
+    append_chrome( frame, { 0, 0 }, std::wstring_view( L"URL: " ).substr( 0, label ), { .strong = true } );
+    address_->editor.resize( { 1, dimensions.columns - label } );
+    address_->editor.draw( frame, { 0, label } );
+    if ( dimensions.rows > 1 ) {
+      append_chrome( frame, { dimensions.rows - 1, 0 }, std::wstring( dimensions.columns, L' ' ) );
+      std::wstring_view status
+        = capabilities_.bracketed_paste
+            ? L"Address | Enter open | Esc cancel"
+            : L"Enter open | Esc cancel | Paste boundaries unavailable; multiline paste may confirm";
+      if ( !address_->notice.empty() ) {
+        status = address_->notice;
+      }
+      if ( address_->editor.prefix_deadline() ) {
+        status = L"Ctrl+X ... | Ctrl+U undo | Esc cancel prefix";
+      }
+      append_chrome( frame, { dimensions.rows - 1, 0 }, status );
+    }
+  }
+
   void expire_prefix()
   {
     if ( prefix_ && Clock::now() >= prefix_->deadline ) {
@@ -430,6 +610,12 @@ public:
       return;
     }
     switch ( character ) {
+      case U'o':
+        open_address( AddressEntry::Empty );
+        break;
+      case U'O':
+        open_address( AddressEntry::Current );
+        break;
       case U'h':
         move( Motion::Left );
         break;
@@ -517,6 +703,9 @@ public:
     }
     if ( key.modifiers == Modifiers { .control = true } && key.code == KeyCode::Character ) {
       switch ( key.character ) {
+        case U'l':
+          open_address( AddressEntry::Selected );
+          break;
         case U'c':
           if ( auto* view = active_view(); view && view->snapshot().selection ) {
             view->cancel_selection();
@@ -573,6 +762,11 @@ public:
       return; // Modified keys have distinct bindings; do not alias them to arrows.
     }
     switch ( key.code ) {
+      case KeyCode::Function:
+        if ( key.function == 6 ) {
+          open_address( AddressEntry::Selected );
+        }
+        break;
       case KeyCode::Enter:
         activate_link();
         break;
@@ -650,7 +844,14 @@ public:
       close();
     } else if ( std::holds_alternative<Resize>( event ) ) {
       stop_drag();
+      if ( address_ ) {
+        address_->dragging = false;
+        const auto dimensions = screen_->size();
+        address_->editor.resize( { 1, dimensions.columns - address_label_columns( dimensions ) } );
+      }
       dirty_ = true;
+    } else if ( address_ ) {
+      address_input( event );
     } else if ( const auto* tick = std::get_if<Tick>( &event ) ) {
       if ( auto* view = active_view() ) {
         dirty_ = view->tick( tick->now ) || dirty_;
@@ -746,7 +947,10 @@ public:
         append_chrome( frame, { dimensions.rows - 1, 0 }, status );
       }
     }
-    screen_->draw( frame );
+    if ( address_ ) {
+      draw_address( frame, dimensions );
+    }
+    screen_->draw( frame, std::exchange( redraw_, false ) );
     dirty_ = false;
   }
 
@@ -765,11 +969,13 @@ public:
         const bool input = read_input( result );
         if ( screen_ && received == 0 && !input && !dirty_ ) {
           auto wait = max_wait;
-          if ( prefix_ ) {
-            wait = std::min(
-              wait,
-              std::max( std::chrono::milliseconds::zero(),
-                        std::chrono::ceil<std::chrono::milliseconds>( prefix_->deadline - Clock::now() ) ) );
+          const auto deadline = address_  ? address_->editor.prefix_deadline()
+                                : prefix_ ? std::optional( prefix_->deadline )
+                                          : std::nullopt;
+          if ( deadline ) {
+            wait = std::min( wait,
+                             std::max( std::chrono::milliseconds::zero(),
+                                       std::chrono::ceil<std::chrono::milliseconds>( *deadline - Clock::now() ) ) );
           }
           const auto closed = screen_->wait( mailbox_->descriptor(), wait );
           if ( closed ) {
@@ -807,10 +1013,12 @@ public:
   std::optional<TabId> active_ {};
   std::optional<RequestId> exit_request_ {};
   std::optional<KeyPrefix> prefix_ {};
+  std::optional<AddressInput> address_ {};
   std::uint64_t next_request_ { 1 };
   std::vector<UserAction> actions_ {};
   std::wstring notice_ {};
   bool dirty_ { true };
+  bool redraw_ { false };
 };
 
 UpdateSender::UpdateSender( std::shared_ptr<detail::Mailbox> mailbox ) : mailbox_( std::move( mailbox ) ) {}

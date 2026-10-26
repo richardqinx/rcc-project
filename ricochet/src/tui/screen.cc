@@ -513,7 +513,7 @@ public:
     return std::nullopt;
   }
 
-  void draw( const Frame& frame ) const
+  void draw( const Frame& frame, bool redraw ) const
   {
     const auto dimensions = size();
     if ( werase( stdscr ) == ERR ) {
@@ -550,7 +550,12 @@ public:
     } else {
       curs_set( 0 );
     }
-    if ( wnoutrefresh( stdscr ) == ERR || doupdate() == ERR ) {
+    // An explicit Ctrl+L repairs the physical screen, not just our virtual frame.
+    // clearok is consumed by wrefresh; ordinary frames retain batched updates.
+    if ( redraw ) {
+      clearok( stdscr, TRUE );
+    }
+    if ( redraw ? wrefresh( stdscr ) == ERR : ( wnoutrefresh( stdscr ) == ERR || doupdate() == ERR ) ) {
       throw std::runtime_error( "ncurses screen refresh failed" );
     }
   }
@@ -590,7 +595,7 @@ InputBatch Screen::read_events( std::size_t limit )
 std::optional<TerminalClosed> Screen::wait( int wake_fd, std::chrono::milliseconds max_wait )
 { return impl_->wait( wake_fd, max_wait ); }
 
-void Screen::draw( const Frame& frame )
-{ impl_->draw( frame ); }
+void Screen::draw( const Frame& frame, bool redraw )
+{ impl_->draw( frame, redraw ); }
 
 } // namespace ricochet::tui::detail

@@ -57,6 +57,8 @@ struct Grapheme
 struct TextAnalysis
 {
   std::vector<Grapheme> graphemes {};
+  // All codepoints, including combining marks; an empty input is whitespace-only.
+  bool whitespace_only { true };
   // Vim-style reading units: letters/numbers/underscore, punctuation runs,
   // individual ideographs. Whitespace is excluded; offsets remain UTF-8 bytes.
   std::vector<ByteRange> words {};
