@@ -46,6 +46,13 @@ enum class ViewMotion : std::uint8_t
   PanRight
 };
 
+enum class FocusResult : std::uint8_t
+{
+  Empty,
+  Moved,
+  Wrapped
+};
+
 // One tab's reading state. It owns the logical snapshot; screen rows are caches.
 // Keyboard, mouse and host navigation all use the same layout/source mappings.
 class DocumentView
@@ -70,6 +77,9 @@ public:
   void wheel( int steps );
   bool locate( const DocumentPoint& point );
   std::optional<HitTarget> focused_target() const;
+  // Browse/field-editor routing owns mode eligibility; this follows the shared order.
+  FocusResult focus( bool backward );
+  const Link* focused_link() const;
   void draw( Frame& frame, CellPoint origin ) const;
 
 private:

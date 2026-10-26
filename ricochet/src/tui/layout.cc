@@ -23,6 +23,7 @@
 #include <limits>
 #include <map>
 #include <numeric>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -565,6 +566,20 @@ DocumentLayout::DocumentLayout( const Document& document,
       stops_.push_back( index );
     }
   }
+  std::set<HitTarget> omitted;
+  for ( const auto& control : document.data().controls ) {
+    if ( control.disabled ) {
+      omitted.insert( control.id );
+    }
+  }
+  for ( std::size_t index = 0; index < stops_.size(); ++index ) {
+    const auto& target = data_.glyphs[stops_[index]].target;
+    // Skip ordinary text and disabled/previously encountered objects. A link's
+    // later fragments never create extra Tab stops, including across blocks.
+    if ( target && omitted.insert( *target ).second ) {
+      focus_.push_back( { *target, index } );
+    }
+  }
 }
 
 int DocumentLayout::columns() const
@@ -749,6 +764,34 @@ const LayoutGlyph& DocumentLayout::cursor_glyph( const DisplayPosition& position
 
 std::optional<HitTarget> DocumentLayout::target( const DisplayPosition& position ) const
 { return cursor_glyph( position ).target; }
+
+std::optional<FocusStep> DocumentLayout::focus( const DisplayPosition& position, bool backward ) const
+{
+  if ( focus_.empty() ) {
+    return std::nullopt;
+  }
+  const auto object = target( position );
+  const auto current
+    = std::ranges::find_if( focus_, [&object]( const auto& entry ) { return object == entry.target; } );
+  auto origin = reading_position( position );
+  // Any fragment of an object uses that object's single place in the focus order.
+  // Plain text and disabled controls instead start from the current reading stop.
+  if ( current != focus_.end() ) {
+    origin = { current->stop, true };
+  }
+  if ( backward ) {
+    const auto previous = std::find_if(
+      focus_.rbegin(), focus_.rend(), [&origin]( const auto& entry ) { return entry.stop < origin.index; } );
+    const bool wrapped = previous == focus_.rend();
+    return FocusStep { stop( wrapped ? focus_.back().stop : previous->stop ), wrapped };
+  }
+  const auto next = std::ranges::find_if( focus_, [&origin]( const auto& entry ) {
+    // A line-end insertion boundary is before the next stop, not on its glyph.
+    return entry.stop > origin.index || ( !origin.at_start && entry.stop == origin.index );
+  } );
+  const bool wrapped = next == focus_.end();
+  return FocusStep { stop( wrapped ? focus_.front().stop : next->stop ), wrapped };
+}
 
 std::optional<LayoutPoint> DocumentLayout::cursor_cell( const DisplayPosition& position ) const
 {

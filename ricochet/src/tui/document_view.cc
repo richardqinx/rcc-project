@@ -361,6 +361,28 @@ bool DocumentView::locate( const DocumentPoint& point )
 std::optional<HitTarget> DocumentView::focused_target() const
 { return layout_.target( snapshot_.cursor ); }
 
+FocusResult DocumentView::focus( bool backward )
+{
+  const auto next = layout_.focus( snapshot_.cursor, backward );
+  if ( !next ) {
+    return FocusResult::Empty;
+  }
+  stop_drag();
+  snapshot_.cursor = next->position;
+  finish_move( false );
+  return next->wrapped ? FocusResult::Wrapped : FocusResult::Moved;
+}
+
+const Link* DocumentView::focused_link() const
+{
+  const auto target = focused_target();
+  if ( !target || !std::holds_alternative<LinkId>( *target ) ) {
+    return nullptr;
+  }
+  // Layout link targets originate from this same immutable document.
+  return &*std::ranges::find( document_.data().links, std::get<LinkId>( *target ), &Link::id );
+}
+
 void DocumentView::draw( Frame& frame, CellPoint origin ) const
 {
   const auto selection = snapshot_.selection ? std::optional( snapshot_.selection->range ) : std::nullopt;

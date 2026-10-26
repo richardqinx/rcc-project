@@ -334,6 +334,54 @@ public:
     }
   }
 
+  void focus( bool backward )
+  {
+    const auto dimensions = screen_->size();
+    if ( dimensions.rows < 3 || dimensions.columns < 1 ) {
+      return; // Object positioning requires a visible document region.
+    }
+    auto* view = active_view();
+    if ( !view || view->snapshot().selection ) {
+      return; // Tab must not move the cursor or extend/cancel an active selection.
+    }
+    const auto result = view->focus( backward );
+    switch ( result ) {
+      case detail::FocusResult::Empty:
+        notice_ = L"No focusable links or controls";
+        break;
+      case detail::FocusResult::Moved:
+        notice_.clear();
+        break;
+      case detail::FocusResult::Wrapped:
+        notice_ = backward ? L"Focus wrapped to last object" : L"Focus wrapped to first object";
+        break;
+    }
+    tabs_.at( view->snapshot().scope.tab ).copy_feedback.clear();
+    dirty_ = true;
+  }
+
+  void activate_link()
+  {
+    auto* view = active_view();
+    if ( !view || view->snapshot().selection ) {
+      return; // Selection mode consumes activation without navigating.
+    }
+    const auto* link = view->focused_link();
+    if ( !link ) {
+      return; // Plain text and controls do not produce link navigation requests.
+    }
+    const RequestId request { next_request_++ };
+    const auto source = view->snapshot().scope;
+    actions_.emplace_back( OpenLink { request, source, link->id, link->target, OpenTarget::CurrentTab } );
+    auto& tab = tabs_.at( source.tab );
+    // Correlate rejection even when the host fails before NavigationStarted.
+    tab.navigation = request;
+    tab.failure.reset();
+    tab.copy_feedback.clear();
+    notice_.clear();
+    dirty_ = true;
+  }
+
   void copy_selection()
   {
     auto* view = active_view();
@@ -516,10 +564,18 @@ public:
       }
       return;
     }
+    if ( key.code == KeyCode::Tab
+         && ( key.modifiers == Modifiers {} || key.modifiers == Modifiers { .shift = true } ) ) {
+      focus( key.modifiers.shift );
+      return;
+    }
     if ( key.modifiers != Modifiers {} ) {
       return; // Modified keys have distinct bindings; do not alias them to arrows.
     }
     switch ( key.code ) {
+      case KeyCode::Enter:
+        activate_link();
+        break;
       case KeyCode::Left:
         move( Motion::Left );
         break;
@@ -646,9 +702,6 @@ public:
       if ( !capabilities_.bracketed_paste ) {
         status = L"Paste boundaries unavailable; multiline paste may confirm input | q quit";
       }
-      if ( !notice_.empty() ) {
-        status = notice_;
-      }
       if ( active_ ) {
         const auto found = tabs_.find( *active_ );
         if ( found != tabs_.end() ) {
@@ -667,6 +720,11 @@ public:
             status = L"Navigation failed | q quit";
           }
         }
+      }
+      // Immediate input feedback (including focus wrap) must remain visible while
+      // the page has a background navigation status.
+      if ( !notice_.empty() ) {
+        status = notice_;
       }
       if ( prefix_ ) {
         status = prefix_->character == U'g' ? L"g ... | Esc cancel" : L"z ... | Esc cancel";

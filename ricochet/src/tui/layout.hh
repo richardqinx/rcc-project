@@ -48,6 +48,12 @@ struct LayoutHit
   std::optional<HitTarget> target {};
 };
 
+struct FocusStep
+{
+  DisplayPosition position {};
+  bool wrapped { false };
+};
+
 struct ScrollWindow
 {
   BlockId block {};
@@ -118,6 +124,7 @@ public:
   DisplayPosition line_edge( const DisplayPosition& position, bool end ) const;
   DocumentRange unit( const DisplayPosition& position ) const;
   std::optional<HitTarget> target( const DisplayPosition& position ) const;
+  std::optional<FocusStep> focus( const DisplayPosition& position, bool backward ) const;
   std::optional<LayoutPoint> cursor_cell( const DisplayPosition& position ) const;
   std::vector<HorizontalScroll> reveal( const DisplayPosition& position ) const;
   std::vector<HorizontalScroll> pan( const DisplayPosition& position, int direction ) const;
@@ -141,9 +148,17 @@ private:
   const LayoutGlyph& cursor_glyph( const DisplayPosition& position ) const;
   DisplayPosition stop( std::size_t index ) const;
 
+  struct FocusEntry
+  {
+    HitTarget target {};
+    std::size_t stop { 0 };
+  };
+
   int columns_;
   LayoutData data_;
   std::vector<std::size_t> stops_ {};
+  // First reading stop per enabled object, independent of viewport clipping.
+  std::vector<FocusEntry> focus_ {};
 };
 
 } // namespace ricochet::tui::detail
