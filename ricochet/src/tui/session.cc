@@ -18,11 +18,12 @@
 
 #include "ricochet/tui/session.hh"
 
-#include "layout.hh"
+#include "document_view.hh"
 #include "mailbox.hh"
 #include "screen.hh"
 
 #include <algorithm>
+#include <chrono>
 #include <exception>
 #include <map>
 #include <string_view>
@@ -32,14 +33,22 @@ namespace ricochet::tui {
 
 namespace {
 
+using Clock = std::chrono::steady_clock;
+
+struct KeyPrefix
+{
+  char32_t character;
+  Clock::time_point deadline;
+};
+
 struct TabState
 {
   TabInfo info {};
   std::optional<RequestId> navigation {};
-  std::optional<Document> document {};
-  std::optional<detail::DocumentLayout> layout {};
-  std::optional<ViewSnapshot> view {};
+  std::optional<detail::DocumentView> view {};
   std::optional<ActionFailed> failure {};
+  std::optional<RequestId> copy_request {};
+  std::string copy_feedback {};
 };
 
 // Only fixed ASCII chrome uses this helper. Document text goes through the
@@ -78,12 +87,13 @@ public:
     if ( exit_request_ ) {
       return;
     }
+    prefix_.reset();
     const RequestId request { next_request_++ };
     std::vector<ViewSnapshot> views;
     for ( const auto id : tab_order_ ) {
       const auto& tab = tabs_.at( id );
       if ( tab.view ) {
-        views.push_back( *tab.view );
+        views.push_back( tab.view->snapshot() );
       }
     }
     actions_.emplace_back( RequestExit { request, active_, std::move( views ) } );
@@ -93,6 +103,9 @@ public:
 
   void apply( SyncTabs update, StepResult& )
   {
+    if ( active_ != update.active ) {
+      stop_drag();
+    }
     std::map<TabId, TabState> retained;
     std::vector<TabId> order;
     order.reserve( update.tabs.size() );
@@ -109,6 +122,10 @@ public:
     }
     tabs_ = std::move( retained );
     tab_order_ = std::move( order );
+    if ( active_ != update.active ) {
+      prefix_.reset();
+      notice_.clear();
+    }
     active_ = update.active;
     dirty_ = true;
   }
@@ -134,28 +151,74 @@ public:
     }
     auto& tab = found->second;
     const auto version = update.document.data().version;
-    if ( tab.document && tab.document->data().version.document == version.document
-         && version.revision < tab.document->data().version.revision ) {
+    if ( tab.view && tab.view->document().data().version.document == version.document
+         && version.revision < tab.view->document().data().version.revision ) {
       return;
     }
     const DocumentScope scope { update.tab, version };
-    tab.view = ViewSnapshot { .scope = scope };
+    ViewSnapshot snapshot { .scope = scope };
     // Initial drafts are revision zero. A history view referring to edited values
     // cannot be restored without the corresponding draft snapshot/mapping.
     if ( update.restore && update.restore->scope == scope && update.restore->draft_revision == DraftRevision {} ) {
-      tab.view = std::move( update.restore );
+      snapshot = std::move( *update.restore );
     }
     tab.info.title = update.document.data().metadata.title;
     tab.info.display_url = update.document.data().metadata.display_url;
     tab.info.loading_task.reset();
-    tab.document = std::move( update.document );
-    tab.layout.reset();
+    const auto dimensions = screen_->size();
+    tab.view.emplace( std::move( update.document ),
+                      std::move( snapshot ),
+                      text_,
+                      ScreenSize { dimensions.rows - 2, dimensions.columns } );
+    if ( active_ == update.tab ) {
+      prefix_.reset();
+      notice_.clear();
+    }
     tab.failure.reset();
+    tab.copy_request.reset();
+    tab.copy_feedback.clear();
     dirty_ = true;
   }
 
-  void apply( ActionFailed update, StepResult& )
+  void apply( CopyResult update, StepResult& )
   {
+    const auto found = std::ranges::find_if(
+      tabs_, [&update]( const auto& entry ) { return entry.second.copy_request == update.request; } );
+    // Superseded requests, replaced documents, closed tabs and duplicate results
+    // have no pending request; they cannot replace the current operation's feedback.
+    if ( found == tabs_.end() ) {
+      return;
+    }
+    auto& tab = found->second;
+    tab.copy_request.reset();
+    switch ( update.status ) {
+      case CopyStatus::Confirmed:
+        tab.copy_feedback = "Copied";
+        break;
+      case CopyStatus::Dispatched:
+        tab.copy_feedback = "Copy request sent; clipboard acceptance unconfirmed";
+        break;
+      case CopyStatus::Unavailable:
+        tab.copy_feedback = "Clipboard unavailable; disable mouse capture for terminal selection";
+        break;
+      case CopyStatus::Failed:
+        tab.copy_feedback = "Copy failed | y retry";
+        break;
+    }
+    if ( !update.summary.empty() ) {
+      tab.copy_feedback += ": " + update.summary;
+    }
+    dirty_ = true;
+  }
+
+  void apply( ActionFailed update, StepResult& result )
+  {
+    const auto copy = std::ranges::find_if(
+      tabs_, [&update]( const auto& entry ) { return entry.second.copy_request == update.request; } );
+    if ( copy != tabs_.end() ) {
+      apply( CopyResult { update.request, CopyStatus::Failed, std::move( update.summary ) }, result );
+      return;
+    }
     if ( !update.tab && exit_request_ == update.request ) {
       exit_request_.reset();
       dirty_ = true;
@@ -185,13 +248,37 @@ public:
     dirty_ = true;
   }
 
-  // These messages require document-view/editor state, which this backend stage
-  // does not implement. Returning ownership keeps the incomplete boundary explicit.
+  // Incremental updates and form editing still require the later editing layer.
   void apply( UpdateDocument update, StepResult& result )
   { result.unhandled_updates.emplace_back( std::move( update ) ); }
 
-  void apply( LocateView update, StepResult& result )
-  { result.unhandled_updates.emplace_back( std::move( update ) ); }
+  void apply( LocateView update, StepResult& )
+  {
+    const auto found = tabs_.find( update.scope.tab );
+    // A late anchor request must never move another tab/document revision.
+    if ( found == tabs_.end() || !found->second.view || found->second.view->snapshot().scope != update.scope ) {
+      return;
+    }
+    auto& view = *found->second.view;
+    const auto dimensions = screen_->size();
+    view.resize( { dimensions.rows - 2, dimensions.columns } );
+    std::optional<DocumentPoint> point;
+    if ( const auto* name = std::get_if<std::string>( &update.target ) ) {
+      const auto& anchors = view.document().data().anchors;
+      const auto anchor = std::ranges::find( anchors, *name, &Anchor::name );
+      if ( anchor != anchors.end() ) {
+        point = std::visit( []( const auto& value ) -> DocumentPoint { return value; }, anchor->point );
+      }
+    } else {
+      point = std::get<DocumentPoint>( update.target );
+    }
+    const bool located = point && view.locate( *point );
+    if ( active_ == update.scope.tab ) {
+      prefix_.reset();
+      notice_ = located ? L"" : L"Location not found";
+    }
+    dirty_ = true;
+  }
 
   void apply( FormFeedback update, StepResult& result )
   { result.unhandled_updates.emplace_back( std::move( update ) ); }
@@ -210,69 +297,336 @@ public:
     return count;
   }
 
+  detail::DocumentView* active_view()
+  {
+    if ( !active_ ) {
+      return nullptr;
+    }
+    const auto found = tabs_.find( *active_ );
+    const auto dimensions = screen_->size();
+    // Selection/copy/cancel still address the active document in compact mode.
+    if ( found == tabs_.end() || !found->second.view ) {
+      return nullptr;
+    }
+    auto& view = *found->second.view;
+    view.resize( { dimensions.rows - 2, dimensions.columns } );
+    return &view;
+  }
+
+  void move( detail::ViewMotion motion )
+  {
+    const auto dimensions = screen_->size();
+    if ( dimensions.rows < 3 || dimensions.columns < 1 ) {
+      return; // No body rows exist for a visual-row/page motion.
+    }
+    if ( auto* view = active_view() ) {
+      view->move( motion );
+      tabs_.at( view->snapshot().scope.tab ).copy_feedback.clear();
+      notice_.clear();
+      dirty_ = true;
+    }
+  }
+
+  void stop_drag()
+  {
+    if ( auto* view = active_view() ) {
+      view->stop_drag();
+    }
+  }
+
+  void copy_selection()
+  {
+    auto* view = active_view();
+    if ( !view ) {
+      return;
+    }
+    auto selected = view->selected_text();
+    if ( !selected || selected->empty() ) {
+      notice_ = selected ? L"Selection is empty" : L"No selection | v select";
+      dirty_ = true;
+      return;
+    }
+    const RequestId request { next_request_++ };
+    const auto& snapshot = view->snapshot();
+    actions_.emplace_back(
+      CopySelection { request, snapshot.scope, snapshot.draft_revision, std::move( *selected ) } );
+    auto& tab = tabs_.at( snapshot.scope.tab );
+    tab.copy_request = request;
+    tab.copy_feedback = "Copy pending";
+    notice_.clear();
+    dirty_ = true;
+  }
+
+  void expire_prefix()
+  {
+    if ( prefix_ && Clock::now() >= prefix_->deadline ) {
+      prefix_.reset();
+      dirty_ = true;
+    }
+  }
+
+  void browse_text( char32_t character )
+  {
+    using Motion = detail::ViewMotion;
+    if ( prefix_ ) {
+      const auto prefix = std::exchange( prefix_, std::nullopt )->character;
+      dirty_ = true;
+      if ( prefix == U'g' && character == U'g' ) {
+        move( Motion::DocumentStart );
+      } else if ( prefix == U'z' && character == U'h' ) {
+        move( Motion::PanLeft );
+      } else if ( prefix == U'z' && character == U'l' ) {
+        move( Motion::PanRight );
+      }
+      // A mismatched sequence is consumed; gq must not turn into a quit action.
+      return;
+    }
+    switch ( character ) {
+      case U'h':
+        move( Motion::Left );
+        break;
+      case U'j':
+        move( Motion::Down );
+        break;
+      case U'k':
+        move( Motion::Up );
+        break;
+      case U'l':
+        move( Motion::Right );
+        break;
+      case U'w':
+        move( Motion::NextWord );
+        break;
+      case U'b':
+        move( Motion::PreviousWord );
+        break;
+      case U'e':
+        move( Motion::WordEnd );
+        break;
+      case U'G':
+        move( Motion::DocumentEnd );
+        break;
+      case U'g':
+      case U'z':
+        prefix_ = KeyPrefix { character, Clock::now() + std::chrono::seconds( 1 ) };
+        dirty_ = true;
+        break;
+      case U'v':
+        if ( auto* view = active_view(); view && !view->snapshot().selection ) {
+          view->begin_selection();
+          tabs_.at( view->snapshot().scope.tab ).copy_feedback.clear();
+          notice_.clear();
+          dirty_ = true;
+        }
+        break;
+      case U'y':
+        copy_selection();
+        break;
+      case U' ': {
+        auto* view = active_view();
+        if ( view ) {
+          const auto target = view->focused_target();
+          // Selection owns Space; browse mode reserves control Space for activation.
+          if ( view->snapshot().selection || !target || !std::holds_alternative<ControlId>( *target ) ) {
+            move( Motion::PageDown );
+          }
+        }
+        break;
+      }
+      case U'q': {
+        const auto* view = active_view();
+        if ( !view || !view->snapshot().selection ) {
+          request_exit();
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  void browse_key( const Key& key )
+  {
+    using Motion = detail::ViewMotion;
+    if ( key.code == KeyCode::Escape ) {
+      // A pending prefix is the top input layer; one Esc cancels only that layer.
+      if ( !prefix_ ) {
+        if ( auto* view = active_view() ) {
+          view->cancel_selection();
+          tabs_.at( view->snapshot().scope.tab ).copy_feedback.clear();
+        }
+      }
+      prefix_.reset();
+      notice_.clear();
+      dirty_ = true;
+      return;
+    }
+    if ( prefix_ ) {
+      // Ctrl+C cancels the prefix first; no key falls through into another action.
+      prefix_.reset();
+      dirty_ = true;
+      return;
+    }
+    if ( key.modifiers == Modifiers { .control = true } && key.code == KeyCode::Character ) {
+      switch ( key.character ) {
+        case U'c':
+          if ( auto* view = active_view(); view && view->snapshot().selection ) {
+            view->cancel_selection();
+            tabs_.at( view->snapshot().scope.tab ).copy_feedback.clear();
+            notice_.clear();
+            dirty_ = true;
+          } else {
+            request_exit();
+          }
+          break;
+        case U'u':
+          move( Motion::HalfPageUp );
+          break;
+        case U'd':
+          move( Motion::HalfPageDown );
+          break;
+        case U'z':
+          notice_ = L"Suspend is unavailable";
+          dirty_ = true;
+          break;
+        default:
+          break;
+      }
+      return;
+    }
+    if ( key.modifiers == Modifiers { .alt = true }
+         && ( key.code == KeyCode::Left || key.code == KeyCode::Right ) ) {
+      const auto* view = active_view();
+      if ( view && view->snapshot().selection ) {
+        return; // Selection mode does not turn navigation into implicit activation.
+      }
+      if ( active_ ) {
+        const auto found = tabs_.find( *active_ );
+        if ( found != tabs_.end() ) {
+          std::optional<DocumentVersion> version;
+          if ( found->second.view ) {
+            version = found->second.view->document().data().version;
+          }
+          actions_.emplace_back(
+            Navigate { RequestId { next_request_++ },
+                       *active_,
+                       version,
+                       key.code == KeyCode::Left ? NavigationCommand::Back : NavigationCommand::Forward } );
+        }
+      }
+      return;
+    }
+    if ( key.modifiers != Modifiers {} ) {
+      return; // Modified keys have distinct bindings; do not alias them to arrows.
+    }
+    switch ( key.code ) {
+      case KeyCode::Left:
+        move( Motion::Left );
+        break;
+      case KeyCode::Right:
+        move( Motion::Right );
+        break;
+      case KeyCode::Up:
+        move( Motion::Up );
+        break;
+      case KeyCode::Down:
+        move( Motion::Down );
+        break;
+      case KeyCode::Home:
+        move( Motion::LineStart );
+        break;
+      case KeyCode::End:
+        move( Motion::LineEnd );
+        break;
+      case KeyCode::PageUp:
+        move( Motion::PageUp );
+        break;
+      case KeyCode::PageDown:
+        move( Motion::PageDown );
+        break;
+      default:
+        break;
+    }
+  }
+
+  void browse_mouse( const Mouse& mouse )
+  {
+    auto* view = active_view();
+    if ( !view ) {
+      return;
+    }
+    const CellPoint point { mouse.position.row - 1, mouse.position.column };
+    // Capture owns motion/release outside the body as well, so releasing on the
+    // header/footer cannot leave a background autoscroll running.
+    if ( view->dragging() ) {
+      if ( mouse.released.left ) {
+        view->release( point );
+      } else if ( mouse.motion || mouse.pressed.left ) {
+        view->drag( point );
+      } else if ( mouse.wheel_steps != 0 ) {
+        view->wheel( mouse.wheel_steps );
+      }
+      dirty_ = true;
+      return;
+    }
+    const auto dimensions = screen_->size();
+    if ( point.row < 0 || point.row >= dimensions.rows - 2 || point.column < 0 || point.column >= dimensions.columns
+         || mouse.modifiers != Modifiers {} ) {
+      return;
+    }
+    if ( mouse.wheel_steps != 0 ) {
+      prefix_.reset();
+      view->wheel( mouse.wheel_steps );
+      dirty_ = true;
+    } else if ( mouse.pressed.left ) {
+      prefix_.reset();
+      view->press( point, Clock::now() );
+      tabs_.at( view->snapshot().scope.tab ).copy_feedback.clear();
+      notice_.clear();
+      dirty_ = true;
+    }
+  }
+
   void dispatch( const InputEvent& event, StepResult& result )
   {
     if ( const auto* closed = std::get_if<TerminalClosed>( &event ) ) {
       result.terminal_closed = *closed;
       close();
     } else if ( std::holds_alternative<Resize>( event ) ) {
+      stop_drag();
       dirty_ = true;
+    } else if ( const auto* tick = std::get_if<Tick>( &event ) ) {
+      if ( auto* view = active_view() ) {
+        dirty_ = view->tick( tick->now ) || dirty_;
+      }
     } else if ( std::holds_alternative<Paste>( event ) ) {
-      // The baseline session is Browse: a paste never executes its text as keys.
+      stop_drag();
+      prefix_.reset();
       notice_ = L"Enter an input field before pasting";
       dirty_ = true;
     } else if ( const auto* text = std::get_if<TextInput>( &event ) ) {
-      if ( text->character == U'q' ) {
-        request_exit();
-      }
+      stop_drag();
+      browse_text( text->character );
     } else if ( const auto* key = std::get_if<Key>( &event ) ) {
-      if ( key->code == KeyCode::Character && key->modifiers == Modifiers { .control = true } ) {
-        switch ( key->character ) {
-          case U'c':
-            request_exit();
-            break;
-          case U'z':
-            notice_ = L"Suspend is unavailable";
-            dirty_ = true;
-            break;
-          default:
-            break;
-        }
-      }
+      stop_drag();
+      browse_key( *key );
+    } else if ( const auto* mouse = std::get_if<Mouse>( &event ) ) {
+      browse_mouse( *mouse );
     }
-    // Mouse/navigation/editor bindings belong to the upcoming document-view layer.
   }
 
   bool read_input( StepResult& result )
   {
     const auto batch = screen_->read_events( 64 );
     for ( const auto& event : batch.events ) {
+      expire_prefix();
       dispatch( event, result );
       if ( !screen_ ) {
         break;
       }
     }
+    expire_prefix();
     return batch.consumed || !batch.events.empty();
-  }
-
-  void draw_document( TabState& tab, detail::Frame& frame, ScreenSize dimensions )
-  {
-    // The cached layout belongs to the committed snapshot and terminal width.
-    // CommitDocument drops it; resizing rebuilds it from logical view anchors.
-    if ( !tab.layout || tab.layout->columns() != dimensions.columns ) {
-      tab.layout.emplace( *tab.document, text_, dimensions.columns, tab.view->horizontal_scroll );
-    }
-    const auto& layout = *tab.layout;
-    const auto anchor = layout.locate( tab.view->viewport_anchor ).value_or( detail::LayoutPoint {} );
-    const auto body_rows = dimensions.rows - 2;
-    const auto first_row = std::min( anchor.row, layout.rows() - 1 );
-    layout.append_frame( frame, first_row, { 1, 0 }, { body_rows, dimensions.columns } );
-    const auto cursor = layout.locate( tab.view->cursor );
-    if ( cursor && cursor->row >= first_row && cursor->row - first_row < static_cast<std::size_t>( body_rows )
-         && cursor->column >= 0 && cursor->column < dimensions.columns ) {
-      frame.cursor
-        = CellPoint { 1 + static_cast<int>( cursor->row - first_row ), static_cast<int>( cursor->column ) };
-    }
   }
 
   void draw()
@@ -281,10 +635,14 @@ public:
     const auto dimensions = screen_->size();
     // With fewer than three rows, header/body/footer cannot coexist.
     if ( dimensions.rows < 3 ) {
-      append_chrome( frame, { 0, 0 }, L"Resize | q quit" );
+      const auto* view = active_view();
+      append_chrome( frame,
+                     { 0, 0 },
+                     view && view->snapshot().selection ? L"Resize | Esc cancel selection" : L"Resize | q quit" );
     } else {
       append_chrome( frame, { 0, 0 }, L"Ricochet", { .strong = true } );
-      std::wstring_view status = L"Browse | q quit";
+      std::wstring_view status = L"Browse | v select | q quit";
+      std::string_view copy_feedback;
       if ( !capabilities_.bracketed_paste ) {
         status = L"Paste boundaries unavailable; multiline paste may confirm input | q quit";
       }
@@ -294,9 +652,14 @@ public:
       if ( active_ ) {
         const auto found = tabs_.find( *active_ );
         if ( found != tabs_.end() ) {
-          if ( found->second.document ) {
-            draw_document( found->second, frame, dimensions );
+          if ( found->second.view ) {
+            found->second.view->resize( { dimensions.rows - 2, dimensions.columns } );
+            found->second.view->draw( frame, { 1, 0 } );
+            if ( found->second.view->snapshot().selection && notice_.empty() ) {
+              status = L"Select | move extends | y copy | Esc cancel";
+            }
           }
+          copy_feedback = found->second.copy_feedback;
           if ( found->second.info.loading_task ) {
             status = L"Loading | q quit";
           }
@@ -305,10 +668,25 @@ public:
           }
         }
       }
+      if ( prefix_ ) {
+        status = prefix_->character == U'g' ? L"g ... | Esc cancel" : L"z ... | Esc cancel";
+      }
       if ( exit_request_ ) {
         status = L"Waiting for exit decision";
       }
-      append_chrome( frame, { dimensions.rows - 1, 0 }, status );
+      if ( !copy_feedback.empty() && notice_.empty() && !prefix_ && !exit_request_ ) {
+        int column = 0;
+        for ( const auto& glyph : text_.analyze( copy_feedback, false, false ).graphemes ) {
+          if ( glyph.columns > dimensions.columns - column ) {
+            break; // Provider messages are clipped at a complete grapheme boundary.
+          }
+          frame.glyphs.push_back(
+            { .position = { dimensions.rows - 1, column }, .width = glyph.columns, .text = glyph.display } );
+          column += glyph.columns;
+        }
+      } else {
+        append_chrome( frame, { dimensions.rows - 1, 0 }, status );
+      }
     }
     screen_->draw( frame );
     dirty_ = false;
@@ -323,11 +701,19 @@ public:
       return result;
     }
     try {
+      expire_prefix();
       const auto received = receive( result );
       if ( screen_ ) {
         const bool input = read_input( result );
         if ( screen_ && received == 0 && !input && !dirty_ ) {
-          const auto closed = screen_->wait( mailbox_->descriptor(), max_wait );
+          auto wait = max_wait;
+          if ( prefix_ ) {
+            wait = std::min(
+              wait,
+              std::max( std::chrono::milliseconds::zero(),
+                        std::chrono::ceil<std::chrono::milliseconds>( prefix_->deadline - Clock::now() ) ) );
+          }
+          const auto closed = screen_->wait( mailbox_->descriptor(), wait );
           if ( closed ) {
             dispatch( *closed, result );
           } else {
@@ -337,6 +723,10 @@ public:
             }
           }
         }
+      }
+      if ( screen_ ) {
+        // Advance drag dwell even on a quiet terminal or a continuously busy input queue.
+        dispatch( Tick { Clock::now() }, result );
       }
       if ( screen_ && dirty_ ) {
         draw();
@@ -358,6 +748,7 @@ public:
   std::vector<TabId> tab_order_ {};
   std::optional<TabId> active_ {};
   std::optional<RequestId> exit_request_ {};
+  std::optional<KeyPrefix> prefix_ {};
   std::uint64_t next_request_ { 1 };
   std::vector<UserAction> actions_ {};
   std::wstring notice_ {};
@@ -392,10 +783,10 @@ std::vector<UserAction> Session::take_actions()
 std::optional<ViewSnapshot> Session::snapshot( TabId tab ) const
 {
   const auto found = impl_->tabs_.find( tab );
-  if ( found == impl_->tabs_.end() ) {
+  if ( found == impl_->tabs_.end() || !found->second.view ) {
     return std::nullopt;
   }
-  return found->second.view;
+  return found->second.view->snapshot();
 }
 
 TerminalCapabilities Session::capabilities() const

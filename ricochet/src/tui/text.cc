@@ -125,10 +125,13 @@ TextAnalysis TextService::analyze( std::string_view utf8, bool line_breaks, bool
     if ( glyph.word != WordKind::Space ) {
       if ( glyph.word == previous && glyph.word != WordKind::Ideograph ) {
         result.words.back().end = glyph.bytes.end;
+        result.graphemes.back().word_end = false;
       } else {
         result.words.push_back( glyph.bytes );
+        glyph.word_start = true;
       }
     }
+    glyph.word_end = glyph.word != WordKind::Space;
     previous = glyph.word;
     result.graphemes.push_back( std::move( glyph ) );
   }

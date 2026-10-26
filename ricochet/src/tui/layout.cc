@@ -84,6 +84,9 @@ void append_box( LayoutData& destination, LayoutData source, std::size_t row, st
     glyph.position.row += row;
     glyph.position.column += column;
     glyph.line_start += column;
+    for ( auto& window : glyph.scrolls ) {
+      window.left += column;
+    }
     glyph.clip_left += column;
     glyph.clip_right += column;
     destination.glyphs.push_back( std::move( glyph ) );
@@ -276,7 +279,9 @@ private:
                                    .target = atom.target,
                                    .clip_right = wrap ? width : std::numeric_limits<std::int64_t>::max(),
                                    .decoration = atom.decoration,
-                                   .fill = tab } );
+                                   .fill = tab,
+                                   .word_start = atom.glyph.word_start,
+                                   .word_end = atom.glyph.word_end } );
         column += cells;
       }
       result.extent = std::max( result.extent, column );
@@ -309,6 +314,10 @@ private:
     const auto maximum = std::max<std::int64_t>( 0, box.extent - width );
     const auto shift = static_cast<std::int64_t>( std::min<std::uint64_t>( requested, maximum ) );
     for ( auto& glyph : box.glyphs ) {
+      for ( auto& window : glyph.scrolls ) {
+        window.left -= shift;
+      }
+      glyph.scrolls.push_back( { block, 0, width, shift, maximum } );
       glyph.position.column -= shift;
       glyph.line_start -= shift;
       glyph.clip_left = std::max<std::int64_t>( 0, glyph.clip_left - shift );
@@ -504,7 +513,7 @@ private:
                          { result.rows - 1, std::min( result.extent, width ) },
                          width );
     before.boundary_only = has_text;
-    after.boundary_only = has_text;
+    after.boundary_only = true;
     result.glyphs.push_back( std::move( before ) );
     result.glyphs.push_back( std::move( after ) );
     return result;
@@ -541,6 +550,21 @@ DocumentLayout::DocumentLayout( const Document& document,
   if ( data_.glyphs.empty() ) {
     data_.glyphs.push_back( anchor( DocumentStart {}, {}, columns_ ) );
   }
+  for ( std::size_t index = 0; index < data_.glyphs.size(); ++index ) {
+    const auto& glyph = data_.glyphs[index];
+    if ( glyph.decoration || glyph.boundary_only ) {
+      continue;
+    }
+    // Wrapped object borders and hard-break anchors can repeat a logical point.
+    // Keep one reading stop, preferring actual text over its zero-width anchor.
+    if ( !stops_.empty() && data_.glyphs[stops_.back()].source.start == glyph.source.start ) {
+      if ( data_.glyphs[stops_.back()].columns == 0 ) {
+        stops_.back() = index;
+      }
+    } else {
+      stops_.push_back( index );
+    }
+  }
 }
 
 int DocumentLayout::columns() const
@@ -551,7 +575,7 @@ std::size_t DocumentLayout::rows() const
 std::optional<LayoutPoint> DocumentLayout::locate( const DisplayPosition& position ) const
 {
   if ( std::holds_alternative<DocumentStart>( position.point ) ) {
-    return LayoutPoint {};
+    return data_.glyphs[stops_.front()].position;
   }
   std::optional<LayoutPoint> fallback;
   for ( const auto& glyph : data_.glyphs ) {
@@ -576,6 +600,12 @@ std::optional<LayoutPoint> DocumentLayout::locate( const DisplayPosition& positi
 
 std::optional<LayoutHit> DocumentLayout::hit( LayoutPoint point ) const
 {
+  // Blank space below the document means its last reading position, independent
+  // of the mouse column (especially when the final block is a table).
+  if ( point.row >= data_.rows ) {
+    const auto& glyph = data_.glyphs[stops_.back()];
+    return LayoutHit { last(), glyph.source, glyph.target };
+  }
   const LayoutGlyph* nearest = nullptr;
   auto distance
     = std::tuple { std::numeric_limits<std::size_t>::max(), std::numeric_limits<std::int64_t>::max(), true };
@@ -613,32 +643,252 @@ std::optional<LayoutHit> DocumentLayout::hit( LayoutPoint point ) const
                      .target = nearest->target };
 }
 
+DisplayPosition DocumentLayout::stop( std::size_t index ) const
+{ return { data_.glyphs[stops_[index]].source.start, WrapAffinity::NextLine }; }
+
+DisplayPosition DocumentLayout::first() const
+{ return stop( 0 ); }
+DisplayPosition DocumentLayout::last() const
+{ return stop( stops_.size() - 1 ); }
+
+std::size_t DocumentLayout::nearest_stop( LayoutPoint point ) const
+{
+  std::size_t nearest = 0;
+  auto distance = std::pair { std::numeric_limits<std::size_t>::max(), std::numeric_limits<std::int64_t>::max() };
+  for ( std::size_t index = 0; index < stops_.size(); ++index ) {
+    const auto& glyph = data_.glyphs[stops_[index]];
+    const auto row = glyph.position.row;
+    const auto right = glyph.position.column + std::max( 1, glyph.columns ) - 1;
+    const auto candidate = std::pair {
+      row > point.row ? row - point.row : point.row - row,
+      std::max( { glyph.position.column - point.column, point.column - right, std::int64_t { 0 } } ) };
+    if ( candidate < distance ) {
+      nearest = index;
+      distance = candidate;
+    }
+  }
+  return nearest;
+}
+
+DocumentLayout::ReadingPosition DocumentLayout::reading_position( const DisplayPosition& position ) const
+{
+  std::optional<std::size_t> endpoint;
+  for ( std::size_t index = 0; index < stops_.size(); ++index ) {
+    const auto& glyph = data_.glyphs[stops_[index]];
+    if ( glyph.source.start == position.point ) {
+      return { index, position.affinity == WrapAffinity::NextLine };
+    }
+    if ( glyph.source.end == position.point ) {
+      endpoint = index + 1;
+    }
+  }
+  if ( endpoint ) {
+    return { *endpoint, false };
+  }
+  // Structural block anchors have coordinates but are not extra character stops.
+  return { nearest_stop( locate( position ).value() ), true };
+}
+
+DisplayPosition DocumentLayout::adjacent( const DisplayPosition& position, int direction ) const
+{
+  const auto current = reading_position( position );
+  if ( direction < 0 ) {
+    return stop( current.index == 0 ? 0 : current.index - 1 );
+  }
+  return stop( std::min( stops_.size() - 1, current.index + static_cast<std::size_t>( current.at_start ) ) );
+}
+
+DisplayPosition DocumentLayout::word( const DisplayPosition& position, WordMotion motion ) const
+{
+  const auto current = reading_position( position );
+  if ( motion == WordMotion::Previous ) {
+    for ( auto index = current.index; index > 0; ) {
+      --index;
+      if ( data_.glyphs[stops_[index]].word_start ) {
+        return stop( index );
+      }
+    }
+    return first();
+  }
+  auto begin = current.index;
+  if ( current.at_start && ( motion == WordMotion::Next || data_.glyphs[stops_[begin]].word_end ) ) {
+    ++begin;
+  }
+  for ( auto index = begin; index < stops_.size(); ++index ) {
+    const auto& glyph = data_.glyphs[stops_[index]];
+    if ( motion == WordMotion::Next ? glyph.word_start : glyph.word_end ) {
+      return stop( index );
+    }
+  }
+  return last();
+}
+
+DisplayPosition DocumentLayout::on_row( LayoutPoint point ) const
+{ return stop( nearest_stop( point ) ); }
+
+DisplayPosition DocumentLayout::line_edge( const DisplayPosition& position, bool end ) const
+{
+  const auto row = locate( position ).value().row;
+  auto chosen = nearest_stop( { row, 0 } );
+  for ( std::size_t index = 0; index < stops_.size(); ++index ) {
+    const auto& glyph = data_.glyphs[stops_[index]];
+    const auto column = data_.glyphs[stops_[chosen]].position.column;
+    if ( glyph.position.row == row && ( end ? glyph.position.column > column : glyph.position.column < column ) ) {
+      chosen = index;
+    }
+  }
+  return stop( chosen );
+}
+
+const LayoutGlyph& DocumentLayout::cursor_glyph( const DisplayPosition& position ) const
+{
+  const auto current = reading_position( position );
+  const auto index = current.at_start || current.index == 0 ? current.index : current.index - 1;
+  return data_.glyphs[stops_[std::min( index, stops_.size() - 1 )]];
+}
+
+std::optional<HitTarget> DocumentLayout::target( const DisplayPosition& position ) const
+{ return cursor_glyph( position ).target; }
+
+std::optional<LayoutPoint> DocumentLayout::cursor_cell( const DisplayPosition& position ) const
+{
+  const auto& glyph = cursor_glyph( position );
+  auto point = locate( position ).value();
+  if ( glyph.fill ) {
+    // Any visible part of an expanded tab represents the same logical unit.
+    const auto left = std::max( glyph.position.column, glyph.clip_left );
+    const auto right = std::min( glyph.position.column + glyph.columns, glyph.clip_right );
+    if ( left >= right ) {
+      return std::nullopt;
+    }
+    point.column = std::clamp( point.column, left, right - 1 );
+    return point;
+  }
+  if ( point.column == glyph.clip_right && point.row == glyph.position.row ) {
+    // An insertion boundary or LF immediately after a full row has no cell.
+    // Use the preceding complete glyph; do not reveal a cursor further offscreen.
+    auto column = glyph.clip_right - 1;
+    for ( const auto index : stops_ ) {
+      const auto& candidate = data_.glyphs[index];
+      if ( candidate.position.row == point.row && candidate.columns > 0
+           && candidate.position.column >= glyph.clip_left
+           && candidate.position.column + candidate.columns == glyph.clip_right ) {
+        column = candidate.position.column;
+      }
+    }
+    point.column = column;
+  }
+  // In a one-cell viewport a wide glyph is clipped entirely. Its cursor occupies
+  // the blank fallback cell, never paints half of the character.
+  const auto width = point.column == glyph.position.column
+                       ? std::min<std::int64_t>( std::max( 1, glyph.columns ), glyph.clip_right - glyph.clip_left )
+                       : 1;
+  if ( point.column < glyph.clip_left || point.column >= glyph.clip_right
+       || point.column + width > glyph.clip_right ) {
+    return std::nullopt;
+  }
+  return point;
+}
+
+std::vector<HorizontalScroll> DocumentLayout::reveal( const DisplayPosition& position ) const
+{
+  const auto& glyph = cursor_glyph( position );
+  auto column = glyph.position.column;
+  const auto width = std::max( 1, glyph.columns );
+  std::vector<HorizontalScroll> result;
+  for ( const auto& window : glyph.scrolls ) {
+    const auto delta
+      = column < window.left
+          ? column - window.left
+          : std::max<std::int64_t>(
+              0, column + std::min<std::int64_t>( width, window.width ) - window.left - window.width );
+    const auto offset = std::clamp( window.offset + delta, std::int64_t { 0 }, window.maximum );
+    if ( offset != window.offset ) {
+      result.push_back( { window.block, static_cast<std::size_t>( offset ) } );
+      column -= offset - window.offset;
+    }
+  }
+  return result;
+}
+
+std::vector<HorizontalScroll> DocumentLayout::pan( const DisplayPosition& position, int direction ) const
+{
+  for ( const auto& window : cursor_glyph( position ).scrolls ) {
+    if ( window.maximum > 0 ) {
+      const auto offset = std::clamp( window.offset + direction, std::int64_t { 0 }, window.maximum );
+      if ( offset == window.offset ) {
+        return {};
+      }
+      return { { window.block, static_cast<std::size_t>( offset ) } };
+    }
+  }
+  return {};
+}
+
+DocumentRange DocumentLayout::unit( const DisplayPosition& position ) const
+{
+  const auto reading = reading_position( position );
+  if ( !reading.at_start ) {
+    return { position.point, position.point };
+  }
+  return data_.glyphs[stops_[reading.index]].source;
+}
+
 void DocumentLayout::append_frame( Frame& frame,
                                    std::size_t first_row,
                                    CellPoint origin,
-                                   ScreenSize viewport ) const
+                                   ScreenSize viewport,
+                                   const DocumentText& content,
+                                   std::optional<DocumentRange> selection,
+                                   const DisplayPosition& cursor,
+                                   std::optional<HitTarget> focus ) const
 {
+  const auto selected = selection ? content.offsets( *selection ) : ByteRange {};
+  const auto caret = cursor_cell( cursor );
   for ( const auto& glyph : data_.glyphs ) {
-    if ( glyph.text.empty() || glyph.position.row < first_row
+    if ( glyph.position.row < first_row
          || glyph.position.row - first_row >= static_cast<std::size_t>( std::max( 0, viewport.rows ) ) ) {
       continue;
     }
+    bool highlighted = false;
+    if ( selection && !glyph.decoration && !glyph.boundary_only ) {
+      const auto bytes = content.offsets( glyph.source );
+      highlighted = bytes.start < selected.end && selected.start < bytes.end;
+      // A control border has an object position but contributes no decoration to copy.
+      if ( bytes.start == bytes.end && std::holds_alternative<ObjectPosition>( glyph.source.start ) ) {
+        highlighted = selected.start <= bytes.start && bytes.start < selected.end;
+      }
+    }
+    const bool newline = glyph.line_break && highlighted;
+    if ( glyph.text.empty() && !newline ) {
+      continue;
+    }
+    auto style = glyph.style;
+    style.strong = style.strong || ( focus && glyph.target == focus );
     const auto left = std::max<std::int64_t>( 0, glyph.clip_left );
     const auto right = std::min<std::int64_t>( viewport.columns, glyph.clip_right );
     const auto row = origin.row + static_cast<int>( glyph.position.row - first_row );
+    const bool at_cursor = caret && caret->row == glyph.position.row && caret->column >= glyph.position.column
+                           && caret->column < glyph.position.column + std::max( 1, glyph.columns );
     if ( glyph.fill ) {
       // Expanded tabs are many blank cells but keep a single source range/hit unit.
       for ( auto column = std::max( left, glyph.position.column );
             column < std::min( right, glyph.position.column + glyph.columns );
             ++column ) {
-        frame.glyphs.push_back(
-          { .position = { row, origin.column + static_cast<int>( column ) }, .text = L" ", .style = glyph.style } );
+        frame.glyphs.push_back( { .position = { row, origin.column + static_cast<int>( column ) },
+                                  .text = L" ",
+                                  .style = style,
+                                  .selected = highlighted,
+                                  .cursor = at_cursor && column == caret->column } );
       }
-    } else if ( glyph.position.column >= left && glyph.position.column + glyph.columns <= right ) {
+    } else if ( glyph.position.column >= left
+                && glyph.position.column + ( newline ? 1 : glyph.columns ) <= right ) {
       frame.glyphs.push_back( { .position = { row, origin.column + static_cast<int>( glyph.position.column ) },
-                                .width = glyph.columns,
-                                .text = glyph.text,
-                                .style = glyph.style } );
+                                .width = newline ? 1 : glyph.columns,
+                                .text = newline ? L" " : glyph.text,
+                                .style = style,
+                                .selected = highlighted,
+                                .cursor = at_cursor } );
     }
   }
 }

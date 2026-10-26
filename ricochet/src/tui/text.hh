@@ -50,6 +50,8 @@ struct Grapheme
   TextUnitKind kind { TextUnitKind::Glyph };
   WordKind word { WordKind::Punctuation };
   bool break_after { false };
+  bool word_start { false };
+  bool word_end { false };
 };
 
 struct TextAnalysis

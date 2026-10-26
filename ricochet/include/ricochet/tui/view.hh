@@ -64,6 +64,8 @@ struct ViewSnapshot
   DraftRevision draft_revision {};
   DisplayPosition cursor {};
   DisplayPosition viewport_anchor {};
+  // Relative visual row for blank table space with no text at the exact top.
+  std::int64_t viewport_row_offset { 0 };
   std::optional<SelectionSnapshot> selection {};
   std::vector<HorizontalScroll> horizontal_scroll {};
   SearchSnapshot search {};

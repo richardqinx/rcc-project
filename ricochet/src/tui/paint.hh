@@ -35,6 +35,8 @@ struct PaintGlyph
   int width { 1 };
   std::wstring text {};
   TextStyle style {};
+  bool selected { false };
+  bool cursor { false };
 };
 
 struct Frame

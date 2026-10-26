@@ -532,7 +532,8 @@ public:
       }
       const attr_t attributes
         = ( glyph.style.strong ? A_BOLD : A_NORMAL ) | ( glyph.style.emphasis ? A_UNDERLINE : A_NORMAL )
-          | ( glyph.style.subdued ? A_DIM : A_NORMAL ) | ( glyph.style.warning ? A_REVERSE : A_NORMAL );
+          | ( glyph.style.subdued ? A_DIM : A_NORMAL ) | ( glyph.style.warning ? A_REVERSE : A_NORMAL )
+          | ( glyph.selected ? A_REVERSE | A_UNDERLINE : A_NORMAL ) | ( glyph.cursor ? A_BOLD : A_NORMAL );
       cchar_t cell {};
       if ( setcchar( &cell, glyph.text.c_str(), attributes, 0, nullptr ) == ERR
            || mvwadd_wchnstr( stdscr, row, column, &cell, 1 ) == ERR ) {
