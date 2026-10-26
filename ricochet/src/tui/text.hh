@@ -69,6 +69,7 @@ class TextService
 public:
   explicit TextService( std::size_t glyph_capacity );
   TextAnalysis analyze( std::string_view utf8, bool line_breaks, bool tabs ) const;
+  std::string encode( std::u32string_view input ) const;
 
 private:
   std::size_t glyph_capacity_;

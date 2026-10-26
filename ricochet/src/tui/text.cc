@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <unicode/ubrk.h>
 #include <unicode/uchar.h>
+#include <unicode/unistr.h>
 #include <unicode/utext.h>
 #include <utility>
 
@@ -64,6 +65,25 @@ WordKind word_kind( UChar32 codepoint )
 } // namespace
 
 TextService::TextService( std::size_t glyph_capacity ) : glyph_capacity_( glyph_capacity ) {}
+
+std::string TextService::encode( std::u32string_view input ) const
+{
+  // ICU's UTF-32 conversion takes a signed 32-bit length, like its break iterator.
+  if ( input.size() > INT32_MAX ) {
+    throw std::length_error( "Input exceeds ICU conversion length capacity" );
+  }
+  const std::vector<UChar32> codepoints( input.begin(), input.end() );
+  // fromUTF32 requires a non-null pointer even for a zero-length input.
+  const UChar32 empty = 0;
+  const auto converted = icu::UnicodeString::fromUTF32( codepoints.empty() ? &empty : codepoints.data(),
+                                                        static_cast<int32_t>( codepoints.size() ) );
+  if ( converted.isBogus() ) {
+    throw std::runtime_error( "ICU could not convert editor input" );
+  }
+  std::string result;
+  converted.toUTF8String( result );
+  return result;
+}
 
 TextAnalysis TextService::analyze( std::string_view utf8, bool line_breaks, bool tabs ) const
 {
