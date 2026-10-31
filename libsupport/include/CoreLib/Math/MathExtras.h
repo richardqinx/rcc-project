@@ -34,7 +34,7 @@
 #ifndef RCC_SUPPORT_MATHEXTRAS_H
 #define RCC_SUPPORT_MATHEXTRAS_H
 
-#include "rcc/Support/Compiler.h"
+#include "CoreLib/Compiler/Compiler.h"
 #include <bit>
 #include <cassert>
 #include <climits>

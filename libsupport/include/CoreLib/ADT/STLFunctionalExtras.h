@@ -36,7 +36,7 @@
 #ifndef RCC_ADT_STLFUNCTIONALEXTRAS_H
 #define RCC_ADT_STLFUNCTIONALEXTRAS_H
 
-#include "rcc/Support/Compiler.h"
+#include "CoreLib/Compiler/Compiler.h"
 
 #include <cstddef
 #include <cstdint>

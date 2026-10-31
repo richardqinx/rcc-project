@@ -66,7 +66,7 @@ install(DIRECTORY "${RCC_BINARY_DIR}/include/rcc" DESTINATION "${CMAKE_INSTALL_I
   FILES_MATCHING PATTERN "*.h" PATTERN "*.inc" PATTERN "*.def"
   PATTERN "CMakeFiles" EXCLUDE PATTERN "config.h" EXCLUDE)
 
-add_subdirectory(lib)
+add_subdirectory("${RCC_SOURCE_DIR}/../libsupport" "${CMAKE_CURRENT_BINARY_DIR}/libsupport")
 add_subdirectory(tools)
 foreach(rccProject IN LISTS RCC_ENABLE_PROJECTS)
   if(NOT rccProject STREQUAL "cfront")

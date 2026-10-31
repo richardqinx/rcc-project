@@ -24,7 +24,7 @@
 #ifndef RCC_SUPPORT_ERRNO_H
 #define RCC_SUPPORT_ERRNO_H
 
-#include "rcc/Support/Compiler.h"
+#include "CoreLib/Compiler/Compiler.h"
 
 #include <cerrno>
 #include <string>

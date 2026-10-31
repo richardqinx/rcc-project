@@ -21,7 +21,7 @@
 
 // This implementation is based on llvm/lib/Support/Errno.cpp.
 
-#include "rcc/Support/Errno.h"
+#include "CoreLib/System/Errno.h"
 #include "rcc/Config/config.h"
 
 #include <cstring>
