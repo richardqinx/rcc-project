@@ -46,8 +46,8 @@ along with RCC-Project; see the file COPYING. If not see
  |*===----------------------------------------------------------------------===*/
 
 /* Please leave this file C-compatible. */
-#ifndef RCC_DATATYPES_H
-#define RCC_DATATYPES_H
+#ifndef LIBBASE_DATATYPES_H
+#define LIBBASE_DATATYPES_H
 
 #include <inttypes.h>
 #include <stdint.h>

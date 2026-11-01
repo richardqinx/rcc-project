@@ -53,20 +53,15 @@ configure_file(
   "${RCC_MAIN_INCLUDE_DIR}/rcc/Config/rcc-config.h.cmake"
   "${RCC_INCLUDE_DIR}/rcc/Config/rcc-config.h")
 
-add_library(RCCHeaders INTERFACE)
-target_compile_features(RCCHeaders INTERFACE cxx_std_23)
-target_include_directories(RCCHeaders INTERFACE
-  "$<BUILD_INTERFACE:${RCC_SOURCE_DIR}/include>"
-  "$<BUILD_INTERFACE:${RCC_BINARY_DIR}/include>"
-  "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-install(TARGETS RCCHeaders EXPORT RCCTargets)
 install(DIRECTORY include/rcc DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
   FILES_MATCHING PATTERN "*.h" PATTERN "*.inc" PATTERN "*.def")
-install(DIRECTORY "${RCC_BINARY_DIR}/include/rcc" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+install(DIRECTORY "${RCC_BINARY_DIR}/include/rcc/Config" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rcc"
   FILES_MATCHING PATTERN "*.h" PATTERN "*.inc" PATTERN "*.def"
-  PATTERN "CMakeFiles" EXCLUDE PATTERN "config.h" EXCLUDE)
+  PATTERN "config.h" EXCLUDE)
 
-add_subdirectory("${RCC_SOURCE_DIR}/../libsupport" "${CMAKE_CURRENT_BINARY_DIR}/libsupport")
+set(RCC_LIBBASE_SOURCE_DIR "${RCC_SOURCE_DIR}/../libbase")
+set(RCC_LIBBASE_BINARY_DIR "${RCC_BINARY_DIR}/libbase")
+add_subdirectory("${RCC_LIBBASE_SOURCE_DIR}" "${RCC_LIBBASE_BINARY_DIR}")
 add_subdirectory(tools)
 foreach(rccProject IN LISTS RCC_ENABLE_PROJECTS)
   if(NOT rccProject STREQUAL "cfront")

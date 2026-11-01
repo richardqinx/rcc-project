@@ -27,12 +27,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CoreLib/Memory/MemAlloc.h"
+#include "core/memory/MemAlloc.h"
 #include <new>
 
 // These are out of line to have __cpp_aligned_new not affect ABI.
 
-RCC_ATTRIBUTE_RETURNS_NONNULL RCC_ATTRIBUTE_RETURNS_NOALIAS void *
+LIBBASE_ATTRIBUTE_RETURNS_NONNULL LIBBASE_ATTRIBUTE_RETURNS_NOALIAS void *
 rcc::allocate_buffer (size_t Size, size_t Alignment)
 {
   void *Result = ::operator new (Size,

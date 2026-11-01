@@ -32,10 +32,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RCC_SUPPORT_ERRORHANDLING_H
-#define RCC_SUPPORT_ERRORHANDLING_H
+#ifndef LIBBASE_SUPPORT_ERRORHANDLING_H
+#define LIBBASE_SUPPORT_ERRORHANDLING_H
 
-#include "CoreLib/Compiler/Compiler.h"
+#include "core/compiler/Compiler.h"
 
 namespace rcc
 {
@@ -62,12 +62,12 @@ using fatal_error_handler_t = void (*) (void *user_data, const char *reason,
 ///
 /// \param user_data - An argument which will be passed to the install error
 /// handler.
-RCC_ABI void
+LIBBASE_ABI void
 install_fatal_error_handler (fatal_error_handler_t handler,
                              void *user_data = nullptr);
 
 /// Restores default error handling behaviour.
-RCC_ABI void
+LIBBASE_ABI void
 remove_fatal_error_handler ();
 
 /// ScopedFatalErrorHandler - This is a simple helper class which just
@@ -89,11 +89,11 @@ struct ScopedFatalErrorHandler
 
 /// @deprecated Use reportFatalInternalError() or reportFatalUsageError()
 /// instead.
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 report_fatal_error (const char *reason, bool gen_crash_diag = true);
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 report_fatal_error (StringRef reason, bool gen_crash_diag = true);
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 report_fatal_error (const Twine &reason, bool gen_crash_diag = true);
 
 /// Report a fatal error that likely indicates a bug in LLVM. It serves a
@@ -103,11 +103,11 @@ report_fatal_error (const Twine &reason, bool gen_crash_diag = true);
 /// This will call installed error handlers (or print the message by default)
 /// and then abort. This will produce a crash trace and *will* ask users to
 /// report an LLVM bug.
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 reportFatalInternalError (const char *reason);
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 reportFatalInternalError (StringRef reason);
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 reportFatalInternalError (const Twine &reason);
 
 /// Report a fatal error that does not indicate a bug in LLVM.
@@ -124,11 +124,11 @@ reportFatalInternalError (const Twine &reason);
 /// This will call installed error handlers (or print the message by default)
 /// and then exit with code 1. It will not produce a crash trace and will
 /// *not* ask users to report an LLVM bug.
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 reportFatalUsageError (const char *reason);
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 reportFatalUsageError (StringRef reason);
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 reportFatalUsageError (const Twine &reason);
 
 /// Installs a new bad alloc error handler that should be used whenever a
@@ -147,15 +147,15 @@ reportFatalUsageError (const Twine &reason);
 ///
 /// \param user_data - An argument which will be passed to the installed error
 /// handler.
-RCC_ABI void
+LIBBASE_ABI void
 install_bad_alloc_error_handler (fatal_error_handler_t handler,
                                  void *user_data = nullptr);
 
 /// Restores default bad alloc error handling behavior.
-RCC_ABI void
+LIBBASE_ABI void
 remove_bad_alloc_error_handler ();
 
-RCC_ABI void
+LIBBASE_ABI void
 install_out_of_memory_new_handler ();
 
 /// Reports a bad alloc error, calling any user defined bad alloc
@@ -170,13 +170,13 @@ install_out_of_memory_new_handler ();
 /// If no error handler is installed (default), throws a bad_alloc exception
 /// if LLVM is compiled with exception support. Otherwise prints the error
 /// to standard error and calls abort().
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 report_bad_alloc_error (const char *Reason, bool GenCrashDiag = true);
 
 /// This function calls abort(), and prints the optional message to stderr.
 /// Use the llvm_unreachable macro (that adds location info), instead of
 /// calling this function directly.
-[[noreturn]] RCC_ABI void
+[[noreturn]] LIBBASE_ABI void
 rcc_unreachable_internal (const char *msg = nullptr, const char *file = nullptr,
                           unsigned line = 0);
 } // namespace rcc
@@ -201,16 +201,16 @@ rcc_unreachable_internal (const char *msg = nullptr, const char *file = nullptr,
 #ifndef NDEBUG
 #define rcc_unreachable(msg)                                                   \
   ::rcc::rcc_unreachable_internal (msg, __FILE__, __LINE__)
-#elif !defined(RCC_BUILTIN_UNREACHABLE)
+#elif !defined(LIBBASE_BUILTIN_UNREACHABLE)
 #define rcc_unreachable(msg) ::rcc::rcc_unreachable_internal ()
-#elif RCC_UNREACHABLE_OPTIMIZE
-#define rcc_unreachable(msg) RCC_BUILTIN_UNREACHABLE
+#elif LIBBASE_UNREACHABLE_OPTIMIZE
+#define rcc_unreachable(msg) LIBBASE_BUILTIN_UNREACHABLE
 #else
 #define rcc_unreachable(msg)                                                   \
   do                                                                           \
   {                                                                            \
-    RCC_BUILTIN_TRAP;                                                          \
-    RCC_BUILTIN_UNREACHABLE;                                                   \
+    LIBBASE_BUILTIN_TRAP;                                                          \
+    LIBBASE_BUILTIN_UNREACHABLE;                                                   \
   } while (false)
 #endif
 

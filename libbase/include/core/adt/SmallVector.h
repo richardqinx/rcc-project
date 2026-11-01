@@ -32,10 +32,10 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef RCC_ADT_SMALLVECTOR_H
-#define RCC_ADT_SMALLVECTOR_H
+#ifndef LIBBASE_ADT_SMALLVECTOR_H
+#define LIBBASE_ADT_SMALLVECTOR_H
 
-#include "CoreLib/Compiler/Compiler.h"
+#include "core/compiler/Compiler.h"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -97,14 +97,14 @@ protected:
   /// This is a helper for \a grow() that's out of line to reduce code
   /// duplication.  This function will report a fatal error if it can't grow at
   /// least to \p MinSize.
-  RCC_ABI void *
+  LIBBASE_ABI void *
   mallocForGrow (void *FirstEl, size_t MinSize, size_t TSize,
                  size_t &NewCapacity);
 
   /// This is an implementation of the grow() method which only works
   /// on POD-like data types and is out of line to reduce code duplication.
   /// This function will report a fatal error if it cannot increase capacity.
-  RCC_ABI void
+  LIBBASE_ABI void
   grow_pod (void *FirstEl, size_t MinSize, size_t TSize);
 
 public:
@@ -245,7 +245,7 @@ protected:
   isSafeToReferenceAfterResize (const void *Elt, size_t NewSize)
   {
     // Past the end.
-    if (RCC_LIKELY (!isReferenceToStorage (Elt)))
+    if (LIBBASE_LIKELY (!isReferenceToStorage (Elt)))
     {
       return true;
     }
@@ -325,7 +325,7 @@ protected:
   reserveForParamAndGetAddressImpl (U *This, const T &Elt, size_t N)
   {
     size_t NewSize = This->size () + N;
-    if (RCC_LIKELY (NewSize <= This->capacity ()))
+    if (LIBBASE_LIKELY (NewSize <= This->capacity ()))
     {
       return &Elt;
     }
@@ -334,7 +334,7 @@ protected:
     int64_t Index = -1;
     if (!U::TakesParamByValue)
     {
-      if (RCC_UNLIKELY (This->isReferenceToStorage (&Elt)))
+      if (LIBBASE_UNLIKELY (This->isReferenceToStorage (&Elt)))
       {
         ReferencesStorage = true;
         Index = &Elt - This->begin ();
@@ -799,7 +799,7 @@ protected:
 
   // Out-of-line slow path so the inline push_back needs no callee-saved
   // registers or stack frame on its hot path.
-  RCC_ATTRIBUTE_NOINLINE void
+  LIBBASE_ATTRIBUTE_NOINLINE void
   growAndPushBack (ValueParamT Elt)
   {
     // Copy in case Elt is an internal reference invalidated by grow.
@@ -813,7 +813,7 @@ public:
   void
   push_back (ValueParamT Elt)
   {
-    if (RCC_UNLIKELY (this->size () >= this->capacity ()))
+    if (LIBBASE_UNLIKELY (this->size () >= this->capacity ()))
     {
       return growAndPushBack (Elt);
     }
@@ -1354,7 +1354,7 @@ public:
   reference
   emplace_back (ArgTypes &&...Args)
   {
-    if (RCC_UNLIKELY (this->size () >= this->capacity ()))
+    if (LIBBASE_UNLIKELY (this->size () >= this->capacity ()))
     {
       return this->growAndEmplaceBack (std::forward<ArgTypes> (Args)...);
     }
@@ -1605,7 +1605,7 @@ template <typename T> struct alignas (T) SmallVectorStorage<T, 0>
 /// Forward declaration of SmallVector so that
 /// calculateSmallVectorDefaultInlinedElements can reference
 /// `sizeof(SmallVector<T, 0>)`.
-template <typename T, unsigned N> class RCC_GSL_OWNER SmallVector;
+template <typename T, unsigned N> class LIBBASE_GSL_OWNER SmallVector;
 
 /// Helper class for calculating the default number of inline elements for
 /// `SmallVector<T>`.
@@ -1680,7 +1680,7 @@ template <typename T> struct CalculateSmallVectorDefaultInlinedElements
 /// \see https://llvm.org/docs/ProgrammersManual.html#llvm-adt-smallvector-h
 template <typename T,
           unsigned N = CalculateSmallVectorDefaultInlinedElements<T>::value>
-class RCC_GSL_OWNER SmallVector : public SmallVectorImpl<T>,
+class LIBBASE_GSL_OWNER SmallVector : public SmallVectorImpl<T>,
                                   SmallVectorStorage<T, N>
 {
 public:
@@ -1923,4 +1923,4 @@ swap (rcc::SmallVector<T, N> &LHS, rcc::SmallVector<T, N> &RHS)
 
 } // end namespace std
 
-#endif // RCC_ADT_SMALLVECTOR_H
+#endif // LIBBASE_ADT_SMALLVECTOR_H

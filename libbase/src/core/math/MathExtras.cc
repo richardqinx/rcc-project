@@ -31,7 +31,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CoreLib/Math/MathExtras.h"
+#include "core/math/MathExtras.h"
 
 #ifdef _MSC_VER
 #include <limits>

@@ -33,10 +33,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RCC_ADT_STLFUNCTIONALEXTRAS_H
-#define RCC_ADT_STLFUNCTIONALEXTRAS_H
+#ifndef LIBBASE_ADT_STLFUNCTIONALEXTRAS_H
+#define LIBBASE_ADT_STLFUNCTIONALEXTRAS_H
 
-#include "CoreLib/Compiler/Compiler.h"
+#include "core/compiler/Compiler.h"
 
 #include <cstddef
 #include <cstdint>
@@ -59,7 +59,7 @@ namespace rcc
 template <typename Fn> class function_ref;
 
 template <typename Ret, typename... Params>
-class RCC_GSL_POINTER function_ref<Ret (Params...)>
+class LIBBASE_GSL_POINTER function_ref<Ret (Params...)>
 {
   Ret (*callback) (intptr_t callable, Params... params) = nullptr;
   intptr_t callable = 0;
@@ -80,7 +80,7 @@ public:
 
   template <typename Callable>
   function_ref (
-      Callable &&callable RCC_LIFETIME_BOUND,
+      Callable &&callable LIBBASE_LIFETIME_BOUND,
       // This is not the copy-constructor.
       std::enable_if_t<!std::is_same<std::remove_cvref_t<Callable>,
                                      function_ref>::value> * = nullptr,
@@ -109,4 +109,4 @@ public:
 
 } // end namespace rcc
 
-#endif // RCC_ADT_STLFUNCTIONALEXTRAS_H
+#endif // LIBBASE_ADT_STLFUNCTIONALEXTRAS_H

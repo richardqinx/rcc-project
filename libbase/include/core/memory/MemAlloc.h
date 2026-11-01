@@ -34,17 +34,17 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef RCC_SUPPORT_MEMALLOC_H
-#define RCC_SUPPORT_MEMALLOC_H
+#ifndef LIBBASE_SUPPORT_MEMALLOC_H
+#define LIBBASE_SUPPORT_MEMALLOC_H
 
-#include "CoreLib/Compiler/Compiler.h"
-#include "CoreLib/Error/ErrorHandling.h"
+#include "core/compiler/Compiler.h"
+#include "core/error/ErrorHandling.h"
 #include <cstdlib>
 
 namespace rcc
 {
 
-RCC_ATTRIBUTE_RETURNS_NONNULL inline void *
+LIBBASE_ATTRIBUTE_RETURNS_NONNULL inline void *
 safe_malloc (size_t Sz)
 {
   void *Result = std::malloc (Sz);
@@ -62,7 +62,7 @@ safe_malloc (size_t Sz)
   return Result;
 }
 
-RCC_ATTRIBUTE_RETURNS_NONNULL inline void *
+LIBBASE_ATTRIBUTE_RETURNS_NONNULL inline void *
 safe_calloc (size_t Count, size_t Sz)
 {
   void *Result = std::calloc (Count, Sz);
@@ -80,7 +80,7 @@ safe_calloc (size_t Count, size_t Sz)
   return Result;
 }
 
-RCC_ATTRIBUTE_RETURNS_NONNULL inline void *
+LIBBASE_ATTRIBUTE_RETURNS_NONNULL inline void *
 safe_realloc (void *Ptr, size_t Sz)
 {
   void *Result = std::realloc (Ptr, Sz);
@@ -107,7 +107,7 @@ safe_realloc (void *Ptr, size_t Sz)
 /// like posix_memalign due to portability. It is mostly intended to allow
 /// compatibility with platforms that, after aligned allocation was added, use
 /// reduced default alignment.
-RCC_ABI RCC_ATTRIBUTE_RETURNS_NONNULL RCC_ATTRIBUTE_RETURNS_NOALIAS void *
+LIBBASE_ABI LIBBASE_ATTRIBUTE_RETURNS_NONNULL LIBBASE_ATTRIBUTE_RETURNS_NOALIAS void *
 allocate_buffer (size_t Size, size_t Alignment);
 
 /// Deallocate a buffer of memory with the given size and alignment.
@@ -117,7 +117,7 @@ allocate_buffer (size_t Size, size_t Alignment);
 ///
 /// The pointer must have been allocated with the corresponding new operator,
 /// most likely using the above helper.
-RCC_ABI void
+LIBBASE_ABI void
 deallocate_buffer (void *Ptr, size_t Size, size_t Alignment);
 
 } // namespace rcc

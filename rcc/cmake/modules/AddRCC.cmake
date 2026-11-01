@@ -162,7 +162,13 @@ endfunction()
 function(add_rcc_library name)
   cmake_parse_arguments(PARSE_ARGV 1 arg "DISABLE_PCH_REUSE;NO_INSTALL_RPATH" "" "LINK_LIBS;PRECOMPILE_HEADERS")
   add_library(${name} ${arg_UNPARSED_ARGUMENTS})
-  target_link_libraries(${name} PUBLIC RCCHeaders ${arg_LINK_LIBS})
+  target_link_libraries(${name} PUBLIC RCCCore ${arg_LINK_LIBS})
+  target_compile_features(${name} PUBLIC cxx_std_23)
+  target_compile_definitions(${name} PRIVATE RCC_EXPORTS)
+  target_include_directories(${name} PUBLIC
+    "$<BUILD_INTERFACE:${RCC_SOURCE_DIR}/include>"
+    "$<BUILD_INTERFACE:${RCC_BINARY_DIR}/include>"
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
   rcc_configure_target(${name})
   install(TARGETS ${name} EXPORT RCCTargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -173,7 +179,11 @@ endfunction()
 function(add_rcc_executable name)
   cmake_parse_arguments(PARSE_ARGV 1 arg "DISABLE_PCH_REUSE;NO_INSTALL_RPATH" "" "LINK_LIBS;PRECOMPILE_HEADERS")
   add_executable(${name} ${arg_UNPARSED_ARGUMENTS})
-  target_link_libraries(${name} PRIVATE RCCHeaders ${arg_LINK_LIBS})
+  target_link_libraries(${name} PRIVATE RCCCore ${arg_LINK_LIBS})
+  target_compile_features(${name} PRIVATE cxx_std_23)
+  target_include_directories(${name} PRIVATE
+    "${RCC_SOURCE_DIR}/include"
+    "${RCC_BINARY_DIR}/include")
   rcc_configure_target(${name})
 endfunction()
 

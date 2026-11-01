@@ -31,10 +31,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RCC_SUPPORT_MATHEXTRAS_H
-#define RCC_SUPPORT_MATHEXTRAS_H
+#ifndef LIBBASE_SUPPORT_MATHEXTRAS_H
+#define LIBBASE_SUPPORT_MATHEXTRAS_H
 
-#include "CoreLib/Compiler/Compiler.h"
+#include "core/compiler/Compiler.h"
 #include <bit>
 #include <cassert>
 #include <climits>
@@ -894,7 +894,7 @@ SaturatingMultiplyAdd (T X, T Y, T A, bool *ResultOverflowed = nullptr)
 }
 
 /// Use this rather than HUGE_VALF; the latter causes warnings on MSVC.
-RCC_ABI extern const float huge_valf;
+LIBBASE_ABI extern const float huge_valf;
 
 /// Add two signed integers, computing the two's complement truncated result,
 /// returning a pair {result, overflow}, where "overflow" is a boolean value
@@ -1042,7 +1042,7 @@ using stack_float_t = float;
 #endif
 
 /// Returns the number of digits in the given integer.
-RCC_ABI int
+LIBBASE_ABI int
 NumDigitsBase10 (uint64_t X);
 
 } // namespace rcc
