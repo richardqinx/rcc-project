@@ -1,5 +1,5 @@
 /*
- R *CC-Project
+ RCC-Project
 
  Copyright (C) 2026 Richard Qin
 
@@ -38,7 +38,7 @@
 
 #include "core/compiler/Compiler.h"
 
-#include <cstddef
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <utility>

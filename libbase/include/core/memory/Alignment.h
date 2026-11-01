@@ -1,5 +1,5 @@
 /*
- R *CC-Project
+ RCC-Project
 
  Copyright (C) 2026 Richard Qin
 
