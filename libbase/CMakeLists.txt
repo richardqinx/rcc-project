@@ -39,6 +39,7 @@ configure_file(
   "${LIBBASE_BINARY_INCLUDE_DIR}/core/config/libbase-config.h")
 
 add_library(RCCCore
+  src/core/adt/SmallVector.cpp
   src/core/math/MathExtras.cc
   src/core/memory/MemAlloc.cpp
   src/core/error/Errno.cc
