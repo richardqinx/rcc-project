@@ -27,7 +27,7 @@
 #include <cstring>
 #include <errno.h>
 
-namespace rcc
+namespace libbase
 {
 namespace sys
 {
@@ -76,4 +76,4 @@ StrError (int errnum)
 }
 
 } // namespace sys
-} // namespace rcc
+} // namespace libbase

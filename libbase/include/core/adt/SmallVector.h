@@ -52,7 +52,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace rcc
+namespace libbase
 {
 
 template <typename T> class ArrayRef;
@@ -1879,20 +1879,20 @@ to_vector_of (R &&Range)
 }
 
 // Explicit instantiations
-extern template class rcc::SmallVectorBase<uint32_t>;
+extern template class libbase::SmallVectorBase<uint32_t>;
 #if SIZE_MAX > UINT32_MAX
-extern template class rcc::SmallVectorBase<uint64_t>;
+extern template class libbase::SmallVectorBase<uint64_t>;
 #endif
 
-} // end namespace rcc
+} // end namespace libbase
 
 namespace std
 {
 
-template <typename T, unsigned N> struct hash<rcc::SmallVector<T, N>>
+template <typename T, unsigned N> struct hash<libbase::SmallVector<T, N>>
 {
   size_t
-  operator() (const rcc::SmallVector<T, N> &Value) const
+  operator() (const libbase::SmallVector<T, N> &Value) const
   {
     size_t Seed = 0;
     for (const T &Element : Value)
@@ -1908,7 +1908,7 @@ template <typename T, unsigned N> struct hash<rcc::SmallVector<T, N>>
 /// Implement std::swap in terms of SmallVector swap.
 template <typename T>
 inline void
-swap (rcc::SmallVectorImpl<T> &LHS, rcc::SmallVectorImpl<T> &RHS)
+swap (libbase::SmallVectorImpl<T> &LHS, libbase::SmallVectorImpl<T> &RHS)
 {
   LHS.swap (RHS);
 }
@@ -1916,7 +1916,7 @@ swap (rcc::SmallVectorImpl<T> &LHS, rcc::SmallVectorImpl<T> &RHS)
 /// Implement std::swap in terms of SmallVector swap.
 template <typename T, unsigned N>
 inline void
-swap (rcc::SmallVector<T, N> &LHS, rcc::SmallVector<T, N> &RHS)
+swap (libbase::SmallVector<T, N> &LHS, libbase::SmallVector<T, N> &RHS)
 {
   LHS.swap (RHS);
 }

@@ -39,7 +39,7 @@
 #include <cmath>
 #endif
 
-namespace rcc
+namespace libbase
 {
 
 #if defined(_MSC_VER)
@@ -94,4 +94,4 @@ NumDigitsBase10 (uint64_t X)
   return Digits + (X >= Data.Boundaries[Digits]);
 }
 
-} // namespace rcc
+} // namespace libbase

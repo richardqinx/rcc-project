@@ -49,7 +49,7 @@
 #include <string>
 #endif // NDEBUG
 
-namespace rcc {
+namespace libbase {
 
 #define ALIGN_CHECK_ISPOSITIVE(decl)                                           \
   assert(decl > 0 && (#decl " should be defined"))
@@ -85,7 +85,7 @@ public:
 
   explicit Align(uint64_t Value) {
     assert(Value > 0 && "Value must not be 0");
-    assert(rcc::isPowerOf2_64(Value) && "Alignment is not a power of 2");
+    assert(libbase::isPowerOf2_64(Value) && "Alignment is not a power of 2");
     ShiftValue = Log2_64(Value);
     assert(ShiftValue < 64 && "Broken invariant");
   }
@@ -146,7 +146,7 @@ public:
   constexpr MaybeAlign(std::nullopt_t None) : UP(None) {}
   constexpr MaybeAlign(Align Value) : UP(Value) {}
   explicit MaybeAlign(uint64_t Value) {
-    assert((Value == 0 || rcc::isPowerOf2_64(Value)) &&
+    assert((Value == 0 || libbase::isPowerOf2_64(Value)) &&
            "Alignment is neither 0 nor a power of 2");
     if (Value)
       emplace(Value);
@@ -337,6 +337,6 @@ inline std::string DebugStr(const MaybeAlign &MA) {
 
 #undef ALIGN_CHECK_ISPOSITIVE
 
-} // namespace rcc
+} // namespace libbase
 
 #endif // LIBBASE_SUPPORT_ALIGNMENT_H_

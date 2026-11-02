@@ -43,7 +43,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace rcc
+namespace libbase
 {
 
 //===----------------------------------------------------------------------===//
@@ -107,6 +107,6 @@ public:
   }
 };
 
-} // end namespace rcc
+} // end namespace libbase
 
 #endif // LIBBASE_ADT_STLFUNCTIONALEXTRAS_H

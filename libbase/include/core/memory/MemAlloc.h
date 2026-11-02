@@ -41,7 +41,7 @@
 #include "core/error/ErrorHandling.h"
 #include <cstdlib>
 
-namespace rcc
+namespace libbase
 {
 
 LIBBASE_ATTRIBUTE_RETURNS_NONNULL inline void *
@@ -120,5 +120,5 @@ allocate_buffer (size_t Size, size_t Alignment);
 LIBBASE_ABI void
 deallocate_buffer (void *Ptr, size_t Size, size_t Alignment);
 
-} // namespace rcc
+} // namespace libbase
 #endif

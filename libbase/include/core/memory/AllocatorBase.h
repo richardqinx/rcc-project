@@ -51,7 +51,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace rcc {
+namespace libbase {
 
 /// CRTP base class providing obvious overloads for the core \c
 /// Allocate() methods of LLVM-style allocators.
@@ -149,6 +149,6 @@ public:
 
 } // namespace detail
 
-} // namespace rcc
+} // namespace libbase
 
 #endif // LIBBASE_SUPPORT_ALLOCATORBASE_H

@@ -37,7 +37,7 @@
 
 #include "core/compiler/Compiler.h"
 
-namespace rcc
+namespace libbase
 {
 class StringRef;
 class Twine;
@@ -177,9 +177,9 @@ report_bad_alloc_error (const char *Reason, bool GenCrashDiag = true);
 /// Use the llvm_unreachable macro (that adds location info), instead of
 /// calling this function directly.
 [[noreturn]] LIBBASE_ABI void
-rcc_unreachable_internal (const char *msg = nullptr, const char *file = nullptr,
-                          unsigned line = 0);
-} // namespace rcc
+libbase_unreachable_internal (const char *msg = nullptr,
+                              const char *file = nullptr, unsigned line = 0);
+} // namespace libbase
 
 /// Marks that the current location is not supposed to be reachable.
 /// In !NDEBUG builds, prints the message and location info to stderr.
@@ -199,14 +199,14 @@ rcc_unreachable_internal (const char *msg = nullptr, const char *file = nullptr,
 /// diagnostics for unreachable code paths, and allows compilers to omit
 /// unnecessary code.
 #ifndef NDEBUG
-#define rcc_unreachable(msg)                                                   \
-  ::rcc::rcc_unreachable_internal (msg, __FILE__, __LINE__)
+#define libbase_unreachable(msg)                                               \
+  ::libbase::libbase_unreachable_internal (msg, __FILE__, __LINE__)
 #elif !defined(LIBBASE_BUILTIN_UNREACHABLE)
-#define rcc_unreachable(msg) ::rcc::rcc_unreachable_internal ()
+#define libbase_unreachable(msg) ::libbase::libbase_unreachable_internal ()
 #elif LIBBASE_UNREACHABLE_OPTIMIZE
-#define rcc_unreachable(msg) LIBBASE_BUILTIN_UNREACHABLE
+#define libbase_unreachable(msg) LIBBASE_BUILTIN_UNREACHABLE
 #else
-#define rcc_unreachable(msg)                                                   \
+#define libbase_unreachable(msg)                                               \
   do                                                                           \
   {                                                                            \
     LIBBASE_BUILTIN_TRAP;                                                          \

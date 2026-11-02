@@ -29,7 +29,7 @@
 #include <cerrno>
 #include <string>
 
-namespace rcc
+namespace libbase
 {
 namespace sys
 {
@@ -59,6 +59,6 @@ RetryAfterSignal (const FailT &Fail, const Fun &F, const Args &...As)
 }
 
 } // namespace sys
-} // namespace rcc
+} // namespace libbase
 
 #endif // LIBBASE_SUPPORT_ERRNO_H

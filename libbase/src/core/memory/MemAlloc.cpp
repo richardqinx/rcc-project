@@ -33,7 +33,7 @@
 // These are out of line to have __cpp_aligned_new not affect ABI.
 
 LIBBASE_ATTRIBUTE_RETURNS_NONNULL LIBBASE_ATTRIBUTE_RETURNS_NOALIAS void *
-rcc::allocate_buffer (size_t Size, size_t Alignment)
+libbase::allocate_buffer (size_t Size, size_t Alignment)
 {
   void *Result = ::operator new (Size,
 #ifdef __cpp_aligned_new
@@ -48,7 +48,7 @@ rcc::allocate_buffer (size_t Size, size_t Alignment)
 }
 
 void
-rcc::deallocate_buffer (void *Ptr, size_t Size, size_t Alignment)
+libbase::deallocate_buffer (void *Ptr, size_t Size, size_t Alignment)
 {
   ::operator delete (Ptr
 #ifdef __cpp_sized_deallocation

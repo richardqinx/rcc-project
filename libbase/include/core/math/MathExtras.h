@@ -45,7 +45,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace rcc
+namespace libbase
 {
 /// Some template parameter helpers to optimize for bitwidth, for functions that
 /// take multiple arguments.
@@ -432,7 +432,7 @@ template <size_t kValue>
 constexpr size_t
 ConstantLog2 ()
 {
-  static_assert (rcc::isPowerOf2_64 (kValue),
+  static_assert (libbase::isPowerOf2_64 (kValue),
                  "Value is not a valid power of 2");
   return std::countr_zero (kValue);
 }
@@ -1045,6 +1045,6 @@ using stack_float_t = float;
 LIBBASE_ABI int
 NumDigitsBase10 (uint64_t X);
 
-} // namespace rcc
+} // namespace libbase
 
 #endif
