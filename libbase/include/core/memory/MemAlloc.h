@@ -107,8 +107,9 @@ safe_realloc (void *Ptr, size_t Sz)
 /// like posix_memalign due to portability. It is mostly intended to allow
 /// compatibility with platforms that, after aligned allocation was added, use
 /// reduced default alignment.
-LIBBASE_ABI LIBBASE_ATTRIBUTE_RETURNS_NONNULL LIBBASE_ATTRIBUTE_RETURNS_NOALIAS void *
-allocate_buffer (size_t Size, size_t Alignment);
+LIBBASE_ABI
+    LIBBASE_ATTRIBUTE_RETURNS_NONNULL LIBBASE_ATTRIBUTE_RETURNS_NOALIAS void *
+    allocate_buffer (size_t Size, size_t Alignment);
 
 /// Deallocate a buffer of memory with the given size and alignment.
 ///

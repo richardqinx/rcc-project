@@ -1681,7 +1681,7 @@ template <typename T> struct CalculateSmallVectorDefaultInlinedElements
 template <typename T,
           unsigned N = CalculateSmallVectorDefaultInlinedElements<T>::value>
 class LIBBASE_GSL_OWNER SmallVector : public SmallVectorImpl<T>,
-                                  SmallVectorStorage<T, N>
+                                      SmallVectorStorage<T, N>
 {
 public:
   SmallVector () : SmallVectorImpl<T> (N)

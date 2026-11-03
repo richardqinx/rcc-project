@@ -209,8 +209,8 @@ libbase_unreachable_internal (const char *msg = nullptr,
 #define libbase_unreachable(msg)                                               \
   do                                                                           \
   {                                                                            \
-    LIBBASE_BUILTIN_TRAP;                                                          \
-    LIBBASE_BUILTIN_UNREACHABLE;                                                   \
+    LIBBASE_BUILTIN_TRAP;                                                      \
+    LIBBASE_BUILTIN_UNREACHABLE;                                               \
   } while (false)
 #endif
 

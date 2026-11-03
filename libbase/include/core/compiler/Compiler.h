@@ -19,7 +19,8 @@
  <http://www.gnu.org/licenses/>.
 */
 
-//===-- core/compiler/Compiler.h - Compiler abstraction support --*- C++ -*-===//
+//===-- core/compiler/Compiler.h - Compiler abstraction support --*- C++
+//-*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -45,32 +46,32 @@
 #endif
 
 #ifndef __has_feature
-# define __has_feature(x) 0
+#define __has_feature(x) 0
 #endif
 
 #ifndef __has_extension
-# define __has_extension(x) 0
+#define __has_extension(x) 0
 #endif
 
 #ifndef __has_attribute
-# define __has_attribute(x) 0
+#define __has_attribute(x) 0
 #endif
 
 #ifndef __has_builtin
-# define __has_builtin(x) 0
+#define __has_builtin(x) 0
 #endif
 
 #ifndef __has_warning
-# define __has_warning(x) 0
+#define __has_warning(x) 0
 #endif
 
 // Only use __has_cpp_attribute in C++ mode. GCC defines __has_cpp_attribute in
 // C mode, but the :: in __has_cpp_attribute(scoped::attribute) is invalid.
 #ifndef LIBBASE_HAS_CPP_ATTRIBUTE
 #if defined(__cplusplus) && defined(__has_cpp_attribute)
-# define LIBBASE_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute(x)
+#define LIBBASE_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute (x)
 #else
-# define LIBBASE_HAS_CPP_ATTRIBUTE(x) 0
+#define LIBBASE_HAS_CPP_ATTRIBUTE(x) 0
 #endif
 #endif
 
@@ -78,16 +79,16 @@
 /// Extend the default __GNUC_PREREQ even if glibc's features.h isn't
 /// available.
 #ifndef LIBBASE_GNUC_PREREQ
-# if defined(__GNUC__) && defined(__GNUC_MINOR__) && defined(__GNUC_PATCHLEVEL__)
-#  define LIBBASE_GNUC_PREREQ(maj, min, patch) \
-    ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) + __GNUC_PATCHLEVEL__ >= \
-     ((maj) << 20) + ((min) << 10) + (patch))
-# elif defined(__GNUC__) && defined(__GNUC_MINOR__)
-#  define LIBBASE_GNUC_PREREQ(maj, min, patch) \
-    ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) >= ((maj) << 20) + ((min) << 10))
-# else
-#  define LIBBASE_GNUC_PREREQ(maj, min, patch) 0
-# endif
+#if defined(__GNUC__) && defined(__GNUC_MINOR__) && defined(__GNUC_PATCHLEVEL__)
+#define LIBBASE_GNUC_PREREQ(maj, min, patch)                                   \
+  ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) + __GNUC_PATCHLEVEL__ >=          \
+   ((maj) << 20) + ((min) << 10) + (patch))
+#elif defined(__GNUC__) && defined(__GNUC_MINOR__)
+#define LIBBASE_GNUC_PREREQ(maj, min, patch)                                   \
+  ((__GNUC__ << 20) + (__GNUC_MINOR__ << 10) >= ((maj) << 20) + ((min) << 10))
+#else
+#define LIBBASE_GNUC_PREREQ(maj, min, patch) 0
+#endif
 #endif
 
 /// \macro LIBBASE_MSC_PREREQ
@@ -135,13 +136,15 @@
 /// this attribute will be made public and visible outside of any shared library
 /// they are linked in to.
 
-#if LIBBASE_HAS_CPP_ATTRIBUTE(gnu::visibility) && defined(__GNUC__) &&            \
+#if LIBBASE_HAS_CPP_ATTRIBUTE(gnu::visibility) && defined(__GNUC__) &&         \
     !defined(__clang__)
-#define LIBBASE_ATTRIBUTE_VISIBILITY_HIDDEN [[gnu::visibility("hidden")]]
-#define LIBBASE_ATTRIBUTE_VISIBILITY_DEFAULT [[gnu::visibility("default")]]
+#define LIBBASE_ATTRIBUTE_VISIBILITY_HIDDEN [[gnu::visibility ("hidden")]]
+#define LIBBASE_ATTRIBUTE_VISIBILITY_DEFAULT [[gnu::visibility ("default")]]
 #elif __has_attribute(visibility)
-#define LIBBASE_ATTRIBUTE_VISIBILITY_HIDDEN __attribute__((visibility("hidden")))
-#define LIBBASE_ATTRIBUTE_VISIBILITY_DEFAULT __attribute__((visibility("default")))
+#define LIBBASE_ATTRIBUTE_VISIBILITY_HIDDEN                                    \
+  __attribute__ ((visibility ("hidden")))
+#define LIBBASE_ATTRIBUTE_VISIBILITY_DEFAULT                                   \
+  __attribute__ ((visibility ("default")))
 #else
 #define LIBBASE_ATTRIBUTE_VISIBILITY_HIDDEN
 #define LIBBASE_ATTRIBUTE_VISIBILITY_DEFAULT
@@ -159,13 +162,13 @@
 // Clang compilers older then 15 do not support gnu style attributes on
 // namespaces.
 #if defined(__clang__) && __clang_major__ < 15
-#define LIBBASE_LIBRARY_VISIBILITY_NAMESPACE [[gnu::visibility("hidden")]]
+#define LIBBASE_LIBRARY_VISIBILITY_NAMESPACE [[gnu::visibility ("hidden")]]
 #else
 #define LIBBASE_LIBRARY_VISIBILITY_NAMESPACE LIBBASE_ATTRIBUTE_VISIBILITY_HIDDEN
 #endif
 #define LIBBASE_ALWAYS_EXPORT LIBBASE_ATTRIBUTE_VISIBILITY_DEFAULT
 #elif defined(_WIN32)
-#define LIBBASE_ALWAYS_EXPORT __declspec(dllexport)
+#define LIBBASE_ALWAYS_EXPORT __declspec (dllexport)
 #define LIBBASE_LIBRARY_VISIBILITY
 #define LIBBASE_LIBRARY_VISIBILITY_NAMESPACE
 #else
@@ -174,9 +177,9 @@
 #define LIBBASE_LIBRARY_VISIBILITY_NAMESPACE
 #endif
 
-/// LIBBASE_ABI is the main export/visibility macro to mark something as explicitly
-/// exported when llvm is built as a shared library with everything else that is
-/// unannotated will have internal visibility.
+/// LIBBASE_ABI is the main export/visibility macro to mark something as
+/// explicitly exported when llvm is built as a shared library with everything
+/// else that is unannotated will have internal visibility.
 ///
 /// LIBBASE_ABI_EXPORT is for the special case for things like plugin symbol
 /// declarations or definitions where we don't want the macro to be switching
@@ -184,20 +187,22 @@
 /// built, it will only be dllexport. For non windows platforms this macro
 /// behaves the same as LIBBASE_ABI.
 ///
-/// LIBBASE_EXPORT_TEMPLATE is used on explicit template instantiations in source
-/// files that were declared extern in a header. This macro is only set as a
-/// compiler export attribute on windows, on other platforms it does nothing.
+/// LIBBASE_EXPORT_TEMPLATE is used on explicit template instantiations in
+/// source files that were declared extern in a header. This macro is only set
+/// as a compiler export attribute on windows, on other platforms it does
+/// nothing.
 ///
-/// LIBBASE_TEMPLATE_ABI is for annotating extern template declarations in headers
-/// for both functions and classes. On windows its turned in to dllimport for
-/// library consumers, for other platforms its a default visibility attribute.
+/// LIBBASE_TEMPLATE_ABI is for annotating extern template declarations in
+/// headers for both functions and classes. On windows its turned in to
+/// dllimport for library consumers, for other platforms its a default
+/// visibility attribute.
 ///
 /// LIBBASE_ABI_FOR_TEST is for annotating symbols that are exported from a
 /// library-internal header solely so that unit tests can link against them.
 /// Symbols in LLVM's public headers are part of the LLVM public interface and
-/// should use LIBBASE_ABI. LIBBASE_ABI_FOR_TEST is reserved for internal headers,
-/// whose symbols could be conditionally excluded when not building tests in the
-/// future.
+/// should use LIBBASE_ABI. LIBBASE_ABI_FOR_TEST is reserved for internal
+/// headers, whose symbols could be conditionally excluded when not building
+/// tests in the future.
 ///
 #ifndef LIBBASE_ABI_GENERATING_ANNOTATIONS
 // Marker to add to classes or functions in public headers that should not have
@@ -208,24 +213,24 @@
 #if defined(LIBBASE_ENABLE_EXPORT_ANNOTATIONS) && !defined(LIBBASE_BUILD_STATIC)
 #if defined(_WIN32) && !defined(__MINGW32__)
 #if defined(LIBBASE_EXPORTS)
-#define LIBBASE_ABI __declspec(dllexport)
+#define LIBBASE_ABI __declspec (dllexport)
 #define LIBBASE_TEMPLATE_ABI
-#define LIBBASE_EXPORT_TEMPLATE __declspec(dllexport)
+#define LIBBASE_EXPORT_TEMPLATE __declspec (dllexport)
 #else
-#define LIBBASE_ABI __declspec(dllimport)
-#define LIBBASE_TEMPLATE_ABI __declspec(dllimport)
+#define LIBBASE_ABI __declspec (dllimport)
+#define LIBBASE_TEMPLATE_ABI __declspec (dllimport)
 #define LIBBASE_EXPORT_TEMPLATE
 #endif
-#define LIBBASE_ABI_EXPORT __declspec(dllexport)
+#define LIBBASE_ABI_EXPORT __declspec (dllexport)
 #elif __has_attribute(visibility)
 #if defined(__ELF__) || defined(__MINGW32__) || defined(_AIX) ||               \
     defined(__MVS__) || defined(__CYGWIN__)
-#define LIBBASE_ABI __attribute__((visibility("default")))
+#define LIBBASE_ABI __attribute__ ((visibility ("default")))
 #define LIBBASE_TEMPLATE_ABI LIBBASE_ABI
 #define LIBBASE_EXPORT_TEMPLATE
 #define LIBBASE_ABI_EXPORT LIBBASE_ABI
 #elif defined(__MACH__) || defined(__wasm__) || defined(__EMSCRIPTEN__)
-#define LIBBASE_ABI __attribute__((visibility("default")))
+#define LIBBASE_ABI __attribute__ ((visibility ("default")))
 #define LIBBASE_TEMPLATE_ABI
 #define LIBBASE_EXPORT_TEMPLATE
 #define LIBBASE_ABI_EXPORT LIBBASE_ABI
@@ -242,25 +247,26 @@
 #endif
 
 #if defined(__GNUC__)
-#define LIBBASE_PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
+#define LIBBASE_PREFETCH(addr, rw, locality)                                   \
+  __builtin_prefetch (addr, rw, locality)
 #else
 #define LIBBASE_PREFETCH(addr, rw, locality)
 #endif
 
 #if __has_attribute(uninitialized)
-#define LIBBASE_ATTRIBUTE_UNINITIALIZED __attribute__((uninitialized))
+#define LIBBASE_ATTRIBUTE_UNINITIALIZED __attribute__ ((uninitialized))
 #else
 #define LIBBASE_ATTRIBUTE_UNINITIALIZED
 #endif
 
 #if __has_attribute(used)
-#define LIBBASE_ATTRIBUTE_USED __attribute__((__used__))
+#define LIBBASE_ATTRIBUTE_USED __attribute__ ((__used__))
 #else
 #define LIBBASE_ATTRIBUTE_USED
 #endif
 
 #if __has_attribute(warn_unused)
-#define LIBBASE_ATTRIBUTE_WARN_UNUSED __attribute__((warn_unused))
+#define LIBBASE_ATTRIBUTE_WARN_UNUSED __attribute__ ((warn_unused))
 #else
 #define LIBBASE_ATTRIBUTE_WARN_UNUSED
 #endif
@@ -270,7 +276,7 @@
 // GCC may produce "warning: 'retain' attribute ignored" (despite
 // __has_attribute(retain) being 1).
 #if defined(__clang__) && __has_attribute(retain)
-#define LIBBASE_ATTRIBUTE_RETAIN __attribute__((__retain__))
+#define LIBBASE_ATTRIBUTE_RETAIN __attribute__ ((__retain__))
 #else
 #define LIBBASE_ATTRIBUTE_RETAIN
 #endif
@@ -278,10 +284,10 @@
 // For deprecations that are not a simple rename, use [[deprecated(MSG)]]
 // instead.
 #if defined(__clang__)
-#define LIBBASE_DEPRECATED_WITH_FIXIT(MSG, FIX)                                   \
-  __attribute__((deprecated(MSG, FIX)))
+#define LIBBASE_DEPRECATED_WITH_FIXIT(MSG, FIX)                                \
+  __attribute__ ((deprecated (MSG, FIX)))
 #else
-#define LIBBASE_DEPRECATED_WITH_FIXIT(MSG, FIX) [[deprecated(MSG)]]
+#define LIBBASE_DEPRECATED_WITH_FIXIT(MSG, FIX) [[deprecated (MSG)]]
 #endif
 
 // clang-format off
@@ -325,7 +331,7 @@
 //   (void)unused_var_name;
 // Prefer cast-to-void wherever it is sufficient.
 #if __has_attribute(unused)
-#define LIBBASE_ATTRIBUTE_UNUSED __attribute__((__unused__))
+#define LIBBASE_ATTRIBUTE_UNUSED __attribute__ ((__unused__))
 #else
 #define LIBBASE_ATTRIBUTE_UNUSED
 #endif
@@ -338,7 +344,7 @@
 #define LIBBASE_HAS_ATTRIBUTE_WEAK 0
 #endif
 #if LIBBASE_HAS_ATTRIBUTE_WEAK
-#define LIBBASE_ATTRIBUTE_WEAK __attribute__((__weak__))
+#define LIBBASE_ATTRIBUTE_WEAK __attribute__ ((__weak__))
 #else
 #define LIBBASE_ATTRIBUTE_WEAK
 #endif
@@ -347,46 +353,46 @@
 // __has_attribute(const), so assume it is supported.
 #if defined(__clang__) || defined(__GNUC__)
 // aka 'CONST' but following LLVM Conventions.
-#define LIBBASE_READNONE __attribute__((__const__))
+#define LIBBASE_READNONE __attribute__ ((__const__))
 #else
 #define LIBBASE_READNONE
 #endif
 
 #if __has_attribute(pure) || defined(__GNUC__)
 // aka 'PURE' but following LLVM Conventions.
-#define LIBBASE_READONLY __attribute__((__pure__))
+#define LIBBASE_READONLY __attribute__ ((__pure__))
 #else
 #define LIBBASE_READONLY
 #endif
 
 #if __has_attribute(minsize)
-#define LIBBASE_ATTRIBUTE_MINSIZE __attribute__((minsize))
+#define LIBBASE_ATTRIBUTE_MINSIZE __attribute__ ((minsize))
 #else
 #define LIBBASE_ATTRIBUTE_MINSIZE
 #endif
 
 #if __has_builtin(__builtin_expect) || defined(__GNUC__)
-#define LIBBASE_LIKELY(EXPR) __builtin_expect((bool)(EXPR), true)
-#define LIBBASE_UNLIKELY(EXPR) __builtin_expect((bool)(EXPR), false)
+#define LIBBASE_LIKELY(EXPR) __builtin_expect ((bool)(EXPR), true)
+#define LIBBASE_UNLIKELY(EXPR) __builtin_expect ((bool)(EXPR), false)
 #else
 #define LIBBASE_LIKELY(EXPR) (EXPR)
 #define LIBBASE_UNLIKELY(EXPR) (EXPR)
 #endif
 
-/// LIBBASE_ATTRIBUTE_NOINLINE - On compilers where we have a directive to do so,
-/// mark a method "not for inlining".
+/// LIBBASE_ATTRIBUTE_NOINLINE - On compilers where we have a directive to do
+/// so, mark a method "not for inlining".
 #if __has_attribute(noinline)
-#define LIBBASE_ATTRIBUTE_NOINLINE __attribute__((noinline))
+#define LIBBASE_ATTRIBUTE_NOINLINE __attribute__ ((noinline))
 #elif defined(_MSC_VER)
-#define LIBBASE_ATTRIBUTE_NOINLINE __declspec(noinline)
+#define LIBBASE_ATTRIBUTE_NOINLINE __declspec (noinline)
 #else
 #define LIBBASE_ATTRIBUTE_NOINLINE
 #endif
 
-/// LIBBASE_ATTRIBUTE_ALWAYS_INLINE - On compilers where we have a directive to do
-/// so, mark a method "always inline" because it is performance sensitive.
+/// LIBBASE_ATTRIBUTE_ALWAYS_INLINE - On compilers where we have a directive to
+/// do so, mark a method "always inline" because it is performance sensitive.
 #if __has_attribute(always_inline)
-#define LIBBASE_ATTRIBUTE_ALWAYS_INLINE inline __attribute__((always_inline))
+#define LIBBASE_ATTRIBUTE_ALWAYS_INLINE inline __attribute__ ((always_inline))
 #elif defined(_MSC_VER)
 #define LIBBASE_ATTRIBUTE_ALWAYS_INLINE __forceinline
 #else
@@ -397,7 +403,8 @@
 /// LIBBASE_ATTRIBUTE_ALWAYS_INLINE but disabled in debug builds to avoid stack
 /// overflow with deep recursion.
 #if defined(NDEBUG)
-#define LIBBASE_ATTRIBUTE_ALWAYS_INLINE_UNLESS_DEBUG LIBBASE_ATTRIBUTE_ALWAYS_INLINE
+#define LIBBASE_ATTRIBUTE_ALWAYS_INLINE_UNLESS_DEBUG                           \
+  LIBBASE_ATTRIBUTE_ALWAYS_INLINE
 #else
 #define LIBBASE_ATTRIBUTE_ALWAYS_INLINE_UNLESS_DEBUG inline
 #endif
@@ -406,13 +413,13 @@
 /// so, mark a method "no debug" because debug info makes the debugger
 /// experience worse.
 #if __has_attribute(nodebug)
-#define LIBBASE_ATTRIBUTE_NODEBUG __attribute__((nodebug))
+#define LIBBASE_ATTRIBUTE_NODEBUG __attribute__ ((nodebug))
 #else
 #define LIBBASE_ATTRIBUTE_NODEBUG
 #endif
 
 #if __has_attribute(returns_nonnull)
-#define LIBBASE_ATTRIBUTE_RETURNS_NONNULL __attribute__((returns_nonnull))
+#define LIBBASE_ATTRIBUTE_RETURNS_NONNULL __attribute__ ((returns_nonnull))
 #elif defined(_MSC_VER)
 #define LIBBASE_ATTRIBUTE_RETURNS_NONNULL _Ret_notnull_
 #else
@@ -427,33 +434,34 @@
 #define LIBBASE_ATTRIBUTE_RESTRICT
 #endif
 
-/// \macro LIBBASE_ATTRIBUTE_RETURNS_NOALIAS Used to mark a function as returning a
-/// pointer that does not alias any other valid pointer.
+/// \macro LIBBASE_ATTRIBUTE_RETURNS_NOALIAS Used to mark a function as
+/// returning a pointer that does not alias any other valid pointer.
 #ifdef __GNUC__
-#define LIBBASE_ATTRIBUTE_RETURNS_NOALIAS __attribute__((__malloc__))
+#define LIBBASE_ATTRIBUTE_RETURNS_NOALIAS __attribute__ ((__malloc__))
 #elif defined(_MSC_VER)
-#define LIBBASE_ATTRIBUTE_RETURNS_NOALIAS __declspec(restrict)
+#define LIBBASE_ATTRIBUTE_RETURNS_NOALIAS __declspec (restrict)
 #else
 #define LIBBASE_ATTRIBUTE_RETURNS_NOALIAS
 #endif
 
 /// LIBBASE_FALLTHROUGH - Mark fallthrough cases in switch statements.
-#if defined(__cplusplus) && __cplusplus > 201402L && LIBBASE_HAS_CPP_ATTRIBUTE(fallthrough)
+#if defined(__cplusplus) && __cplusplus > 201402L &&                           \
+    LIBBASE_HAS_CPP_ATTRIBUTE(fallthrough)
 #define LIBBASE_FALLTHROUGH [[fallthrough]]
 #elif LIBBASE_HAS_CPP_ATTRIBUTE(gnu::fallthrough)
 #define LIBBASE_FALLTHROUGH [[gnu::fallthrough]]
 #elif __has_attribute(fallthrough)
-#define LIBBASE_FALLTHROUGH __attribute__((fallthrough))
+#define LIBBASE_FALLTHROUGH __attribute__ ((fallthrough))
 #elif LIBBASE_HAS_CPP_ATTRIBUTE(clang::fallthrough)
 #define LIBBASE_FALLTHROUGH [[clang::fallthrough]]
 #else
 #define LIBBASE_FALLTHROUGH
 #endif
 
-/// LIBBASE_REQUIRE_CONSTANT_INITIALIZATION - Apply this to globals to ensure that
-/// they are constant initialized.
+/// LIBBASE_REQUIRE_CONSTANT_INITIALIZATION - Apply this to globals to ensure
+/// that they are constant initialized.
 #if LIBBASE_HAS_CPP_ATTRIBUTE(clang::require_constant_initialization)
-#define LIBBASE_REQUIRE_CONSTANT_INITIALIZATION                                   \
+#define LIBBASE_REQUIRE_CONSTANT_INITIALIZATION                                \
   [[clang::require_constant_initialization]]
 #else
 #define LIBBASE_REQUIRE_CONSTANT_INITIALIZATION
@@ -495,16 +503,16 @@
 #define LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH
 #define LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP
 #else // MSVC < 19.43
-#define LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                             \
-  __pragma(warning(push)) __pragma(warning(disable : 4848))
-#define LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP __pragma(warning(pop))
+#define LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                          \
+  __pragma (warning (push)) __pragma (warning (disable : 4848))
+#define LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP __pragma (warning (pop))
 #endif
 
 #if LIBBASE_HAS_CPP_ATTRIBUTE(no_unique_address)
 #define LIBBASE_NO_UNIQUE_ADDRESS [[no_unique_address]]
 #elif LIBBASE_HAS_CPP_ATTRIBUTE(msvc::no_unique_address)
-#define LIBBASE_NO_UNIQUE_ADDRESS                                                 \
-  LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                                   \
+#define LIBBASE_NO_UNIQUE_ADDRESS                                              \
+  LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_PUSH                                \
   [[msvc::no_unique_address]] LIBBASE_SUPPRESS_MSVC_ATTR_IS_VENDOR_EXT_POP
 #else
 #define LIBBASE_NO_UNIQUE_ADDRESS
@@ -526,51 +534,51 @@
 /// LIBBASE_ASSUME_ALIGNED and llvm_unreachable()) can detect whether
 /// LIBBASE_BUILTIN_UNREACHABLE has a definition.
 #if __has_builtin(__builtin_unreachable) || defined(__GNUC__)
-# define LIBBASE_BUILTIN_UNREACHABLE __builtin_unreachable()
+#define LIBBASE_BUILTIN_UNREACHABLE __builtin_unreachable ()
 #elif defined(_MSC_VER)
-# define LIBBASE_BUILTIN_UNREACHABLE __assume(false)
+#define LIBBASE_BUILTIN_UNREACHABLE __assume (false)
 #endif
 
-/// LIBBASE_BUILTIN_TRAP - On compilers which support it, expands to an expression
-/// which causes the program to exit abnormally.
+/// LIBBASE_BUILTIN_TRAP - On compilers which support it, expands to an
+/// expression which causes the program to exit abnormally.
 #if __has_builtin(__builtin_trap) || defined(__GNUC__)
-# define LIBBASE_BUILTIN_TRAP __builtin_trap()
+#define LIBBASE_BUILTIN_TRAP __builtin_trap ()
 #elif defined(_MSC_VER)
 // The __debugbreak intrinsic is supported by MSVC, does not require forward
 // declarations involving platform-specific typedefs (unlike RaiseException),
 // results in a call to vectored exception handlers, and encodes to a short
 // instruction that still causes the trapping behavior we want.
-# define LIBBASE_BUILTIN_TRAP __debugbreak()
+#define LIBBASE_BUILTIN_TRAP __debugbreak ()
 #else
-# define LIBBASE_BUILTIN_TRAP *(volatile int*)0x11 = 0
+#define LIBBASE_BUILTIN_TRAP *(volatile int *)0x11 = 0
 #endif
 
 /// LIBBASE_BUILTIN_DEBUGTRAP - On compilers which support it, expands to
 /// an expression which causes the program to break while running
 /// under a debugger.
 #if __has_builtin(__builtin_debugtrap)
-# define LIBBASE_BUILTIN_DEBUGTRAP __builtin_debugtrap()
+#define LIBBASE_BUILTIN_DEBUGTRAP __builtin_debugtrap ()
 #elif defined(_MSC_VER)
 // The __debugbreak intrinsic is supported by MSVC and breaks while
 // running under the debugger, and also supports invoking a debugger
 // when the OS is configured appropriately.
-# define LIBBASE_BUILTIN_DEBUGTRAP __debugbreak()
+#define LIBBASE_BUILTIN_DEBUGTRAP __debugbreak ()
 #else
 // Just continue execution when built with compilers that have no
 // support. This is a debugging aid and not intended to force the
 // program to abort if encountered.
-# define LIBBASE_BUILTIN_DEBUGTRAP
+#define LIBBASE_BUILTIN_DEBUGTRAP
 #endif
 
 /// \macro LIBBASE_ASSUME_ALIGNED
 /// Returns a pointer with an assumed alignment.
 #if __has_builtin(__builtin_assume_aligned) || defined(__GNUC__)
-# define LIBBASE_ASSUME_ALIGNED(p, a) __builtin_assume_aligned(p, a)
+#define LIBBASE_ASSUME_ALIGNED(p, a) __builtin_assume_aligned (p, a)
 #elif defined(LIBBASE_BUILTIN_UNREACHABLE)
-# define LIBBASE_ASSUME_ALIGNED(p, a) \
-           (((uintptr_t(p) % (a)) == 0) ? (p) : (LIBBASE_BUILTIN_UNREACHABLE, (p)))
+#define LIBBASE_ASSUME_ALIGNED(p, a)                                           \
+  (((uintptr_t (p) % (a)) == 0) ? (p) : (LIBBASE_BUILTIN_UNREACHABLE, (p)))
 #else
-# define LIBBASE_ASSUME_ALIGNED(p, a) (p)
+#define LIBBASE_ASSUME_ALIGNED(p, a) (p)
 #endif
 
 /// \macro LIBBASE_PACKED
@@ -592,50 +600,54 @@
 /// };
 /// LIBBASE_PACKED_END
 #ifdef _MSC_VER
-# define LIBBASE_PACKED(d) __pragma(pack(push, 1)) d __pragma(pack(pop))
-# define LIBBASE_PACKED_START __pragma(pack(push, 1))
-# define LIBBASE_PACKED_END   __pragma(pack(pop))
+#define LIBBASE_PACKED(d) __pragma (pack (push, 1)) d __pragma (pack (pop))
+#define LIBBASE_PACKED_START __pragma (pack (push, 1))
+#define LIBBASE_PACKED_END __pragma (pack (pop))
 #else
-# define LIBBASE_PACKED(d) d __attribute__((packed))
-# define LIBBASE_PACKED_START _Pragma("pack(push, 1)")
-# define LIBBASE_PACKED_END   _Pragma("pack(pop)")
+#define LIBBASE_PACKED(d) d __attribute__ ((packed))
+#define LIBBASE_PACKED_START _Pragma ("pack(push, 1)")
+#define LIBBASE_PACKED_END _Pragma ("pack(pop)")
 #endif
 
 /// \macro LIBBASE_MEMORY_SANITIZER_BUILD
 /// Whether LLVM itself is built with MemorySanitizer instrumentation.
 #if __has_feature(memory_sanitizer)
-# define LIBBASE_MEMORY_SANITIZER_BUILD 1
-# include <sanitizer/msan_interface.h>
-# define LIBBASE_NO_SANITIZE_MEMORY_ATTRIBUTE __attribute__((no_sanitize_memory))
+#define LIBBASE_MEMORY_SANITIZER_BUILD 1
+#include <sanitizer/msan_interface.h>
+#define LIBBASE_NO_SANITIZE_MEMORY_ATTRIBUTE                                   \
+  __attribute__ ((no_sanitize_memory))
 #else
-# define LIBBASE_MEMORY_SANITIZER_BUILD 0
-# define __msan_allocated_memory(p, size)
-# define __msan_unpoison(p, size)
-# define LIBBASE_NO_SANITIZE_MEMORY_ATTRIBUTE
+#define LIBBASE_MEMORY_SANITIZER_BUILD 0
+#define __msan_allocated_memory(p, size)
+#define __msan_unpoison(p, size)
+#define LIBBASE_NO_SANITIZE_MEMORY_ATTRIBUTE
 #endif
 
 /// \macro LIBBASE_ADDRESS_SANITIZER_BUILD
 /// Whether LLVM itself is built with AddressSanitizer instrumentation.
 #if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
-# define LIBBASE_ADDRESS_SANITIZER_BUILD 1
+#define LIBBASE_ADDRESS_SANITIZER_BUILD 1
 #if __has_include(<sanitizer/asan_interface.h>)
-# include <sanitizer/asan_interface.h>
+#include <sanitizer/asan_interface.h>
 #else
 // These declarations exist to support ASan with MSVC. If MSVC eventually ships
 // asan_interface.h in their headers, then we can remove this.
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
-void __asan_poison_memory_region(void const volatile *addr, size_t size);
-void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+  void
+  __asan_poison_memory_region (void const volatile *addr, size_t size);
+  void
+  __asan_unpoison_memory_region (void const volatile *addr, size_t size);
 #ifdef __cplusplus
 } // extern "C"
 #endif
 #endif
 #else
-# define LIBBASE_ADDRESS_SANITIZER_BUILD 0
-# define __asan_poison_memory_region(p, size)
-# define __asan_unpoison_memory_region(p, size)
+#define LIBBASE_ADDRESS_SANITIZER_BUILD 0
+#define __asan_poison_memory_region(p, size)
+#define __asan_unpoison_memory_region(p, size)
 #endif
 
 /// \macro LIBBASE_HWADDRESS_SANITIZER_BUILD
@@ -649,9 +661,9 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 /// \macro LIBBASE_THREAD_SANITIZER_BUILD
 /// Whether LLVM itself is built with ThreadSanitizer instrumentation.
 #if __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
-# define LIBBASE_THREAD_SANITIZER_BUILD 1
+#define LIBBASE_THREAD_SANITIZER_BUILD 1
 #else
-# define LIBBASE_THREAD_SANITIZER_BUILD 0
+#define LIBBASE_THREAD_SANITIZER_BUILD 0
 #endif
 
 #if LIBBASE_THREAD_SANITIZER_BUILD
@@ -659,12 +671,17 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 // See http://code.google.com/p/data-race-test/wiki/DynamicAnnotations .
 // tsan detects these exact functions by name.
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
-void AnnotateHappensAfter(const char *file, int line, const volatile void *cv);
-void AnnotateHappensBefore(const char *file, int line, const volatile void *cv);
-void AnnotateIgnoreWritesBegin(const char *file, int line);
-void AnnotateIgnoreWritesEnd(const char *file, int line);
+  void
+  AnnotateHappensAfter (const char *file, int line, const volatile void *cv);
+  void
+  AnnotateHappensBefore (const char *file, int line, const volatile void *cv);
+  void
+  AnnotateIgnoreWritesBegin (const char *file, int line);
+  void
+  AnnotateIgnoreWritesEnd (const char *file, int line);
 #ifdef __cplusplus
 }
 #endif
@@ -672,27 +689,27 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 // This marker is used to define a happens-before arc. The race detector will
 // infer an arc from the begin to the end when they share the same pointer
 // argument.
-# define TsanHappensBefore(cv) AnnotateHappensBefore(__FILE__, __LINE__, cv)
+#define TsanHappensBefore(cv) AnnotateHappensBefore (__FILE__, __LINE__, cv)
 
 // This marker defines the destination of a happens-before arc.
-# define TsanHappensAfter(cv) AnnotateHappensAfter(__FILE__, __LINE__, cv)
+#define TsanHappensAfter(cv) AnnotateHappensAfter (__FILE__, __LINE__, cv)
 
 // Ignore any races on writes between here and the next TsanIgnoreWritesEnd.
-# define TsanIgnoreWritesBegin() AnnotateIgnoreWritesBegin(__FILE__, __LINE__)
+#define TsanIgnoreWritesBegin() AnnotateIgnoreWritesBegin (__FILE__, __LINE__)
 
 // Resume checking for racy writes.
-# define TsanIgnoreWritesEnd() AnnotateIgnoreWritesEnd(__FILE__, __LINE__)
+#define TsanIgnoreWritesEnd() AnnotateIgnoreWritesEnd (__FILE__, __LINE__)
 #else
-# define TsanHappensBefore(cv)
-# define TsanHappensAfter(cv)
-# define TsanIgnoreWritesBegin()
-# define TsanIgnoreWritesEnd()
+#define TsanHappensBefore(cv)
+#define TsanHappensAfter(cv)
+#define TsanIgnoreWritesBegin()
+#define TsanIgnoreWritesEnd()
 #endif
 
 /// \macro LIBBASE_NO_SANITIZE
 /// Disable a particular sanitizer for a function.
 #if __has_attribute(no_sanitize)
-#define LIBBASE_NO_SANITIZE(KIND) __attribute__((no_sanitize(KIND)))
+#define LIBBASE_NO_SANITIZE(KIND) __attribute__ ((no_sanitize (KIND)))
 #else
 #define LIBBASE_NO_SANITIZE(KIND)
 #endif
@@ -704,7 +721,7 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// get stripped in release builds.
 // FIXME: Move this to a private config.h as it's not usable in public headers.
 #if !defined(NDEBUG) || defined(LIBBASE_ENABLE_DUMP)
-#define LIBBASE_DUMP_METHOD                                                       \
+#define LIBBASE_DUMP_METHOD                                                    \
   LIBBASE_ATTRIBUTE_NOINLINE LIBBASE_ATTRIBUTE_USED LIBBASE_ATTRIBUTE_RETAIN
 #else
 #define LIBBASE_DUMP_METHOD LIBBASE_ATTRIBUTE_NOINLINE
@@ -761,8 +778,8 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// \macro LIBBASE_NO_PROFILE_INSTRUMENT_FUNCTION
 /// Disable the profile instrument for a function.
 #if __has_attribute(no_profile_instrument_function)
-#define LIBBASE_NO_PROFILE_INSTRUMENT_FUNCTION                                    \
-  __attribute__((no_profile_instrument_function))
+#define LIBBASE_NO_PROFILE_INSTRUMENT_FUNCTION                                 \
+  __attribute__ ((no_profile_instrument_function))
 #else
 #define LIBBASE_NO_PROFILE_INSTRUMENT_FUNCTION
 #endif
@@ -770,16 +787,16 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// \macro LIBBASE_PREFERRED_TYPE
 /// Adjust type of bit-field in debug info.
 #if __has_attribute(preferred_type)
-#define LIBBASE_PREFERRED_TYPE(T) __attribute__((preferred_type(T)))
+#define LIBBASE_PREFERRED_TYPE(T) __attribute__ ((preferred_type (T)))
 #else
 #define LIBBASE_PREFERRED_TYPE(T)
 #endif
 
-#if LIBBASE_HAS_CPP_ATTRIBUTE(clang::ptrauth_vtable_pointer) &&                   \
+#if LIBBASE_HAS_CPP_ATTRIBUTE(clang::ptrauth_vtable_pointer) &&                \
     (defined(__PTRAUTH__) || __has_feature(ptrauth_calls))
-#define LIBBASE_MOVABLE_POLYMORPHIC_TYPE                                          \
-  [[clang::ptrauth_vtable_pointer(default_key, no_address_discrimination,      \
-                                  default_extra_discrimination)]]
+#define LIBBASE_MOVABLE_POLYMORPHIC_TYPE                                       \
+  [[clang::ptrauth_vtable_pointer (default_key, no_address_discrimination,     \
+                                   default_extra_discrimination)]]
 #else
 #define LIBBASE_MOVABLE_POLYMORPHIC_TYPE
 #endif
@@ -819,14 +836,14 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// \macro LIBBASE_TARGET_SSE42
 /// Function attribute to compile a function with SSE4.2 enabled.
 #if defined(__has_attribute) && __has_attribute(target)
-#define LIBBASE_TARGET_SSE42 __attribute__((target("sse4.2")))
+#define LIBBASE_TARGET_SSE42 __attribute__ ((target ("sse4.2")))
 #else
 #define LIBBASE_TARGET_SSE42
 #endif
 
 #if __has_builtin(__builtin_cpu_supports) &&                                   \
     (defined(__linux__) || defined(__APPLE__))
-#define LIBBASE_CPU_SUPPORTS(feature) __builtin_cpu_supports(feature)
+#define LIBBASE_CPU_SUPPORTS(feature) __builtin_cpu_supports (feature)
 #else
 #define LIBBASE_CPU_SUPPORTS(feature) 0
 #endif
@@ -837,7 +854,7 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 #if defined(__SSE4_2__)
 #define LIBBASE_CPU_SUPPORTS_SSE42 1
 #else
-#define LIBBASE_CPU_SUPPORTS_SSE42 LIBBASE_CPU_SUPPORTS("sse4.2")
+#define LIBBASE_CPU_SUPPORTS_SSE42 LIBBASE_CPU_SUPPORTS ("sse4.2")
 #endif
 
 #endif
