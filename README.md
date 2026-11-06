@@ -1,46 +1,38 @@
-# RCC Project
+This directory contains the RCC Project.
 
-RCC is a compiler collection under active development. The current implementation
-focuses on a standalone machine-code backend.
+The RCC Project is a collection of systems software, from compilers to
+terminal applications.
 
-## Repository layout
+The RCC Project is free software, distributed under the GNU General Public
+License, version 3. See the file COPYING for the license terms.
 
-```text
-backend/    Standalone backend project
-cmake/      Monorepo orchestration support
-docs/       Architecture and implementation records
-```
+The RCC Project currently includes rcc, proofsearch, ricochet, raytracing,
+rv64cpu, muqemu, and other projects.
 
-Future frontend, middle-end, and driver projects will be sibling components.
+rcc
+    A C compiler project, including a frontend, middle end, and backend.
 
-## Build the enabled projects
+proofsearch
+    An automated theorem prover for first-order logic using
+    clause-saturation-based proof search.
 
-RCC requires Clang and C++23. Both Ninja and Unix Makefiles are supported.
+ricochet
+    A terminal-based web browser.
 
-```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_CXX_COMPILER=clang++ \
-  -DRCC_ENABLE_PROJECTS=backend
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
+raytracing
+    A ray tracer written in modern C++.
 
-## Build the backend independently
+rv64cpu
+    An RV64 RISC-V processor core written in SystemVerilog.
 
-```bash
-cmake -S backend -B build-backend -G Ninja \
-  -DCMAKE_CXX_COMPILER=clang++
-cmake --build build-backend
-ctest --test-dir build-backend --output-on-failure
-```
+muqemu
+    A simplified model of QEMU written in modern C++.
 
-Replace `Ninja` with `Unix Makefiles` to build with Make.
+Projects for binary utilities, memory allocators, and other systems software
+will be added to the repository as subprojects.
 
-Developer checks are exposed as `rcc-backend-format-check`,
-`rcc-backend-tidy`, and `rcc-backend-analyze` in a standalone backend build.
-The monorepo exposes the aggregate `format-check`, `tidy`, and `analyze`
-targets.
+Each subproject maintains its own build entry points, build dependencies,
+and runtime behavior.
 
-## License
-
-RCC is free software distributed under GPL-3.0-or-later. See `LICENSE`.
+For specific build instructions, see the build files and documentation in
+the corresponding subproject directory.
