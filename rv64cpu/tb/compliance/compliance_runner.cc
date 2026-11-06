@@ -27,10 +27,12 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <verilated.h>
 
 #include "Vrichard_core.h"
+#include "Vrichard_core___024root.h"
 
 namespace {
 
@@ -38,6 +40,7 @@ struct Options {
     uint64_t max_cycles = 2000;
     std::string elf_path;
     std::string signature_path;
+    uint64_t trace_pc_count = 0;
     bool show_help = false;
 };
 
@@ -49,11 +52,21 @@ struct Symbols {
 
 class ByteMemory {
 public:
+    static constexpr uint64_t UART_THR = 0x10000000ULL;
+    static constexpr uint64_t UART_LSR = 0x10000005ULL;
+    static constexpr uint64_t CLINT_MTIME = 0x0200BFF8ULL;
+
     void write_byte(uint64_t addr, uint8_t value) {
+        if (addr == UART_THR) {
+            return;
+        }
         mem_[addr] = value;
     }
 
     uint8_t read_byte(uint64_t addr) const {
+        if (addr == UART_LSR) {
+            return 0x20;
+        }
         auto it = mem_.find(addr);
         if (it == mem_.end()) {
             return 0;
@@ -186,6 +199,10 @@ Options parse_args(int argc, char** argv) {
             opts.signature_path = argv[++i];
             continue;
         }
+        if (arg == "--trace-pc" && (i + 1) < argc) {
+            opts.trace_pc_count = static_cast<uint64_t>(std::stoull(argv[++i]));
+            continue;
+        }
     }
     return opts;
 }
@@ -194,7 +211,46 @@ void print_help() {
     std::cout
         << "compliance_runner (bootstrap)\n"
         << "Usage:\n"
-        << "  compliance_runner --elf PATH [--max-cycles N] [--signature PATH]\n";
+        << "  compliance_runner --elf PATH [--max-cycles N] [--signature PATH] [--trace-pc N]\n";
+}
+
+std::string hex64(uint64_t value) {
+    std::ostringstream out;
+    out << "0x" << std::hex << std::setfill('0') << std::setw(16) << value;
+    return out.str();
+}
+
+void dump_selected_gprs(const Vrichard_core* top, const char* prefix) {
+    const auto& regs = top->rootp->richard_core__DOT__u_id_stage__DOT__u_regfile__DOT__regs;
+    std::cerr << prefix << ": selected GPRs\n"
+              << "  x2/sp=" << hex64(regs[2])
+              << " x3/gp=" << hex64(regs[3])
+              << " x4/tp=" << hex64(regs[4])
+              << " x5/t0=" << hex64(regs[5]) << "\n"
+              << "  x6/t1=" << hex64(regs[6])
+              << " x7/t2=" << hex64(regs[7])
+              << " x8/s0=" << hex64(regs[8])
+              << " x9/s1=" << hex64(regs[9]) << "\n"
+              << "  x10/a0=" << hex64(regs[10])
+              << " x11/a1=" << hex64(regs[11])
+              << " x20/s4=" << hex64(regs[20])
+              << " x21/s5=" << hex64(regs[21]) << "\n";
+    std::cerr << "  mstatus=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mstatus_reg)
+              << " sstatus=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__sstatus_reg)
+              << " mcause=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mcause_reg)
+              << " mepc=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mepc_reg)
+              << "\n";
+    std::cerr << "  priv=" << static_cast<unsigned>(top->rootp->richard_core__DOT__u_csr_unit__DOT__priv_mode_q)
+              << " medeleg=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__medeleg_reg)
+              << " mideleg=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mideleg_reg)
+              << " mtvec=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mtvec_reg)
+              << " stvec=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__stvec_reg)
+              << "\n";
+    std::cerr << "  mstateen0=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mstateen_reg[0])
+              << " sstateen0=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__sstateen_reg[0])
+              << " menvcfg=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__menvcfg_reg)
+              << " senvcfg=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__senvcfg_reg)
+              << "\n";
 }
 
 bool load_elf64(const std::string& path, ByteMemory* memory, Symbols* symbols) {
@@ -303,20 +359,34 @@ bool load_elf64(const std::string& path, ByteMemory* memory, Symbols* symbols) {
     return true;
 }
 
-void tick(Vrichard_core* top, ByteMemory* memory) {
+void drive_memory_response(Vrichard_core* top, ByteMemory* memory) {
     top->imem_rdata = memory->read_u32(top->imem_addr);
     top->dmem_rdata = top->dmem_read_en ? memory->read_u64(top->dmem_addr & ~0x7ULL) : 0;
-    top->ext_timer_interrupt = 0;
-    top->ext_software_interrupt = 0;
-    top->ext_external_interrupt = 0;
+}
+
+void tick(Vrichard_core* top, ByteMemory* memory) {
+    drive_memory_response(top, memory);
+    top->m_timer_interrupt = 0;
+    top->m_software_interrupt = 0;
+    top->m_external_interrupt = 0;
+    top->s_timer_interrupt = 0;
+    top->s_software_interrupt = 0;
+    top->s_external_interrupt = 0;
 
     top->clk = 0;
+    top->eval();
+    drive_memory_response(top, memory);
     top->eval();
     top->clk = 1;
     top->eval();
 
     if (top->dmem_write_en) {
         memory->write_store(top->dmem_addr, top->dmem_wdata, top->dmem_size);
+        if ((top->dmem_addr <= ByteMemory::CLINT_MTIME + 7ULL) &&
+            (top->dmem_addr + 7ULL >= ByteMemory::CLINT_MTIME)) {
+            top->rootp->richard_core__DOT__u_csr_unit__DOT__time_reg =
+                memory->read_u64(ByteMemory::CLINT_MTIME);
+        }
     }
 }
 
@@ -377,10 +447,152 @@ int main(int argc, char** argv) {
 
     bool saw_tohost = false;
     bool test_pass = false;
+    uint64_t store_trace_printed = 0;
+    uint64_t read_trace_printed = 0;
+    uint64_t wb_trace_printed = 0;
+    uint64_t trap_trace_printed = 0;
+    std::string uart_trace;
+    std::vector<uint64_t> pc_trace;
+    if (opts.trace_pc_count != 0) {
+        pc_trace.reserve(static_cast<size_t>(opts.trace_pc_count));
+    }
+
     for (uint64_t i = 0; i < opts.max_cycles; ++i) {
+        if (opts.trace_pc_count != 0) {
+            if (pc_trace.size() == opts.trace_pc_count) {
+                pc_trace.erase(pc_trace.begin());
+            }
+            pc_trace.push_back(top->imem_addr);
+        }
         tick(top, &memory);
+        if (opts.trace_pc_count != 0 &&
+            top->dmem_read_en &&
+            (top->dmem_addr >= 0x000000008004cd20ULL) &&
+            (top->dmem_addr < 0x000000008004cd40ULL) &&
+            read_trace_printed < 32) {
+            std::cerr << "load cycle=" << i
+                      << " pc=" << hex64(top->imem_addr)
+                      << " addr=" << hex64(top->dmem_addr)
+                      << " rdata=" << hex64(top->dmem_rdata)
+                      << " size=" << static_cast<unsigned>(top->dmem_size)
+                      << "\n";
+            ++read_trace_printed;
+        }
+        if (opts.trace_pc_count != 0 && top->dmem_write_en && top->dmem_addr == ByteMemory::UART_THR) {
+            uart_trace.push_back(static_cast<char>(top->dmem_wdata & 0xFFULL));
+        }
+        if (opts.trace_pc_count != 0 &&
+            top->dmem_write_en &&
+            top->dmem_addr >= 0x00000000800115e0ULL &&
+            top->dmem_addr < 0x0000000080011608ULL) {
+            std::cerr << "scratch-store cycle=" << i
+                      << " pc=" << hex64(top->imem_addr)
+                      << " addr=" << hex64(top->dmem_addr)
+                      << " data=" << hex64(top->dmem_wdata)
+                      << " size=" << static_cast<unsigned>(top->dmem_size)
+                      << "\n";
+        }
+        if (opts.trace_pc_count != 0 &&
+            top->rootp->richard_core__DOT__csr_req &&
+            (((top->rootp->richard_core__DOT__wb_instr_in >> 20) & 0xFFFU) == 0x341 ||
+             ((top->rootp->richard_core__DOT__wb_instr_in >> 20) & 0xFFFU) == 0x141 ||
+             ((top->rootp->richard_core__DOT__wb_instr_in >> 20) & 0xFFFU) == 0x300 ||
+             ((top->rootp->richard_core__DOT__wb_instr_in >> 20) & 0xFFFU) == 0x100)) {
+            std::cerr << "csr cycle=" << i
+                      << " pc=" << hex64(top->rootp->richard_core__DOT__wb_pc_in)
+                      << " addr=0x" << std::hex << std::setw(3) << std::setfill('0')
+                      << ((top->rootp->richard_core__DOT__wb_instr_in >> 20) & 0xFFFU)
+                      << " op=" << std::dec
+                      << static_cast<unsigned>((top->rootp->richard_core__DOT__wb_instr_in >> 12) & 0x7U)
+                      << " rs1=" << hex64(top->rootp->richard_core__DOT__csr_rs1_data)
+                      << " mepc_old=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mepc_reg)
+                      << " sepc_old=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__sepc_reg)
+                      << " instr=0x" << std::hex << std::setw(8) << std::setfill('0')
+                      << top->rootp->richard_core__DOT__wb_instr_in
+                      << std::dec << std::setfill(' ') << "\n";
+        }
+        if (opts.trace_pc_count != 0 &&
+            (top->rootp->richard_core__DOT__trap_ctrl_mret_en ||
+             top->rootp->richard_core__DOT__trap_ctrl_sret_en)) {
+            std::cerr << "xret cycle=" << i
+                      << " pc=" << hex64(top->rootp->richard_core__DOT__wb_pc_in)
+                      << " mret=" << static_cast<unsigned>(top->rootp->richard_core__DOT__trap_ctrl_mret_en)
+                      << " sret=" << static_cast<unsigned>(top->rootp->richard_core__DOT__trap_ctrl_sret_en)
+                      << " target=" << hex64(top->rootp->richard_core__DOT__hu_pc_redirect_target)
+                      << " mepc=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mepc_reg)
+                      << " sepc=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__sepc_reg)
+                      << "\n";
+        }
+        if (opts.trace_pc_count != 0 &&
+            top->rootp->richard_core__DOT__wb_pc_in == 0x000000008000e1b4ULL &&
+            trap_trace_printed < 128) {
+            const auto& regs = top->rootp->richard_core__DOT__u_id_stage__DOT__u_regfile__DOT__regs;
+            const uint64_t sig_ptr = regs[6];
+            std::cerr << "trap-check cycle=" << i
+                      << " t1=" << hex64(sig_ptr)
+                      << " cause=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mcause_reg)
+                      << " mepc=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__mepc_reg)
+                      << " stored_msig=" << hex64(memory.read_u64(0x00000000800115f0ULL))
+                      << " exp_status=" << hex64(memory.read_u64(sig_ptr))
+                      << " exp_cause=" << hex64(memory.read_u64(sig_ptr + 8))
+                      << " exp_epc=" << hex64(memory.read_u64(sig_ptr + 16))
+                      << "\n";
+            ++trap_trace_printed;
+        }
+        if (opts.trace_pc_count != 0 &&
+            (top->rootp->richard_core__DOT__wb_pc_in == 0x000000008000eb84ULL ||
+             top->rootp->richard_core__DOT__wb_pc_in == 0x000000008000eb88ULL ||
+             top->rootp->richard_core__DOT__wb_pc_in == 0x000000008000ebc8ULL ||
+             top->rootp->richard_core__DOT__wb_pc_in == 0x000000008000ebccULL ||
+             top->rootp->richard_core__DOT__wb_pc_in == 0x000000008000ebecULL ||
+             top->rootp->richard_core__DOT__wb_pc_in == 0x000000008000ec60ULL) &&
+            trap_trace_printed < 256) {
+            const auto& regs = top->rootp->richard_core__DOT__u_id_stage__DOT__u_regfile__DOT__regs;
+            std::cerr << "strap-debug cycle=" << i
+                      << " pc=" << hex64(top->rootp->richard_core__DOT__wb_pc_in)
+                      << " sp=" << hex64(regs[2])
+                      << " t1=" << hex64(regs[6])
+                      << " t2=" << hex64(regs[7])
+                      << " s0=" << hex64(regs[8])
+                      << " s1=" << hex64(regs[9])
+                      << " a0=" << hex64(regs[10])
+                      << " a1=" << hex64(regs[11])
+                      << " sscratch=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__sscratch_reg)
+                      << " scause=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__scause_reg)
+                      << " sepc=" << hex64(top->rootp->richard_core__DOT__u_csr_unit__DOT__sepc_reg)
+                      << " mem[Strap_sig]=" << hex64(memory.read_u64(0x00000000800115f0ULL))
+                      << " mem[Ssig_bgn]=" << hex64(memory.read_u64(0x00000000800115d0ULL))
+                      << " mem[Sbase]=" << hex64(memory.read_u64(0x00000000800115b0ULL))
+                      << "\n";
+            ++trap_trace_printed;
+        }
+        if (opts.trace_pc_count != 0 &&
+            top->rootp->richard_core__DOT__wb_reg_write_en_out &&
+            (top->rootp->richard_core__DOT__wb_rd_addr_in == 8 ||
+             top->rootp->richard_core__DOT__wb_rd_addr_in == 4 ||
+             top->rootp->richard_core__DOT__wb_rd_addr_in == 13 ||
+             top->rootp->richard_core__DOT__wb_rd_addr_in == 20) &&
+            wb_trace_printed < 64) {
+            std::cerr << "wb cycle=" << i
+                      << " pc=" << hex64(top->rootp->richard_core__DOT__wb_pc_in)
+                      << " rd=x" << static_cast<unsigned>(top->rootp->richard_core__DOT__wb_rd_addr_in)
+                      << " data=" << hex64(top->rootp->richard_core__DOT__wb_rd_wdata)
+                      << " instr=0x" << std::hex << std::setw(8) << std::setfill('0')
+                      << top->rootp->richard_core__DOT__wb_instr_in
+                      << std::dec << std::setfill(' ') << "\n";
+            ++wb_trace_printed;
+        }
         if (top->dmem_write_en && symbols.tohost != 0) {
             const uint64_t addr = top->dmem_addr;
+            if (opts.trace_pc_count != 0 && store_trace_printed < 128) {
+                std::cerr << "store cycle=" << i
+                          << " pc=" << hex64(top->imem_addr)
+                          << " addr=" << hex64(addr)
+                          << " data=" << hex64(top->dmem_wdata)
+                          << " size=" << static_cast<unsigned>(top->dmem_size)
+                          << "\n";
+                ++store_trace_printed;
+            }
             const bool overlaps_tohost = (addr <= symbols.tohost + 3ULL) && (addr + 7ULL >= symbols.tohost);
             if (overlaps_tohost) {
                 const uint32_t status = static_cast<uint32_t>(memory.read_u64(symbols.tohost) & 0xFFFFFFFFULL);
@@ -400,9 +612,23 @@ int main(int argc, char** argv) {
 
     dump_signature(memory, symbols, opts.signature_path);
 
-    delete top;
+    if (opts.trace_pc_count != 0 && !uart_trace.empty()) {
+        std::cerr << "uart output:\n" << uart_trace << "\n";
+    }
     if (!saw_tohost) {
+        if (!pc_trace.empty()) {
+            std::cerr << "timeout: last " << pc_trace.size() << " fetch PCs\n";
+            for (uint64_t pc : pc_trace) {
+                std::cerr << "  " << hex64(pc) << "\n";
+            }
+            dump_selected_gprs(top, "timeout");
+        }
+        delete top;
         return 3;
     }
+    if (opts.trace_pc_count != 0 && !test_pass) {
+        dump_selected_gprs(top, "fail");
+    }
+    delete top;
     return test_pass ? 0 : 1;
 }

@@ -31,6 +31,18 @@ module alu
     logic [5:0] shamt;
     assign shamt = operand_b[5:0];
 
+    logic signed [XLEN-1:0] operand_a_signed;
+    logic signed [XLEN-1:0] operand_b_signed;
+    logic signed [127:0]    mul_signed_signed;
+    logic signed [127:0]    mul_signed_unsigned;
+    logic [127:0]           mul_unsigned_unsigned;
+
+    assign operand_a_signed     = operand_a;
+    assign operand_b_signed     = operand_b;
+    assign mul_signed_signed    = operand_a_signed * operand_b_signed;
+    assign mul_signed_unsigned  = operand_a_signed * $signed({1'b0, operand_b});
+    assign mul_unsigned_unsigned = operand_a * operand_b;
+
     always_comb begin
         alu_result = '0;
 
@@ -57,6 +69,52 @@ module alu
 
             ALU_OR:   alu_result = operand_a | operand_b;
             ALU_AND:  alu_result = operand_a & operand_b;
+
+            ALU_MUL: begin
+                alu_result = mul_signed_signed[XLEN-1:0];
+            end
+
+            ALU_MULH: begin
+                alu_result = mul_signed_signed[127:64];
+            end
+
+            ALU_MULHSU: begin
+                alu_result = mul_signed_unsigned[127:64];
+            end
+
+            ALU_MULHU: begin
+                alu_result = mul_unsigned_unsigned[127:64];
+            end
+
+            ALU_DIV: begin
+                if (operand_b == '0) begin
+                    alu_result = {XLEN{1'b1}};
+                end else if ((operand_a == 64'h8000_0000_0000_0000) &&
+                             (operand_b == 64'hFFFF_FFFF_FFFF_FFFF)) begin
+                    alu_result = operand_a;
+                end else begin
+                    alu_result = $unsigned(operand_a_signed / operand_b_signed);
+                end
+            end
+
+            ALU_DIVU: begin
+                alu_result = (operand_b == '0) ? {XLEN{1'b1}} : (operand_a / operand_b);
+            end
+
+            ALU_REM: begin
+                if (operand_b == '0) begin
+                    alu_result = operand_a;
+                end else if ((operand_a == 64'h8000_0000_0000_0000) &&
+                             (operand_b == 64'hFFFF_FFFF_FFFF_FFFF)) begin
+                    alu_result = '0;
+                end else begin
+                    alu_result = $unsigned(operand_a_signed % operand_b_signed);
+                end
+            end
+
+            ALU_REMU: begin
+                alu_result = (operand_b == '0) ? operand_a : (operand_a % operand_b);
+            end
 
             default:  alu_result = '0;
         endcase

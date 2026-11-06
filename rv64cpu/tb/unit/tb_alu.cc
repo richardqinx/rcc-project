@@ -22,16 +22,24 @@
 #include <verilated.h>
 
 enum AluOp {
-    ALU_ADD  = 0b0000,
-    ALU_SUB  = 0b1000,
-    ALU_SLL  = 0b0001,
-    ALU_SLT  = 0b0010,
-    ALU_SLTU = 0b0011,
-    ALU_XOR  = 0b0100,
-    ALU_SRL  = 0b0101,
-    ALU_SRA  = 0b1101,
-    ALU_OR   = 0b0110,
-    ALU_AND  = 0b0111
+    ALU_ADD    = 0,
+    ALU_SUB    = 8,
+    ALU_SLL    = 1,
+    ALU_SLT    = 2,
+    ALU_SLTU   = 3,
+    ALU_XOR    = 4,
+    ALU_SRL    = 5,
+    ALU_SRA    = 13,
+    ALU_OR     = 6,
+    ALU_AND    = 7,
+    ALU_MUL    = 16,
+    ALU_MULH   = 17,
+    ALU_MULHSU = 18,
+    ALU_MULHU  = 19,
+    ALU_DIV    = 20,
+    ALU_DIVU   = 21,
+    ALU_REM    = 22,
+    ALU_REMU   = 23
 };
 
 void test_alu(Valu* alu, uint8_t op, uint64_t rs1, uint64_t rs2, uint64_t expected, const char* test_name) {
@@ -104,6 +112,21 @@ int main(int argc, char** argv) {
     // SLT Edge Cases
     test_alu(alu, ALU_SLT, 0x8000000000000000ULL, 0x7FFFFFFFFFFFFFFFULL, 1, "SLT_Min_max");
     test_alu(alu, ALU_SLT, 0x7FFFFFFFFFFFFFFFULL, 0x8000000000000000ULL, 0, "SLT_Max_Min");
+
+    // M extension
+    test_alu(alu, ALU_MUL, 7, 6, 42, "MUL_Positive");
+    test_alu(alu, ALU_MUL, 0xFFFFFFFFFFFFFFFFULL, 2, 0xFFFFFFFFFFFFFFFEULL, "MUL_NegativeLow");
+    test_alu(alu, ALU_MULH, 0xFFFFFFFFFFFFFFFFULL, 2, 0xFFFFFFFFFFFFFFFFULL, "MULH_Negative");
+    test_alu(alu, ALU_MULHU, 0xFFFFFFFFFFFFFFFFULL, 2, 1, "MULHU_UnsignedHigh");
+    test_alu(alu, ALU_DIV, (uint64_t)-21, 4, (uint64_t)-5, "DIV_SignedTruncTowardZero");
+    test_alu(alu, ALU_DIVU, 21, 4, 5, "DIVU");
+    test_alu(alu, ALU_REM, (uint64_t)-21, 4, (uint64_t)-1, "REM_Signed");
+    test_alu(alu, ALU_REMU, 21, 4, 1, "REMU");
+    test_alu(alu, ALU_DIV, 123, 0, 0xFFFFFFFFFFFFFFFFULL, "DIV_ByZero");
+    test_alu(alu, ALU_REM, 123, 0, 123, "REM_ByZero");
+    test_alu(alu, ALU_DIV, 0x8000000000000000ULL, 0xFFFFFFFFFFFFFFFFULL,
+             0x8000000000000000ULL, "DIV_Overflow");
+    test_alu(alu, ALU_REM, 0x8000000000000000ULL, 0xFFFFFFFFFFFFFFFFULL, 0, "REM_Overflow");
     std::cout << "----------------------------------" << std::endl;
     std::cout << "\033[32mAll tests passed!\033[0m" << std::endl;
     std::cout << "----------------------------------" << std::endl;

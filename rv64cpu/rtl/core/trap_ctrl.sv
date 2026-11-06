@@ -29,6 +29,7 @@ module trap_ctrl
     input  logic                  trap_is_ebreak,
     input  logic                  trap_is_mret,
     input  logic                  trap_is_sret,
+    input  logic                  trap_instr_access_fault,
     input  logic                  trap_load_fault,
     input  logic                  trap_store_fault,
     input  logic                  trap_instr_page_fault,
@@ -37,13 +38,13 @@ module trap_ctrl
     input  logic [XLEN-1:0]       trap_bad_addr,
     input  logic [INST_WIDTH-1:0] trap_bad_instr,
 
-    // Interrupt pin from external source (asynchronous signal)
-    input  logic                  ext_timer_interrupt,       // M-Mode Machine Timer Interrupt (MTIP)
-    input  logic                  ext_software_interrupt,    // M-Mode Software Interrupt (MSIP)
-    input  logic                  ext_external_interrupt,    // M-Mode External Interrupt (MEIP)
-
     // Status read from CSR Unit
     input  logic                  csr_mstatus_mie,    // Global interrupt enable (MIE)
+    input  logic [XLEN-1:0]       csr_mie,            // Machine interrupt enable CSR
+    input  logic [XLEN-1:0]       csr_sie,            // Supervisor interrupt enable CSR view
+    input  logic [XLEN-1:0]       csr_mip,            // Machine interrupt pending CSR
+    input  logic [XLEN-1:0]       csr_sip,            // Supervisor interrupt pending CSR view
+    input  logic [XLEN-1:0]       csr_mstatus,        // Machine status CSR
     input  logic [XLEN-1:0]       csr_mtvec,          // Machine trap vector
     input  logic [XLEN-1:0]       csr_stvec,          // Supervisor trap vector
     input  logic [XLEN-1:0]       csr_mepc,           // Machine exception PC (for MRET)
@@ -74,20 +75,40 @@ module trap_ctrl
     } priv_mode_t;
 
     localparam logic [XLEN-1:0] INTERRUPT_BIT = {1'b1, {(XLEN-1){1'b0}}};
+    localparam int INTERRUPT_M_SOFTWARE_BIT = int'(INTERRUPT_M_SOFTWARE);
+    localparam int INTERRUPT_M_TIMER_BIT    = int'(INTERRUPT_M_TIMER);
+    localparam int INTERRUPT_M_EXTERNAL_BIT = int'(INTERRUPT_M_EXTERNAL);
+    localparam int INTERRUPT_S_SOFTWARE_BIT = int'(INTERRUPT_S_SOFTWARE);
+    localparam int INTERRUPT_S_TIMER_BIT    = int'(INTERRUPT_S_TIMER);
+    localparam int INTERRUPT_S_EXTERNAL_BIT = int'(INTERRUPT_S_EXTERNAL);
+    localparam int MSTATUS_SIE_BIT = 1;
+    localparam int MSTATUS_TSR_BIT = 22;
 
     logic                 has_sync_exception;
     logic [XLEN-1:0]      sync_cause;
     logic [XLEN-1:0]      sync_mtval;
     logic [XLEN-1:0]      illegal_instr_value;
+    logic                 sret_tsr_illegal;
 
     assign illegal_instr_value = {{(XLEN-INST_WIDTH){1'b0}}, trap_bad_instr};
+    assign sret_tsr_illegal    = trap_is_sret &&
+                                  (priv_mode_t'(csr_priv_mode) == PRIV_MODE_S) &&
+                                  csr_mstatus[MSTATUS_TSR_BIT];
 
     always_comb begin
         has_sync_exception = 1'b0;
         sync_cause         = '0;
         sync_mtval         = '0;
 
-        if (trap_illegal_instr) begin
+        if (trap_instr_access_fault) begin
+            has_sync_exception = 1'b1;
+            sync_cause         = EXC_INST_FAULT;
+            sync_mtval         = trap_bad_addr;
+        end else if (trap_instr_page_fault) begin
+            has_sync_exception = 1'b1;
+            sync_cause         = EXC_INSTR_PAGE_FAULT;
+            sync_mtval         = trap_bad_addr;
+        end else if (trap_illegal_instr || sret_tsr_illegal) begin
             has_sync_exception = 1'b1;
             sync_cause         = EXC_INST_ILLEGAL;
             sync_mtval         = illegal_instr_value;
@@ -111,10 +132,6 @@ module trap_ctrl
             has_sync_exception = 1'b1;
             sync_cause         = EXC_STORE_FAULT;
             sync_mtval         = trap_bad_addr;
-        end else if (trap_instr_page_fault) begin
-            has_sync_exception = 1'b1;
-            sync_cause         = EXC_INSTR_PAGE_FAULT;
-            sync_mtval         = trap_bad_addr;
         end else if (trap_load_page_fault) begin
             has_sync_exception = 1'b1;
             sync_cause         = EXC_LOAD_PAGE_FAULT;
@@ -126,25 +143,76 @@ module trap_ctrl
         end
     end
 
-    // Interrupt Detection - Asynchronous, Protected by MIE
+    // Interrupt Detection - Asynchronous, gated by mie and privilege global-enable rules.
     logic               has_interrupt;
     logic [XLEN-1:0]    interrupt_cause;
+    logic               machine_interrupts_globally_enabled;
+    logic               supervisor_interrupts_globally_enabled;
+    logic               interrupt_targets_s_mode;
+
+    assign machine_interrupts_globally_enabled = (priv_mode_t'(csr_priv_mode) != PRIV_MODE_M) ||
+                                                 csr_mstatus_mie;
+    assign supervisor_interrupts_globally_enabled = (priv_mode_t'(csr_priv_mode) == PRIV_MODE_U) ||
+                                                    ((priv_mode_t'(csr_priv_mode) == PRIV_MODE_S) &&
+                                                     csr_mstatus[MSTATUS_SIE_BIT]);
+
+    function automatic logic interrupt_pending_enabled(
+        input logic [XLEN-1:0] pending,
+        input logic [XLEN-1:0] enable,
+        input int              cause
+    );
+        interrupt_pending_enabled = pending[cause[5:0]] && enable[cause[5:0]];
+    endfunction
+
+    task automatic take_interrupt(
+        input  logic [XLEN-1:0] cause,
+        input  logic            to_s_mode,
+        output logic            taken,
+        output logic [XLEN-1:0] taken_cause,
+        output logic            taken_targets_s_mode
+    );
+        taken                = 1'b1;
+        taken_cause          = INTERRUPT_BIT | cause;
+        taken_targets_s_mode = to_s_mode;
+    endtask
+
+    function automatic logic s_interrupt_cause_delegated(input int cause);
+        s_interrupt_cause_delegated = csr_mideleg[cause[5:0]];
+    endfunction
+
+    function automatic logic s_interrupt_cause_takeable(input int cause);
+        if (s_interrupt_cause_delegated(cause)) begin
+            s_interrupt_cause_takeable = supervisor_interrupts_globally_enabled &&
+                                         interrupt_pending_enabled(csr_sip, csr_sie, cause);
+        end else begin
+            s_interrupt_cause_takeable = machine_interrupts_globally_enabled &&
+                                         interrupt_pending_enabled(csr_mip, csr_mie, cause);
+        end
+    endfunction
 
     always_comb begin
-        has_interrupt = 1'b0;
-        interrupt_cause = '0;
+        has_interrupt             = 1'b0;
+        interrupt_cause           = '0;
+        interrupt_targets_s_mode  = 1'b0;
 
-        if (csr_mstatus_mie) begin
-            if (ext_external_interrupt) begin
-                has_interrupt = 1'b1;
-                interrupt_cause = INTERRUPT_BIT | INTERRUPT_M_EXTERNAL;
-            end else if (ext_software_interrupt) begin
-                has_interrupt = 1'b1;
-                interrupt_cause = INTERRUPT_BIT | INTERRUPT_M_SOFTWARE;
-            end else if (ext_timer_interrupt) begin
-                has_interrupt = 1'b1;
-                interrupt_cause = INTERRUPT_BIT | INTERRUPT_M_TIMER;
-            end
+        if (machine_interrupts_globally_enabled &&
+            interrupt_pending_enabled(csr_mip, csr_mie, INTERRUPT_M_EXTERNAL_BIT)) begin
+            take_interrupt(INTERRUPT_M_EXTERNAL, 1'b0, has_interrupt, interrupt_cause, interrupt_targets_s_mode);
+        end else if (machine_interrupts_globally_enabled &&
+                     interrupt_pending_enabled(csr_mip, csr_mie, INTERRUPT_M_SOFTWARE_BIT)) begin
+            take_interrupt(INTERRUPT_M_SOFTWARE, 1'b0, has_interrupt, interrupt_cause, interrupt_targets_s_mode);
+        end else if (machine_interrupts_globally_enabled &&
+                     interrupt_pending_enabled(csr_mip, csr_mie, INTERRUPT_M_TIMER_BIT)) begin
+            take_interrupt(INTERRUPT_M_TIMER, 1'b0, has_interrupt, interrupt_cause, interrupt_targets_s_mode);
+        end else if (s_interrupt_cause_takeable(INTERRUPT_S_EXTERNAL_BIT)) begin
+            take_interrupt(INTERRUPT_S_EXTERNAL, s_interrupt_cause_delegated(INTERRUPT_S_EXTERNAL_BIT),
+                           has_interrupt, interrupt_cause, interrupt_targets_s_mode);
+        end else if (s_interrupt_cause_takeable(INTERRUPT_S_SOFTWARE_BIT)) begin
+            take_interrupt(INTERRUPT_S_SOFTWARE, s_interrupt_cause_delegated(INTERRUPT_S_SOFTWARE_BIT),
+                           has_interrupt, interrupt_cause, interrupt_targets_s_mode);
+        end else if (s_interrupt_cause_takeable(INTERRUPT_S_TIMER_BIT)) begin
+            take_interrupt(INTERRUPT_S_TIMER, s_interrupt_cause_delegated(INTERRUPT_S_TIMER_BIT),
+                           has_interrupt, interrupt_cause, interrupt_targets_s_mode);
         end
     end 
 
@@ -161,10 +229,17 @@ module trap_ctrl
     logic [5:0]      trap_cause_index;
     logic            delegate_to_s;
     logic [XLEN-1:0] deleg_mask;
+    logic            machine_interrupt_cause;
 
     assign trap_cause_index = trap_cause_value[5:0];
     assign deleg_mask       = trap_is_interrupt ? csr_mideleg : csr_medeleg;
-    assign delegate_to_s    = trap_trigger && (priv_mode_t'(csr_priv_mode) != PRIV_MODE_M) && deleg_mask[trap_cause_index];
+    assign machine_interrupt_cause = trap_is_interrupt &&
+                                     ((trap_cause_index == INTERRUPT_M_SOFTWARE_BIT[5:0]) ||
+                                      (trap_cause_index == INTERRUPT_M_TIMER_BIT[5:0]) ||
+                                      (trap_cause_index == INTERRUPT_M_EXTERNAL_BIT[5:0]));
+    assign delegate_to_s    = trap_trigger && (priv_mode_t'(csr_priv_mode) != PRIV_MODE_M) &&
+                              ((trap_is_interrupt && interrupt_targets_s_mode) ||
+                               (!trap_is_interrupt && deleg_mask[trap_cause_index] && !machine_interrupt_cause));
     assign trap_to_s_mode   = delegate_to_s;
 
     assign trap_mcause = trap_trigger ? trap_cause_value : '0;

@@ -24,11 +24,14 @@ module wb_stage
     // Inputs from MEM/WB pipeline register
     input  logic [XLEN-1:0]        mem_wb_alu_result,
     input  logic [XLEN-1:0]        mem_wb_mem_rdata,
+    input  logic [XLEN-1:0]        mem_wb_fp_result,
+    input  logic [4:0]             mem_wb_fp_fflags,
     input  logic [XLEN-1:0]        mem_wb_pc,
     input  logic [XLEN-1:0]        mem_wb_pc_plus_4,
     input  logic [INST_WIDTH-1:0]  mem_wb_instr,
     
     input  logic                   mem_wb_reg_write_en,
+    input  logic                   mem_wb_fp_reg_write_en,
     input  logic [4:0]             mem_wb_rd_addr,
     input  logic [1:0]             mem_wb_wb_sel,
 
@@ -43,8 +46,12 @@ module wb_stage
     input  logic                   mem_wb_is_ebreak,
     input  logic                   mem_wb_is_mret,
     input  logic                   mem_wb_is_sret,
+    input  logic                   mem_wb_instr_access_fault,
+    input  logic                   mem_wb_instr_page_fault,
     input  logic                   mem_wb_load_fault,
     input  logic                   mem_wb_store_fault,
+    input  logic                   mem_wb_load_page_fault,
+    input  logic                   mem_wb_store_page_fault,
     input  logic [XLEN-1:0]        mem_wb_fault_addr,
 
     // Inputs from CSR Unit
@@ -55,6 +62,12 @@ module wb_stage
     output logic [XLEN-1:0]        wb_rd_wdata,
     output logic [4:0]             wb_rd_addr,
     output logic                   wb_reg_write_en,
+    output logic [XLEN-1:0]        wb_fd_wdata,
+    output logic [4:0]             wb_fd_addr,
+    output logic                   wb_fp_write_en,
+    output logic [4:0]             wb_fp_fflags,
+    output logic                   wb_fp_state_dirty,
+    output logic                   wb_fp_fflags_valid,
 
     // Outputs to CSR Unit
     output logic                   csr_req,           // CSR request valid
@@ -69,8 +82,12 @@ module wb_stage
     output logic                   trap_is_mret,
     output logic                   trap_is_sret,
     output logic [XLEN-1:0]        trap_epc,
+    output logic                   trap_instr_access_fault,
+    output logic                   trap_instr_page_fault,
     output logic                   trap_load_fault,
     output logic                   trap_store_fault,
+    output logic                   trap_load_page_fault,
+    output logic                   trap_store_page_fault,
     output logic [XLEN-1:0]        trap_bad_addr,
     output logic [INST_WIDTH-1:0]  trap_bad_instr
 );
@@ -81,7 +98,8 @@ module wb_stage
     logic has_trap;
     logic trap_blocker;
     assign has_trap     = mem_wb_illegal_instr | mem_wb_is_ecall | mem_wb_is_ebreak |
-                          mem_wb_load_fault | mem_wb_store_fault;
+                           mem_wb_instr_access_fault | mem_wb_load_fault | mem_wb_store_fault |
+                           mem_wb_instr_page_fault | mem_wb_load_page_fault | mem_wb_store_page_fault;
     assign trap_blocker = has_trap | csr_illegal_access;
 
     // --------------------------
@@ -119,19 +137,32 @@ module wb_stage
     // We only write back if the instruction didn't trap.
     assign wb_rd_addr      = mem_wb_rd_addr;
     assign wb_reg_write_en = mem_wb_reg_write_en & ~trap_blocker;
+    assign wb_fd_addr      = mem_wb_rd_addr;
+    assign wb_fd_wdata     = mem_wb_fp_result;
+    assign wb_fp_write_en  = mem_wb_fp_reg_write_en & ~trap_blocker;
+    assign wb_fp_fflags    = mem_wb_fp_fflags;
+    assign wb_fp_state_dirty = wb_fp_write_en | ((|mem_wb_fp_fflags) & ~trap_blocker);
+    assign wb_fp_fflags_valid = (|mem_wb_fp_fflags) & ~trap_blocker;
 
     // --------------------------
     // Trap / Exception Signals
     // --------------------------
-    assign trap_illegal_instr = mem_wb_illegal_instr | csr_illegal_access;
-    assign trap_is_ecall      = mem_wb_is_ecall;
-    assign trap_is_ebreak     = mem_wb_is_ebreak;
-    assign trap_is_mret       = mem_wb_is_mret;
-    assign trap_is_sret       = mem_wb_is_sret;
-    assign trap_epc           = mem_wb_pc;
-    assign trap_load_fault    = mem_wb_load_fault;
-    assign trap_store_fault   = mem_wb_store_fault;
-    assign trap_bad_addr      = mem_wb_fault_addr;
-    assign trap_bad_instr     = mem_wb_instr;
+    assign trap_illegal_instr      = (mem_wb_illegal_instr &
+                                      ~mem_wb_instr_access_fault &
+                                      ~mem_wb_instr_page_fault) |
+                                     csr_illegal_access;
+    assign trap_is_ecall           = mem_wb_is_ecall;
+    assign trap_is_ebreak          = mem_wb_is_ebreak;
+    assign trap_is_mret            = mem_wb_is_mret;
+    assign trap_is_sret            = mem_wb_is_sret;
+    assign trap_epc                = mem_wb_pc;
+    assign trap_instr_access_fault = mem_wb_instr_access_fault;
+    assign trap_instr_page_fault   = mem_wb_instr_page_fault;
+    assign trap_load_fault         = mem_wb_load_fault;
+    assign trap_store_fault        = mem_wb_store_fault;
+    assign trap_load_page_fault    = mem_wb_load_page_fault;
+    assign trap_store_page_fault   = mem_wb_store_page_fault;
+    assign trap_bad_addr           = mem_wb_fault_addr;
+    assign trap_bad_instr          = mem_wb_instr;
 
 endmodule

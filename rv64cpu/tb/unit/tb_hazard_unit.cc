@@ -45,6 +45,7 @@ void reset(Vhazard_unit* dut) {
     dut->ex_branch_target = 0;
     dut->mem_rd_addr = 0;
     dut->mem_reg_write_en = 0;
+    dut->mem_result_late = 0;
     dut->mem_stall_req = 0;
     dut->trap_flush_req = 0;
     dut->trap_pc_sel = 0;
@@ -138,6 +139,26 @@ int main(int argc, char** argv) {
     dut->wb_reg_write_en = 1;
     dut->eval();
     check(dut->forward_b_sel == 1, "FwdB_MEM_Priority_Over_WB");
+
+    reset(dut);
+    dut->ex_rs1_addr = 3;
+    dut->mem_rd_addr = 3;
+    dut->mem_reg_write_en = 1;
+    dut->mem_result_late = 1;
+    dut->wb_rd_addr = 3;
+    dut->wb_reg_write_en = 1;
+    dut->eval();
+    check(dut->forward_a_sel == 2, "LateResult_ForwardA_From_WB");
+
+    reset(dut);
+    dut->ex_rs2_addr = 3;
+    dut->mem_rd_addr = 3;
+    dut->mem_reg_write_en = 1;
+    dut->mem_result_late = 1;
+    dut->wb_rd_addr = 3;
+    dut->wb_reg_write_en = 1;
+    dut->eval();
+    check(dut->forward_b_sel == 2, "LateResult_ForwardB_From_WB");
 
     // -----------------------
     // 7. No forward to x0 (hardwired zero)

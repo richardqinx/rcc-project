@@ -26,21 +26,33 @@ module id_stage
     // Inputs from IF Stage (via IF/ID Pipeline Register)
     input  logic [XLEN-1:0]        if_pc,        // PC of the current instruction
     input  logic [INST_WIDTH-1:0]  if_instr,     // The 32-bit instruction fetched
+    input  logic [2:0]             if_instr_len,
     input  logic [1:0]             csr_priv_mode, // Current privilege mode from CSR
+    input  logic                   csr_mstatus_tsr,
+    input  logic                   csr_mstatus_tw,
+    input  logic                   csr_mstatus_tvm,
 
     // Write-back Inputs from WB Stage (to RegFile)
     input  logic                   wb_reg_write_en, // Register write enable from WB stage
     input  logic [4:0]             wb_rd_addr,     // Destination register address from WB
     input  logic [XLEN-1:0]        wb_rd_wdata,    // Data to write back to register
+    input  logic                   wb_fp_write_en,
+    input  logic [4:0]             wb_fd_addr,
+    input  logic [XLEN-1:0]        wb_fd_wdata,
     
     // Outputs to EX Stage
     // (Notice the 'id_' prefix to signify signals leaving the ID stage)
     // Data/Operands
     output logic [XLEN-1:0]        id_pc,          // Pass-through PC for branch/jump calculation
+    output logic [2:0]             id_instr_len,
     output logic [XLEN-1:0]        id_rs1_rdata,   // Source register 1 data
     output logic [XLEN-1:0]        id_rs2_rdata,   // Source register 2 data
+    output logic [XLEN-1:0]        id_fs1_rdata,
+    output logic [XLEN-1:0]        id_fs2_rdata,
+    output logic [XLEN-1:0]        id_fs3_rdata,
     output logic [4:0]             id_rs1_addr,    // Rs1 index (for Forwarding & CSR zimm)
     output logic [4:0]             id_rs2_addr,    // Rs2 index (for Forwarding)
+    output logic [4:0]             id_fs3_addr,
     output logic [XLEN-1:0]        id_imm,         // Sign-extended generic immediate
 
     // Execution Control (ALU & Branch)
@@ -56,6 +68,14 @@ module id_stage
     output logic                   id_is_load,     // 1: Load instruction
     output logic                   id_is_store,    // 1: Store instruction
     output logic [2:0]             id_mem_size,    // Memory access size (Byte/Half/Word/Double)
+    output logic                   id_is_amo,
+    output amo_op_t                id_amo_op,
+    output logic                   id_is_fp,
+    output logic                   id_fp_reg_write_en,
+    output logic                   id_fp_store_data_sel,
+    output fp_op_t                 id_fp_op,
+    output fp_fmt_t                id_fp_fmt,
+    output logic [2:0]             id_fp_rm,
     output logic                   id_reg_write_en,// 1: Instruction will write to a register
     output logic [4:0]             id_rd_addr,     // Destination register index
     output logic [1:0]             id_wb_sel,      // Writeback source (0: ALU, 1: MEM, 2: PC+4)
@@ -76,17 +96,24 @@ module id_stage
     // Internal Wires for connecting sub-modules
     logic [4:0] rs1_addr;
     logic [4:0] rs2_addr;
+    logic [4:0] fs3_addr;
 
     // Pass-through PC and reg indices directly to next stage
     assign id_pc = if_pc;
+    assign id_instr_len = if_instr_len;
     assign id_rs1_addr = rs1_addr;
     assign id_rs2_addr = rs2_addr;
+    assign fs3_addr = if_instr[31:27];
+    assign id_fs3_addr = fs3_addr;
 
     // Instruction Decoder Instantiation
 
     decoder u_decoder (
         .instr          (if_instr),
         .priv_mode      (csr_priv_mode),
+        .mstatus_tsr    (csr_mstatus_tsr),
+        .mstatus_tw     (csr_mstatus_tw),
+        .mstatus_tvm    (csr_mstatus_tvm),
 
         // Outputs to RegFile read ports
         .rs1_addr       (rs1_addr),
@@ -109,6 +136,14 @@ module id_stage
         .is_load        (id_is_load),
         .is_store       (id_is_store),
         .mem_size       (id_mem_size),
+        .is_amo         (id_is_amo),
+        .amo_op         (id_amo_op),
+        .is_fp          (id_is_fp),
+        .fp_reg_write_en(id_fp_reg_write_en),
+        .fp_store_data_sel(id_fp_store_data_sel),
+        .fp_op          (id_fp_op),
+        .fp_fmt         (id_fp_fmt),
+        .fp_rm          (id_fp_rm),
         
         // Writeback control
         .reg_write_en   (id_reg_write_en),
@@ -143,6 +178,20 @@ module id_stage
         .reg_write_en   (wb_reg_write_en),
         .rd_addr        (wb_rd_addr),
         .rd_wdata       (wb_rd_wdata)
+    );
+
+    fp_regfile u_fp_regfile (
+        .clk            (clk),
+        .rst            (rst),
+        .fs1_addr       (rs1_addr),
+        .fs2_addr       (rs2_addr),
+        .fs3_addr       (fs3_addr),
+        .fs1_rdata      (id_fs1_rdata),
+        .fs2_rdata      (id_fs2_rdata),
+        .fs3_rdata      (id_fs3_rdata),
+        .fp_write_en    (wb_fp_write_en),
+        .fd_addr        (wb_fd_addr),
+        .fd_wdata       (wb_fd_wdata)
     );
 
 endmodule

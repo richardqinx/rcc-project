@@ -36,15 +36,24 @@ ARCH_TEST_DIR = PROJECT_ROOT / "sw" / "riscv-arch-test"
 BUILD_DIR = PROJECT_ROOT / "build"
 
 SUITES = {
-    "rv64i": "I",
-    "rv64im": "I,M",
-    "rv64ia": "I,A",
-    "rv64if": "I,F",
-    "rv64id": "I,D",
-    "rv64ic": "I,C",
-    "rv64priv": "S,Sm",
-    "rv64g": "I,M,A,F,D,C",
-    "rv64full": "I,M,A,F,D,C,S,Sm",
+    "i": "I",
+    "m": "M",
+    "a": "Zaamo,Zalrsc",
+    "zicsr": "Zicsr",
+    "zifencei": "Zifencei",
+    "z": "Zicsr,Zifencei",
+    "f": "F",
+    "d": "D",
+    "c": "Zca,Zcd",
+    "priv_s": "S,Sm",
+    "priv_sv_base": "Sv,SvPMP,Svade,Svbare",
+    "priv_sv_optional": "SvZicbo,Svadu,SvaduPMP,Svnapot,Svpbmt",
+    "priv_sv": "Sv,SvPMP,SvZicbo,Svade,Svadu,SvaduPMP,Svbare,Svnapot,Svpbmt",
+    "priv_pmp": "PMPSm,PMPZca,PMPmisaligned",
+    "priv_all": "S,Sm,Sv,SvPMP,SvZicbo,Svade,Svadu,SvaduPMP,Svbare,Svnapot,Svpbmt,PMPSm,PMPZca,PMPmisaligned",
+    "g": "I,M,Zaamo,Zalrsc,F,D,Zicsr,Zifencei",
+    "gc": "I,M,Zaamo,Zalrsc,F,D,Zicsr,Zifencei,Zca,Zcd",
+    "full": "I,M,Zaamo,Zalrsc,F,D,Zicsr,Zifencei,Zca,Zcd,S,Sm,Sv,SvPMP,SvZicbo,Svade,Svadu,SvaduPMP,Svbare,Svnapot,Svpbmt,PMPSm,PMPZca,PMPmisaligned",
 }
 
 
@@ -76,6 +85,44 @@ def discover_elfs(work_dir: Path, config_name: str) -> List[Path]:
     return sorted(elf_root.rglob("*.elf"))
 
 
+def parse_extensions(extensions: str) -> List[str]:
+    return [ext.strip() for ext in extensions.split(",") if ext.strip()]
+
+
+def elf_extension_key(elf: Path, elf_root: Path, selected: set[str]) -> Optional[str]:
+    rel = elf.relative_to(elf_root)
+    parts = rel.parts
+    if len(parts) < 2:
+        return None
+    if parts[0] == "priv":
+        for part in parts[1:]:
+            if part in selected:
+                return part
+        return None
+    if parts[0].startswith("rv") and parts[1] in selected:
+        return parts[1]
+    return None
+
+
+def filter_elfs_by_extensions(elf_files: List[Path], elf_root: Path, extensions: str) -> List[Path]:
+    selected = set(parse_extensions(extensions))
+    filtered = []
+    for elf in elf_files:
+        if elf_extension_key(elf, elf_root, selected) is not None:
+            filtered.append(elf)
+    return filtered
+
+
+def count_elfs_by_extension(elf_files: List[Path], elf_root: Path, extensions: str) -> Dict[str, int]:
+    selected = set(parse_extensions(extensions))
+    counts = {ext: 0 for ext in parse_extensions(extensions)}
+    for elf in elf_files:
+        key = elf_extension_key(elf, elf_root, selected)
+        if key is not None:
+            counts[key] += 1
+    return counts
+
+
 def find_reference_signature(elf_path: Path, work_dir: Path) -> Optional[Path]:
     candidates = [
         elf_path.with_suffix(".signature"),
@@ -83,6 +130,13 @@ def find_reference_signature(elf_path: Path, work_dir: Path) -> Optional[Path]:
         elf_path.with_suffix(".ref"),
         elf_path.parent / "signatures" / f"{elf_path.stem}.signature",
     ]
+
+    elf_root = next((parent for parent in elf_path.parents if parent.name == "elfs"), None)
+    if elf_root is not None:
+        rel = elf_path.relative_to(elf_root)
+        candidates.append(elf_root.parent / "build" / rel.with_suffix(".sig"))
+        candidates.extend(sorted((work_dir / "common").glob(f"*/build/{rel.with_suffix('.sig')}")))
+
     for candidate in candidates:
         if candidate.exists():
             return candidate
@@ -118,6 +172,12 @@ def ensure_submodule_ready(arch_test_dir: Path):
 def ensure_binary(sim_bin: Path, build_dir: Path, verbose: bool):
     if sim_bin.exists():
         return sim_bin
+
+    matches = [p for p in build_dir.rglob(sim_bin.name) if p.is_file() and os.access(p, os.X_OK)]
+    if matches:
+        matches.sort(key=lambda p: len(str(p)))
+        return matches[0]
+
     print(f"Simulation binary not found: {sim_bin}")
     print("Attempting to build compliance_runner target...")
     result = run_cmd(["cmake", "--build", str(build_dir), "--target", "compliance_runner"], verbose=verbose)
@@ -131,10 +191,7 @@ def ensure_binary(sim_bin: Path, build_dir: Path, verbose: bool):
         return sim_bin
 
     matches = [p for p in build_dir.rglob(sim_bin.name) if p.is_file() and os.access(p, os.X_OK)]
-    if len(matches) == 1:
-        print(f"Using discovered simulation binary: {matches[0]}")
-        return matches[0]
-    if len(matches) > 1:
+    if matches:
         matches.sort(key=lambda p: len(str(p)))
         print(f"Using discovered simulation binary: {matches[0]}")
         return matches[0]
@@ -225,7 +282,22 @@ def run_suite(
         print(f"Generating ELFs for suite={suite_name}, extensions={extensions}")
         generate_elfs(ARCH_TEST_DIR, config_file, work_dir, extensions, jobs, verbose)
 
-    elf_files = discover_elfs(work_dir, config_name)
+    elf_root = work_dir / config_name / "elfs"
+    discovered_elfs = discover_elfs(work_dir, config_name)
+    elf_files = filter_elfs_by_extensions(discovered_elfs, elf_root, extensions)
+
+    if max_tests == 0:
+        elf_counts = count_elfs_by_extension(elf_files, elf_root, extensions)
+        missing_extensions = [ext for ext, count in elf_counts.items() if count == 0]
+        if missing_extensions:
+            print("No generated ELF files for requested extensions:")
+            for ext in missing_extensions:
+                print(f"  {ext}")
+            print("Generated ELF counts:")
+            for ext, count in elf_counts.items():
+                print(f"  {ext:16s} {count}")
+            return False
+
     if max_tests > 0:
         elf_files = elf_files[:max_tests]
 
@@ -246,6 +318,8 @@ def run_suite(
         rel = elf.relative_to(work_dir / config_name / "elfs")
         sig_path = signature_root / rel.with_suffix(".signature")
         sig_path.parent.mkdir(parents=True, exist_ok=True)
+        if sig_path.exists():
+            sig_path.unlink()
 
         if verbose:
             print(f"[{idx}/{len(elf_files)}] {rel}")
@@ -267,13 +341,19 @@ def run_suite(
             print(f"FAIL {rel} (signature not generated)")
             continue
 
-        if run_result.returncode not in (0, 3):
+        ref_sig = find_reference_signature(elf, work_dir)
+        if run_result.returncode != 0:
             failed += 1
-            if not verbose:
-                print(f"FAIL {rel} (runner exit={run_result.returncode})")
+            if ref_sig is None:
+                no_reference += 1
+                print(f"FAIL {rel} (runner exit={run_result.returncode}, no reference signature)")
+            else:
+                if compare_text_files(sig_path, ref_sig):
+                    print(f"FAIL {rel} (runner exit={run_result.returncode}, signature matched {ref_sig})")
+                else:
+                    print(f"FAIL {rel} (runner exit={run_result.returncode}, signature mismatch against {ref_sig})")
             continue
 
-        ref_sig = find_reference_signature(elf, work_dir)
         if ref_sig is None:
             no_reference += 1
             if require_reference:
@@ -287,7 +367,10 @@ def run_suite(
             passed += 1
         else:
             failed += 1
-            print(f"FAIL {rel} (signature mismatch against {ref_sig})")
+            if run_result.returncode != 0:
+                print(f"FAIL {rel} (runner exit={run_result.returncode}, signature mismatch against {ref_sig})")
+            else:
+                print(f"FAIL {rel} (signature mismatch against {ref_sig})")
 
     print("=" * 60)
     print(f"Suite: {suite_name}")
@@ -315,13 +398,18 @@ def main():
         default="build/compliance_work",
         help="Working directory for generated ELFs",
     )
-    parser.add_argument("--max-cycles", type=int, default=2000, help="Cycles per test for compliance runner")
+    parser.add_argument("--max-cycles", type=int, default=500000, help="Cycles per test for compliance runner")
     parser.add_argument("--max-tests", type=int, default=0, help="Limit number of ELFs to run (0 = all)")
     parser.add_argument("--jobs", type=int, default=0, help="Parallel jobs for ACT test generation")
     parser.add_argument(
         "--require-reference",
         action="store_true",
-        help="Fail tests when reference signature is missing",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--allow-missing-reference",
+        action="store_true",
+        help="Pass tests without reference signatures when the runner exits successfully",
     )
     parser.add_argument(
         "--keep-work",
@@ -363,7 +451,7 @@ def main():
             max_cycles=args.max_cycles,
             max_tests=args.max_tests,
             jobs=args.jobs,
-            require_reference=args.require_reference,
+            require_reference=not args.allow_missing_reference,
             keep_work=args.keep_work,
             skip_generate=args.skip_generate,
             verbose=args.verbose,

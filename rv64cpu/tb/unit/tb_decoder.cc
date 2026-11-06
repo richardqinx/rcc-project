@@ -225,6 +225,55 @@ int main(int argc, char** argv) {
     CHECK(dut, alu_op,       8,  "SUBW");      // ALU_SUB
     CHECK(dut, is_word_op,   1,  "SUBW");
 
+    decode(dut, 0x023100B3, "MUL x1, x2, x3");
+    CHECK(dut, alu_op,       16, "MUL");
+    CHECK(dut, reg_write_en, 1,  "MUL");
+    CHECK(dut, illegal_instr,0,  "MUL");
+
+    decode(dut, 0x023140B3, "DIV x1, x2, x3");
+    CHECK(dut, alu_op,       20, "DIV");
+    CHECK(dut, illegal_instr,0,  "DIV");
+
+    decode(dut, 0x023160B3, "REM x1, x2, x3");
+    CHECK(dut, alu_op,       22, "REM");
+    CHECK(dut, illegal_instr,0,  "REM");
+
+    decode(dut, 0x023100BB, "MULW x1, x2, x3");
+    CHECK(dut, alu_op,       16, "MULW");
+    CHECK(dut, is_word_op,   1,  "MULW");
+    CHECK(dut, illegal_instr,0,  "MULW");
+
+    decode(dut, 0x0021A0AF, "AMOADD.W x1, x2, (x3)");
+    CHECK(dut, is_amo,       1,  "AMOADD.W");
+    CHECK(dut, amo_op,       4,  "AMOADD.W");
+    CHECK(dut, mem_size,     2,  "AMOADD.W");
+    CHECK(dut, wb_sel,       1,  "AMOADD.W");
+    CHECK(dut, reg_write_en, 1,  "AMOADD.W");
+    CHECK(dut, illegal_instr,0,  "AMOADD.W");
+
+    decode(dut, 0x100332AF, "LR.D x5, (x6)");
+    CHECK(dut, is_amo,       1,  "LR.D");
+    CHECK(dut, amo_op,       1,  "LR.D");
+    CHECK(dut, mem_size,     3,  "LR.D");
+    CHECK(dut, rs2_addr,     0,  "LR.D");
+    CHECK(dut, illegal_instr,0,  "LR.D");
+
+    decode(dut, 0x1884B3AF, "SC.D x7, x8, (x9)");
+    CHECK(dut, is_amo,       1,  "SC.D");
+    CHECK(dut, amo_op,       2,  "SC.D");
+    CHECK(dut, mem_size,     3,  "SC.D");
+    CHECK(dut, illegal_instr,0,  "SC.D");
+
+    decode(dut, 0x0EB6252F, "AMOSWAP.W.AQRL x10, x11, (x12)");
+    CHECK(dut, is_amo,       1,  "AMOSWAP.W.AQRL");
+    CHECK(dut, amo_op,       3,  "AMOSWAP.W.AQRL");
+    CHECK(dut, illegal_instr,0,  "AMOSWAP.W.AQRL");
+
+    decode(dut, 0x105332AF, "Illegal LR.D with rs2 != x0");
+    CHECK(dut, is_amo,       0,  "Illegal LR.D");
+    CHECK(dut, reg_write_en, 0,  "Illegal LR.D");
+    CHECK(dut, illegal_instr,1,  "Illegal LR.D");
+
     // 19. CSRRW x1, mstatus(0x300), x2
     //     imm=001100000000 rs1=00010 funct3=001 rd=00001 op=1110011
     //     Tests: is_csr, csr_op=funct3, reg_write=1

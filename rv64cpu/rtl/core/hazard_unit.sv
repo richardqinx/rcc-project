@@ -36,6 +36,7 @@ module hazard_unit
     input  logic [4:0]  ex_rd_addr,
     input  logic        ex_reg_write_en,
     input  logic        ex_is_load,
+    input  logic        ex_is_csr,
     input  logic        ex_branch_taken,
     input  logic [XLEN-1:0] ex_branch_target,
 
@@ -44,6 +45,8 @@ module hazard_unit
     // -----------------------
     input  logic [4:0]  mem_rd_addr,
     input  logic        mem_reg_write_en,
+    input  logic        mem_result_late,
+    input  logic        mem_is_csr,
     input  logic        mem_stall_req,       // D-Cache miss or memory busy
 
     // -----------------------
@@ -96,7 +99,7 @@ module hazard_unit
 
     // Operand A (ex_rs1_addr)
     always_comb begin
-        if (mem_reg_write_en && (mem_rd_addr != 5'b0) && (mem_rd_addr == ex_rs1_addr)) begin
+        if (mem_reg_write_en && !mem_result_late && (mem_rd_addr != 5'b0) && (mem_rd_addr == ex_rs1_addr)) begin
             forward_a_sel = 2'b01; // Forward from MEM stage
         end else if (wb_reg_write_en && (wb_rd_addr != 5'b0) && (wb_rd_addr == ex_rs1_addr)) begin
             forward_a_sel = 2'b10; // Forward from WB stage
@@ -107,7 +110,7 @@ module hazard_unit
 
     // Operand B (ex_rs2_addr)
     always_comb begin
-        if (mem_reg_write_en && (mem_rd_addr != 5'b0) && (mem_rd_addr == ex_rs2_addr)) begin
+        if (mem_reg_write_en && !mem_result_late && (mem_rd_addr != 5'b0) && (mem_rd_addr == ex_rs2_addr)) begin
             forward_b_sel = 2'b01; // Forward from MEM stage
         end else if (wb_reg_write_en && (wb_rd_addr != 5'b0) && (wb_rd_addr == ex_rs2_addr)) begin
             forward_b_sel = 2'b10; // Forward from WB stage
@@ -125,6 +128,12 @@ module hazard_unit
     logic load_use_stall;
     assign load_use_stall = ex_is_load && (ex_rd_addr != 5'b0) &&
                             ((ex_rd_addr == id_rs1_addr) || (ex_rd_addr == id_rs2_addr));
+
+    logic csr_use_stall;
+    assign csr_use_stall = ((ex_is_csr && ex_reg_write_en && (ex_rd_addr != 5'b0) &&
+                             ((ex_rd_addr == id_rs1_addr) || (ex_rd_addr == id_rs2_addr))) ||
+                            (mem_is_csr && mem_reg_write_en && (mem_rd_addr != 5'b0) &&
+                             ((mem_rd_addr == id_rs1_addr) || (mem_rd_addr == id_rs2_addr))));
 
     // -----------------------
     // PC Redirect Selection (Trap has top priority)
@@ -168,8 +177,9 @@ module hazard_unit
                 ex_mem_stall_en = 1'b1;
             end
 
-            // (2) Load-Use stall: freeze IF and IF/ID, insert bubble into ID/EX
-            if (load_use_stall && !mem_stall_req) begin
+            // (2) Value-use stall: freeze IF and IF/ID, insert bubble into ID/EX.
+            // Loads and CSR reads both produce their register result after EX.
+            if ((load_use_stall || csr_use_stall) && !mem_stall_req) begin
                 if_stall_en    = 1'b1;
                 if_id_stall_en = 1'b1;
                 id_ex_flush_en = 1'b1;

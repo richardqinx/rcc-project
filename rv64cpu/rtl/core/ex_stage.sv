@@ -63,14 +63,20 @@ module ex_stage
             // Shift operations require specific 32-bit extension forms
             if (ex_alu_op == ALU_SRA)
                 alu_operand_a = { {32{alu_mux_a[31]}}, alu_mux_a[31:0] }; // Sign extend for arithmetic shift
-            else if (ex_alu_op == ALU_SRL)
+            else if ((ex_alu_op == ALU_SRL) || (ex_alu_op == ALU_DIVU) || (ex_alu_op == ALU_REMU))
                 alu_operand_a = { 32'b0, alu_mux_a[31:0] };              // Zero extend for logical shift
+            else if ((ex_alu_op == ALU_DIV) || (ex_alu_op == ALU_REM))
+                alu_operand_a = { {32{alu_mux_a[31]}}, alu_mux_a[31:0] };
             else
                 alu_operand_a = alu_mux_a;                               // ADDW/SUBW/SLLW don't care about upper bits
             
             // RV32 shift amount is strictly 5 bits (0-31), ignoring bit 5 which might be set in 64-bit registers
             if (ex_alu_op == ALU_SLL || ex_alu_op == ALU_SRL || ex_alu_op == ALU_SRA)
                 alu_operand_b = { 59'b0, alu_mux_b[4:0] };
+            else if ((ex_alu_op == ALU_DIVU) || (ex_alu_op == ALU_REMU))
+                alu_operand_b = { 32'b0, alu_mux_b[31:0] };
+            else if ((ex_alu_op == ALU_DIV) || (ex_alu_op == ALU_REM))
+                alu_operand_b = { {32{alu_mux_b[31]}}, alu_mux_b[31:0] };
             else
                 alu_operand_b = alu_mux_b;
         end else begin

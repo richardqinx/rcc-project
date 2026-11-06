@@ -15,15 +15,18 @@
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // File path: rtl/core/decoder.sv
-// Description: Instruction decoder for RV64I base ISA + Zicsr + Zifencei
+// Description: Instruction decoder for RV64IMAFD base ISA + Zicsr + Zifencei
 //              Translates 32-bit instructions into control signals for the pipeline.
-//              M/A/F/D/C extensions are marked with TODO stubs.
+//              C is handled by the IF-stage decompressor before this decoder.
 
 module decoder
     import rv64_pkg::*;
 (
     input  logic [31:0]       instr,          // 32-bit instruction
     input  logic [1:0]        priv_mode,      // Current privilege mode from CSR
+    input  logic              mstatus_tsr,    // Trap SRET in S-mode
+    input  logic              mstatus_tw,     // Trap WFI in S/U-mode
+    input  logic              mstatus_tvm,    // Trap supervisor memory-management ops in S-mode
 
     // Register File
     output logic [4:0]        rs1_addr,       // Source register 1 address
@@ -43,6 +46,14 @@ module decoder
     output logic              is_load,        // MEM stage: read from memory
     output logic              is_store,       // MEM stage: write to memory
     output logic [2:0]        mem_size,       // funct3 → byte/half/word/double + sign
+    output logic              is_amo,         // A extension atomic memory operation
+    output amo_op_t           amo_op,         // LR/SC/AMO operation selector
+    output logic              is_fp,
+    output logic              fp_reg_write_en,
+    output logic              fp_store_data_sel,
+    output fp_op_t            fp_op,
+    output fp_fmt_t           fp_fmt,
+    output logic [2:0]        fp_rm,
 
     // Branch / Jump
     output logic              is_branch,      // EX: conditional branch
@@ -83,6 +94,7 @@ module decoder
     logic [6:0] opcode;
     logic [2:0] funct3;
     logic [6:0] funct7;
+    logic [4:0] amo_funct5;
 
     assign opcode   = instr[6:0];
     assign rd_addr  = instr[11:7];
@@ -90,6 +102,7 @@ module decoder
     assign rs1_addr = (opcode == OPCODE_LUI) ? 5'b00000 : instr[19:15];
     assign rs2_addr = instr[24:20];
     assign funct7   = instr[31:25];
+    assign amo_funct5 = instr[31:27];
 
     // ============================
     // Immediate Generation
@@ -145,6 +158,14 @@ module decoder
         is_load       = 1'b0;
         is_store      = 1'b0;
         mem_size      = 3'b0;
+        is_amo        = 1'b0;
+        amo_op        = AMO_NONE;
+        is_fp         = 1'b0;
+        fp_reg_write_en  = 1'b0;
+        fp_store_data_sel = 1'b0;
+        fp_op         = FP_OP_NONE;
+        fp_fmt        = FP_FMT_S;
+        fp_rm         = funct3;
         is_branch     = 1'b0;
         is_jump       = 1'b0;
         branch_op     = 3'b0;
@@ -302,9 +323,17 @@ module decoder
                 alu_src2_sel = 1'b0;    // rs2
 
                 if (funct7 == 7'b0000001) begin
-                    // M extension (MUL/DIV/REM)
-                    // TODO: M extension — set alu_op to MUL/DIV variants
-                    illegal_instr = 1'b1;  // placeholder until M extension is implemented
+                    case (funct3)
+                        3'b000:  alu_op = ALU_MUL;
+                        3'b001:  alu_op = ALU_MULH;
+                        3'b010:  alu_op = ALU_MULHSU;
+                        3'b011:  alu_op = ALU_MULHU;
+                        3'b100:  alu_op = ALU_DIV;
+                        3'b101:  alu_op = ALU_DIVU;
+                        3'b110:  alu_op = ALU_REM;
+                        3'b111:  alu_op = ALU_REMU;
+                        default: illegal_instr = 1'b1;
+                    endcase
                 end else begin
                     case (funct3)
                         3'b000:  alu_op = (funct7[5]) ? ALU_SUB : ALU_ADD;  // SUB / ADD
@@ -330,9 +359,14 @@ module decoder
                 alu_src2_sel = 1'b0;    // rs2
 
                 if (funct7 == 7'b0000001) begin
-                    // M extension 32-bit (MULW/DIVW/REMW)
-                    // TODO: M extension word variants
-                    illegal_instr = 1'b1;
+                    case (funct3)
+                        3'b000:  alu_op = ALU_MUL;
+                        3'b100:  alu_op = ALU_DIV;
+                        3'b101:  alu_op = ALU_DIVU;
+                        3'b110:  alu_op = ALU_REM;
+                        3'b111:  alu_op = ALU_REMU;
+                        default: illegal_instr = 1'b1;
+                    endcase
                 end else begin
                     case (funct3)
                         3'b000:  alu_op = (funct7[5]) ? ALU_SUB : ALU_ADD;  // SUBW / ADDW
@@ -372,18 +406,27 @@ module decoder
                                 illegal_instr = 1'b1;
                         end
                         12'b0001000_00010: begin                  // SRET
-                            if (priv_ge(priv_mode, PRIV_MODE_S))
-                                is_sret = 1'b1;
-                            else
+                            if (!priv_ge(priv_mode, PRIV_MODE_S))
                                 illegal_instr = 1'b1;
+                            else if ((priv_mode == PRIV_MODE_S) && mstatus_tsr)
+                                illegal_instr = 1'b1;
+                            else
+                                is_sret = 1'b1;
                         end
-                        12'b0001000_00101: is_wfi        = 1'b1;   // WFI
+                        12'b0001000_00101: begin                  // WFI
+                            if ((priv_mode != PRIV_MODE_M) && mstatus_tw)
+                                illegal_instr = 1'b1;
+                            else
+                                is_wfi = 1'b1;
+                        end
                         default: begin
                             if (funct7 == 7'b0001001) begin
-                                if (priv_ge(priv_mode, PRIV_MODE_S))
-                                    is_sfence_vma = 1'b1;           // SFENCE.VMA
-                                else
+                                if (!priv_ge(priv_mode, PRIV_MODE_S))
                                     illegal_instr = 1'b1;
+                                else if ((priv_mode == PRIV_MODE_S) && mstatus_tvm)
+                                    illegal_instr = 1'b1;
+                                else
+                                    is_sfence_vma = 1'b1;           // SFENCE.VMA
                             end else begin
                                 illegal_instr = 1'b1;
                             end
@@ -408,21 +451,213 @@ module decoder
             // -----------------
             // AMO — A extension (LR/SC/AMO*)
             OPCODE_AMO: begin
-                // TODO: A extension
-                illegal_instr = 1'b1;
+                reg_write_en = 1'b1;
+                is_amo       = 1'b1;
+                alu_src1_sel = 1'b0;
+                alu_src2_sel = 1'b1;
+                imm          = '0;
+                alu_op       = ALU_ADD;
+                wb_sel       = 2'b01;
+
+                unique case (funct3)
+                    3'b010:  mem_size = 3'b010; // AMO*.W
+                    3'b011:  mem_size = 3'b011; // AMO*.D
+                    default: illegal_instr = 1'b1;
+                endcase
+
+                unique case (amo_funct5)
+                    5'b00010: begin
+                        amo_op = AMO_LR;
+                        if (rs2_addr != 5'd0) begin
+                            illegal_instr = 1'b1;
+                        end
+                    end
+                    5'b00011: amo_op = AMO_SC;
+                    5'b00001: amo_op = AMO_SWAP;
+                    5'b00000: amo_op = AMO_ADD;
+                    5'b00100: amo_op = AMO_XOR;
+                    5'b01100: amo_op = AMO_AND;
+                    5'b01000: amo_op = AMO_OR;
+                    5'b10000: amo_op = AMO_MIN;
+                    5'b10100: amo_op = AMO_MAX;
+                    5'b11000: amo_op = AMO_MINU;
+                    5'b11100: amo_op = AMO_MAXU;
+                    default: begin
+                        amo_op        = AMO_NONE;
+                        illegal_instr = 1'b1;
+                    end
+                endcase
+
+                if (illegal_instr) begin
+                    reg_write_en = 1'b0;
+                    is_amo       = 1'b0;
+                    amo_op       = AMO_NONE;
+                end
             end
 
             // -----------------
             // Floating-Point — F/D extensions
-            OPCODE_LOAD_FP,
-            OPCODE_STORE_FP,
+            OPCODE_LOAD_FP: begin
+                is_fp           = 1'b1;
+                is_load         = 1'b1;
+                fp_reg_write_en = 1'b1;
+                alu_src1_sel    = 1'b0;
+                alu_src2_sel    = 1'b1;
+                imm             = imm_i;
+                alu_op          = ALU_ADD;
+                wb_sel          = 2'b01;
+                unique case (funct3)
+                    3'b010: begin
+                        mem_size = 3'b010; // FLW
+                        fp_fmt   = FP_FMT_S;
+                    end
+                    3'b011: begin
+                        mem_size = 3'b011; // FLD
+                        fp_fmt   = FP_FMT_D;
+                    end
+                    default: begin
+                        is_fp           = 1'b0;
+                        fp_reg_write_en = 1'b0;
+                        illegal_instr   = 1'b1;
+                    end
+                endcase
+            end
+
+            OPCODE_STORE_FP: begin
+                is_fp             = 1'b1;
+                is_store          = 1'b1;
+                fp_store_data_sel = 1'b1;
+                alu_src1_sel      = 1'b0;
+                alu_src2_sel      = 1'b1;
+                imm               = imm_s;
+                alu_op            = ALU_ADD;
+                unique case (funct3)
+                    3'b010: begin
+                        mem_size = 3'b010; // FSW
+                        fp_fmt   = FP_FMT_S;
+                    end
+                    3'b011: begin
+                        mem_size = 3'b011; // FSD
+                        fp_fmt   = FP_FMT_D;
+                    end
+                    default: begin
+                        is_fp             = 1'b0;
+                        fp_store_data_sel = 1'b0;
+                        illegal_instr     = 1'b1;
+                    end
+                endcase
+            end
+
             OPCODE_MADD,
             OPCODE_MSUB,
             OPCODE_NMSUB,
-            OPCODE_NMADD,
+            OPCODE_NMADD: begin
+                is_fp           = 1'b1;
+                fp_reg_write_en = 1'b1;
+                fp_rm           = funct3;
+                unique case (instr[26:25])
+                    2'b00: fp_fmt = FP_FMT_S;
+                    2'b01: fp_fmt = FP_FMT_D;
+                    default: illegal_instr = 1'b1;
+                endcase
+                unique case (opcode)
+                    OPCODE_MADD:  fp_op = FP_OP_MADD;
+                    OPCODE_MSUB:  fp_op = FP_OP_MSUB;
+                    OPCODE_NMSUB: fp_op = FP_OP_NMSUB;
+                    default:      fp_op = FP_OP_NMADD;
+                endcase
+                if (illegal_instr) begin
+                    is_fp           = 1'b0;
+                    fp_reg_write_en = 1'b0;
+                    fp_op           = FP_OP_NONE;
+                end
+            end
+
             OPCODE_OP_FP: begin
-                // TODO: F/D extension
-                illegal_instr = 1'b1;
+                is_fp = 1'b1;
+                fp_rm = funct3;
+                unique case (instr[26:25])
+                    2'b00: fp_fmt = FP_FMT_S;
+                    2'b01: fp_fmt = FP_FMT_D;
+                    default: illegal_instr = 1'b1;
+                endcase
+
+                unique case (funct7)
+                    7'b0000000, 7'b0000001: begin fp_op = FP_OP_ADD; fp_reg_write_en = 1'b1; end
+                    7'b0000100, 7'b0000101: begin fp_op = FP_OP_SUB; fp_reg_write_en = 1'b1; end
+                    7'b0001000, 7'b0001001: begin fp_op = FP_OP_MUL; fp_reg_write_en = 1'b1; end
+                    7'b0001100, 7'b0001101: begin fp_op = FP_OP_DIV; fp_reg_write_en = 1'b1; end
+                    7'b0101100, 7'b0101101: begin
+                        fp_op = FP_OP_SQRT;
+                        fp_reg_write_en = 1'b1;
+                        if (rs2_addr != 5'd0) illegal_instr = 1'b1;
+                    end
+                    7'b0010000, 7'b0010001: begin
+                        fp_reg_write_en = 1'b1;
+                        unique case (funct3)
+                            3'b000: fp_op = FP_OP_SGNJ;
+                            3'b001: fp_op = FP_OP_SGNJN;
+                            3'b010: fp_op = FP_OP_SGNJX;
+                            default: illegal_instr = 1'b1;
+                        endcase
+                    end
+                    7'b0010100, 7'b0010101: begin
+                        fp_reg_write_en = 1'b1;
+                        unique case (funct3)
+                            3'b000: fp_op = FP_OP_MIN;
+                            3'b001: fp_op = FP_OP_MAX;
+                            default: illegal_instr = 1'b1;
+                        endcase
+                    end
+                    7'b0100000, 7'b0100001: begin
+                        fp_op = FP_OP_CVT_F2F;
+                        fp_reg_write_en = 1'b1;
+                    end
+                    7'b1010000, 7'b1010001: begin
+                        reg_write_en = 1'b1;
+                        unique case (funct3)
+                            3'b010: fp_op = FP_OP_EQ;
+                            3'b001: fp_op = FP_OP_LT;
+                            3'b000: fp_op = FP_OP_LE;
+                            default: illegal_instr = 1'b1;
+                        endcase
+                    end
+                    7'b1100000, 7'b1100001: begin
+                        fp_op = FP_OP_CVT_F2I;
+                        reg_write_en = 1'b1;
+                    end
+                    7'b1101000, 7'b1101001: begin
+                        fp_op = FP_OP_CVT_I2F;
+                        fp_reg_write_en = 1'b1;
+                    end
+                    7'b1110000, 7'b1110001: begin
+                        if (rs2_addr == 5'd0 && funct3 == 3'b000) begin
+                            fp_op = FP_OP_MV_F2X;
+                            reg_write_en = 1'b1;
+                        end else if (rs2_addr == 5'd0 && funct3 == 3'b001) begin
+                            fp_op = FP_OP_CLASS;
+                            reg_write_en = 1'b1;
+                        end else begin
+                            illegal_instr = 1'b1;
+                        end
+                    end
+                    7'b1111000, 7'b1111001: begin
+                        if (rs2_addr == 5'd0 && funct3 == 3'b000) begin
+                            fp_op = FP_OP_MV_X2F;
+                            fp_reg_write_en = 1'b1;
+                        end else begin
+                            illegal_instr = 1'b1;
+                        end
+                    end
+                    default: illegal_instr = 1'b1;
+                endcase
+
+                if (illegal_instr) begin
+                    is_fp           = 1'b0;
+                    fp_reg_write_en = 1'b0;
+                    reg_write_en    = 1'b0;
+                    fp_op           = FP_OP_NONE;
+                end
             end
 
             // -----------------

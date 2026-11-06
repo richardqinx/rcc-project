@@ -28,6 +28,15 @@ void tick(Vmem_stage* dut) {
     dut->eval();
 }
 
+void clock_tick(Vmem_stage* dut) {
+    dut->clk = 0;
+    dut->eval();
+    dut->clk = 1;
+    dut->eval();
+    dut->clk = 0;
+    dut->eval();
+}
+
 void check(bool cond, const char* name) {
     if (cond) {
         std::cout << "\033[32m[PASS] " << name << "\033[0m" << std::endl;
@@ -47,15 +56,21 @@ int main(int argc, char** argv) {
     std::cout << "----------------------------------" << std::endl;
 
     // 1. Initial / Default states
+    dut->clk = 0;
+    dut->rst = 1;
     dut->mem_alu_result = 0;
     dut->mem_rs2_rdata = 0;
     dut->mem_is_load = 0;
     dut->mem_is_store = 0;
+    dut->mem_is_amo = 0;
+    dut->mem_amo_op = 0;
     dut->mem_mem_size = 0;
     dut->dmem_req_ready = 1;
     dut->dmem_rsp_valid = 1;
     dut->dmem_rdata = 0;
 
+    clock_tick(dut);
+    dut->rst = 0;
     tick(dut);
 
     check(dut->dmem_read_req == 0, "No_Read_Req");
@@ -186,7 +201,87 @@ int main(int argc, char** argv) {
     tick(dut);
     check(dut->mem_wb_mem_rdata == 0xAABBCCDDEEFF0011ULL, "LD_Data");
 
-    // 5. Stall Logic
+    dut->mem_is_load = 0;
+
+    // 5. Atomic memory operations
+    dut->mem_is_amo = 1;
+    dut->mem_mem_size = 2; // AMO.W
+    dut->mem_amo_op = 4; // AMO_ADD
+    dut->mem_alu_result = 0x3004;
+    dut->mem_rs2_rdata = 3;
+    dut->dmem_rdata = 0x0000000500000000ULL;
+    dut->dmem_req_ready = 1;
+    dut->dmem_rsp_valid = 1;
+    tick(dut);
+    check(dut->dmem_read_req == 1, "AMOADDW_ReadReq");
+    check(dut->dmem_write_req == 0, "AMOADDW_NoWriteDuringRead");
+    check(dut->mem_stall_req == 1, "AMOADDW_StallDuringRead");
+    clock_tick(dut);
+
+    tick(dut);
+    check(dut->dmem_read_req == 0, "AMOADDW_NoReadDuringWrite");
+    check(dut->dmem_write_req == 1, "AMOADDW_WriteReq");
+    check(dut->dmem_wdata == 0x0000000800000000ULL, "AMOADDW_WriteData");
+    check(dut->dmem_wstrb == 0xF0, "AMOADDW_Strobe");
+    check(dut->mem_wb_mem_rdata == 5, "AMOADDW_ReturnOldValue");
+    check(dut->mem_stall_req == 0, "AMOADDW_NoStallDuringWrite");
+    clock_tick(dut);
+
+    dut->mem_mem_size = 3; // AMO.D
+    dut->mem_amo_op = 1; // AMO_LR
+    dut->mem_alu_result = 0x4000;
+    dut->dmem_rdata = 0x123456789ABCDEF0ULL;
+    tick(dut);
+    check(dut->dmem_read_req == 1, "LRD_ReadReq");
+    check(dut->dmem_write_req == 0, "LRD_NoWrite");
+    check(dut->mem_wb_mem_rdata == 0x123456789ABCDEF0ULL, "LRD_ReturnData");
+    clock_tick(dut);
+
+    dut->mem_amo_op = 2; // AMO_SC
+    dut->mem_rs2_rdata = 0xCAFEBABE11223344ULL;
+    tick(dut);
+    check(dut->dmem_read_req == 0, "SCD_NoRead");
+    check(dut->dmem_write_req == 1, "SCD_SuccessWrite");
+    check(dut->dmem_wdata == 0xCAFEBABE11223344ULL, "SCD_WriteData");
+    check(dut->mem_wb_mem_rdata == 0, "SCD_SuccessStatus");
+    clock_tick(dut);
+
+    tick(dut);
+    check(dut->dmem_write_req == 0, "SCD_FailNoWrite");
+    check(dut->mem_wb_mem_rdata == 1, "SCD_FailStatus");
+
+    dut->mem_amo_op = 1; // AMO_LR
+    dut->mem_alu_result = 0x5000;
+    dut->dmem_rdata = 0x1122334455667788ULL;
+    tick(dut);
+    check(dut->dmem_read_req == 1, "LRD_BeforeStore_ReadReq");
+    clock_tick(dut);
+
+    dut->mem_is_amo = 0;
+    dut->mem_is_store = 1;
+    dut->mem_mem_size = 0; // SB
+    dut->mem_alu_result = 0x5003;
+    dut->mem_rs2_rdata = 0xAA;
+    tick(dut);
+    check(dut->dmem_write_req == 1, "StoreAfterLR_WriteReq");
+    clock_tick(dut);
+
+    dut->mem_is_store = 0;
+    dut->mem_is_amo = 1;
+    dut->mem_mem_size = 3; // AMO.D
+    dut->mem_amo_op = 2; // AMO_SC
+    dut->mem_alu_result = 0x5000;
+    dut->mem_rs2_rdata = 0x0102030405060708ULL;
+    tick(dut);
+    check(dut->dmem_write_req == 1, "SCD_AfterStore_WriteReq");
+    check(dut->mem_wb_mem_rdata == 0, "SCD_AfterStore_SuccessStatus");
+
+    dut->mem_is_amo = 0;
+    dut->mem_is_store = 0;
+
+    // 6. Stall Logic
+    dut->mem_is_load = 1;
+    dut->mem_mem_size = 3;
     dut->dmem_req_ready = 0; // Cache miss / AXI busy
     dut->dmem_rsp_valid = 0;
     tick(dut);

@@ -35,11 +35,18 @@ constexpr uint64_t EXC_STORE_FAULT    = 7ULL;
 constexpr uint64_t INTERRUPT_M_SOFTWARE = 3ULL;
 constexpr uint64_t INTERRUPT_M_TIMER    = 7ULL;
 constexpr uint64_t INTERRUPT_M_EXTERNAL = 11ULL;
+constexpr uint64_t INTERRUPT_S_SOFTWARE = 1ULL;
+constexpr uint64_t INTERRUPT_S_TIMER    = 5ULL;
+constexpr uint64_t INTERRUPT_S_EXTERNAL = 9ULL;
 
 constexpr uint64_t INTERRUPT_BIT      = 1ULL << 63;
 constexpr uint64_t PRIV_MODE_U        = 0ULL;
 constexpr uint64_t PRIV_MODE_S        = 1ULL;
 constexpr uint64_t PRIV_MODE_M        = 3ULL;
+
+uint64_t mie_bit(uint64_t interrupt_cause) {
+    return 1ULL << interrupt_cause;
+}
 
 void drive_defaults(Vtrap_ctrl* dut) {
     dut->wb_pc = 0;
@@ -56,11 +63,11 @@ void drive_defaults(Vtrap_ctrl* dut) {
     dut->trap_bad_addr = 0;
     dut->trap_bad_instr = 0;
 
-    dut->ext_timer_interrupt = 0;
-    dut->ext_software_interrupt = 0;
-    dut->ext_external_interrupt = 0;
-
     dut->csr_mstatus_mie = 0;
+    dut->csr_mie = 0;
+    dut->csr_sie = 0;
+    dut->csr_mip = 0;
+    dut->csr_sip = 0;
     dut->csr_mtvec = 0x800ULL;
     dut->csr_stvec = 0x400ULL;
     dut->csr_mepc = 0x1000ULL;
@@ -150,16 +157,19 @@ int main(int argc, char** argv) {
     check(dut->trap_mtval == 0xABCDEF0020ULL, "StoreFault_Mtval");
 
     // ---------------------------------------------------------------------
-    // 2) Interrupt priority + delegation to supervisor
+    // 2) Interrupt priority + enable masking
     // ---------------------------------------------------------------------
     drive_defaults(dut);
     dut->csr_mstatus_mie = 1;
+    dut->csr_mie = mie_bit(INTERRUPT_M_EXTERNAL) |
+                   mie_bit(INTERRUPT_M_SOFTWARE) |
+                   mie_bit(INTERRUPT_M_TIMER);
     dut->csr_priv_mode = PRIV_MODE_M;
     dut->csr_mtvec = 0x300ULL | 0x1ULL;  // vectored mode
     dut->wb_pc = 0x4000ULL;
-    dut->ext_timer_interrupt = 1;
-    dut->ext_software_interrupt = 1;
-    dut->ext_external_interrupt = 1;
+    dut->csr_mip = mie_bit(INTERRUPT_M_EXTERNAL) |
+                   mie_bit(INTERRUPT_M_SOFTWARE) |
+                   mie_bit(INTERRUPT_M_TIMER);
     dut->eval();
     const uint64_t expected_vectored_pc = 0x300ULL + (INTERRUPT_M_EXTERNAL << 2);
     check(dut->trap_trigger, "InterruptPriority_Triggers");
@@ -169,22 +179,80 @@ int main(int argc, char** argv) {
 
     drive_defaults(dut);
     dut->csr_mstatus_mie = 0;
-    dut->ext_external_interrupt = 1;
+    dut->csr_mie = mie_bit(INTERRUPT_M_EXTERNAL);
+    dut->csr_mip = mie_bit(INTERRUPT_M_EXTERNAL);
     dut->eval();
-    check(!dut->trap_trigger, "InterruptMasked_NoTrigger");
+    check(!dut->trap_trigger, "InterruptMaskedByGlobalMie_NoTrigger");
+
+    drive_defaults(dut);
+    dut->csr_priv_mode = PRIV_MODE_M;
+    dut->csr_mstatus_mie = 1;
+    dut->csr_mie = 0;
+    dut->csr_mip = mie_bit(INTERRUPT_M_EXTERNAL);
+    dut->eval();
+    check(!dut->trap_trigger, "InterruptMaskedByMie_NoTrigger");
+
+    drive_defaults(dut);
+    dut->csr_priv_mode = PRIV_MODE_S;
+    dut->csr_mstatus_mie = 0;
+    dut->csr_mie = mie_bit(INTERRUPT_M_EXTERNAL);
+    dut->csr_mtvec = 0x440ULL;
+    dut->wb_pc = 0x6780ULL;
+    dut->csr_mip = mie_bit(INTERRUPT_M_EXTERNAL);
+    dut->eval();
+    check(dut->trap_trigger, "MachineInterruptBelowM_IgnoresMstatusMie");
+    check(!dut->trap_to_s_mode, "MachineInterruptBelowM_NoDelegationWithoutMideleg");
+    check(dut->trap_mcause == (INTERRUPT_BIT | INTERRUPT_M_EXTERNAL), "MachineInterruptBelowM_Mcause");
+    check(dut->trap_next_pc == 0x440ULL, "MachineInterruptBelowM_JumpsToMtvec");
 
     drive_defaults(dut);
     dut->csr_priv_mode = PRIV_MODE_S;
     dut->csr_mstatus_mie = 1;
-    dut->csr_stvec = 0x880ULL | 0x1ULL;  // vectored supervisor mode
+    dut->csr_mie = mie_bit(INTERRUPT_M_TIMER);
+    dut->csr_mtvec = 0x880ULL | 0x1ULL;  // vectored machine mode
+    dut->csr_stvec = 0x400ULL | 0x1ULL;
     dut->csr_mideleg = (1ULL << INTERRUPT_M_TIMER);
     dut->wb_pc = 0xABCDULL;
-    dut->ext_timer_interrupt = 1;
+    dut->csr_mip = mie_bit(INTERRUPT_M_TIMER);
     dut->eval();
     const uint64_t expected_sv_pc = 0x880ULL + (INTERRUPT_M_TIMER << 2);
-    check(dut->trap_to_s_mode, "InterruptDelegation_ToSupervisor");
-    check(dut->trap_next_pc == expected_sv_pc, "InterruptDelegation_UsesStvec");
-    check(dut->trap_mcause == (INTERRUPT_BIT | INTERRUPT_M_TIMER), "InterruptDelegation_Mcause");
+    check(!dut->trap_to_s_mode, "MachineInterrupt_NoDelegation");
+    check(dut->trap_next_pc == expected_sv_pc, "MachineInterrupt_UsesMtvec");
+    check(dut->trap_mcause == (INTERRUPT_BIT | INTERRUPT_M_TIMER), "MachineInterrupt_Mcause");
+
+    drive_defaults(dut);
+    dut->csr_priv_mode = PRIV_MODE_S;
+    dut->csr_mstatus = (1ULL << 1);
+    dut->csr_sie = mie_bit(INTERRUPT_S_TIMER);
+    dut->csr_sip = mie_bit(INTERRUPT_S_TIMER);
+    dut->csr_mideleg = mie_bit(INTERRUPT_S_TIMER);
+    dut->csr_stvec = 0x900ULL | 0x1ULL;
+    dut->wb_pc = 0xABCEULL;
+    dut->eval();
+    const uint64_t expected_s_timer_pc = 0x900ULL + (INTERRUPT_S_TIMER << 2);
+    check(dut->trap_to_s_mode, "SupervisorInterruptDelegated_ToSupervisor");
+    check(dut->trap_next_pc == expected_s_timer_pc, "SupervisorInterruptDelegated_UsesStvec");
+    check(dut->trap_mcause == (INTERRUPT_BIT | INTERRUPT_S_TIMER), "SupervisorInterruptDelegated_Mcause");
+
+    drive_defaults(dut);
+    dut->csr_priv_mode = PRIV_MODE_S;
+    dut->csr_mstatus = 0;
+    dut->csr_sie = mie_bit(INTERRUPT_S_TIMER);
+    dut->csr_sip = mie_bit(INTERRUPT_S_TIMER);
+    dut->csr_mideleg = mie_bit(INTERRUPT_S_TIMER);
+    dut->eval();
+    check(!dut->trap_trigger, "SupervisorInterruptMaskedBySstatusSie_NoTrigger");
+
+    drive_defaults(dut);
+    dut->csr_priv_mode = PRIV_MODE_U;
+    dut->csr_mstatus = 0;
+    dut->csr_sie = mie_bit(INTERRUPT_S_EXTERNAL);
+    dut->csr_sip = mie_bit(INTERRUPT_S_EXTERNAL);
+    dut->csr_mideleg = mie_bit(INTERRUPT_S_EXTERNAL);
+    dut->csr_stvec = 0x940ULL;
+    dut->eval();
+    check(dut->trap_to_s_mode, "SupervisorInterruptBelowS_IgnoresSstatusSie");
+    check(dut->trap_next_pc == 0x940ULL, "SupervisorInterruptBelowS_UsesStvec");
 
     // ---------------------------------------------------------------------
     // 3) MRET/SRET redirect without new traps

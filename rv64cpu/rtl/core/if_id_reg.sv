@@ -32,24 +32,39 @@ module if_id_reg
     // Inputs from IF Stage
     input  logic [XLEN-1:0]        if_pc,      // PC from IF stage
     input  logic [INST_WIDTH-1:0]  if_instr,   // Fetched instruction from IF stage
+    input  logic [2:0]             if_instr_len,
+    input  logic                   if_instr_access_fault,
+    input  logic                   if_instr_page_fault,
 
     // Outputs to ID Stage
     output logic [XLEN-1:0]        id_pc,      // Passed to ID stage
-    output logic [INST_WIDTH-1:0]  id_instr    // Passed to ID stage
+    output logic [INST_WIDTH-1:0]  id_instr,   // Passed to ID stage
+    output logic [2:0]             id_instr_len,
+    output logic                   id_instr_access_fault,
+    output logic                   id_instr_page_fault
 );
 
     localparam logic [31:0] NOP_INSTR = 32'h0000_0013;
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            id_pc    <= '0;
-            id_instr <= NOP_INSTR;
+            id_pc                  <= '0;
+            id_instr               <= NOP_INSTR;
+            id_instr_len           <= 3'd4;
+            id_instr_access_fault <= 1'b0;
+            id_instr_page_fault   <= 1'b0;
         end else if (flush_en) begin
-            id_pc    <= '0;
-            id_instr <= NOP_INSTR;
+            id_pc                  <= '0;
+            id_instr               <= NOP_INSTR;
+            id_instr_len           <= 3'd4;
+            id_instr_access_fault <= 1'b0;
+            id_instr_page_fault   <= 1'b0;
         end else if (~stall_en) begin
-            id_pc    <= if_pc;
-            id_instr <= if_instr;
+            id_pc                  <= if_pc;
+            id_instr               <= if_instr;
+            id_instr_len           <= if_instr_len;
+            id_instr_access_fault <= if_instr_access_fault;
+            id_instr_page_fault   <= if_instr_page_fault;
         end
         // If stall_en && !flush_en, maintain current state
     end

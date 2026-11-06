@@ -37,16 +37,21 @@ constexpr uint16_t CSR_MIDELEG   = 0x303;
 constexpr uint16_t CSR_MIE       = 0x304;
 constexpr uint16_t CSR_MTVEC     = 0x305;
 constexpr uint16_t CSR_MCOUNTEREN= 0x306;
+constexpr uint16_t CSR_MENVCFG   = 0x30A;
+constexpr uint16_t CSR_MSTATEEN0 = 0x30C;
+constexpr uint16_t CSR_MCOUNTINHIBIT = 0x320;
 constexpr uint16_t CSR_MSCRATCH  = 0x340;
 constexpr uint16_t CSR_MEPC      = 0x341;
 constexpr uint16_t CSR_MCAUSE    = 0x342;
 constexpr uint16_t CSR_MTVAL     = 0x343;
+constexpr uint16_t CSR_MIP       = 0x344;
 constexpr uint16_t CSR_MCYCLE    = 0xB00;
 constexpr uint16_t CSR_MINSTRET  = 0xB02;
 constexpr uint16_t CSR_SSTATUS   = 0x100;
 constexpr uint16_t CSR_SIE       = 0x104;
 constexpr uint16_t CSR_STVEC     = 0x105;
 constexpr uint16_t CSR_SCOUNTEREN= 0x106;
+constexpr uint16_t CSR_SENVCFG   = 0x10A;
 constexpr uint16_t CSR_SSCRATCH  = 0x140;
 constexpr uint16_t CSR_SEPC      = 0x141;
 constexpr uint16_t CSR_SCAUSE    = 0x142;
@@ -58,6 +63,7 @@ constexpr uint16_t CSR_INSTRET   = 0xC02;
 constexpr uint16_t CSR_FFLAGS    = 0x001;
 constexpr uint16_t CSR_FRM       = 0x002;
 constexpr uint16_t CSR_FCSR      = 0x003;
+constexpr uint16_t CSR_MVENDORID = 0xF11;
 
 constexpr uint64_t EXC_INST_ILLEGAL = 2ULL;
 constexpr uint64_t EXC_ECALL_FROM_U = 8ULL;
@@ -69,18 +75,49 @@ constexpr uint64_t INTERRUPT_BIT    = 1ULL << 63;
 constexpr uint64_t INTERRUPT_M_SOFTWARE   = 3ULL;
 constexpr uint64_t INTERRUPT_M_TIMER      = 7ULL;
 constexpr uint64_t INTERRUPT_M_EXTERNAL   = 11ULL;
+constexpr uint64_t INTERRUPT_S_SOFTWARE   = 1ULL;
+constexpr uint64_t INTERRUPT_S_TIMER      = 5ULL;
+constexpr uint64_t INTERRUPT_S_EXTERNAL   = 9ULL;
 
 constexpr int MSTATUS_MIE_BIT  = 3;
 constexpr int MSTATUS_MPIE_BIT = 7;
 constexpr int MSTATUS_MPP_LO   = 11;
 constexpr int MSTATUS_MPP_HI   = 12;
+constexpr int MSTATUS_TVM_BIT  = 20;
+constexpr int MSTATUS_TW_BIT   = 21;
+constexpr int MSTATUS_TSR_BIT  = 22;
+constexpr int MSTATUS_UXL_LO   = 32;
+constexpr int MSTATUS_SXL_LO   = 34;
 constexpr int SSTATUS_SIE_BIT  = 1;
 constexpr int SSTATUS_SPIE_BIT = 5;
 constexpr int SSTATUS_SPP_BIT  = 8;
+constexpr int MCOUNTINHIBIT_CY_BIT = 0;
+constexpr int MCOUNTINHIBIT_IR_BIT = 2;
+constexpr int STATEEN0_ENVCFG_BIT = 62;
+
+constexpr uint64_t STATUS_XLEN_64 = 2ULL;
+constexpr uint64_t MSTATUS_RESET_VALUE = (STATUS_XLEN_64 << MSTATUS_UXL_LO) |
+                                         (STATUS_XLEN_64 << MSTATUS_SXL_LO);
+constexpr uint64_t SSTATUS_RESET_VALUE = (STATUS_XLEN_64 << MSTATUS_UXL_LO);
 
 constexpr uint64_t PRIV_ENCODE_U = 0ULL;
 constexpr uint64_t PRIV_ENCODE_S = 1ULL;
 constexpr uint64_t PRIV_ENCODE_M = 3ULL;
+constexpr uint64_t MEDELEG_WRITABLE_MASK =
+    (1ULL << EXC_ECALL_FROM_U) |
+    (1ULL << EXC_ECALL_FROM_S) |
+    (1ULL << EXC_LOAD_FAULT) |
+    (1ULL << EXC_STORE_FAULT);
+constexpr uint64_t MEDELEG_READ_ONLY_ONE_MASK = (1ULL << EXC_INST_ILLEGAL);
+constexpr uint64_t MIDELEG_WRITABLE_MASK =
+    (1ULL << INTERRUPT_S_SOFTWARE) |
+    (1ULL << INTERRUPT_S_TIMER) |
+    (1ULL << INTERRUPT_S_EXTERNAL);
+constexpr uint64_t MCOUNTINHIBIT_WRITABLE_MASK =
+    (1ULL << MCOUNTINHIBIT_CY_BIT) |
+    (1ULL << MCOUNTINHIBIT_IR_BIT) |
+    (0x1FFFFFFFULL << 3);
+constexpr uint64_t COUNTEREN_WRITABLE_MASK = 0xFFFFFFFFULL;
 }
 
 void tick(Vcsr_unit* dut) {
@@ -106,6 +143,12 @@ void drive_defaults(Vcsr_unit* dut) {
     dut->trap_ctrl_mtval = 0;
     dut->trap_ctrl_mret_en = 0;
     dut->trap_ctrl_sret_en = 0;
+    dut->m_timer_interrupt = 0;
+    dut->m_software_interrupt = 0;
+    dut->m_external_interrupt = 0;
+    dut->s_timer_interrupt = 0;
+    dut->s_software_interrupt = 0;
+    dut->s_external_interrupt = 0;
 }
 
 void apply_reset(Vcsr_unit* dut) {
@@ -185,6 +228,9 @@ void advance_cycles(Vcsr_unit* dut, int cycles) {
 }
 
 void force_priv_mode_via_mret(Vcsr_unit* dut, uint64_t encoded_mode) {
+    if (dut->csr_priv_mode != PRIV_ENCODE_M) {
+        trigger_trap(dut, 0x100ULL, EXC_INST_ILLEGAL, 0ULL, false);
+    }
     uint64_t mstatus = read_csr(dut, CSR_MSTATUS);
     mstatus &= ~(0x3ULL << MSTATUS_MPP_LO);
     mstatus |= (encoded_mode << MSTATUS_MPP_LO);
@@ -231,10 +277,10 @@ int main(int argc, char** argv) {
     std::cout << "----------------------------------\n";
 
     // Reset sanity
-    assert(read_csr(dut, CSR_MSTATUS) == 0);
+    assert(read_csr(dut, CSR_MSTATUS) == MSTATUS_RESET_VALUE);
     assert(read_csr(dut, CSR_MIE) == 0);
     assert(read_csr(dut, CSR_MEPC) == 0);
-    assert(read_csr(dut, CSR_SSTATUS) == 0);
+    assert(read_csr(dut, CSR_SSTATUS) == SSTATUS_RESET_VALUE);
     assert(read_csr(dut, CSR_SATP) == 0);
     std::cout << "[PASS] Reset clears CSR state" << std::endl;
 
@@ -247,29 +293,61 @@ int main(int argc, char** argv) {
 
     // CSRRS / CSRRC behavior
     csr_op(dut, CSR_MIE, CSR_OP_WRITE, 0);
-    csr_op(dut, CSR_MIE, CSR_OP_SET, 0xBuLL);
-    assert(read_csr(dut, CSR_MIE) == 0xBuLL);
-    csr_op(dut, CSR_MIE, CSR_OP_CLEAR, 0x3ULL);
-    assert(read_csr(dut, CSR_MIE) == 0x8ULL);
+    csr_op(dut, CSR_MIE, CSR_OP_SET, (1ULL << INTERRUPT_M_SOFTWARE) | (1ULL << INTERRUPT_M_TIMER));
+    assert(read_csr(dut, CSR_MIE) == ((1ULL << INTERRUPT_M_SOFTWARE) | (1ULL << INTERRUPT_M_TIMER)));
+    csr_op(dut, CSR_MIE, CSR_OP_CLEAR, (1ULL << INTERRUPT_M_SOFTWARE));
+    assert(read_csr(dut, CSR_MIE) == (1ULL << INTERRUPT_M_TIMER));
     csr_op(dut, CSR_MIE, CSR_OP_SET, 0x0ULL);
-    assert(read_csr(dut, CSR_MIE) == 0x8ULL);
+    assert(read_csr(dut, CSR_MIE) == (1ULL << INTERRUPT_M_TIMER));
     std::cout << "[PASS] CSRRS/CSRRC honor masks and ignore zero data" << std::endl;
 
-    // Read-only CSRs ignore write attempts
+    csr_op(
+        dut,
+        CSR_MSTATUS,
+        CSR_OP_WRITE,
+        (1ULL << MSTATUS_TVM_BIT) | (1ULL << MSTATUS_TW_BIT) | (1ULL << MSTATUS_TSR_BIT)
+    );
+    assert((read_csr(dut, CSR_MSTATUS) & ((1ULL << MSTATUS_TVM_BIT) |
+                                          (1ULL << MSTATUS_TW_BIT) |
+                                          (1ULL << MSTATUS_TSR_BIT))) == 0ULL);
+    std::cout << "[PASS] Unsupported mstatus trap-control bits are read-zero" << std::endl;
+
+    // Hardwired WARL CSRs may ignore writes without taking an illegal-instruction trap.
     const uint64_t misa_ro_snapshot = read_csr(dut, CSR_MISA);
     csr_op(dut, CSR_MISA, CSR_OP_WRITE, 0ULL);
     assert(read_csr(dut, CSR_MISA) == misa_ro_snapshot);
-    std::cout << "[PASS] Read-only CSRs reject writes" << std::endl;
+    std::cout << "[PASS] Hardwired WARL CSRs ignore unsupported writes" << std::endl;
 
-    // Canonical aliases for cycle/minstret
-    csr_op(dut, CSR_CYCLE, CSR_OP_WRITE, 0x40ULL);
+    // Machine counters are writable through machine CSR addresses; user aliases are read-only.
+    csr_op(dut, CSR_MCYCLE, CSR_OP_WRITE, 0x40ULL);
     assert(read_csr(dut, CSR_MCYCLE) == 0x40ULL);
+    csr_op(dut, CSR_CYCLE, CSR_OP_WRITE, 0x100ULL);
+    assert(read_csr(dut, CSR_MCYCLE) == 0x41ULL);
     advance_cycles(dut, 5);
-    assert(read_csr(dut, CSR_MCYCLE) == 0x45ULL);
+    assert(read_csr(dut, CSR_MCYCLE) == 0x46ULL);
     const uint64_t instret_before = read_csr(dut, CSR_MINSTRET);
     advance_cycles(dut, 3);
     assert(read_csr(dut, CSR_MINSTRET) == instret_before + 3);
     std::cout << "[PASS] Cycle/instret counters tick correctly" << std::endl;
+
+    csr_op(dut, CSR_MCOUNTINHIBIT, CSR_OP_WRITE, ~0ULL);
+    assert(read_csr(dut, CSR_MCOUNTINHIBIT) == MCOUNTINHIBIT_WRITABLE_MASK);
+    const uint64_t inhibited_cycle = read_csr(dut, CSR_MCYCLE);
+    const uint64_t inhibited_instret = read_csr(dut, CSR_MINSTRET);
+    advance_cycles(dut, 3);
+    assert(read_csr(dut, CSR_MCYCLE) == inhibited_cycle);
+    assert(read_csr(dut, CSR_MINSTRET) == inhibited_instret);
+    csr_op(dut, CSR_MCOUNTINHIBIT, CSR_OP_WRITE, 0ULL);
+    advance_cycles(dut, 1);
+    assert(read_csr(dut, CSR_MCYCLE) == inhibited_cycle + 1);
+    assert(read_csr(dut, CSR_MINSTRET) == inhibited_instret + 1);
+    std::cout << "[PASS] mcountinhibit controls machine counters" << std::endl;
+
+    csr_op(dut, CSR_MCOUNTEREN, CSR_OP_WRITE, ~0ULL);
+    assert(read_csr(dut, CSR_MCOUNTEREN) == COUNTEREN_WRITABLE_MASK);
+    csr_op(dut, CSR_SCOUNTEREN, CSR_OP_WRITE, ~0ULL);
+    assert(read_csr(dut, CSR_SCOUNTEREN) == COUNTEREN_WRITABLE_MASK);
+    std::cout << "[PASS] counteren CSRs keep only implemented counter bits" << std::endl;
 
     // Trap should freeze minstret for that cycle
     uint64_t mstatus_cfg = read_csr(dut, CSR_MSTATUS) | (1ULL << MSTATUS_MIE_BIT);
@@ -346,20 +424,53 @@ int main(int argc, char** argv) {
     std::cout << "[PASS] medeleg routes ecall to supervisor" << std::endl;
     force_priv_mode_via_mret(dut, PRIV_ENCODE_M);
 
+    csr_op(dut, CSR_MEDELEG, CSR_OP_WRITE, ~0ULL);
+    assert((read_csr(dut, CSR_MEDELEG) & MEDELEG_WRITABLE_MASK) == MEDELEG_WRITABLE_MASK);
+    assert((read_csr(dut, CSR_MEDELEG) & MEDELEG_READ_ONLY_ONE_MASK) == MEDELEG_READ_ONLY_ONE_MASK);
+    assert((read_csr(dut, CSR_MEDELEG) & (1ULL << 11)) == 0ULL);
+    csr_op(dut, CSR_MEDELEG, CSR_OP_WRITE, 0ULL);
+    assert((read_csr(dut, CSR_MEDELEG) & MEDELEG_READ_ONLY_ONE_MASK) == MEDELEG_READ_ONLY_ONE_MASK);
+    csr_op(dut, CSR_MIDELEG, CSR_OP_WRITE, ~0ULL);
+    assert((read_csr(dut, CSR_MIDELEG) & MIDELEG_WRITABLE_MASK) == MIDELEG_WRITABLE_MASK);
+    assert((read_csr(dut, CSR_MIDELEG) & (1ULL << INTERRUPT_M_TIMER)) == 0ULL);
+    std::cout << "[PASS] Delegation CSRs expose only writable standard bits" << std::endl;
+
     // Basic supervisor CSRs touching for completeness
-    csr_op(dut, CSR_SIE, CSR_OP_WRITE, 0x55ULL);
+    const uint64_t s_interrupt_mask = (1ULL << INTERRUPT_S_SOFTWARE) |
+                                      (1ULL << INTERRUPT_S_TIMER) |
+                                      (1ULL << INTERRUPT_S_EXTERNAL);
+    csr_op(dut, CSR_SIE, CSR_OP_WRITE, ~0ULL);
     csr_op(dut, CSR_SSCRATCH, CSR_OP_WRITE, 0xAAULL);
     csr_op(dut, CSR_SEPC, CSR_OP_WRITE, 0x1234ULL);
     csr_op(dut, CSR_SCAUSE, CSR_OP_WRITE, 0x21ULL);
-    csr_op(dut, CSR_SIP, CSR_OP_WRITE, 0x3ULL);
+    csr_op(dut, CSR_SIP, CSR_OP_WRITE, ~0ULL);
     csr_op(dut, CSR_SATP, CSR_OP_WRITE, 0x8000000000000000ULL);
-    assert(read_csr(dut, CSR_SIE) == 0x55ULL);
+    assert(read_csr(dut, CSR_SIE) == s_interrupt_mask);
     assert(read_csr(dut, CSR_SSCRATCH) == 0xAAULL);
     assert(read_csr(dut, CSR_SEPC) == 0x1234ULL);
     assert(read_csr(dut, CSR_SCAUSE) == 0x21ULL);
-    assert(read_csr(dut, CSR_SIP) == 0x3ULL);
+    assert(read_csr(dut, CSR_SIP) == s_interrupt_mask);
     assert(read_csr(dut, CSR_SATP) == 0x8000000000000000ULL);
     std::cout << "[PASS] Supervisor space CSR read/write" << std::endl;
+
+    csr_op(dut, CSR_MIE, CSR_OP_WRITE, 0ULL);
+    csr_op(dut, CSR_SIE, CSR_OP_WRITE, (1ULL << INTERRUPT_S_TIMER));
+    assert(read_csr(dut, CSR_SIE) == (1ULL << INTERRUPT_S_TIMER));
+    assert(read_csr(dut, CSR_MIE) == (1ULL << INTERRUPT_S_TIMER));
+
+    csr_op(dut, CSR_MIP, CSR_OP_WRITE, 0ULL);
+    dut->s_timer_interrupt = 1;
+    dut->eval();
+    assert(read_csr(dut, CSR_SIP) == (1ULL << INTERRUPT_S_TIMER));
+    assert(read_csr(dut, CSR_MIP) == (1ULL << INTERRUPT_S_TIMER));
+    dut->s_timer_interrupt = 0;
+
+    dut->m_external_interrupt = 1;
+    dut->eval();
+    assert((read_csr(dut, CSR_MIP) & (1ULL << INTERRUPT_M_EXTERNAL)) != 0ULL);
+    assert((read_csr(dut, CSR_SIP) & (1ULL << INTERRUPT_M_EXTERNAL)) == 0ULL);
+    dut->m_external_interrupt = 0;
+    std::cout << "[PASS] Interrupt pending and enable CSRs expose delegated views" << std::endl;
 
     // Writing SSTATUS should mirror MSTATUS subset bits
     csr_op(dut, CSR_SSTATUS, CSR_OP_WRITE, (1ULL << SSTATUS_SIE_BIT));
@@ -457,8 +568,9 @@ int main(int argc, char** argv) {
     });
 
     run_csr_scenario(dut, "nested_return_sequence", [&](Vcsr_unit* target) {
-        force_priv_mode_via_mret(target, PRIV_ENCODE_U);
+        force_priv_mode_via_mret(target, PRIV_ENCODE_S);
         csr_op(target, CSR_SSTATUS, CSR_OP_WRITE, (1ULL << SSTATUS_SIE_BIT));
+        force_priv_mode_via_mret(target, PRIV_ENCODE_U);
 
         const uint64_t first_trap_pc = 0xB00ULL;
         trigger_trap(target, first_trap_pc, EXC_ECALL_FROM_U, 0ULL, true);
@@ -477,7 +589,9 @@ int main(int argc, char** argv) {
         assert(target->csr_priv_mode == PRIV_ENCODE_U);
 
         // Enable machine interrupts so the subsequent machine trap captures pre-trap MIE=1
+        force_priv_mode_via_mret(target, PRIV_ENCODE_M);
         csr_op(target, CSR_MSTATUS, CSR_OP_SET, (1ULL << MSTATUS_MIE_BIT));
+        force_priv_mode_via_mret(target, PRIV_ENCODE_U);
         const uint64_t second_trap_pc = 0xB80ULL;
         trigger_trap(target, second_trap_pc, EXC_INST_ILLEGAL, 0ULL, false);
         uint64_t mstatus_snapshot = read_csr(target, CSR_MSTATUS);
@@ -499,8 +613,8 @@ int main(int argc, char** argv) {
     run_csr_scenario(dut, "illegal_csr_access_guard", [&](Vcsr_unit* target) {
         force_priv_mode_via_mret(target, PRIV_ENCODE_M);
         assert(target->csr_priv_mode == PRIV_ENCODE_M);
-        const uint64_t misa_snapshot = read_csr(target, CSR_MISA);
-        target->csr_addr = CSR_MISA;
+        const uint64_t vendor_snapshot = read_csr(target, CSR_MVENDORID);
+        target->csr_addr = CSR_MVENDORID;
         target->csr_op = CSR_OP_WRITE;
         target->csr_rs1_data = 0x1234ULL;
         target->csr_req = 1;
@@ -510,12 +624,79 @@ int main(int argc, char** argv) {
         target->csr_rs1_data = 0;
         target->csr_addr = 0;
         assert(target->csr_illegal_access);
-        assert(read_csr(target, CSR_MISA) == misa_snapshot);
+        assert(read_csr(target, CSR_MVENDORID) == vendor_snapshot);
         assert(!target->csr_trap_to_s_mode);
         assert(target->csr_priv_mode == PRIV_ENCODE_M);
         assert(target->csr_trap_vector_next == read_csr(target, CSR_MTVEC));
         tick(target);
         assert(!target->csr_illegal_access);
+
+        force_priv_mode_via_mret(target, PRIV_ENCODE_S);
+        assert(target->csr_priv_mode == PRIV_ENCODE_S);
+        target->csr_addr = CSR_MSTATUS;
+        target->csr_op = CSR_OP_WRITE;
+        target->csr_rs1_data = 0ULL;
+        target->csr_req = 1;
+        target->eval();
+        assert(target->csr_illegal_access);
+        tick(target);
+        target->csr_req = 0;
+        target->csr_op = 0;
+        target->csr_rs1_data = 0;
+        target->csr_addr = 0;
+        target->eval();
+        assert(!target->csr_illegal_access);
+
+        force_priv_mode_via_mret(target, PRIV_ENCODE_M);
+        csr_op(target, CSR_MCOUNTEREN, CSR_OP_WRITE, 0ULL);
+        force_priv_mode_via_mret(target, PRIV_ENCODE_S);
+        target->csr_addr = CSR_CYCLE;
+        target->csr_op = 0;
+        target->csr_rs1_data = 0ULL;
+        target->csr_req = 1;
+        target->eval();
+        assert(target->csr_illegal_access);
+        tick(target);
+        target->csr_req = 0;
+        target->csr_addr = 0;
+        target->eval();
+
+        force_priv_mode_via_mret(target, PRIV_ENCODE_M);
+        csr_op(target, CSR_MCOUNTEREN, CSR_OP_WRITE, 1ULL);
+        csr_op(target, CSR_SCOUNTEREN, CSR_OP_WRITE, 0ULL);
+        force_priv_mode_via_mret(target, PRIV_ENCODE_U);
+        target->csr_addr = CSR_CYCLE;
+        target->csr_op = 0;
+        target->csr_rs1_data = 0ULL;
+        target->csr_req = 1;
+        target->eval();
+        assert(target->csr_illegal_access);
+        tick(target);
+        target->csr_req = 0;
+        target->csr_addr = 0;
+        target->eval();
+
+        force_priv_mode_via_mret(target, PRIV_ENCODE_M);
+        csr_op(target, CSR_MSTATEEN0, CSR_OP_WRITE, 0ULL);
+        force_priv_mode_via_mret(target, PRIV_ENCODE_S);
+        target->csr_addr = CSR_SENVCFG;
+        target->csr_op = CSR_OP_WRITE;
+        target->csr_rs1_data = 1ULL;
+        target->csr_req = 1;
+        target->eval();
+        assert(target->csr_illegal_access);
+        tick(target);
+        target->csr_req = 0;
+        target->csr_op = 0;
+        target->csr_rs1_data = 0;
+        target->csr_addr = 0;
+        target->eval();
+
+        force_priv_mode_via_mret(target, PRIV_ENCODE_M);
+        csr_op(target, CSR_MSTATEEN0, CSR_OP_WRITE, (1ULL << STATEEN0_ENVCFG_BIT));
+        force_priv_mode_via_mret(target, PRIV_ENCODE_S);
+        csr_op(target, CSR_SENVCFG, CSR_OP_WRITE, 1ULL);
+        assert((read_csr(target, CSR_SENVCFG) & 1ULL) == 1ULL);
     });
 
     run_csr_scenario(dut, "delegation_cross_over", [&](Vcsr_unit* target) {
@@ -535,8 +716,8 @@ int main(int argc, char** argv) {
         const std::array<DelegationProbe, 4> probes = {{
             {"medeleg_set",   false, EXC_ECALL_FROM_U, true,  0xD000ULL},
             {"medeleg_clear", false, EXC_ECALL_FROM_U, false, 0xD040ULL},
-            {"mideleg_set",   true,  INTERRUPT_M_TIMER,      true,  0xD080ULL},
-            {"mideleg_clear", true,  INTERRUPT_M_TIMER,      false, 0xD0C0ULL}
+            {"mideleg_set",   true,  INTERRUPT_S_TIMER,      true,  0xD080ULL},
+            {"mideleg_clear", true,  INTERRUPT_S_TIMER,      false, 0xD0C0ULL}
         }};
 
         for (const auto& probe : probes) {

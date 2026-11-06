@@ -28,6 +28,7 @@ module if_stage
     input logic                pc_redirect_sel,   // Branch/Trap redirect request
     input logic [XLEN-1:0]     pc_redirect_target,// Redirect target address
     input logic                pc_redirect_is_trap, // 1: Redirect request comes from trap controller
+    input logic                if_instr_compressed,
     
     output logic [XLEN-1:0]    if_pc
 );
@@ -39,7 +40,7 @@ module if_stage
     logic [XLEN-1:0] next_pc;
 
     always_comb begin
-        next_pc = pc_reg + 64'd4;
+        next_pc = pc_reg + (if_instr_compressed ? 64'd2 : 64'd4);
     end
 
     // Sequential Logic: Update PC Register

@@ -15,7 +15,7 @@
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // File path: rtl/core/mmu/tlb.sv
-// Description: Parameterized L1 TLB (Sv32/Sv48/Sv57)
+// Description: Parameterized L1 TLB (Bare + Sv39, higher modes stubbed)
 
 module tlb
 	import rv64_pkg::*;
@@ -69,9 +69,10 @@ module tlb
 );
 
 	localparam logic [3:0] SATP_MODE_BARE = 4'd0;
-	localparam logic [3:0] SATP_MODE_SV32 = 4'd1;
+	localparam logic [3:0] SATP_MODE_SV39 = 4'd8;
 	localparam logic [3:0] SATP_MODE_SV48 = 4'd9;
 	localparam logic [3:0] SATP_MODE_SV57 = 4'd10;
+	localparam logic [3:0] SATP_MODE_SV64 = 4'd11; // Reserved/future stub.
 
 	typedef struct packed {
 		logic                   valid;
@@ -105,24 +106,19 @@ module tlb
 	int unsigned shift_index;
 
 	function automatic logic is_supported_mode(input logic [3:0] mode);
-		return (mode == SATP_MODE_BARE) || (mode == SATP_MODE_SV32) ||
-			   (mode == SATP_MODE_SV48) || (mode == SATP_MODE_SV57);
+		return (mode == SATP_MODE_BARE) || (mode == SATP_MODE_SV39);
 	endfunction
 
 	function automatic int vpn_width(input logic [3:0] mode);
 		case (mode)
-			SATP_MODE_SV32: vpn_width = 20;
-			SATP_MODE_SV48: vpn_width = 36;
-			SATP_MODE_SV57: vpn_width = 45;
+			SATP_MODE_SV39: vpn_width = 27;
 			default:        vpn_width = 0;
 		endcase
 	endfunction
 
 	function automatic int vpn_stride(input logic [3:0] mode);
 		case (mode)
-			SATP_MODE_SV32: vpn_stride = 10;
-			SATP_MODE_SV48,
-			SATP_MODE_SV57: vpn_stride = 9;
+			SATP_MODE_SV39: vpn_stride = 9;
 			default:        vpn_stride = 0;
 		endcase
 	endfunction
@@ -160,13 +156,21 @@ module tlb
 		begin
 			vpn = '0;
 			case (mode)
-				SATP_MODE_SV32: vpn[19:0] = vaddr[31:12];
-				SATP_MODE_SV48: vpn[35:0] = vaddr[47:12];
-				SATP_MODE_SV57: vpn[44:0] = vaddr[56:12];
+				SATP_MODE_SV39: vpn[26:0] = vaddr[38:12];
 				default:         vpn = '0;
 			endcase
 			vaddr_to_vpn = vpn;
 		end
+	endfunction
+
+	function automatic logic vaddr_is_canonical(
+		input logic [XLEN-1:0] vaddr,
+		input logic [3:0] mode
+	);
+		case (mode)
+			SATP_MODE_SV39: vaddr_is_canonical = (vaddr[63:39] == {25{vaddr[38]}});
+			default:        vaddr_is_canonical = 1'b1;
+		endcase
 	endfunction
 
 	function automatic logic [5:0] page_shift(
@@ -262,7 +266,7 @@ module tlb
 		hit_d = 1'b0;
 
 		if (req_valid) begin
-			if (!is_supported_mode(req_mode)) begin
+			if (!is_supported_mode(req_mode) || !vaddr_is_canonical(req_vaddr, req_mode)) begin
 				resp_page_fault = 1'b1;
 			end else if (req_mode == SATP_MODE_BARE || req_priv == 2'b11) begin
 				// Bare mode or M-mode bypasses translation.

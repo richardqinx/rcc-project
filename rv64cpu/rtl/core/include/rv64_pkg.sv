@@ -79,17 +79,25 @@ package rv64_pkg;
 
     // ALU Operation Encoding
     // Derived from funct3 + funct7[5] of R-type / I-type instructions
-    typedef enum logic [3:0] {
-        ALU_ADD  = 4'b0000,  // Add
-        ALU_SUB  = 4'b1000,  // Subtract
-        ALU_SLL  = 4'b0001,  // Shift Left Logical
-        ALU_SLT  = 4'b0010,  // Set Less Than (signed)
-        ALU_SLTU = 4'b0011,  // Set Less Than (unsigned)
-        ALU_XOR  = 4'b0100,  // Exclusive Or
-        ALU_SRL  = 4'b0101,  // Shift Right Logical
-        ALU_SRA  = 4'b1101,  // Shift Right Arithmetic
-        ALU_OR   = 4'b0110,  // Or
-        ALU_AND  = 4'b0111   // And
+    typedef enum logic [4:0] {
+        ALU_ADD    = 5'd0,   // Add
+        ALU_SUB    = 5'd8,   // Subtract
+        ALU_SLL    = 5'd1,   // Shift Left Logical
+        ALU_SLT    = 5'd2,   // Set Less Than (signed)
+        ALU_SLTU   = 5'd3,   // Set Less Than (unsigned)
+        ALU_XOR    = 5'd4,   // Exclusive Or
+        ALU_SRL    = 5'd5,   // Shift Right Logical
+        ALU_SRA    = 5'd13,  // Shift Right Arithmetic
+        ALU_OR     = 5'd6,   // Or
+        ALU_AND    = 5'd7,   // And
+        ALU_MUL    = 5'd16,  // Low XLEN bits of signed multiplication
+        ALU_MULH   = 5'd17,  // High XLEN bits of signed x signed multiplication
+        ALU_MULHSU = 5'd18,  // High XLEN bits of signed x unsigned multiplication
+        ALU_MULHU  = 5'd19,  // High XLEN bits of unsigned x unsigned multiplication
+        ALU_DIV    = 5'd20,  // Signed division
+        ALU_DIVU   = 5'd21,  // Unsigned division
+        ALU_REM    = 5'd22,  // Signed remainder
+        ALU_REMU   = 5'd23   // Unsigned remainder
     } alu_op_t;
 
 
@@ -104,5 +112,51 @@ package rv64_pkg;
         BRANCH_GEU = 3'b111   // BGEU: Branch if Greater Than or Equal (unsigned)
     } branch_op_t;
 
-endpackage
+    typedef enum logic [3:0] {
+        AMO_NONE = 4'd0,
+        AMO_LR   = 4'd1,
+        AMO_SC   = 4'd2,
+        AMO_SWAP = 4'd3,
+        AMO_ADD  = 4'd4,
+        AMO_XOR  = 4'd5,
+        AMO_AND  = 4'd6,
+        AMO_OR   = 4'd7,
+        AMO_MIN  = 4'd8,
+        AMO_MAX  = 4'd9,
+        AMO_MINU = 4'd10,
+        AMO_MAXU = 4'd11
+    } amo_op_t;
 
+    typedef enum logic [4:0] {
+        FP_OP_NONE     = 5'd0,
+        FP_OP_ADD      = 5'd1,
+        FP_OP_SUB      = 5'd2,
+        FP_OP_MUL      = 5'd3,
+        FP_OP_DIV      = 5'd4,
+        FP_OP_SQRT     = 5'd5,
+        FP_OP_SGNJ     = 5'd6,
+        FP_OP_SGNJN    = 5'd7,
+        FP_OP_SGNJX    = 5'd8,
+        FP_OP_MIN      = 5'd9,
+        FP_OP_MAX      = 5'd10,
+        FP_OP_CVT_F2I  = 5'd11,
+        FP_OP_CVT_I2F  = 5'd12,
+        FP_OP_CVT_F2F  = 5'd13,
+        FP_OP_MV_F2X   = 5'd14,
+        FP_OP_MV_X2F   = 5'd15,
+        FP_OP_EQ       = 5'd16,
+        FP_OP_LT       = 5'd17,
+        FP_OP_LE       = 5'd18,
+        FP_OP_CLASS    = 5'd19,
+        FP_OP_MADD     = 5'd20,
+        FP_OP_MSUB     = 5'd21,
+        FP_OP_NMSUB    = 5'd22,
+        FP_OP_NMADD    = 5'd23
+    } fp_op_t;
+
+    typedef enum logic [1:0] {
+        FP_FMT_S = 2'd0,
+        FP_FMT_D = 2'd1
+    } fp_fmt_t;
+
+endpackage

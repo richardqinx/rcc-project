@@ -352,17 +352,23 @@ public:
     Vrichard_core* top;
     MemoryModel mem;
     uint64_t sim_time;
-    bool ext_timer_interrupt_level;
-    bool ext_software_interrupt_level;
-    bool ext_external_interrupt_level;
+    bool m_timer_interrupt_level;
+    bool m_software_interrupt_level;
+    bool m_external_interrupt_level;
+    bool s_timer_interrupt_level;
+    bool s_software_interrupt_level;
+    bool s_external_interrupt_level;
 #if VM_TRACE
     VerilatedVcdC* tfp;
 #endif
 
     CoreSim() : sim_time(0),
-                ext_timer_interrupt_level(false),
-                ext_software_interrupt_level(false),
-                ext_external_interrupt_level(false) {
+                m_timer_interrupt_level(false),
+                m_software_interrupt_level(false),
+                m_external_interrupt_level(false),
+                s_timer_interrupt_level(false),
+                s_software_interrupt_level(false),
+                s_external_interrupt_level(false) {
         top = new Vrichard_core;
 #if VM_TRACE
         Verilated::traceEverOn(true);
@@ -401,9 +407,12 @@ public:
             top->dmem_rdata = 0;
         }
 
-        top->ext_timer_interrupt = ext_timer_interrupt_level;
-        top->ext_software_interrupt = ext_software_interrupt_level;
-        top->ext_external_interrupt = ext_external_interrupt_level;
+        top->m_timer_interrupt = m_timer_interrupt_level;
+        top->m_software_interrupt = m_software_interrupt_level;
+        top->m_external_interrupt = m_external_interrupt_level;
+        top->s_timer_interrupt = s_timer_interrupt_level;
+        top->s_software_interrupt = s_software_interrupt_level;
+        top->s_external_interrupt = s_external_interrupt_level;
 
         // Rising edge
         top->clk = 0;
@@ -432,13 +441,20 @@ public:
     }
 
     void set_interrupt_lines(bool timer, bool software, bool external) {
-        ext_timer_interrupt_level = timer;
-        ext_software_interrupt_level = software;
-        ext_external_interrupt_level = external;
+        m_timer_interrupt_level = timer;
+        m_software_interrupt_level = software;
+        m_external_interrupt_level = external;
     }
 
     void clear_interrupts() {
         set_interrupt_lines(false, false, false);
+        set_supervisor_interrupt_lines(false, false, false);
+    }
+
+    void set_supervisor_interrupt_lines(bool timer, bool software, bool external) {
+        s_timer_interrupt_level = timer;
+        s_software_interrupt_level = software;
+        s_external_interrupt_level = external;
     }
 };
 

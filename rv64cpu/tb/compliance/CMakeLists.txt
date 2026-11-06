@@ -12,13 +12,16 @@ add_verilator_target(
 	SOURCES     ${RTL_CORE_DIR}/include/rv64_pkg.sv
 				${RTL_CORE_DIR}/alu.sv
 				${RTL_CORE_DIR}/branch_unit.sv
+				${RTL_CORE_DIR}/compressed_decoder.sv
 				${RTL_CORE_DIR}/decoder.sv
 				${RTL_CORE_DIR}/regfile.sv
+				${RTL_CORE_DIR}/fp_regfile.sv
 				${RTL_CORE_DIR}/if_stage.sv
 				${RTL_CORE_DIR}/if_id_reg.sv
 				${RTL_CORE_DIR}/id_stage.sv
 				${RTL_CORE_DIR}/id_ex_reg.sv
 				${RTL_CORE_DIR}/ex_stage.sv
+				${RTL_CORE_DIR}/fpu/fpu_unit.sv
 				${RTL_CORE_DIR}/ex_mem_reg.sv
 				${RTL_CORE_DIR}/mem_stage.sv
 				${RTL_CORE_DIR}/mem_wb_reg.sv
@@ -26,6 +29,10 @@ add_verilator_target(
 				${RTL_CORE_DIR}/hazard_unit.sv
 				${RTL_CORE_DIR}/include/csr_pkg.sv
 				${RTL_CORE_DIR}/csr_unit.sv
+				${RTL_CORE_DIR}/pmp_checker.sv
+				${RTL_CORE_DIR}/mmu/tlb.sv
+				${RTL_CORE_DIR}/mmu/ptw.sv
+				${RTL_CORE_DIR}/mmu/mmu_top.sv
 				${RTL_CORE_DIR}/trap_ctrl.sv
 				${RTL_CORE_DIR}/richard_core.sv
 	INCLUDE_DIRS ${RTL_COMMON_INCLUDES}
