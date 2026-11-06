@@ -18,7 +18,7 @@
 // Description: Privileged-level Trap Controller (Exception and Interrupt Handling)
 //              Detects exceptions/interrupts, triggers context saving, and generates global pipeline flush and PC jump signals
 
-module trap_ctrl 
+module trap_controller
     import rv64_pkg::*;
     import csr_pkg::*;
 (

@@ -4,7 +4,7 @@
 // File path: rtl/core/fp_regfile.sv
 // Description: 32-entry 64-bit floating-point register file for RV64F/RV64D.
 
-module fp_regfile
+module fpr_file
     import rv64_pkg::*;
 (
     input  logic            clk,

@@ -88,7 +88,7 @@ module ex_stage
 
     // --------------
     // Instantiate the core computing engine ALU
-    alu alu_inst (
+    integer_alu alu_inst (
         .alu_op         (ex_alu_op),
         .operand_a      (alu_operand_a),
         .operand_b      (alu_operand_b),

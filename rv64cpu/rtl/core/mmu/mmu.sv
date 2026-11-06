@@ -17,7 +17,7 @@
 // File path: rtl/core/mmu/mmu_top.sv
 // Description: MMU top-level integrating iTLB + dTLB + shared PTW
 
-module mmu_top
+module mmu
 	import rv64_pkg::*;
 #(
 	parameter int ITLB_ENTRIES = 16,

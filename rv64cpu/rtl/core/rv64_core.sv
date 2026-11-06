@@ -18,7 +18,7 @@
 // Description: Richard CPU core top-level wrapper (Core Top)
 // Assembles a 5-stage pipeline, 4 inter-stage registers, and Hazard Unit
 
-module richard_core
+module rv64_core
     import rv64_pkg::*;
     import csr_pkg::*;
 (
@@ -389,7 +389,7 @@ module richard_core
         end
     end
 
-    mmu_top u_mmu_top (
+    mmu u_mmu_top (
         .clk                  (clk),
         .rst                  (rst),
         .satp_value           (csr_satp_value),
@@ -763,7 +763,7 @@ module richard_core
         .ex_branch_target   (ex_branch_target_out)
     );
 
-    fpu_unit u_fpu_unit (
+    fpu u_fpu_unit (
         .fp_op          (ex_fp_op_in),
         .fp_fmt         (ex_fp_fmt_in),
         .rm             ((ex_fp_rm_in == 3'b111) ? csr_frm_value : ex_fp_rm_in),
@@ -1171,7 +1171,7 @@ module richard_core
         .csr_illegal_access     (csr_illegal_access)
     );
 
-    trap_ctrl u_trap_ctrl (
+    trap_controller u_trap_ctrl (
         .wb_pc               (wb_pc_in),
         .trap_illegal_instr  (trap_illegal_instr),
         .trap_is_ecall       (trap_is_ecall),

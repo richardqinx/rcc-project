@@ -4,7 +4,7 @@
 // File path: rtl/core/fpu/fpu_unit.sv
 // Description: RV64F/RV64D floating-point execution unit.
 
-module fpu_unit
+module fpu
     import rv64_pkg::*;
 (
     input  fp_op_t            fp_op,

@@ -108,7 +108,7 @@ module id_stage
 
     // Instruction Decoder Instantiation
 
-    decoder u_decoder (
+    instruction_decoder u_decoder (
         .instr          (if_instr),
         .priv_mode      (csr_priv_mode),
         .mstatus_tsr    (csr_mstatus_tsr),
@@ -164,7 +164,7 @@ module id_stage
     );
 
     // Register File Instantiation
-    regfile u_regfile (
+    gpr_file u_regfile (
         .clk            (clk),
         .rst            (rst),
         
@@ -180,7 +180,7 @@ module id_stage
         .rd_wdata       (wb_rd_wdata)
     );
 
-    fp_regfile u_fp_regfile (
+    fpr_file u_fp_regfile (
         .clk            (clk),
         .rst            (rst),
         .fs1_addr       (rs1_addr),

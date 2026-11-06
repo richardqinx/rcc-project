@@ -19,7 +19,7 @@
 //              Translates 32-bit instructions into control signals for the pipeline.
 //              C is handled by the IF-stage decompressor before this decoder.
 
-module decoder
+module instruction_decoder
     import rv64_pkg::*;
 (
     input  logic [31:0]       instr,          // 32-bit instruction

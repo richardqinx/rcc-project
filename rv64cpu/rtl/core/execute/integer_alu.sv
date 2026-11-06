@@ -17,7 +17,7 @@
 // File path: rtl/core/alu.sv
 // Description: 64-bit Arithmetic Logic Unit (ALU)
 
-module alu
+module integer_alu
     import rv64_pkg::*;
 (
     input  alu_op_t          alu_op,     // ALU operation select (from decoder)

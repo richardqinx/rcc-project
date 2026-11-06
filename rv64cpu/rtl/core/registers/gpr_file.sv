@@ -17,7 +17,7 @@
 // File path: rtl/core/regfile.sv
 // Description: 64-bit Register File
 
-module regfile
+module gpr_file
     import rv64_pkg::*;
 (
     input  logic                      clk,  // Clock signal
