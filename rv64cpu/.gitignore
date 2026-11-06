@@ -1,33 +1,57 @@
-# Build
-build/
-build_*/
+# Build directories
+build*/
+cmake-build-*/
+obj_dir/
 
-# Waves
-waves/*.vcd
-waves/*.fst
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
 
-# IDE
+# Generated binaries and images
+*.elf
+*.bin
+*.hex
+*.dump
+*.map
+*.sig
+
+# Waveforms
+waves/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Coverage
+coverage/
+*.gcda
+*.gcno
+*.lcov
+
+# IDE and editor
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Verilator
-obj_dir/
-
-# FPGA
+# FPGA output
+fpga/xilinx/.Xil/
+fpga/xilinx/vivado_proj/
 fpga/xilinx/*.bit
 fpga/xilinx/*.ltx
-fpga/xilinx/.Xil/
 fpga/xilinx/*.jou
 fpga/xilinx/*.log
-fpga/xilinx/vivado_proj/
 fpga/gowin/*.fs
 
-# OS
+# Local caches and OS files
+.cache/
 .DS_Store
 Thumbs.db
-
-# Cache
-.cache/
