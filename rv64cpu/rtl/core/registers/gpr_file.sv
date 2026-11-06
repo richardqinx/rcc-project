@@ -1,0 +1,67 @@
+//     Richard CPU
+//     Copyright (C) 2026  Richard Qin
+
+//     This program is free software: you can redistribute it and/or modify
+//     it under the terms of the GNU General Public License as published by
+//     the Free Software Foundation, either version 3 of the License, or
+//     (at your option) any later version.
+
+//     This program is distributed in the hope that it will be useful,
+//     but WITHOUT ANY WARRANTY; without even the implied warranty of
+//     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//     GNU General Public License for more details.
+
+//     You should have received a copy of the GNU General Public License
+//     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+// File path: rtl/core/regfile.sv
+// Description: 64-bit Register File
+
+module gpr_file
+    import rv64_pkg::*;
+(
+    input  logic                      clk,  // Clock signal
+    input  logic                      rst,  // Reset signal active high
+
+    // Read port 1
+    input  logic [4:0]                rs1_addr, // Read address 1
+    output logic [XLEN-1:0]           rs1_rdata,  // Read data 1
+
+    // Read port 2
+    input  logic [4:0]                rs2_addr, // Read address 2
+    output logic [XLEN-1:0]           rs2_rdata,  // Read data 2
+
+    // Write port
+    input  logic [4:0]                rd_addr,  // Write address
+    input  logic [XLEN-1:0]           rd_wdata,   // Write data
+    input  logic                      reg_write_en // Write enable signal
+);
+
+    // Register file storage
+    logic [XLEN-1:0] regs [0:31];
+
+    // Read Logic (combinational logic)
+    // Internal bypass: If reading the same register as currently being written, 
+    // forward the write data immediately.
+    assign rs1_rdata = (rs1_addr == 5'b0) ? '0 : 
+                       ((rs1_addr == rd_addr) && reg_write_en) ? rd_wdata : 
+                       regs[rs1_addr];
+                       
+    assign rs2_rdata = (rs2_addr == 5'b0) ? '0 : 
+                       ((rs2_addr == rd_addr) && reg_write_en) ? rd_wdata : 
+                       regs[rs2_addr];
+
+    // Write Logic (sequential logic)
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            for (int i = 0; i < 32; i++) begin
+                regs[i] <= '0;
+            end
+        end else begin
+            if (reg_write_en && rd_addr != 5'b0) begin
+                regs[rd_addr] <= rd_wdata;
+            end
+        end
+    end
+
+endmodule

@@ -1,0 +1,7 @@
+RV64CPU
+=======
+
+A RISC-V processor core project written in SystemVerilog.
+
+RV64CPU is free software.  See the file COPYING for
+copying permission.

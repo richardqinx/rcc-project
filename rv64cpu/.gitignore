@@ -1,0 +1,57 @@
+# Build directories
+build*/
+cmake-build-*/
+obj_dir/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+
+# Generated binaries and images
+*.elf
+*.bin
+*.hex
+*.dump
+*.map
+*.sig
+
+# Waveforms
+waves/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Coverage
+coverage/
+*.gcda
+*.gcno
+*.lcov
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# FPGA output
+fpga/xilinx/.Xil/
+fpga/xilinx/vivado_proj/
+fpga/xilinx/*.bit
+fpga/xilinx/*.ltx
+fpga/xilinx/*.jou
+fpga/xilinx/*.log
+fpga/gowin/*.fs
+
+# Local caches and OS files
+.cache/
+.DS_Store
+Thumbs.db

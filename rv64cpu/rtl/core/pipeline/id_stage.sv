@@ -1,0 +1,197 @@
+//     Richard CPU
+//     Copyright (C) 2026  Richard Qin
+
+//     This program is free software: you can redistribute it and/or modify
+//     it under the terms of the GNU General Public License as published by
+//     the Free Software Foundation, either version 3 of the License, or
+//     (at your option) any later version.
+
+//     This program is distributed in the hope that it will be useful,
+//     but WITHOUT ANY WARRANTY; without even the implied warranty of
+//     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//     GNU General Public License for more details.
+
+//     You should have received a copy of the GNU General Public License
+//     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+// File path: rtl/core/id_stage.sv
+// Description: Instruction Decode Stage, instantiate the Decoder and RegFile, extract control signals and operands
+
+module id_stage
+    import rv64_pkg::*;
+(
+    input  logic                   clk,
+    input  logic                   rst,
+
+    // Inputs from IF Stage (via IF/ID Pipeline Register)
+    input  logic [XLEN-1:0]        if_pc,        // PC of the current instruction
+    input  logic [INST_WIDTH-1:0]  if_instr,     // The 32-bit instruction fetched
+    input  logic [2:0]             if_instr_len,
+    input  logic [1:0]             csr_priv_mode, // Current privilege mode from CSR
+    input  logic                   csr_mstatus_tsr,
+    input  logic                   csr_mstatus_tw,
+    input  logic                   csr_mstatus_tvm,
+
+    // Write-back Inputs from WB Stage (to RegFile)
+    input  logic                   wb_reg_write_en, // Register write enable from WB stage
+    input  logic [4:0]             wb_rd_addr,     // Destination register address from WB
+    input  logic [XLEN-1:0]        wb_rd_wdata,    // Data to write back to register
+    input  logic                   wb_fp_write_en,
+    input  logic [4:0]             wb_fd_addr,
+    input  logic [XLEN-1:0]        wb_fd_wdata,
+    
+    // Outputs to EX Stage
+    // (Notice the 'id_' prefix to signify signals leaving the ID stage)
+    // Data/Operands
+    output logic [XLEN-1:0]        id_pc,          // Pass-through PC for branch/jump calculation
+    output logic [2:0]             id_instr_len,
+    output logic [XLEN-1:0]        id_rs1_rdata,   // Source register 1 data
+    output logic [XLEN-1:0]        id_rs2_rdata,   // Source register 2 data
+    output logic [XLEN-1:0]        id_fs1_rdata,
+    output logic [XLEN-1:0]        id_fs2_rdata,
+    output logic [XLEN-1:0]        id_fs3_rdata,
+    output logic [4:0]             id_rs1_addr,    // Rs1 index (for Forwarding & CSR zimm)
+    output logic [4:0]             id_rs2_addr,    // Rs2 index (for Forwarding)
+    output logic [4:0]             id_fs3_addr,
+    output logic [XLEN-1:0]        id_imm,         // Sign-extended generic immediate
+
+    // Execution Control (ALU & Branch)
+    output alu_op_t                id_alu_op,      // ALU operation code
+    output logic                   id_alu_src1_sel,// 0: rs1_rdata, 1: PC
+    output logic                   id_alu_src2_sel,// 0: rs2_rdata, 1: imm
+    output logic                   id_is_word_op,  // 1: RV64 32-bit operation (e.g. ADDW)
+    output logic                   id_is_branch,   // 1: B-type branch instruction
+    output branch_op_t             id_branch_op,   // Specific condition for branch (BEQ, BNE...)
+    output logic                   id_is_jump,     // 1: JAL or JALR
+
+    // Memory & Writeback Control (Passed down to MEM/WB stages eventually)
+    output logic                   id_is_load,     // 1: Load instruction
+    output logic                   id_is_store,    // 1: Store instruction
+    output logic [2:0]             id_mem_size,    // Memory access size (Byte/Half/Word/Double)
+    output logic                   id_is_amo,
+    output amo_op_t                id_amo_op,
+    output logic                   id_is_fp,
+    output logic                   id_fp_reg_write_en,
+    output logic                   id_fp_store_data_sel,
+    output fp_op_t                 id_fp_op,
+    output fp_fmt_t                id_fp_fmt,
+    output logic [2:0]             id_fp_rm,
+    output logic                   id_reg_write_en,// 1: Instruction will write to a register
+    output logic [4:0]             id_rd_addr,     // Destination register index
+    output logic [1:0]             id_wb_sel,      // Writeback source (0: ALU, 1: MEM, 2: PC+4)
+
+    // System / Exception
+    output logic                   id_is_csr,
+    output logic [2:0]             id_csr_op,
+    output logic                   id_illegal_instr,
+    output logic                   id_is_ecall,
+    output logic                   id_is_ebreak,
+    output logic                   id_is_mret,
+    output logic                   id_is_sret,
+    output logic                   id_is_wfi,
+    output logic                   id_is_sfence_vma,
+    output logic                   id_is_fence,
+    output logic                   id_is_fence_i
+);
+    // Internal Wires for connecting sub-modules
+    logic [4:0] rs1_addr;
+    logic [4:0] rs2_addr;
+    logic [4:0] fs3_addr;
+
+    // Pass-through PC and reg indices directly to next stage
+    assign id_pc = if_pc;
+    assign id_instr_len = if_instr_len;
+    assign id_rs1_addr = rs1_addr;
+    assign id_rs2_addr = rs2_addr;
+    assign fs3_addr = if_instr[31:27];
+    assign id_fs3_addr = fs3_addr;
+
+    // Instruction Decoder Instantiation
+
+    instruction_decoder u_decoder (
+        .instr          (if_instr),
+        .priv_mode      (csr_priv_mode),
+        .mstatus_tsr    (csr_mstatus_tsr),
+        .mstatus_tw     (csr_mstatus_tw),
+        .mstatus_tvm    (csr_mstatus_tvm),
+
+        // Outputs to RegFile read ports
+        .rs1_addr       (rs1_addr),
+        .rs2_addr       (rs2_addr),
+        .rd_addr        (id_rd_addr),
+
+        // Outputs to EX stage (ALU & execution control)
+        .alu_op         (id_alu_op),
+        .alu_src1_sel   (id_alu_src1_sel),
+        .alu_src2_sel   (id_alu_src2_sel),
+        .is_word_op     (id_is_word_op),
+        .imm            (id_imm),
+        
+        // Branch & Jump control
+        .is_branch      (id_is_branch),
+        .branch_op      (id_branch_op),
+        .is_jump        (id_is_jump),
+        
+        // Memory control
+        .is_load        (id_is_load),
+        .is_store       (id_is_store),
+        .mem_size       (id_mem_size),
+        .is_amo         (id_is_amo),
+        .amo_op         (id_amo_op),
+        .is_fp          (id_is_fp),
+        .fp_reg_write_en(id_fp_reg_write_en),
+        .fp_store_data_sel(id_fp_store_data_sel),
+        .fp_op          (id_fp_op),
+        .fp_fmt         (id_fp_fmt),
+        .fp_rm          (id_fp_rm),
+        
+        // Writeback control
+        .reg_write_en   (id_reg_write_en),
+        .wb_sel         (id_wb_sel),
+        
+        // System Control
+        .is_csr         (id_is_csr),
+        .csr_op         (id_csr_op),
+        .is_ecall       (id_is_ecall),
+        .is_ebreak      (id_is_ebreak),
+        .is_mret        (id_is_mret),
+        .is_sret        (id_is_sret),
+        .is_wfi         (id_is_wfi),
+        .is_sfence_vma  (id_is_sfence_vma),
+        .is_fence       (id_is_fence),
+        .is_fence_i     (id_is_fence_i),
+        .illegal_instr  (id_illegal_instr)
+    );
+
+    // Register File Instantiation
+    gpr_file u_regfile (
+        .clk            (clk),
+        .rst            (rst),
+        
+        // Read ports (from Decoder)
+        .rs1_addr       (rs1_addr),
+        .rs2_addr       (rs2_addr),
+        .rs1_rdata      (id_rs1_rdata),
+        .rs2_rdata      (id_rs2_rdata),
+        
+        // Write port (from WB stage)
+        .reg_write_en   (wb_reg_write_en),
+        .rd_addr        (wb_rd_addr),
+        .rd_wdata       (wb_rd_wdata)
+    );
+
+    fpr_file u_fp_regfile (
+        .clk            (clk),
+        .rst            (rst),
+        .fs1_addr       (rs1_addr),
+        .fs2_addr       (rs2_addr),
+        .fs3_addr       (fs3_addr),
+        .fs1_rdata      (id_fs1_rdata),
+        .fs2_rdata      (id_fs2_rdata),
+        .fs3_rdata      (id_fs3_rdata),
+        .fp_write_en    (wb_fp_write_en),
+        .fd_addr        (wb_fd_addr),
+        .fd_wdata       (wb_fd_wdata)
+    );
+
+endmodule
