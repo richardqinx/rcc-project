@@ -38,7 +38,7 @@ struct edd_packet
 static void
 int13_fail (struct bios_regs *regs)
 {
-  regs->ax = 0x0100u;
+  regs->eax = 0x0100u;
   regs->flags |= BIOS_CF;
 }
 
@@ -47,7 +47,7 @@ get_edd_packet (struct bios_regs *regs)
 {
   u32 address;
 
-  address = ((u32)regs->ds << 4) + regs->si;
+  address = ((u32)regs->ds << 4) + (u16)regs->esi;
   return (struct edd_packet *)address;
 }
 
@@ -58,19 +58,19 @@ int13_service (struct bios_regs *regs)
   struct edd_packet *packet;
   u32 buffer_address;
 
-  function = (u8)(regs->ax >> 8);
+  function = (u8)(regs->eax >> 8);
 
   if (function == 0x41u)
     {
-      if (regs->bx != 0x55AAu)
+      if (regs->ebx != 0x55AAu)
         {
           int13_fail (regs);
           return;
         }
 
-      regs->ax = 0x3000u;
-      regs->bx = 0xAA55u;
-      regs->cx |= 0x0001u;
+      regs->eax = 0x3000u;
+      regs->ebx = 0xAA55u;
+      regs->ecx |= 0x0001u;
       regs->flags &= (u16)~BIOS_CF;
       return;
     }
@@ -98,7 +98,7 @@ int13_service (struct bios_regs *regs)
           return;
         }
 
-      regs->ax = 0;
+      regs->eax = 0;
       regs->flags &= (u16)~BIOS_CF;
       return;
     }

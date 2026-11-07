@@ -36,7 +36,7 @@ bios_service_dispatch (u8 vector, struct bios_regs *regs)
       break;
 
     default:
-      regs->ax = 0x0100u;
+      regs->eax = 0x0100u;
       regs->flags |= 0x0001u;
       break;
     }

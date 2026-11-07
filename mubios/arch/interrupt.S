@@ -53,21 +53,11 @@ int1a_return:
 	.type \name, @function
 
 \name:
-		# Build struct bios_regs on the interrupted real-mode stack.
-		push 0
-		push es
+		# Build struct bios_regs from the pushad and segment frames.
 		push ds
-		push bp
-		push di
-		push si
-		push dx
-		push cx
-		push bx
-		push ax
-
-		mov bp, sp
-		mov ax, word ptr [bp + 24]
-		mov word ptr [bp + 18], ax
+		push es
+		.byte 0x66
+		pushad
 
 		# ESI = linear address of struct bios_regs.
 		movzx esi, sp
@@ -88,16 +78,10 @@ int1a_return:
 		call enter_protected_service
 
 		# Restore the context modified by the C service.
-		pop ax
-		pop bx
-		pop cx
-		pop dx
-		pop si
-		pop di
-		pop bp
-		pop ds
+		.byte 0x66
+		popad
 		pop es
-		add sp, 2
+		pop ds
 		iret
 	.endm
 

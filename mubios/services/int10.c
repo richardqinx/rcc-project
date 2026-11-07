@@ -44,7 +44,7 @@ int10_service (struct bios_regs *regs)
   u8 attribute;
   u16 position;
 
-  function = (u8)(regs->ax >> 8);
+  function = (u8)(regs->eax >> 8);
 
   if (function != 0x0Eu)
     return;
@@ -52,8 +52,8 @@ int10_service (struct bios_regs *regs)
   cursor = (volatile u16 *)BDA_CURSOR;
   video = (volatile u16 *)VGA_TEXT_BASE;
 
-  character = (u8)regs->ax;
-  attribute = (u8)regs->bx;
+  character = (u8)regs->eax;
+  attribute = (u8)regs->ebx;
   position = *cursor;
 
   if (character == 0x0Du)

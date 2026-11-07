@@ -26,15 +26,18 @@
 
 struct bios_regs
 {
-  u16 ax;
-  u16 bx;
-  u16 cx;
-  u16 dx;
-  u16 si;
-  u16 di;
-  u16 bp;
-  u16 ds;
+  u32 edi;
+  u32 esi;
+  u32 ebp;
+  u32 esp;
+  u32 ebx;
+  u32 edx;
+  u32 ecx;
+  u32 eax;
   u16 es;
+  u16 ds;
+  u16 return_ip;
+  u16 return_cs;
   u16 flags;
 };
 
