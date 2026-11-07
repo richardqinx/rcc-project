@@ -47,4 +47,6 @@ void serial_write (const char *text);
 void pic_init (void);
 void pit_init (void);
 
+void ivt_init (void);
+
 #endif // MUBIOS_BIOS_H

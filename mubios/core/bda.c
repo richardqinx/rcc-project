@@ -45,3 +45,35 @@ bda_init (void)
 
   store_u16 (bda + BDA_CONVENTIONAL_MEMORY_OFFSET, (u16)(ebda_base >> 10));
 }
+
+struct ivt_entry
+{
+  u16 offset;
+  u16 segment;
+};
+
+extern u8 __rom_start[];
+extern void irq0_entry (void);
+extern void irq1_entry (void);
+
+static void
+install_ivt_entry (u8 vector, void (*handler) (void))
+{
+  volatile struct ivt_entry *ivt;
+  u32 rom_base;
+  u32 handler_address;
+
+  ivt = (volatile struct ivt_entry *)MUBIOS_IVT_BASE;
+  rom_base = (u32)__rom_start;
+  handler_address = (u32)handler;
+
+  ivt[vector].offset = (u16)(handler_address - rom_base);
+  ivt[vector].segment = (u16)(rom_base >> 4);
+}
+
+void
+ivt_init (void)
+{
+  install_ivt_entry (0x08u, irq0_entry);
+  install_ivt_entry (0x09u, irq1_entry);
+}

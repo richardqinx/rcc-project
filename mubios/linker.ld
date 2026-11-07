@@ -43,6 +43,10 @@ SECTIONS
     {
 	KEEP(*(.text16.mode))
     } > ROM
+    .text16.irq :
+    {
+        KEEP(*(.text16.irq))
+    } > ROM
     .text16 :
     {
 	KEEP(*(.text16.mode))
