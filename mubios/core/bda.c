@@ -27,7 +27,7 @@ static void
 store_u16 (volatile u8 *address, u16 value)
 {
   address[0] = (u8)(value & 0x00FFu);
-  address[0] = (u8)(value >> 8);
+  address[1] = (u8)(value >> 8);
 }
 
 void
