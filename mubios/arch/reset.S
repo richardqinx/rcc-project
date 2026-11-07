@@ -20,6 +20,10 @@
 	.intel_syntax noprefix
 	.code16
 
+	.equ MBR_LOAD_SEGMENT, 0x0000
+	.equ MBR_LOAD_OFFSET,  0x7C00
+	.equ BOOT_DRIVE_SLOT,  0x7FFC
+
 	.extern enter_protected_mode
 	
 	.section .text16.entry, "ax"
@@ -36,8 +40,22 @@ reset_entry:
 	mov es, ax
 	mov ss, ax
 	mov sp, 0x8000
+	mov byte ptr [BOOT_DRIVE_SLOT], dl
 
 	call enter_protected_mode
+
+	cli
+	mov dl, byte ptr [BOOT_DRIVE_SLOT]
+	xor ax, ax
+	mov ds, ax
+	mov es, ax
+	mov ss, ax
+	mov sp, MBR_LOAD_OFFSET
+	cld
+
+	.byte 0xEA
+	.word MBR_LOAD_OFFSET
+	.word MBR_LOAD_SEGMENT
 
 reset_halt:
 	sti
