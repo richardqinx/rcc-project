@@ -23,6 +23,7 @@
 	.section .text16.mode, "ax"
 
 	.extern post_main
+	.extern bios_service_dispatch
 	
 	.global enter_protected_mode
 	.type enter_protected_mode, @function
@@ -57,6 +58,35 @@ enter_protected_mode:
 	.byte 0x66
 	.byte 0xEA
 	.long protected_mode_entry
+	.word 0x0008
+
+	.global enter_protected_service
+	.type enter_protected_service, @function
+
+enter_protected_service:
+	cli
+
+	in al, 0x92
+	or al, 0x02
+	and al, 0xFE
+	out 0x92, al
+
+	push cs
+	pop ds
+
+	call 2f
+2:
+	pop bx
+	add bx, gdt_descriptor - 2b
+	lgdt [bx]
+
+	mov eax, cr0
+	or eax, 0x00000001
+	mov cr0, eax
+
+	.byte 0x66
+	.byte 0xEA
+	.long protected_service_entry
 	.word 0x0008
 
 	.align 8
@@ -119,6 +149,30 @@ protected_mode_halt:
 	hlt
 	jmp protected_mode_halt
 
+	.global protected_service_entry
+	.type protected_service_entry, @function
+
+protected_service_entry:
+	mov ax, 0x0010
+	mov ds, ax
+	mov es, ax
+	mov ss, ax
+	mov fs, ax
+	mov gs, ax
+
+	mov esp, 0x00007000
+
+	push esi
+	push edi
+	call bios_service_dispatch
+	add esp, 8
+
+	call leave_service_protected
+
+protected_service_halt:
+	hlt
+	jmp protected_service_halt
+
 	.global leave_protected_mode
 	.type leave_protected_mode, @function
 
@@ -152,6 +206,30 @@ leave_protected_mode:
 	.byte 0x66
 	.byte 0xFF, 0x2C, 0x24
 
+	.global leave_service_protected
+	.type leave_service_protected, @function
+
+leave_service_protected:
+	sub esp, 16
+
+	mov eax, OFFSET FLAT:protected16_service_return
+	mov ebx, OFFSET FLAT:__rom_start
+	sub eax, ebx
+	mov word ptr [esp], ax
+	mov word ptr [esp + 2], 0x0018
+
+	mov eax, OFFSET FLAT:real_mode_service_return
+	mov ebx, OFFSET FLAT:__rom_start
+	sub eax, ebx
+	mov word ptr [esp + 4], ax
+
+	shr ebx, 4
+	mov word ptr [esp + 6], bx
+	mov dword ptr [esp + 8], ebp
+
+	.byte 0x66
+	.byte 0xFF, 0x2C, 0x24
+
 	.code16
 
 	.section .text16.mode, "ax"
@@ -171,6 +249,19 @@ protected16_return:
 	# Jump to the prepared real-mode CS:IP pointer.
 	.byte 0xFF, 0x2F
 
+	.global protected16_service_return
+	.type protected16_service_return, @function
+
+protected16_service_return:
+	mov bx, sp
+	add bx, 4
+
+	mov eax, cr0
+	and eax, 0xFFFFFFFE
+	mov cr0, eax
+
+	.byte 0xFF, 0x2F
+
 	.global real_mode_return
 	.type real_mode_return, @function
 
@@ -183,6 +274,18 @@ real_mode_return:
 	mov gs, ax
 	mov sp, 0x7FFE
 
+	ret
+
+	.global real_mode_service_return
+	.type real_mode_service_return, @function
+
+real_mode_service_return:
+	mov bx, sp
+	mov si, word ptr [bx + 8]
+	mov di, word ptr [bx + 10]
+
+	mov ss, di
+	mov sp, si
 	ret
 	
 	
