@@ -19,6 +19,8 @@
 	
 	.intel_syntax noprefix
 	.code16
+
+	.extern enter_protected_mode
 	
 	.section .text16, "ax"
 
@@ -34,6 +36,8 @@ reset_entry:
 	mov es, ax
 	mov ss, ax
 	mov sp, 0x8000
+
+	call enter_protected_mode
 
 reset_halt:
 	hlt
