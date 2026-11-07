@@ -109,7 +109,7 @@ protected_mode_entry:
 	mov fs, ax
 	mov gs, ax
 
-	mov esp, 0x00008000
+	mov esp, 0x00007000
 
 	call post_main
 
@@ -165,7 +165,7 @@ protected16_return:
 
 	# Leave protected mode while already using a 16-bit code segment.
 	mov eax, cr0
-	and eax 0xFFFFFFFE
+	and eax, 0xFFFFFFFE
 	mov cr0, eax
 
 	# Jump to the prepared real-mode CS:IP pointer.
@@ -179,6 +179,8 @@ real_mode_return:
 	mov ds, ax
 	mov es, ax
 	mov ss, ax
+	mov fs, ax
+	mov gs, ax
 	mov sp, 0x7FFE
 
 	ret

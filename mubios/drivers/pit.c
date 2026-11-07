@@ -23,17 +23,18 @@
 #include "io.h"
 
 #define PIT_COUNTER0 0x0040u
-#define PIT_COMMAND  0x0043u
+#define PIT_COMMAND 0x0043u
 
 #define PIT_SELECT_CHANNEL0 0x00u
-#define PIT_ACCESS_WORD     0x30u
-#define PIT_MODE_2          0x04u
+#define PIT_ACCESS_WORD 0x30u
+#define PIT_MODE_2 0x04u
 #define PIT_BINARY 0x00u
 
 #define PIT_COMMAND_CHANNEL0_MODE2                                            \
   (PIT_SELECT_CHANNEL0 | PIT_ACCESS_WORD | PIT_MODE_2 | PIT_BINARY)
 
-void pit_init(void)
+void
+pit_init (void)
 {
   io_out8 (PIT_COMMAND, PIT_COMMAND_CHANNEL0_MODE2);
 
@@ -41,5 +42,5 @@ void pit_init(void)
    * A divisor of zero represents 65536.
    */
   io_out8 (PIT_COUNTER0, 0x00u);
-  io_out8 (PIT_COUNTER0, 0x00u);  
+  io_out8 (PIT_COUNTER0, 0x00u);
 }

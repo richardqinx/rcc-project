@@ -30,10 +30,11 @@ post_main (void)
   memory_init ();
   bda_init ();
 
-  ivt_init();
+  ivt_init ();
 
   pic_init ();
   pit_init ();
+  ioapic_init ();
 
   serial_write ("mubios: IVT/PIC/PIT initialized\r\n");
 }

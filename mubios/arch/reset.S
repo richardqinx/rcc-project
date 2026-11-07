@@ -40,8 +40,11 @@ reset_entry:
 	call enter_protected_mode
 
 reset_halt:
+	sti
+
+reset_halt_loop:
 	hlt
-	jmp reset_halt
+	jmp reset_halt_loop
 
 	.section .reset, "ax"
 	
