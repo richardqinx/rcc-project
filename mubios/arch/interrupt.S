@@ -20,6 +20,15 @@
 	.intel_syntax noprefix
 	.code16
 
+	.equ ATA_DATA,         0x1F0
+	.equ ATA_SECTOR_COUNT, 0x1F2
+	.equ ATA_LBA_LOW,      0x1F3
+	.equ ATA_LBA_MID,      0x1F4
+	.equ ATA_LBA_HIGH,     0x1F5
+	.equ ATA_DRIVE,        0x1F6
+	.equ ATA_STATUS,       0x1F7
+	.equ ATA_COMMAND,      0x1F7
+
 	.section .text16.irq, "ax"
 
 	.global int1a_entry
@@ -145,7 +154,9 @@ int10_return:
 	.type int13_entry, @function
 
 int13_entry:
-	int13_entry:
+	cmp ah, 0x42
+	je int13_extended_read
+	
 	cmp ah, 0x41
 	jne int13_return
 
@@ -175,4 +186,140 @@ int13_fail:
 	iret
 
 int13_return:
+	push bp
+	mov bp, sp
+
+	mov ah, 0x01
+
+	# Set CF in the FLAGS saved by INT.
+	or word ptr [bp + 6], 0x0001
+
+	pop bp
+	iret
+int13_extended_read:
+	push bp
+	mov bp, sp
+
+	push bx
+	push cx
+	push dx
+	push si
+	push di
+	push ds
+	push es
+
+	# DAP size must be 0x10.
+	cmp byte ptr [si], 0x10
+	jne int13_extended_fail
+
+	# This step supports exactly one sector.
+	cmp word ptr [si + 2], 1
+	jne int13_extended_fail
+
+	# Reject LBA values above 28 bits.
+	mov ax, word ptr [si + 12]
+	or ax, word ptr [si + 14]
+	jnz int13_extended_fail
+
+	mov ax, word ptr [si + 10]
+	test ax, 0xF000
+	jnz int13_extended_fail
+
+	# Load DAP buffer ES:DI.
+	mov di, word ptr [si + 4]
+	mov ax, word ptr [si + 6]
+	mov es, ax
+
+	cld
+
+	# Select ATA drive from DL.
+	mov al, 0xE0
+	test dl, 1
+	jz int13_drive_selected
+
+	or al, 0x10
+
+int13_drive_selected:
+	mov dx, ATA_DRIVE
+	out dx, al
+
+	# 400 ns delay.
+	mov dx, ATA_STATUS
+	in al, dx
+	in al, dx
+	in al, dx
+	in al, dx
+
+	# Sector count = 1.
+	mov dx, ATA_SECTOR_COUNT
+	mov al, 1
+	out dx, al
+
+	# LBA byte 0.
+	mov ax, word ptr [si + 8]
+	mov dx, ATA_LBA_LOW
+	out dx, al
+
+	# LBA byte 1.
+	mov al, ah
+	mov dx, ATA_LBA_MID
+	out dx, al
+
+	# LBA byte 2.
+	mov ax, word ptr [si + 10]
+	mov dx, ATA_LBA_HIGH
+	out dx, al
+
+	# READ SECTORS command.
+	mov dx, ATA_COMMAND
+	mov al, 0x20
+	out dx, al
+
+int13_wait_data:
+	mov dx, ATA_STATUS
+	in al, dx
+
+	test al, 0x80
+	jnz int13_wait_data
+
+	test al, 0x01
+	jnz int13_extended_fail
+
+	test al, 0x08
+	jz int13_wait_data
+
+	# Read one 512-byte sector.
+	mov dx, ATA_DATA
+	mov cx, 256
+	rep insw
+
+	# Clear CF in the saved FLAGS.
+	and word ptr [bp + 6], 0xFFFE
+
+	pop es
+	pop ds
+	pop di
+	pop si
+	pop dx
+	pop cx
+	pop bx
+	pop bp
+
+	xor ax, ax
+	iret
+
+int13_extended_fail:
+	# Set CF in the saved FLAGS.
+	or word ptr [bp + 6], 0x0001
+
+	pop es
+	pop ds
+	pop di
+	pop si
+	pop dx
+	pop cx
+	pop bx
+	pop bp
+
+	mov ax, 0x0100
 	iret
