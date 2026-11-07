@@ -57,5 +57,6 @@ struct bios_regs;
 void bios_service_dispatch (u8 vector, struct bios_regs *regs);
 void int10_service (struct bios_regs *regs);
 void int13_service (struct bios_regs *regs);
+void int15_service (struct bios_regs *regs);
 
 #endif // MUBIOS_BIOS_H
