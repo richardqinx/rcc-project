@@ -40,4 +40,8 @@ void post_main (void);
 void memory_init (void);
 void bda_init (void);
 
+void serial_init (void);
+void serial_putc (u8 value);
+void serial_write (const char *text);
+
 #endif // MUBIOS_BIOS_H

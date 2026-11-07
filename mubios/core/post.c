@@ -24,6 +24,11 @@
 void
 post_main (void)
 {
+  serial_init ();
+  serial_write ("mubios: POST start\r\n");
+
   memory_init ();
   bda_init ();
+
+  serial_write ("mubios: memory initialized\r\n");
 }
