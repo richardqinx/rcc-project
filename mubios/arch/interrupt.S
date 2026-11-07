@@ -48,3 +48,95 @@ int1a_entry:
 
 int1a_return:
 	iret
+
+	.global int10_entry
+	.type int10_entry, @function
+
+int10_entry:
+	cmp ah, 0x0E
+	jne int10_return
+
+	push bp
+	mov bp, sp
+
+	push ax
+	push bx
+	push dx
+	push si
+	push di
+	push ds
+	push es
+
+	xor ax, ax
+	mov ds, ax
+
+	mov ax, 0xB800
+	mov es, ax
+
+	mov si, 0x0050
+	mov dx, word ptr [si]
+
+	mov al, byte ptr [bp - 2]
+	mov bl, byte ptr [bp - 4]
+
+	cmp al, 0x0D
+	je int10_carriage_return
+
+	cmp al, 0x0A
+	je int10_line_feed
+
+	cmp al, 0x08
+	je int10_backspace
+
+	mov di, dx
+	shl di, 1
+	mov ah, bl
+	mov word ptr es:[di], ax
+	inc dx
+	jmp int10_store_cursor
+
+	
+int10_carriage_return:
+	mov ax, dx
+	mov si, 80
+	xor dx, dx
+	div si
+	mul si
+	mov dx, ax
+	jmp int10_store_cursor
+
+int10_line_feed:
+	add dx, 80
+	jmp int10_store_cursor
+
+int10_backspace:
+	cmp dx, 0
+	je int10_store_cursor
+
+	dec dx
+	mov di, dx
+	shl di, 1
+	mov al, 0x20
+	mov ah, bl
+	mov word ptr es:[di], ax
+
+int10_store_cursor:
+	cmp dx, 2000
+	jb int10_save_cursor
+
+	xor dx, dx
+
+int10_save_cursor:
+	mov word ptr [0x0050], dx
+
+	pop es
+	pop ds
+	pop di
+	pop si
+	pop dx
+	pop bx
+	pop ax
+	pop bp
+
+int10_return:
+	iret

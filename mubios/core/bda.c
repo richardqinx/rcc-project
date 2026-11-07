@@ -57,6 +57,7 @@ extern void irq0_entry (void);
 extern void irq1_entry (void);
 
 extern void int1a_entry (void);
+extern void int10_entry (void);
 
 static void
 install_ivt_entry (u8 vector, void (*handler) (void))
@@ -79,4 +80,5 @@ ivt_init (void)
   install_ivt_entry (0x08u, irq0_entry);
   install_ivt_entry (0x09u, irq1_entry);
   install_ivt_entry (0x1Au, int1a_entry);
+  install_ivt_entry (0x10u, int10_entry);
 }
