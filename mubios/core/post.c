@@ -40,7 +40,7 @@ post_main (void)
   u8 ata_status;
 
   mbr = (volatile u8 *)0x00007C00u;
-  ata_status = ata_read_sector28 (0, (u16 *)mbr);
+  ata_status = ata_read_sectors28 (0, (u16 *)mbr, 1);
 
   if (ata_status == 0 && mbr[0x01FE] == 0x55 && mbr[0x01FF] == 0xAA)
     serial_write ("mubios: MBR loaded\r\n");

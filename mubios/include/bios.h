@@ -50,7 +50,7 @@ void ioapic_init (void);
 
 void ivt_init (void);
 
-u8 ata_read_sector28 (u32 lba, u16 *buffer);
+u8 ata_read_sectors28 (u32 lba, u16 *buffer, u16 count);
 
 struct bios_regs;
 

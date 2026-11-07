@@ -60,8 +60,8 @@ ata_delay_400ns (void)
   io_in8 (ATA_STATUS);
 }
 
-u8
-ata_read_sector28 (u32 lba, u16 *buffer)
+static u8
+ata_read_one_sector28 (u32 lba, u16 *buffer)
 {
   u8 status;
   u16 index;
@@ -88,6 +88,26 @@ ata_read_sector28 (u32 lba, u16 *buffer)
 
   for (index = 0; index < 256; ++index)
     buffer[index] = io_in16 (ATA_DATA);
+
+  return 0;
+}
+
+u8
+ata_read_sectors28 (u32 lba, u16 *buffer, u16 count)
+{
+  u16 sector;
+
+  if (count == 0u)
+    return 1;
+
+  for (sector = 0; sector < count; ++sector)
+    {
+      if (ata_read_one_sector28 (lba, buffer) != 0)
+        return 1;
+
+      lba++;
+      buffer += 256;
+    }
 
   return 0;
 }

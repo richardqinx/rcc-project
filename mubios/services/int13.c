@@ -79,8 +79,9 @@ int13_service (struct bios_regs *regs)
     {
       packet = get_edd_packet (regs);
 
-      if (packet->size != 0x10u || packet->count != 1u
-          || packet->lba_high != 0u || packet->lba_low > 0x0FFFFFFFu)
+      if (packet->size != 0x10u || packet->count == 0u || packet->count > 127u
+          || packet->lba_high != 0u
+          || packet->lba_low > 0x10000000u - (u32)packet->count)
         {
           int13_fail (regs);
           return;
@@ -89,7 +90,9 @@ int13_service (struct bios_regs *regs)
       buffer_address
           = ((u32)packet->buffer_segment << 4) + packet->buffer_offset;
 
-      if (ata_read_sector28 (packet->lba_low, (u16 *)buffer_address) != 0)
+      if (ata_read_sectors28 (packet->lba_low, (u16 *)buffer_address,
+                              packet->count)
+          != 0)
         {
           int13_fail (regs);
           return;
