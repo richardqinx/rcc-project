@@ -44,4 +44,7 @@ void serial_init (void);
 void serial_putc (u8 value);
 void serial_write (const char *text);
 
+void pic_init (void);
+void pit_init (void);
+
 #endif // MUBIOS_BIOS_H

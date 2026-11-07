@@ -30,5 +30,8 @@ post_main (void)
   memory_init ();
   bda_init ();
 
-  serial_write ("mubios: memory initialized\r\n");
+  pic_init ();
+  pit_init ();
+
+  serial_write ("mubios: PIC/PIT initialized\r\n");
 }
