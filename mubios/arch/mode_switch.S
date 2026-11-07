@@ -80,6 +80,14 @@ gdt_data:
 	.byte 0xCF
 	.byte 0x00
 
+gdt_code16:
+	.word 0xFFFF
+	.word 0x0000
+	.byte 0x0F
+	.byte 0x9A
+	.byte 0x0F
+	.byte 0x00
+
 gdt_end:
 
 gdt_descriptor:
@@ -105,8 +113,74 @@ protected_mode_entry:
 
 	call post_main
 
+	call leave_protected_mode
+
 protected_mode_halt:
 	hlt
 	jmp protected_mode_halt
+
+	.global leave_protected_mode
+	.type leave_protected_mode, @function
+
+	.extern __rom_start
+	.extern protected16_return
+	.extern real_mode_return
+
+leave_protected_mode:
+	# Keep the original 16-bit return address at 0x7FFE intact.
+	sub esp, 12
+
+	# Stack[0]: protected-mode 16-bit code offset
+	# Stack[2]: protected-mode 16-bit code selector
+	mov eax, OFFSET FLAT:protected16_return
+	mov ebx, OFFSET FLAT:__rom_start
+	sub eax, ebx
+	mov word ptr [esp], ax
+	mov word ptr [esp + 2], 0x0018
+
+	# Stack[4]: real-mode offset
+	# Stack[6]: real-mode segment
+	mov eax, OFFSET FLAT:real_mode_return
+	mov ebx, OFFSET FLAT:__rom_start
+	sub eax, ebx
+	mov word ptr [esp + 4], ax
+
+	shr ebx, 4
+	mov word ptr [esp + 6], bx
+
+	# Enter the 16-bit protected-mode code segment.
+	.byte 0x66
+	.byte 0xFF, 0x2C, 0x24
+
+	.code16
+
+	.section .text16.mode, "ax"
+
+	.global protected16_return
+	.type protected16_return, @function
+
+protected16_return:
+	mov bx, sp
+	add bx, 4
+
+	# Leave protected mode while already using a 16-bit code segment.
+	mov eax, cr0
+	and eax 0xFFFFFFFE
+	mov cr0, eax
+
+	# Jump to the prepared real-mode CS:IP pointer.
+	.byte 0xFF, 0x2F
+
+	.global real_mode_return
+	.type real_mode_return, @function
+
+real_mode_return:
+	xor ax, ax
+	mov ds, ax
+	mov es, ax
+	mov ss, ax
+	mov sp, 0x7FFE
+
+	ret
 	
 	
