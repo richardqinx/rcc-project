@@ -22,6 +22,22 @@
 #ifndef MUBIOS_BIOS_H
 #define MUBIOS_BIOS_H
 
-void post_main(void);
+typedef unsigned char u8;
+typedef unsigned short u16;
+typedef unsigned int u32;
+
+#define MUBIOS_IVT_BASE 0x00000000u
+#define MUBIOS_IVT_SIZE 0x00000400u
+
+#define MUBIOS_BDA_BASE 0x00000400u
+#define MUBIOS_BDA_SIZE 0x00000100u
+
+#define BDA_EBDA_SEGMENT_OFFSET 0x000Eu
+#define BDA_EQUIPMENT_OFFSET 0x0010u
+#define BDA_CONVENTIONAL_MEMORY_OFFSET 0x0013u
+
+void post_main (void);
+void memory_init (void);
+void bda_init (void);
 
 #endif // MUBIOS_BIOS_H

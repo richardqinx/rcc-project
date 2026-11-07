@@ -21,6 +21,9 @@
 
 #include "bios.h"
 
-void post_main(void)
+void
+post_main (void)
 {
+  memory_init ();
+  bda_init ();
 }
