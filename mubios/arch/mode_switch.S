@@ -22,6 +22,8 @@
 
 	.section .text16, "ax"
 
+	.extern post_main
+	
 	.global enter_protected_mode
 	.type enter_protected_mode, @function
 
@@ -100,6 +102,8 @@ protected_mode_entry:
 	mov gs, ax
 
 	mov esp, 0x00008000
+
+	call post_main
 
 protected_mode_halt:
 	hlt

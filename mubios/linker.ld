@@ -44,6 +44,7 @@ SECTIONS
     .text32 :
     {
         *(.text32 .text32.*)
+	*(.text .text.*)
     } > ROM
 
     . = ALIGN(4);
