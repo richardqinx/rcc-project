@@ -28,7 +28,8 @@ LD := ld
 OBJCOPY := objcopy
 
 CFLAGS := -m32 -ffreestanding -fno-pie -fno-stack-protector \
-	  -fno-builtin -nostdinc -Iinclude -Wall -Wextra
+	  -fno-builtin -nostdinc -Iinclude -Wall -Wextra    \
+	  -fno-unwind-tables -fno-asynchronous-unwind-tables
 ASFLAGS := --32
 LDFLAGS := -m elf_i386 -nostdlib -T linker.ld
 
