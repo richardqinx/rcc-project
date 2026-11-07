@@ -20,6 +20,12 @@
 	.intel_syntax noprefix
 	.code16
 
+	.equ BDA_TIMER_COUNTER, 0x046C
+	.equ BDA_TIMER_ROLLOVER, 0x0470
+
+	.equ TIMER_TICKS_PER_DAY_LOW, 0x00B0
+	.equ TIMER_TICKS_PER_DAY_HIGH, 0x0018
+
 	.section .text16.irq, "ax"
 
 	.global irq0_entry
@@ -27,11 +33,34 @@
 
 irq0_entry:
 	push ax
+	push bx
 
+	xor bx, bx
+	mov ds, bx
+
+	mov bx, BDA_TIMER_COUNTER
+	inc word ptr [bx]
+
+	jnz irq0_send_eoi
+
+	inc word ptr [bx + 2]
+
+	cmp word ptr [bx + 2], TIMER_TICKS_PER_DAY_HIGH
+	jne irq0_send_eoi
+
+	cmp word ptr [bx], TIMER_TICKS_PER_DAY_LOW
+	jne irq0_send_eoi
+
+	mov word ptr [bx], 0
+	mov word ptr [bx + 2], 0
+	mov byte ptr [BDA_TIMER_ROLLOVER], 1
+
+irq0_send_eoi:
 	# Acknowledge IRQ0 on the master PIC.
 	mov al, 0x20
 	out 0x20, al
 
+	pop bx
 	pop ax
 	iret
 
