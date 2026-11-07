@@ -140,3 +140,39 @@ int10_save_cursor:
 
 int10_return:
 	iret
+
+	.global int13_entry
+	.type int13_entry, @function
+
+int13_entry:
+	int13_entry:
+	cmp ah, 0x41
+	jne int13_return
+
+	push bp
+	mov bp, sp
+
+	cmp bx, 0x55AA
+	jne int13_fail
+
+	mov bx, 0xAA55
+	mov cx, 0x0001
+	mov ax, 0x3000
+
+	# Clear CF in the FLAGS saved by INT.
+	and word ptr [bp + 6], 0xFFFE
+
+	pop bp
+	iret
+
+int13_fail:
+	mov ah, 0x01
+
+	# Set CF in the FLAGS saved by INT.
+	or word ptr [bp + 6], 0x0001
+
+	pop bp
+	iret
+
+int13_return:
+	iret
