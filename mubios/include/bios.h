@@ -50,4 +50,6 @@ void ioapic_init (void);
 
 void ivt_init (void);
 
+u8 ata_read_sector28 (u32 lba, u16 *buffer);
+
 #endif // MUBIOS_BIOS_H

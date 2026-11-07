@@ -36,5 +36,14 @@ post_main (void)
   pit_init ();
   ioapic_init ();
 
-  serial_write ("mubios: IVT/PIC/PIT initialized\r\n");
+  volatile u8 *mbr;
+  u8 ata_status;
+
+  mbr = (volatile u8 *)0x00007C00u;
+  ata_status = ata_read_sector28 (0, (u16 *)mbr);
+
+  if (ata_status == 0 && mbr[0x01FE] == 0x55 && mbr[0x01FF] == 0xAA)
+    serial_write ("mubios: MBR loaded\r\n");
+  else
+    serial_write ("mubios: MBR read failed\r\n");
 }

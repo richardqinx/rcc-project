@@ -40,4 +40,14 @@ io_in8 (u16 port)
   return value;
 }
 
+static inline u16
+io_in16 (u16 port)
+{
+  u16 value;
+
+  __asm__ volatile ("inw %1, %0" : "=a"(value) : "dN"(port));
+
+  return value;
+}
+
 #endif // MUBIOS_IO_H
