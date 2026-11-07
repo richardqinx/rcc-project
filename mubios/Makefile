@@ -38,13 +38,16 @@ S_SRCS := $(wildcard arch/*.S)
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(C_SRCS)) \
         $(patsubst %.S,$(BUILD_DIR)/%.o,$(S_SRCS))
 
-.PHONY: all elf rom
+.PHONY: all elf rom format
 
 all: $(ROM)
 
 elf: $(ELF)
 
 rom: $(ROM)
+
+format:
+	clang-format -i $(C_SRCS) $(wildcard include/*.h)
 
 $(ELF): $(OBJS) linker.ld
 	@mkdir -p $(dir $@)
