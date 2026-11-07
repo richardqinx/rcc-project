@@ -35,9 +35,17 @@ SECTIONS
     __rom_start = .;
 
     . = ALIGN(16);
+    .text16.entry :
+    {
+        KEEP(*(.text16 .entry))
+    } > ROM
+    .text16.mode :
+    {
+	KEEP(*(.text16.mode))
+    } > ROM
     .text16 :
     {
-        KEEP(*(.text16 .text16.*))
+	KEEP(*(.text16.mode))
     } > ROM
 
     . = ALIGN(16);

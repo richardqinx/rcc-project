@@ -20,7 +20,7 @@
 	.intel_syntax noprefix
 	.code16
 
-	.section .text16, "ax"
+	.section .text16.mode, "ax"
 
 	.extern post_main
 	

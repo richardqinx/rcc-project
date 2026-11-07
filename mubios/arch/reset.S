@@ -22,7 +22,7 @@
 
 	.extern enter_protected_mode
 	
-	.section .text16, "ax"
+	.section .text16.entry, "ax"
 
 	.global reset_entry
 	.type reset_entry, @function
