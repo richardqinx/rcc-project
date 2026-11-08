@@ -35,6 +35,19 @@ struct edd_packet
   u32 lba_high;
 } __attribute__ ((packed));
 
+struct edd_parameters
+{
+  u16 size;
+  u16 flags;
+  u32 cylinders_low;
+  u32 cylinders_high;
+  u32 heads;
+  u32 sectors_per_track;
+  u32 total_sectors_low;
+  u32 total_sectors_high;
+  u16 bytes_per_sector;
+} __attribute__ ((packed));
+
 static void
 int13_fail (struct bios_regs *regs)
 {
@@ -49,6 +62,15 @@ get_edd_packet (struct bios_regs *regs)
 
   address = ((u32)regs->ds << 4) + (u16)regs->esi;
   return (struct edd_packet *)address;
+}
+
+static struct edd_parameters *
+get_edd_parameters (struct bios_regs *regs)
+{
+  u32 address;
+
+  address = ((u32)regs->ds << 4) + (u16)regs->esi;
+  return (struct edd_parameters *)address;
 }
 
 void
@@ -97,6 +119,41 @@ int13_service (struct bios_regs *regs)
           int13_fail (regs);
           return;
         }
+
+      regs->eax = 0;
+      regs->flags &= (u16)~BIOS_CF;
+      return;
+    }
+
+  if (function == 0x48u)
+    {
+      struct edd_parameters *parameters;
+      u16 cylinders;
+      u16 heads;
+      u16 sectors_per_track;
+      u32 total_sectors_low;
+      u32 total_sectors_high;
+
+      parameters = get_edd_parameters (regs);
+
+      if (parameters->size < 0x001Eu
+          || ata_identify (&cylinders, &heads, &sectors_per_track,
+                           &total_sectors_low, &total_sectors_high)
+                 != 0)
+        {
+          int13_fail (regs);
+          return;
+        }
+
+      parameters->size = 0x001Eu;
+      parameters->flags = 0;
+      parameters->cylinders_low = cylinders;
+      parameters->cylinders_high = 0;
+      parameters->heads = heads;
+      parameters->sectors_per_track = sectors_per_track;
+      parameters->total_sectors_low = total_sectors_low;
+      parameters->total_sectors_high = total_sectors_high;
+      parameters->bytes_per_sector = 512;
 
       regs->eax = 0;
       regs->flags &= (u16)~BIOS_CF;

@@ -27,6 +27,18 @@
 #define BDA_KBD_BUFFER_END 0x003Eu
 
 static u8
+normalize_scancode (u8 scancode)
+{
+  switch (scancode)
+    {
+    case 0x5Au:
+      return 0x1Cu;
+    default:
+      return scancode;
+    }
+}
+
+static u8
 scancode_to_ascii (u8 scancode)
 {
   switch (scancode)
@@ -126,7 +138,7 @@ int16_service (struct bios_regs *regs)
 
   position = *head;
   value = buffer[(position - BDA_KBD_BUFFER_START) >> 1];
-  scancode = (u8)(value >> 8);
+  scancode = normalize_scancode ((u8)(value >> 8));
   ascii = scancode_to_ascii (scancode);
 
   regs->eax = ((u32)scancode << 8) | ascii;

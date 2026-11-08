@@ -36,6 +36,7 @@
 #define ATA_STATUS_BSY 0x80u
 
 #define ATA_CMD_READ_SECTORS 0x20u
+#define ATA_CMD_IDENTIFY 0xECu
 
 static u8
 ata_wait_not_busy (void)
@@ -108,6 +109,45 @@ ata_read_sectors28 (u32 lba, u16 *buffer, u16 count)
       lba++;
       buffer += 256;
     }
+
+  return 0;
+}
+
+u8
+ata_identify (u16 *cylinders, u16 *heads, u16 *sectors_per_track,
+              u32 *total_sectors_low, u32 *total_sectors_high)
+{
+  u16 identify_data[256];
+  u8 status;
+  u16 index;
+
+  status = ata_wait_not_busy ();
+  if ((status & ATA_STATUS_ERR) != 0)
+    return 1;
+
+  io_out8 (ATA_DRIVE, 0xE0u);
+  ata_delay_400ns ();
+
+  io_out8 (ATA_SECTOR_COUNT, 0);
+  io_out8 (ATA_LBA_LOW, 0);
+  io_out8 (ATA_LBA_MID, 0);
+  io_out8 (ATA_LBA_HIGH, 0);
+  io_out8 (ATA_COMMAND, ATA_CMD_IDENTIFY);
+
+  status = ata_wait_not_busy ();
+  if ((status & ATA_STATUS_ERR) != 0 || (status & ATA_STATUS_DRQ) == 0)
+    return 1;
+
+  for (index = 0; index < 256; ++index)
+    identify_data[index] = io_in16 (ATA_DATA);
+
+  *cylinders = identify_data[1];
+  *heads = identify_data[3];
+  *sectors_per_track = identify_data[6];
+  *total_sectors_low
+      = (u32)identify_data[60] | ((u32)identify_data[61] << 16);
+  *total_sectors_high
+      = (u32)identify_data[100] | ((u32)identify_data[101] << 16);
 
   return 0;
 }
