@@ -23,6 +23,9 @@
 
 extern u8 __ebda_start[];
 
+#define BDA_COM1_OFFSET 0x0000u
+#define BDA_LPT1_OFFSET 0x0008u
+
 static void
 store_u16 (volatile u8 *address, u16 value)
 {
@@ -41,7 +44,10 @@ bda_init (void)
 
   store_u16 (bda + BDA_EBDA_SEGMENT_OFFSET, (u16)(ebda_base >> 4));
 
-  store_u16 (bda + BDA_EQUIPMENT_OFFSET, (u16)(ebda_base >> 4));
+  store_u16 (bda + BDA_EQUIPMENT_OFFSET, 0x4227u);
+
+  store_u16 (bda + BDA_COM1_OFFSET, 0x03F8u);
+  store_u16 (bda + BDA_LPT1_OFFSET, 0x0378u);
 
   store_u16 (bda + BDA_CONVENTIONAL_MEMORY_OFFSET, (u16)(ebda_base >> 10));
 
@@ -62,6 +68,7 @@ extern void irq7_entry (void);
 
 extern void int1a_entry (void);
 extern void int10_entry (void);
+extern void int14_entry (void);
 extern void int13_entry (void);
 extern void int15_entry (void);
 extern void int16_entry (void);
@@ -89,6 +96,7 @@ ivt_init (void)
   install_ivt_entry (0x0Fu, irq7_entry);
   install_ivt_entry (0x1Au, int1a_entry);
   install_ivt_entry (0x10u, int10_entry);
+  install_ivt_entry (0x14u, int14_entry);
   install_ivt_entry (0x13u, int13_entry);
   install_ivt_entry (0x15u, int15_entry);
   install_ivt_entry (0x16u, int16_entry);

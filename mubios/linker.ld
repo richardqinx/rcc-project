@@ -26,7 +26,7 @@ ENTRY(reset_entry)
 MEMORY
 {
     ROM  (rx) : ORIGIN = 0xF0000, LENGTH = 0x10000
-    EBDA (rw) : ORIGIN = 0x9C000, LENGTH = 0x4000
+    EBDA (rw) : ORIGIN = 0x9FC00, LENGTH = 0x0400
 }
 
 SECTIONS

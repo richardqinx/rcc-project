@@ -29,6 +29,7 @@ post_main (void)
 
   memory_init ();
   bda_init ();
+  vga_text_mode_init ();
 
   ivt_init ();
 

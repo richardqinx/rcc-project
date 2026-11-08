@@ -47,6 +47,7 @@ void serial_write (const char *text);
 void pic_init (void);
 void pit_init (void);
 void ioapic_init (void);
+void vga_text_mode_init (void);
 
 void ivt_init (void);
 
@@ -59,6 +60,7 @@ struct bios_regs;
 
 void bios_service_dispatch (u8 vector, struct bios_regs *regs);
 void int10_service (struct bios_regs *regs);
+void int14_service (struct bios_regs *regs);
 void int13_service (struct bios_regs *regs);
 void int15_service (struct bios_regs *regs);
 void int16_service (struct bios_regs *regs);

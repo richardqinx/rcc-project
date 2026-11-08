@@ -63,6 +63,20 @@ int10_service (struct bios_regs *regs)
   function = (u8)(regs->eax >> 8);
   page = (u8)(regs->ebx >> 8);
 
+  if (function == 0x00u)
+    {
+      if ((u8)regs->eax == 0x03u)
+        vga_text_mode_init ();
+      return;
+    }
+
+  if (function == 0x0Fu)
+    {
+      regs->eax = (regs->eax & 0xFFFF0000u) | 0x5003u;
+      regs->ebx &= 0xFFFF00FFu;
+      return;
+    }
+
   if (function == 0x02u)
     {
       cursor = int10_cursor_for_page (page);

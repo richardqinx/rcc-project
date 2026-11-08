@@ -31,6 +31,10 @@ bios_service_dispatch (u8 vector, struct bios_regs *regs)
       int10_service (regs);
       break;
 
+    case 0x14u:
+      int14_service (regs);
+      break;
+
     case 0x13u:
       int13_service (regs);
       break;

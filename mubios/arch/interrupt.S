@@ -86,6 +86,7 @@ int1a_return:
 	.endm
 
 	BIOS_SERVICE_ENTRY int10_entry, 0x10
+	BIOS_SERVICE_ENTRY int14_entry, 0x14
 	BIOS_SERVICE_ENTRY int13_entry, 0x13
 	BIOS_SERVICE_ENTRY int15_entry, 0x15
 	BIOS_SERVICE_ENTRY int16_entry, 0x16
