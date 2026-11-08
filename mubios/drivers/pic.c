@@ -36,7 +36,7 @@
 #define PIC1_CASCADE_ID 0x04u
 #define PIC2_CASCADE_ID 0x02u
 
-#define PIC1_MASK_DEFAULT 0xFAu
+#define PIC1_MASK_DEFAULT 0xF8u
 #define PIC2_MASK_DEFAULT 0xFFu
 
 void
@@ -55,8 +55,8 @@ pic_init (void)
   io_out8 (PIC2_DATA, PIC_ICW4_8086);
 
   /*
-   * Keep the cascade line enabled.
-   * All actual hardware IRQ lines remain masked.
+   * Keep the timer, keyboard, and cascade lines enabled.
+   * All other master IRQ lines remain masked.
    */
   io_out8 (PIC1_DATA, PIC1_MASK_DEFAULT);
   io_out8 (PIC2_DATA, PIC2_MASK_DEFAULT);

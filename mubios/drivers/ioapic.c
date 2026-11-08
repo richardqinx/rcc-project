@@ -27,8 +27,11 @@
 
 #define IOAPIC_IRQ0_LOW 0x10u
 #define IOAPIC_IRQ0_HIGH 0x11u
+#define IOAPIC_IRQ1_LOW 0x12u
+#define IOAPIC_IRQ1_HIGH 0x13u
 
 #define IOAPIC_IRQ0_EXTINT 0x00000700u
+#define IOAPIC_IRQ1_EXTINT 0x00000700u
 
 #define IA32_APIC_BASE_MSR 0x0000001Bu
 #define APIC_BASE 0xFEE00000u
@@ -84,4 +87,10 @@ ioapic_init (void)
    */
   ioapic_write (IOAPIC_IRQ0_LOW, IOAPIC_IRQ0_EXTINT);
   ioapic_write (IOAPIC_IRQ0_HIGH, 0x00000000u);
+
+  /*
+   * Route the keyboard IRQ through the legacy PIC ExtINT path.
+   */
+  ioapic_write (IOAPIC_IRQ1_LOW, IOAPIC_IRQ1_EXTINT);
+  ioapic_write (IOAPIC_IRQ1_HIGH, 0x00000000u);
 }
