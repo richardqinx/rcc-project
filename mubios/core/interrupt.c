@@ -39,6 +39,10 @@ bios_service_dispatch (u8 vector, struct bios_regs *regs)
       int15_service (regs);
       break;
 
+    case 0x16u:
+      int16_service (regs);
+      break;
+
     default:
       regs->eax = 0x0100u;
       regs->flags |= 0x0001u;

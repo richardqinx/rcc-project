@@ -44,6 +44,9 @@ bda_init (void)
   store_u16 (bda + BDA_EQUIPMENT_OFFSET, (u16)(ebda_base >> 4));
 
   store_u16 (bda + BDA_CONVENTIONAL_MEMORY_OFFSET, (u16)(ebda_base >> 10));
+
+  store_u16 (bda + 0x001Au, 0x041Eu);
+  store_u16 (bda + 0x001Cu, 0x041Eu);
 }
 
 struct ivt_entry
@@ -60,6 +63,7 @@ extern void int1a_entry (void);
 extern void int10_entry (void);
 extern void int13_entry (void);
 extern void int15_entry (void);
+extern void int16_entry (void);
 
 static void
 install_ivt_entry (u8 vector, void (*handler) (void))
@@ -85,4 +89,5 @@ ivt_init (void)
   install_ivt_entry (0x10u, int10_entry);
   install_ivt_entry (0x13u, int13_entry);
   install_ivt_entry (0x15u, int15_entry);
+  install_ivt_entry (0x16u, int16_entry);
 }

@@ -69,12 +69,41 @@ irq0_send_eoi:
 
 irq1_entry:
 	push ax
+	push bx
+	push dx
+	push ds
 
 	# Read the PS/2 scan code before sending EOI.
 	in al, 0x60
+	mov dl, al
 
+	test dl, 0x80
+	jnz irq1_send_eoi
+
+	xor ax, ax
+	mov ds, ax
+
+	mov bx, word ptr [0x041C]
+	mov ax, bx
+	add ax, 2
+	cmp ax, 0x043E
+	jb irq1_next_tail_ready
+	mov ax, 0x041E
+
+irq1_next_tail_ready:
+	cmp ax, word ptr [0x041A]
+	je irq1_send_eoi
+
+	mov byte ptr [bx], 0
+	mov byte ptr [bx + 1], dl
+	mov word ptr [0x041C], ax
+
+irq1_send_eoi:
 	mov al, 0x20
 	out 0x20, al
 
+	pop ds
+	pop dx
+	pop bx
 	pop ax
 	iret
