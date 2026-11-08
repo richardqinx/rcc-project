@@ -30,6 +30,7 @@
 #define ATA_DRIVE 0x1F6u
 #define ATA_STATUS 0x1F7u
 #define ATA_COMMAND 0x1F7u
+#define ATA_CONTROL 0x3F6u
 
 #define ATA_STATUS_ERR 0x01u
 #define ATA_STATUS_DRQ 0x08u
@@ -37,6 +38,7 @@
 
 #define ATA_CMD_READ_SECTORS 0x20u
 #define ATA_CMD_IDENTIFY 0xECu
+#define ATA_CONTROL_SRST 0x04u
 
 static u8
 ata_wait_not_busy (void)
@@ -61,10 +63,21 @@ ata_delay_400ns (void)
   io_in8 (ATA_STATUS);
 }
 
+u8
+ata_reset (void)
+{
+  io_out8 (ATA_CONTROL, ATA_CONTROL_SRST);
+  ata_delay_400ns ();
+  io_out8 (ATA_CONTROL, 0);
+  ata_delay_400ns ();
+  return 0;
+}
+
 static u8
-ata_read_one_sector28 (u32 lba, u16 *buffer)
+ata_read_transfer28 (u32 lba, u16 *buffer, u16 count)
 {
   u8 status;
+  u16 sector;
   u16 index;
 
   status = ata_wait_not_busy ();
@@ -74,21 +87,25 @@ ata_read_one_sector28 (u32 lba, u16 *buffer)
   io_out8 (ATA_DRIVE, (u8)(0xE0u | ((lba >> 24) & 0x0Fu)));
   ata_delay_400ns ();
 
-  io_out8 (ATA_SECTOR_COUNT, 1);
+  io_out8 (ATA_SECTOR_COUNT, (u8)count);
   io_out8 (ATA_LBA_LOW, (u8)(lba & 0xFFu));
   io_out8 (ATA_LBA_MID, (u8)((lba >> 8) & 0xFFu));
   io_out8 (ATA_LBA_HIGH, (u8)((lba >> 16) & 0xFFu));
   io_out8 (ATA_COMMAND, ATA_CMD_READ_SECTORS);
 
-  status = ata_wait_not_busy ();
-  if ((status & ATA_STATUS_ERR) != 0)
-    return 1;
+  for (sector = 0; sector < count; ++sector)
+    {
+      status = ata_wait_not_busy ();
+      if ((status & ATA_STATUS_ERR) != 0
+          || (status & ATA_STATUS_DRQ) == 0)
+        return 1;
 
-  if ((status & ATA_STATUS_DRQ) == 0)
-    return 1;
+      for (index = 0; index < 256; ++index)
+        buffer[index] = io_in16 (ATA_DATA);
 
-  for (index = 0; index < 256; ++index)
-    buffer[index] = io_in16 (ATA_DATA);
+      buffer += 256;
+      ata_delay_400ns ();
+    }
 
   return 0;
 }
@@ -96,21 +113,10 @@ ata_read_one_sector28 (u32 lba, u16 *buffer)
 u8
 ata_read_sectors28 (u32 lba, u16 *buffer, u16 count)
 {
-  u16 sector;
-
   if (count == 0u)
     return 1;
 
-  for (sector = 0; sector < count; ++sector)
-    {
-      if (ata_read_one_sector28 (lba, buffer) != 0)
-        return 1;
-
-      lba++;
-      buffer += 256;
-    }
-
-  return 0;
+  return ata_read_transfer28 (lba, buffer, count);
 }
 
 u8
@@ -141,13 +147,22 @@ ata_identify (u16 *cylinders, u16 *heads, u16 *sectors_per_track,
   for (index = 0; index < 256; ++index)
     identify_data[index] = io_in16 (ATA_DATA);
 
+  ata_delay_400ns ();
+
   *cylinders = identify_data[1];
   *heads = identify_data[3];
   *sectors_per_track = identify_data[6];
   *total_sectors_low
-      = (u32)identify_data[60] | ((u32)identify_data[61] << 16);
-  *total_sectors_high
       = (u32)identify_data[100] | ((u32)identify_data[101] << 16);
+  *total_sectors_high
+      = (u32)identify_data[102] | ((u32)identify_data[103] << 16);
+
+  if (*total_sectors_low == 0u && *total_sectors_high == 0u)
+    {
+      *total_sectors_low
+          = (u32)identify_data[60] | ((u32)identify_data[61] << 16);
+      *total_sectors_high = 0;
+    }
 
   return 0;
 }

@@ -51,6 +51,7 @@ void ioapic_init (void);
 void ivt_init (void);
 
 u8 ata_read_sectors28 (u32 lba, u16 *buffer, u16 count);
+u8 ata_reset (void);
 u8 ata_identify (u16 *cylinders, u16 *heads, u16 *sectors_per_track,
                  u32 *total_sectors_low, u32 *total_sectors_high);
 

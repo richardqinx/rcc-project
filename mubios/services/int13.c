@@ -23,6 +23,8 @@
 #include "regs.h"
 
 #define BIOS_CF 0x0001u
+#define BIOS_HARD_DISK 0x0080u
+#define CHS_MAX_CYLINDER 0x03FFu
 
 struct edd_packet
 {
@@ -47,6 +49,13 @@ struct edd_parameters
   u32 total_sectors_high;
   u16 bytes_per_sector;
 } __attribute__ ((packed));
+
+struct ata_geometry
+{
+  u16 cylinders;
+  u16 heads;
+  u16 sectors_per_track;
+};
 
 static void
 int13_fail (struct bios_regs *regs)
@@ -73,6 +82,17 @@ get_edd_parameters (struct bios_regs *regs)
   return (struct edd_parameters *)address;
 }
 
+static u8
+get_ata_geometry (struct ata_geometry *geometry)
+{
+  u32 total_sectors_low;
+  u32 total_sectors_high;
+
+  return ata_identify (&geometry->cylinders, &geometry->heads,
+                       &geometry->sectors_per_track, &total_sectors_low,
+                       &total_sectors_high);
+}
+
 void
 int13_service (struct bios_regs *regs)
 {
@@ -81,6 +101,114 @@ int13_service (struct bios_regs *regs)
   u32 buffer_address;
 
   function = (u8)(regs->eax >> 8);
+
+  if (function == 0x00u)
+    {
+      if ((regs->edx & 0x00FFu) != BIOS_HARD_DISK)
+        {
+          int13_fail (regs);
+          return;
+        }
+
+      if (ata_reset () != 0)
+        {
+          int13_fail (regs);
+          return;
+        }
+
+      regs->eax &= 0xFFFF0000u;
+      regs->flags &= (u16)~BIOS_CF;
+      return;
+    }
+
+  if (function == 0x02u)
+    {
+      struct ata_geometry geometry;
+      u8 count;
+      u8 sector;
+      u8 head;
+      u16 cylinder;
+      u32 lba;
+
+      count = (u8)regs->eax;
+      sector = (u8)regs->ecx & 0x3Fu;
+      cylinder = (u16)(regs->ecx >> 8)
+                 | (u16)(((u8)(regs->ecx >> 14) & 0x03u) << 8);
+      head = (u8)(regs->edx >> 8);
+
+      if ((regs->edx & 0x00FFu) != BIOS_HARD_DISK || count == 0u
+          || get_ata_geometry (&geometry) != 0
+          || sector == 0u || sector > geometry.sectors_per_track
+          || head >= geometry.heads || cylinder >= geometry.cylinders)
+        {
+          int13_fail (regs);
+          return;
+        }
+
+      if (cylinder > CHS_MAX_CYLINDER)
+        {
+          int13_fail (regs);
+          return;
+        }
+
+      lba = (((u32)cylinder * geometry.heads) + head)
+            * geometry.sectors_per_track + (u32)sector - 1u;
+      buffer_address
+          = ((u32)regs->es << 4) + (u16)regs->ebx;
+
+      if (ata_read_sectors28 (lba, (u16 *)buffer_address, count) != 0)
+        {
+          int13_fail (regs);
+          return;
+        }
+
+      regs->eax = (regs->eax & 0xFFFF0000u) | (u32)count;
+      regs->flags &= (u16)~BIOS_CF;
+      return;
+    }
+
+  if (function == 0x08u)
+    {
+      struct ata_geometry geometry;
+      u16 max_cylinder;
+      u8 max_head;
+      u8 sectors_per_track;
+
+      if ((regs->edx & 0x00FFu) != BIOS_HARD_DISK
+          || get_ata_geometry (&geometry) != 0)
+        {
+          int13_fail (regs);
+          return;
+        }
+
+      max_cylinder = geometry.cylinders - 1u;
+      if (max_cylinder > CHS_MAX_CYLINDER)
+        max_cylinder = CHS_MAX_CYLINDER;
+
+      max_head = (u8)(geometry.heads - 1u);
+      sectors_per_track = (u8)geometry.sectors_per_track;
+      regs->eax &= 0xFFFF0000u;
+      regs->ecx = (regs->ecx & 0xFFFF0000u)
+                  | (u32)(sectors_per_track & 0x3Fu)
+                  | ((u32)(max_cylinder & 0x00FFu) << 8)
+                  | ((u32)(max_cylinder >> 8) << 14);
+      regs->edx = (regs->edx & 0xFFFF0000u) | ((u32)max_head << 8) | 1u;
+      regs->flags &= (u16)~BIOS_CF;
+      return;
+    }
+
+  if (function == 0x15u)
+    {
+      if ((regs->edx & 0x00FFu) != BIOS_HARD_DISK)
+        {
+          int13_fail (regs);
+          return;
+        }
+
+      regs->eax = (regs->eax & 0xFFFF0000u) | 0x0300u;
+      regs->flags &= (u16)~BIOS_CF;
+      return;
+    }
 
   if (function == 0x41u)
     {
