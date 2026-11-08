@@ -34,6 +34,7 @@
 irq0_entry:
 	push ax
 	push bx
+	push ds
 
 	xor bx, bx
 	mov ds, bx
@@ -60,6 +61,7 @@ irq0_send_eoi:
 	mov al, 0x20
 	out 0x20, al
 
+	pop ds
 	pop bx
 	pop ax
 	iret
