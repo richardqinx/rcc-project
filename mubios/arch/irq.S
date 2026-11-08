@@ -116,3 +116,16 @@ irq1_send_eoi:
 	pop bx
 	pop ax
 	iret
+
+	.global irq7_entry
+	.type irq7_entry, @function
+
+irq7_entry:
+	push ax
+
+	# Acknowledge IRQ7 on the master PIC.
+	mov al, 0x20
+	out 0x20, al
+
+	pop ax
+	iret

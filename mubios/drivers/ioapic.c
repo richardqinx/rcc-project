@@ -24,6 +24,9 @@
 
 #define IOAPIC_INDEX 0xFEC00000u
 #define IOAPIC_DATA 0xFEC00010u
+#define IOAPIC_VERSION 0x01u
+#define IOAPIC_REDIRECTION_BASE 0x10u
+#define IOAPIC_REDIRECTION_MASK 0x00010000u
 
 #define IOAPIC_IRQ0_LOW 0x10u
 #define IOAPIC_IRQ0_HIGH 0x11u
@@ -61,6 +64,31 @@ ioapic_write (u8 index, u32 value)
   *ioapic_data = value;
 }
 
+static u32
+ioapic_read (u8 index)
+{
+  *ioapic_index = index;
+  return *ioapic_data;
+}
+
+static void
+ioapic_mask_all (void)
+{
+  u32 version;
+  u32 maximum_pin;
+  u32 pin;
+
+  version = ioapic_read (IOAPIC_VERSION);
+  maximum_pin = (version >> 16) & 0xFFu;
+
+  for (pin = 0; pin <= maximum_pin; ++pin)
+    {
+      ioapic_write ((u8)(IOAPIC_REDIRECTION_BASE + 2u * pin),
+                   IOAPIC_REDIRECTION_MASK);
+      ioapic_write ((u8)(IOAPIC_REDIRECTION_BASE + 2u * pin + 1u), 0);
+    }
+}
+
 void
 ioapic_init (void)
 {
@@ -83,14 +111,19 @@ ioapic_init (void)
   *(volatile u32 *)(APIC_BASE + APIC_LVT0_OFFSET) = 0x00000700u;
 
   /*
+   * Mask every IOAPIC input before enabling the explicitly configured lines.
+   */
+  ioapic_mask_all ();
+
+  /*
    * Route IOAPIC pin 0 to the legacy PIC ExtINT path.
    */
-  ioapic_write (IOAPIC_IRQ0_LOW, IOAPIC_IRQ0_EXTINT);
   ioapic_write (IOAPIC_IRQ0_HIGH, 0x00000000u);
+  ioapic_write (IOAPIC_IRQ0_LOW, IOAPIC_IRQ0_EXTINT);
 
   /*
    * Route the keyboard IRQ through the legacy PIC ExtINT path.
    */
-  ioapic_write (IOAPIC_IRQ1_LOW, IOAPIC_IRQ1_EXTINT);
   ioapic_write (IOAPIC_IRQ1_HIGH, 0x00000000u);
+  ioapic_write (IOAPIC_IRQ1_LOW, IOAPIC_IRQ1_EXTINT);
 }
