@@ -22,6 +22,9 @@
 
 	.equ BDA_TIMER_COUNTER, 0x046C
 	.equ BDA_TIMER_ROLLOVER, 0x0470
+	.equ BDA_BASE, 0x0400
+	.equ BDA_KBD_BUFFER_START, 0x001E
+	.equ BDA_KBD_BUFFER_END, 0x003E
 
 	.equ TIMER_TICKS_PER_DAY_LOW, 0x00B0
 	.equ TIMER_TICKS_PER_DAY_HIGH, 0x0018
@@ -74,6 +77,7 @@ irq1_entry:
 	push bx
 	push dx
 	push ds
+	push si
 
 	# Read the PS/2 scan code before sending EOI.
 	in al, 0x60
@@ -88,22 +92,25 @@ irq1_entry:
 	mov bx, word ptr [0x041C]
 	mov ax, bx
 	add ax, 2
-	cmp ax, 0x043E
+	cmp ax, BDA_KBD_BUFFER_END
 	jb irq1_next_tail_ready
-	mov ax, 0x041E
+	mov ax, BDA_KBD_BUFFER_START
 
 irq1_next_tail_ready:
 	cmp ax, word ptr [0x041A]
 	je irq1_send_eoi
 
-	mov byte ptr [bx], 0
-	mov byte ptr [bx + 1], dl
+	mov si, bx
+	add si, BDA_BASE
+	mov byte ptr [si], 0
+	mov byte ptr [si + 1], dl
 	mov word ptr [0x041C], ax
 
 irq1_send_eoi:
 	mov al, 0x20
 	out 0x20, al
 
+	pop si
 	pop ds
 	pop dx
 	pop bx

@@ -23,7 +23,8 @@
 #define BDA_KBD_HEAD 0x041Au
 #define BDA_KBD_TAIL 0x041Cu
 #define BDA_KBD_BUFFER 0x041Eu
-#define BDA_KBD_BUFFER_END 0x043Eu
+#define BDA_KBD_BUFFER_START 0x001Eu
+#define BDA_KBD_BUFFER_END 0x003Eu
 
 static u8
 scancode_to_ascii (u8 scancode)
@@ -124,7 +125,7 @@ int16_service (struct bios_regs *regs)
     }
 
   position = *head;
-  value = buffer[(position - BDA_KBD_BUFFER) >> 1];
+  value = buffer[(position - BDA_KBD_BUFFER_START) >> 1];
   scancode = (u8)(value >> 8);
   ascii = scancode_to_ascii (scancode);
 
@@ -136,7 +137,7 @@ int16_service (struct bios_regs *regs)
       position += 2;
 
       if (position >= BDA_KBD_BUFFER_END)
-        position = BDA_KBD_BUFFER;
+        position = BDA_KBD_BUFFER_START;
 
       *head = position;
     }

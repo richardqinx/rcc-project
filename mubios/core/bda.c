@@ -45,8 +45,8 @@ bda_init (void)
 
   store_u16 (bda + BDA_CONVENTIONAL_MEMORY_OFFSET, (u16)(ebda_base >> 10));
 
-  store_u16 (bda + 0x001Au, 0x041Eu);
-  store_u16 (bda + 0x001Cu, 0x041Eu);
+  store_u16 (bda + 0x001Au, 0x001Eu);
+  store_u16 (bda + 0x001Cu, 0x001Eu);
 }
 
 struct ivt_entry
