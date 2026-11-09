@@ -50,4 +50,25 @@ io_in16 (u16 port)
   return value;
 }
 
+static inline void
+io_out16 (u16 port, u16 value)
+{
+  __asm__ volatile ("outw %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static inline u32
+io_in32 (u16 port)
+{
+  u32 value;
+
+  __asm__ volatile ("inl %1, %0" : "=a"(value) : "Nd"(port));
+  return value;
+}
+
+static inline void
+io_out32 (u16 port, u32 value)
+{
+  __asm__ volatile ("outl %0, %1" : : "a"(value), "Nd"(port));
+}
+
 #endif // MUBIOS_IO_H
