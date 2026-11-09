@@ -17,6 +17,7 @@
  */
 
 #include "bios.h"
+#include "io.h"
 #include "regs.h"
 
 #define BIOS_ZF 0x0040u
@@ -25,18 +26,6 @@
 #define BDA_KBD_BUFFER 0x041Eu
 #define BDA_KBD_BUFFER_START 0x001Eu
 #define BDA_KBD_BUFFER_END 0x003Eu
-
-static u8
-normalize_scancode (u8 scancode)
-{
-  switch (scancode)
-    {
-    case 0x5Au:
-      return 0x1Cu;
-    default:
-      return scancode;
-    }
-}
 
 static u8
 scancode_to_ascii (u8 scancode)
@@ -138,7 +127,7 @@ int16_service (struct bios_regs *regs)
 
   position = *head;
   value = buffer[(position - BDA_KBD_BUFFER_START) >> 1];
-  scancode = normalize_scancode ((u8)(value >> 8));
+  scancode = (u8)(value >> 8);
   ascii = scancode_to_ascii (scancode);
 
   regs->eax = ((u32)scancode << 8) | ascii;

@@ -25,8 +25,6 @@
 	.equ BDA_BASE, 0x0400
 	.equ BDA_KBD_BUFFER_START, 0x001E
 	.equ BDA_KBD_BUFFER_END, 0x003E
-	.equ BDA_KBD_BREAK_PREFIX, 0x0497
-
 	.equ TIMER_TICKS_PER_DAY_LOW, 0x00B0
 	.equ TIMER_TICKS_PER_DAY_HIGH, 0x0018
 
@@ -80,26 +78,24 @@ irq1_entry:
 	push ds
 	push si
 
-	# Read the PS/2 scan code before sending EOI.
-	in al, 0x60
-	mov dl, al
-
 	xor ax, ax
 	mov ds, ax
 
-	# Ignore a PS/2 set-2 break prefix and its following release code.
-	cmp dl, 0xF0
-	jne irq1_check_break_prefix
-	mov byte ptr [BDA_KBD_BREAK_PREFIX], 1
-	jmp irq1_send_eoi
+	# Only read the data port when the controller holds a byte for the CPU.
+	in al, 0x64
+	test al, 0x01
+	jz irq1_send_eoi
 
-irq1_check_break_prefix:
-	cmp byte ptr [BDA_KBD_BREAK_PREFIX], 0
-	je irq1_check_set1_break
-	mov byte ptr [BDA_KBD_BREAK_PREFIX], 0
-	jmp irq1_send_eoi
+	mov ah, al
 
-irq1_check_set1_break:
+	in al, 0x60
+	mov dl, al
+
+	# Drop bytes that belong to the auxiliary port.
+	test ah, 0x20
+	jnz irq1_send_eoi
+
+	# Set 1 break codes carry bit 7 in the scan code itself.
 	test dl, 0x80
 	jnz irq1_send_eoi
 

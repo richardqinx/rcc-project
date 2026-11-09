@@ -33,6 +33,7 @@ post_main (void)
 
   ivt_init ();
 
+  kbd_init ();
   pic_init ();
   pit_init ();
   ioapic_init ();
