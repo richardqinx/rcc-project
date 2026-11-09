@@ -7,55 +7,68 @@
  */
 
 #include "bios.h"
-#include "io.h"
 #include "regs.h"
 
-#define COM1_BASE 0x03F8u
-#define COM_DATA 0x00u
-#define COM_LSR 0x05u
-#define COM_LSR_THRE 0x20u
-#define COM_LSR_IDLE 0x40u
-
-static void
-int14_putc (u8 value)
-{
-  while ((io_in8 ((u16)(COM1_BASE + COM_LSR)) & COM_LSR_THRE) == 0u)
-    {
-    }
-
-  io_out8 ((u16)(COM1_BASE + COM_DATA), value);
-}
+#define BIOS_CF 0x0001u
+#define BIOS_INVALID_FUNCTION 0x86u
+#define BDA_COM_PORTS 0x0400u
+#define BDA_COM_TIMEOUTS 0x047Cu
+#define BIOS_COM_PORT_COUNT 4u
 
 void
 int14_service (struct bios_regs *regs)
 {
   u8 function;
   u8 status;
+  u8 value;
+  u8 timeout;
+  u16 port;
+  u16 base;
+  u16 result;
+  volatile u16 *ports;
+  volatile u8 *timeouts;
 
   function = (u8)(regs->eax >> 8);
+  port = (u16)regs->edx;
+  ports = (volatile u16 *)BDA_COM_PORTS;
+  timeouts = (volatile u8 *)BDA_COM_TIMEOUTS;
 
-  if (function == 0x00u)
+  /* BIOS numbers COM ports through DX and advertises their bases in BDA. */
+  if (function > 0x03u || port >= BIOS_COM_PORT_COUNT || ports[port] == 0u)
     {
-      serial_init ();
-      regs->eax &= 0xFFFF0000u;
+      regs->eax
+          = (regs->eax & 0xFFFF00FFu) | ((u32)BIOS_INVALID_FUNCTION << 8);
+      regs->flags |= BIOS_CF;
       return;
     }
 
-  if (function == 0x01u)
+  base = ports[port];
+  timeout = timeouts[port];
+
+  switch (function)
     {
-      int14_putc ((u8)regs->eax);
-      status = (u8)(io_in8 ((u16)(COM1_BASE + COM_LSR))
-                    | COM_LSR_THRE | COM_LSR_IDLE);
+    case 0x00u:
+      result = serial_configure (base, (u8)regs->eax);
+      regs->eax = (regs->eax & 0xFFFF0000u) | result;
+      break;
+
+    case 0x01u:
+      status = serial_transmit (base, (u8)regs->eax, timeout);
       regs->eax = (regs->eax & 0xFFFF00FFu) | ((u32)status << 8);
-      return;
+      break;
+
+    case 0x02u:
+      value = (u8)regs->eax;
+      status = serial_receive (base, &value, timeout);
+      regs->eax = (regs->eax & 0xFFFF0000u) | ((u32)status << 8) | value;
+      break;
+
+    case 0x03u:
+      result = serial_status (base);
+      regs->eax = (regs->eax & 0xFFFF0000u) | result;
+      break;
     }
 
-  if (function == 0x03u)
-    {
-      status = io_in8 ((u16)(COM1_BASE + COM_LSR));
-      regs->eax = (regs->eax & 0xFFFF00FFu) | ((u32)status << 8);
-      return;
-    }
-
-  regs->eax = 0x0100u;
+  /* As in SeaBIOS, timeouts use AH bit 7; CF denotes an invalid call. */
+  regs->flags &= (u16)~BIOS_CF;
 }

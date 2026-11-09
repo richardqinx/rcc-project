@@ -137,9 +137,9 @@ int13_service (struct bios_regs *regs)
       head = (u8)(regs->edx >> 8);
 
       if ((regs->edx & 0x00FFu) != BIOS_HARD_DISK || count == 0u
-          || get_ata_geometry (&geometry) != 0
-          || sector == 0u || sector > geometry.sectors_per_track
-          || head >= geometry.heads || cylinder >= geometry.cylinders)
+          || get_ata_geometry (&geometry) != 0 || sector == 0u
+          || sector > geometry.sectors_per_track || head >= geometry.heads
+          || cylinder >= geometry.cylinders)
         {
           int13_fail (regs);
           return;
@@ -152,9 +152,9 @@ int13_service (struct bios_regs *regs)
         }
 
       lba = (((u32)cylinder * geometry.heads) + head)
-            * geometry.sectors_per_track + (u32)sector - 1u;
-      buffer_address
-          = ((u32)regs->es << 4) + (u16)regs->ebx;
+                * geometry.sectors_per_track
+            + (u32)sector - 1u;
+      buffer_address = ((u32)regs->es << 4) + (u16)regs->ebx;
 
       if (ata_read_sectors28 (lba, (u16 *)buffer_address, count) != 0)
         {
@@ -188,8 +188,7 @@ int13_service (struct bios_regs *regs)
       max_head = (u8)(geometry.heads - 1u);
       sectors_per_track = (u8)geometry.sectors_per_track;
       regs->eax &= 0xFFFF0000u;
-      regs->ecx = (regs->ecx & 0xFFFF0000u)
-                  | (u32)(sectors_per_track & 0x3Fu)
+      regs->ecx = (regs->ecx & 0xFFFF0000u) | (u32)(sectors_per_track & 0x3Fu)
                   | ((u32)(max_cylinder & 0x00FFu) << 8)
                   | ((u32)(max_cylinder >> 8) << 14);
       regs->edx = (regs->edx & 0xFFFF0000u) | ((u32)max_head << 8) | 1u;

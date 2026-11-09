@@ -24,6 +24,8 @@
 extern u8 __ebda_start[];
 
 #define BDA_COM1_OFFSET 0x0000u
+#define BDA_COM_TIMEOUT_OFFSET 0x007Cu
+#define BIOS_COM_TIMEOUT 0x0Au
 #define BDA_LPT1_OFFSET 0x0008u
 
 static void
@@ -47,6 +49,7 @@ bda_init (void)
   store_u16 (bda + BDA_EQUIPMENT_OFFSET, 0x4227u);
 
   store_u16 (bda + BDA_COM1_OFFSET, 0x03F8u);
+  bda[BDA_COM_TIMEOUT_OFFSET] = BIOS_COM_TIMEOUT;
   store_u16 (bda + BDA_LPT1_OFFSET, 0x0378u);
 
   store_u16 (bda + BDA_CONVENTIONAL_MEMORY_OFFSET, (u16)(ebda_base >> 10));

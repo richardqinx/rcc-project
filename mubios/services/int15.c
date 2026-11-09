@@ -62,9 +62,9 @@ get_memory_end (void)
     }
   else
     {
-      extended_kib = (u16)cmos_read8 (CMOS_EXTENDED_MEMORY_LOW_16M)
-                     | (u16)((u16)cmos_read8 (CMOS_EXTENDED_MEMORY_HIGH_16M)
-                             << 8);
+      extended_kib
+          = (u16)cmos_read8 (CMOS_EXTENDED_MEMORY_LOW_16M)
+            | (u16)((u16)cmos_read8 (CMOS_EXTENDED_MEMORY_HIGH_16M) << 8);
       if (extended_kib != 0u)
         memory_end = E820_MEMORY_BASE + ((u32)extended_kib << 10);
       else

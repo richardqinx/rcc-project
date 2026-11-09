@@ -96,8 +96,7 @@ ata_read_transfer28 (u32 lba, u16 *buffer, u16 count)
   for (sector = 0; sector < count; ++sector)
     {
       status = ata_wait_not_busy ();
-      if ((status & ATA_STATUS_ERR) != 0
-          || (status & ATA_STATUS_DRQ) == 0)
+      if ((status & ATA_STATUS_ERR) != 0 || (status & ATA_STATUS_DRQ) == 0)
         return 1;
 
       for (index = 0; index < 256; ++index)

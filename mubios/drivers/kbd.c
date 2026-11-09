@@ -33,9 +33,9 @@
 
 /*
  * 8042 command byte bits.
- * Bit 0 enables the keyboard IRQ, bit 1 the auxiliary port IRQ, bit 4 and bit 5
- * hold the keyboard and auxiliary clock, and bit 6 selects set 1 scan codes on
- * the keyboard interface.
+ * Bit 0 enables the keyboard IRQ, bit 1 the auxiliary port IRQ, bit 4 and bit
+ * 5 hold the keyboard and auxiliary clock, and bit 6 selects set 1 scan codes
+ * on the keyboard interface.
  */
 #define KBD_CONFIG_IRQ1 0x01u
 #define KBD_CONFIG_IRQ12 0x02u
@@ -103,7 +103,8 @@ kbd_init (void)
   /* Disable both ports before the controller is reconfigured. */
   kbd_write_command (KBD_CMD_DISABLE_KBD);
 
-  /* Drain the self-test and any pending scan code left in the output buffer. */
+  /* Drain the self-test and any pending scan code left in the output buffer.
+   */
   while ((io_in8 (KBD_STATUS_PORT) & KBD_STATUS_OBF) != 0u)
     (void)io_in8 (KBD_DATA_PORT);
 
@@ -115,7 +116,8 @@ kbd_init (void)
 
   config = io_in8 (KBD_DATA_PORT);
 
-  config &= (u8)~(KBD_CONFIG_DISABLE_KBD_CLOCK | KBD_CONFIG_DISABLE_AUX_CLOCK);
+  config
+      &= (u8) ~(KBD_CONFIG_DISABLE_KBD_CLOCK | KBD_CONFIG_DISABLE_AUX_CLOCK);
   config |= KBD_CONFIG_IRQ1 | KBD_CONFIG_IRQ12 | KBD_CONFIG_TRANSLATE;
 
   if (kbd_write_command (KBD_CMD_WRITE_CONFIG) != 0)

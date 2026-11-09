@@ -84,7 +84,7 @@ ioapic_mask_all (void)
   for (pin = 0; pin <= maximum_pin; ++pin)
     {
       ioapic_write ((u8)(IOAPIC_REDIRECTION_BASE + 2u * pin),
-                   IOAPIC_REDIRECTION_MASK);
+                    IOAPIC_REDIRECTION_MASK);
       ioapic_write ((u8)(IOAPIC_REDIRECTION_BASE + 2u * pin + 1u), 0);
     }
 }

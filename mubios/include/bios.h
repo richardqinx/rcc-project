@@ -43,6 +43,12 @@ void bda_init (void);
 void serial_init (void);
 void serial_putc (u8 value);
 void serial_write (const char *text);
+u16 serial_timer_counter (void);
+u16 serial_status (u16 base);
+u16 serial_configure (u16 base, u8 parameters);
+u8 serial_transmit (u16 base, u8 value, u8 timeout);
+u8 serial_receive (u16 base, u8 *value, u8 timeout);
+int serial_try_receive (u16 base, u8 *value);
 
 u8 cmos_read8 (u8 index);
 
