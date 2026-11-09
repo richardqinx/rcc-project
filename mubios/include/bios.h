@@ -56,6 +56,7 @@ void kbd_init (void);
 void pic_init (void);
 void pit_init (void);
 void ioapic_init (void);
+void pci_irq_init (void);
 void vga_text_mode_init (void);
 
 void ivt_init (void);
