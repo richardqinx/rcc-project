@@ -44,6 +44,8 @@ void serial_init (void);
 void serial_putc (u8 value);
 void serial_write (const char *text);
 
+u8 cmos_read8 (u8 index);
+
 void kbd_init (void);
 void pic_init (void);
 void pit_init (void);
