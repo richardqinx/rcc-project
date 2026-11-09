@@ -22,6 +22,16 @@
 #include "bios.h"
 #include "io.h"
 
+#define PCI_CONFIG_ADDRESS 0x0CF8u
+#define PCI_CONFIG_DATA 0x0CFCu
+#define PCI_VENDOR_DEVICE 0x00u
+#define PCI_COMMAND 0x04u
+#define PCI_COMMAND_IO 0x0001u
+#define PIIX3_IDE_ID 0x70108086u
+#define PIIX_IDETIM_PRIMARY 0x40u
+#define PIIX_IDETIM_SECONDARY 0x42u
+#define PIIX_IDETIM_ENABLE 0x8000u
+
 #define ATA_DATA 0x1F0u
 #define ATA_SECTOR_COUNT 0x1F2u
 #define ATA_LBA_LOW 0x1F3u
@@ -39,6 +49,50 @@
 #define ATA_CMD_READ_SECTORS 0x20u
 #define ATA_CMD_IDENTIFY 0xECu
 #define ATA_CONTROL_SRST 0x04u
+
+static u32
+ata_pci_read (u16 devfn, u8 offset)
+{
+  io_out32 (PCI_CONFIG_ADDRESS,
+            0x80000000u | ((u32)devfn << 8) | (offset & 0xFCu));
+  return io_in32 (PCI_CONFIG_DATA);
+}
+
+static void
+ata_pci_write16 (u16 devfn, u8 offset, u16 value)
+{
+  io_out32 (PCI_CONFIG_ADDRESS,
+            0x80000000u | ((u32)devfn << 8) | (offset & 0xFCu));
+  io_out16 ((u16)(PCI_CONFIG_DATA + (offset & 2u)), value);
+}
+
+void
+ata_init (void)
+{
+  u16 devfn;
+  u16 command;
+  u32 timing;
+
+  /* Enumerate the root PCI bus used by QEMU's pc machine. */
+  for (devfn = 0; devfn < 256u; ++devfn)
+    {
+      /* IDETIM is specific to the PIIX3 IDE controller. */
+      if (ata_pci_read (devfn, PCI_VENDOR_DEVICE) != PIIX3_IDE_ID)
+        continue;
+
+      command = (u16)ata_pci_read (devfn, PCI_COMMAND);
+      /* Use a word write to leave the write-one-to-clear status untouched. */
+      ata_pci_write16 (devfn, PCI_COMMAND, (u16)(command | PCI_COMMAND_IO));
+
+      /* Linux's ata_piix requires IDETIM bit 15 to probe each channel. */
+      timing = ata_pci_read (devfn, PIIX_IDETIM_PRIMARY);
+      ata_pci_write16 (devfn, PIIX_IDETIM_PRIMARY,
+                       (u16)((u16)timing | PIIX_IDETIM_ENABLE));
+      ata_pci_write16 (devfn, PIIX_IDETIM_SECONDARY,
+                       (u16)((timing >> 16) | PIIX_IDETIM_ENABLE));
+      return;
+    }
+}
 
 static u8
 ata_wait_not_busy (void)

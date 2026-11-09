@@ -28,14 +28,6 @@
 #define IOAPIC_REDIRECTION_BASE 0x10u
 #define IOAPIC_REDIRECTION_MASK 0x00010000u
 
-#define IOAPIC_IRQ0_LOW 0x10u
-#define IOAPIC_IRQ0_HIGH 0x11u
-#define IOAPIC_IRQ1_LOW 0x12u
-#define IOAPIC_IRQ1_HIGH 0x13u
-
-#define IOAPIC_IRQ0_EXTINT 0x00000700u
-#define IOAPIC_IRQ1_EXTINT 0x00000700u
-
 #define IA32_APIC_BASE_MSR 0x0000001Bu
 #define APIC_BASE 0xFEE00000u
 #define APIC_SVR_OFFSET 0x000000F0u
@@ -111,19 +103,7 @@ ioapic_init (void)
   *(volatile u32 *)(APIC_BASE + APIC_LVT0_OFFSET) = 0x00000700u;
 
   /*
-   * Mask every IOAPIC input before enabling the explicitly configured lines.
+   * Keep every IOAPIC input masked so legacy interrupts use only LVT0.
    */
   ioapic_mask_all ();
-
-  /*
-   * Route IOAPIC pin 0 to the legacy PIC ExtINT path.
-   */
-  ioapic_write (IOAPIC_IRQ0_HIGH, 0x00000000u);
-  ioapic_write (IOAPIC_IRQ0_LOW, IOAPIC_IRQ0_EXTINT);
-
-  /*
-   * Route the keyboard IRQ through the legacy PIC ExtINT path.
-   */
-  ioapic_write (IOAPIC_IRQ1_HIGH, 0x00000000u);
-  ioapic_write (IOAPIC_IRQ1_LOW, IOAPIC_IRQ1_EXTINT);
 }

@@ -37,6 +37,7 @@ post_main (void)
   pic_init ();
   pit_init ();
   ioapic_init ();
+  ata_init ();
 
   volatile u8 *mbr;
   u8 ata_status;
